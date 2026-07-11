@@ -7,11 +7,36 @@ mirror targets consume.
 
 import html
 import os
+import random
+import time
 
+import requests
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
 from .config import DEFAULT_SPOTIFY_REDIRECT_URI, REQUEST_TIMEOUT, required_env
+from .logs import log
+
+# Connection-level failures spotipy's status-code retry doesn't cover.
+_TRANSIENT = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+    requests.exceptions.ReadTimeout,
+)
+
+
+def _retry(fn, what, attempts=5):
+    """Retry a Spotify call on connection resets / read timeouts with backoff —
+    reads are idempotent, so a reset page just re-fetches."""
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except _TRANSIENT:
+            if attempt == attempts - 1:
+                raise
+            wait = min(2 ** attempt, 20) + random.uniform(0, 2)
+            log(f"connection issue ({what}); retrying in {int(wait)}s", tag="spotify")
+            time.sleep(wait)
 
 
 def client():
@@ -27,7 +52,7 @@ def client():
             open_browser=os.getenv("SPOTIFY_OAUTH_OPEN_BROWSER", "1") != "0",
         ),
         requests_timeout=REQUEST_TIMEOUT,
-        retries=3,
+        retries=5,
     )
 
 
@@ -37,9 +62,9 @@ def description(sp_playlist):
 
 def playlists_by_name(sp):
     """name (casefolded) -> playlist, preferring playlists I own, then bigger."""
-    me = sp.current_user()["id"]
+    me = _retry(lambda: sp.current_user(), "current_user")["id"]
     best = {}
-    results = sp.current_user_playlists(limit=50)
+    results = _retry(lambda: sp.current_user_playlists(limit=50), "playlists")
     while results:
         for playlist in results.get("items", []):
             if not playlist:
@@ -53,7 +78,8 @@ def playlists_by_name(sp):
             )
             if name not in best or rank > best[name][0]:
                 best[name] = (rank, playlist)
-        results = sp.next(results) if results.get("next") else None
+        page = results
+        results = _retry(lambda: sp.next(page), "playlists page") if results.get("next") else None
     return {name: playlist for name, (rank, playlist) in best.items()}
 
 
@@ -75,7 +101,10 @@ def playlist_item_track(item):
 
 def playlist_tracks(sp, playlist_id):
     tracks = []
-    results = sp.playlist_items(playlist_id, market="from_token", additional_types=("track",), limit=100)
+    results = _retry(
+        lambda: sp.playlist_items(playlist_id, market="from_token", additional_types=("track",), limit=100),
+        "playlist_items",
+    )
     while results:
         for item in results.get("items", []):
             track = playlist_item_track(item)
@@ -91,5 +120,6 @@ def playlist_tracks(sp, playlist_id):
                 "duration_ms": track.get("duration_ms"),
                 "added_at": item.get("added_at") or "",
             })
-        results = sp.next(results) if results.get("next") else None
+        page = results
+        results = _retry(lambda: sp.next(page), "tracks page") if results.get("next") else None
     return tracks

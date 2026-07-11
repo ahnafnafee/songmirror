@@ -46,7 +46,7 @@ def read_tracks(sp, playlist_id):
     """Ordered per-track info from the live playlist: added-at, ISRC, match
     keys, and display name/artist/duration."""
     out = []
-    page = sp.playlist_items(playlist_id, additional_types=("track",), limit=100)
+    page = spotify._retry(lambda: sp.playlist_items(playlist_id, additional_types=("track",), limit=100), "playlist_items")
     while page:
         for item in page.get("items", []):
             track = spotify.playlist_item_track(item)
@@ -68,7 +68,8 @@ def read_tracks(sp, playlist_id):
                         keys.add(f"{artist}|{title}")
             out.append({"when": when, "isrc": isrc.strip().upper() if isrc else None, "keys": keys,
                         "name": name, "artist": ", ".join(artists), "duration_ms": track.get("duration_ms")})
-        page = sp.next(page) if page.get("next") else None
+        prev = page
+        page = spotify._retry(lambda: sp.next(prev), "tracks page") if page.get("next") else None
     return out
 
 
