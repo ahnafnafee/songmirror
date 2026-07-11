@@ -1,5 +1,6 @@
 # 🎵 Spotify Playlist Mirror
 
+[![CI](https://github.com/ahnafnafee/spotify-playlist-mirror/actions/workflows/ci.yml/badge.svg)](https://github.com/ahnafnafee/spotify-playlist-mirror/actions/workflows/ci.yml)
 ![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Docker ready](https://img.shields.io/badge/docker-ready-2496ED)

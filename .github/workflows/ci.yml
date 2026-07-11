@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v8
+        # NOTE: uv cache intentionally NOT enabled — the bundled cache saves in a
+        # post-step that runs even on failed runs and can poison main. Deps here
+        # are small, so a clean install each run is cheaper than the risk.
+
+      # Core deps only — the tests import spotDL / mutagen lazily and mock them,
+      # so the `download` extra isn't needed to run them.
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Matching + archive tests
+        run: uv run test_matching.py
+
+      - name: Download-mirror tests
+        run: uv run python test_downloads.py
