@@ -284,13 +284,16 @@ next pass (only the file in flight when it stopped is re-fetched). The Spotify
 playlist cover is saved at the highest resolution Spotify offers and refreshed
 only when it changes.
 
-**Unchanged playlists are skipped outright.** spotDL spends minutes
-pre-processing before it reports a single skip (it re-fetches the whole
-playlist and re-matches every track), and it does that even when nothing
-changed. So a playlist whose Spotify `snapshot_id` is unchanged since its last
-successful download is skipped entirely — no spotDL invocation at all. Only the
-first download of a playlist, or one that actually changed, pays that cost.
-(Use `--refresh-local` to force-rebuild the m3u/tags/covers without downloading.)
+**spotDL is only invoked when it's actually needed.** Its startup is slow (it
+re-fetches the whole playlist and re-matches every track before reporting a
+single skip). Per-playlist state in `download_state.json` (Spotify
+`snapshot_id`, track ids, and the set of tracks spotDL couldn't source) gates
+it: an **unchanged** playlist is skipped outright, and a **changed** one runs
+spotDL only when a genuinely **new or removed** track appears — not merely
+because some permanently-unavailable tracks (OSTs / kanji titles / region-locked
+songs that aren't on YouTube) are still "missing". Those are remembered after
+the first attempt and no longer force a run. (Use `--refresh-local` to
+force-rebuild the m3u/tags/covers without downloading.)
 
 **Metadata for Jellyfin.** spotDL embeds full Spotify tags + cover art on
 download. On top of that, finalize **backfills any missing** tags

@@ -140,6 +140,33 @@ def test_match_track():
     assert lm._match_track([], "Nope", ["X"], "x - y", by_isrc, by_key, by_stem) is None
 
 
+def test_needs_spotdl():
+    assert lm._needs_spotdl(["a", "b"], [], [])[0]  # first run downloads everything
+    assert not lm._needs_spotdl(["a", "b"], ["a", "b"], ["b"])[0]  # only known-unavailable "missing" -> no run
+    run, new, _ = lm._needs_spotdl(["a", "b", "c"], ["a", "b"], ["b"])
+    assert run and new == {"c"}  # a genuinely new track triggers a run
+    run, _, removed = lm._needs_spotdl(["a"], ["a", "b"], [])
+    assert run and removed == {"b"}  # a removal triggers a run
+    assert not lm._needs_spotdl(["b", "a"], ["a", "b"], [])[0]  # reorder alone does not
+
+
+def test_tracks_without_file():
+    def tk(name, artist, tid):
+        keys = set()
+        title = lm._norm(name)
+        for a in {lm._norm(artist), lm._norm(artist.split(",")[0])}:
+            if a:
+                keys.add(f"{a}|{title}")
+        return {"id": tid, "name": name, "artist": artist, "isrc": None, "keys": keys}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp)
+        (folder / "A").mkdir()
+        (folder / "A" / "Alpha - Song One.mp3").write_bytes(b"x")  # untagged -> matched by filename stem
+        missing = lm._tracks_without_file(folder, [tk("Song One", "Alpha", "id1"), tk("Song Two", "Beta", "id2")])
+        assert [t["id"] for t in missing] == ["id2"]  # present one covered, absent one flagged
+
+
 def test_fetch_image_cache():
     calls, real = [], lm.requests.get
     lm.requests.get = lambda *a, **k: (calls.append(1), types.SimpleNamespace(content=b"IMG", raise_for_status=lambda: None))[1]
@@ -178,16 +205,21 @@ def test_run_skips_without_spotdl():
 
 
 def test_run_name_collision():
-    calls, real = [], (lm.importlib.util.find_spec, lm.ffmpeg_available, lm._sync_one)
+    calls, real = [], (lm.importlib.util.find_spec, lm.ffmpeg_available, lm._sync_one, lm.read_tracks)
     lm.importlib.util.find_spec = lambda name: object()
     lm.ffmpeg_available = lambda: True
-    lm._sync_one = lambda sp, pl, folder, t: calls.append(folder.name)
+    lm.read_tracks = lambda sp, pid: []
+    lm._sync_one = lambda sp, pl, folder, t, tracks, run, unavail: (calls.append(folder.name), (True, set()))[1]
     try:
         with tempfile.TemporaryDirectory() as tmp:
-            lm.run(None, [{"id": "id111111a", "name": "Mix"}, {"id": "id222222b", "name": "Mix"},
-                          {"id": "id333333c", "name": "Chill"}], tmp)
+            os.environ["DOWNLOAD_STATE_FILE"] = os.path.join(tmp, "state.json")  # don't pollute cwd
+            try:
+                lm.run(None, [{"id": "id111111a", "name": "Mix"}, {"id": "id222222b", "name": "Mix"},
+                              {"id": "id333333c", "name": "Chill"}], tmp)
+            finally:
+                del os.environ["DOWNLOAD_STATE_FILE"]
     finally:
-        lm.importlib.util.find_spec, lm.ffmpeg_available, lm._sync_one = real
+        lm.importlib.util.find_spec, lm.ffmpeg_available, lm._sync_one, lm.read_tracks = real
     assert calls == ["Mix", "Mix [id222222]", "Chill"]
 
 

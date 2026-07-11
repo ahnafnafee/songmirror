@@ -7,6 +7,7 @@ services:
       APPLE_CACHE_FILE: /data/apple_resolve_cache.json
       SONG_CACHE_FILE: /data/song_cache.db
       SPOTIFY_TRACKS_CACHE: /data/spotify_tracks_cache.json
+      DOWNLOAD_STATE_FILE: /data/download_state.json
       YTMUSIC_AUTH_FILE: /data/ytmusic_browser.json
       YTMUSIC_CACHE_FILE: /data/ytmusic_resolve_cache.json
       SPOTIFY_OAUTH_OPEN_BROWSER: "0"

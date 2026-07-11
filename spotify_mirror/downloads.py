@@ -10,6 +10,7 @@ file's mtime to its Spotify added-at date so Date-Modified sort = date-added.
 """
 
 import importlib.util
+import json
 import os
 import queue
 import re
@@ -23,12 +24,25 @@ from pathlib import Path
 
 import requests
 
-from . import archive, spotify
+from . import spotify
 from .logs import fmt_secs, log_download, log_miss, log_note, log_section, log_summary, log_warn
 from .matching import normalize_text as _norm
 
 AUDIO_EXTS = {".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav"}
 DEFAULT_TIMEOUT_S = 3600  # ponytail: blunt per-playlist cap; a killed run resumes next pass
+
+
+def _load_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f)
 
 
 def sanitize_folder(name):
@@ -68,7 +82,8 @@ def read_tracks(sp, playlist_id):
                         keys.add(f"{artist}|{title}")
             album = track.get("album") or {}
             images = album.get("images") or []
-            out.append({"when": when, "isrc": isrc.strip().upper() if isrc else None, "keys": keys,
+            out.append({"id": track.get("id"), "when": when,
+                        "isrc": isrc.strip().upper() if isrc else None, "keys": keys,
                         "name": name, "artist": ", ".join(artists), "album": album.get("name"),
                         "image": images[0].get("url") if images else None,  # largest first
                         "duration_ms": track.get("duration_ms")})
@@ -438,27 +453,83 @@ def _stream_spotdl(cmd, folder, timeout_s):
     return counts["downloaded"], counts["skipped"], proc.returncode
 
 
-def _sync_one(sp, playlist, folder, timeout_s):
+def _tracks_without_file(folder, tracks):
+    """Current tracks with no matching downloaded file (ISRC -> tags -> spotDL's
+    '{artists} - {title}' filename). Run after spotDL to learn which tracks it
+    couldn't source, so they aren't retried on every pass."""
+    import mutagen  # spotDL dependency
+
+    have_isrc, have_key, have_stem = set(), set(), set()
+    for path in folder.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in AUDIO_EXTS:
+            continue
+        try:
+            audio = mutagen.File(path, easy=True)
+        except Exception:
+            audio = None
+        for i in (audio.get("isrc") if audio else []) or []:
+            have_isrc.add(str(i).strip().upper())
+        norm_title = _norm((audio.get("title") if audio else [""])[0] if audio else "")
+        if norm_title:
+            for raw in (audio.get("artist") if audio else []) or []:
+                for a in (_norm(raw), _norm(re.split(r"[,;/]", raw)[0])):
+                    if a:
+                        have_key.add(f"{a}|{norm_title}")
+        have_stem.add(_norm(path.stem))
+
+    missing = []
+    for t in tracks:
+        if t.get("isrc") and t["isrc"] in have_isrc:
+            continue
+        if any(k in have_key for k in t["keys"]):
+            continue
+        primary = t["artist"].split(",")[0].strip()
+        if {_norm(f"{primary} - {t['name']}"), _norm(f"{t['artist']} - {t['name']}")} & have_stem:
+            continue
+        missing.append(t)
+    return missing
+
+
+def _needs_spotdl(current_ids, prev_ids, unavailable):
+    """(run, new_ids, removed_ids). spotDL runs only when a genuinely new
+    downloadable track appears or one is removed — tracks already known to be
+    unavailable (spotDL couldn't source them) never trigger a run on their own.
+    First run (no prev) => run, since every track is 'new'."""
+    current, prev = set(current_ids), set(prev_ids)
+    new_ids = current - prev - set(unavailable)
+    removed = prev - current
+    return bool(new_ids or removed), new_ids, removed
+
+
+def _sync_one(sp, playlist, folder, timeout_s, tracks, run_spotdl, prev_unavailable):
     name = playlist.get("name") or playlist["id"]
     folder.mkdir(parents=True, exist_ok=True)
     save_cover(playlist, folder)
-
-    save_file = folder / ".sync.spotdl"  # spotDL requires the .spotdl extension
-    url = (playlist.get("external_urls") or {}).get("spotify") or f"https://open.spotify.com/playlist/{playlist['id']}"
     started = time.monotonic()
-    log_note(f"'{name}': syncing downloads (spotDL)...", tag="local")
-    downloaded, skipped, code = _stream_spotdl(build_sync_cmd(folder, save_file, url), folder, timeout_s)
-    if code != 0:
-        log_warn(f"'{name}': spotdl exited {code} (partial progress kept; resumes next pass)", tag="local")
-
-    # Newest-added first (top of the list, like Spotify); LOCAL_MIRROR_ORDER=oldest flips it.
     newest_first = os.getenv("LOCAL_MIRROR_ORDER", "newest").strip().lower() != "oldest"
-    stamped, _, tagged = finalize_folder(folder, read_tracks(sp, playlist["id"]), newest_first)
+
+    downloaded = skipped = code = 0
+    unavailable = set(prev_unavailable)
+    if run_spotdl:
+        log_note(f"'{name}': syncing downloads (spotDL)...", tag="local")
+        save_file = folder / ".sync.spotdl"  # spotDL requires the .spotdl extension
+        url = (playlist.get("external_urls") or {}).get("spotify") or f"https://open.spotify.com/playlist/{playlist['id']}"
+        downloaded, skipped, code = _stream_spotdl(build_sync_cmd(folder, save_file, url), folder, timeout_s)
+        if code != 0:
+            log_warn(f"'{name}': spotdl exited {code} (partial progress kept; resumes next pass)", tag="local")
+        # Tracks still without a file are unavailable — record so they don't force a re-run.
+        unavailable = {t["id"] for t in _tracks_without_file(folder, tracks) if t.get("id")}
+    else:
+        log_note(f"'{name}': no new downloadable tracks - skipping spotDL", tag="local")
+
+    stamped, _, tagged = finalize_folder(folder, tracks, newest_first)
     order = "newest-first" if newest_first else "oldest-first"
+    dl = f"{downloaded} downloaded, {skipped} already had, " if run_spotdl else ""
     extra = f", {tagged} tagged" if tagged else ""
-    log_summary(f"{name}: {downloaded} downloaded, {skipped} already had, {stamped} date-stamped{extra}, m3u {order}"
+    unavail = f", {len(unavailable)} unavailable" if unavailable else ""
+    log_summary(f"{name}: {dl}{stamped} date-stamped{extra}{unavail}, m3u {order}"
                 f"  (in {fmt_secs(time.monotonic() - started)})", tag="local")
-    return code == 0  # clean = spotDL finished (not timed out / errored)
+    return (code == 0), unavailable  # clean = spotDL finished (not timed out / errored)
 
 
 def _folder_for(base, playlist, used):
@@ -503,12 +574,14 @@ def refresh(sp, spotify_playlists, download_dir):
         log_warn(f"refresh failed: {e!r}", tag="local")
 
 
-def run(sp, spotify_playlists, download_dir, song_cache_file=None):
+def run(sp, spotify_playlists, download_dir):
     """Never raises out; logs one skip line if spotdl/ffmpeg aren't set up.
-    A playlist whose Spotify snapshot is unchanged since its last successful
-    download is skipped entirely — spotDL's minutes-long pre-processing (it
-    re-fetches the playlist and re-matches every track before reporting a
-    single skip) is pure waste when nothing changed."""
+
+    Per-playlist download state (Spotify snapshot_id, track ids, and the set of
+    tracks spotDL couldn't source) lives in a JSON file so spotDL is invoked
+    only when it's actually needed: an unchanged playlist is skipped outright,
+    and a changed one runs spotDL only if a genuinely new/removed track appears
+    (not merely because some already-known-unavailable tracks are 'missing')."""
     try:
         if importlib.util.find_spec("spotdl") is None:
             log_note("local mirror skipped: spotdl not installed (uv sync --extra download)", tag="local")
@@ -522,27 +595,34 @@ def run(sp, spotify_playlists, download_dir, song_cache_file=None):
         timeout_s = int(os.getenv("LOCAL_MIRROR_TIMEOUT", DEFAULT_TIMEOUT_S))
         log_section("Local downloads", f"{len(spotify_playlists)} playlist(s) -> {download_dir}", tag="local")
 
-        songs = archive.connect(song_cache_file) if song_cache_file else None
+        state_file = os.getenv("DOWNLOAD_STATE_FILE", "download_state.json")
+        state = _load_json(state_file)
+        dirty = False
         used = set()
-        try:
-            for playlist in spotify_playlists:
-                name = playlist.get("name") or playlist.get("id", "playlist")
-                folder = _folder_for(base, playlist, used)
-                snapshot = playlist.get("snapshot_id")
-                key = (playlist.get("name") or "").strip().casefold()
-                if songs is not None and snapshot and key:
-                    state = archive.get_state(songs, key, "local")
-                    if state and state[0] == snapshot and folder.exists():
-                        log_note(f"'{name}': unchanged since last download - skipped", tag="local")
-                        continue
-                try:
-                    clean = _sync_one(sp, playlist, folder, timeout_s)
-                    if clean and songs is not None and snapshot and key:
-                        archive.set_state(songs, key, "local", snapshot, 0)
-                except Exception as e:
-                    log_warn(f"'{name}': {e!r}", tag="local")
-        finally:
-            if songs is not None:
-                songs.close()
+        for playlist in spotify_playlists:
+            name = playlist.get("name") or playlist.get("id", "playlist")
+            pid = playlist.get("id", "")
+            folder = _folder_for(base, playlist, used)
+            snapshot = playlist.get("snapshot_id")
+            prev = state.get(pid, {})
+            if snapshot and prev.get("snapshot") == snapshot and folder.exists():
+                log_note(f"'{name}': unchanged since last download - skipped", tag="local")
+                continue
+            try:
+                tracks = read_tracks(sp, pid)
+                current_ids = [t["id"] for t in tracks if t.get("id")]
+                run_spotdl, new_ids, removed = _needs_spotdl(current_ids, prev.get("ids", []), prev.get("unavailable", []))
+                if run_spotdl and prev:
+                    reason = ", ".join(p for p in (f"{len(new_ids)} new" if new_ids else "",
+                                                   f"{len(removed)} removed" if removed else "") if p)
+                    log_note(f"'{name}': {reason} - downloading", tag="local")
+                clean, unavailable = _sync_one(sp, playlist, folder, timeout_s, tracks, run_spotdl, prev.get("unavailable", []))
+                if clean:
+                    state[pid] = {"snapshot": snapshot, "ids": current_ids, "unavailable": sorted(unavailable)}
+                    dirty = True
+            except Exception as e:
+                log_warn(f"'{name}': {e!r}", tag="local")
+        if dirty:
+            _save_json(state_file, state)
     except Exception as e:
         log_warn(f"local mirror failed: {e!r}", tag="local")

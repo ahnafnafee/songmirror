@@ -21,8 +21,9 @@ jobs:
       # are small, so a clean install each run is cheaper than the risk.
       - uses: astral-sh/setup-uv@v8.3.2
 
-      # Core deps only — the tests import spotDL / mutagen lazily and mock them,
-      # so the `download` extra isn't needed to run them.
+      # Core deps only — spotDL is mocked in the tests, so the heavy `download`
+      # extra isn't needed. A couple of download tests touch the mutagen-backed
+      # coverage scan, so that step adds just mutagen via `uv run --with`.
       - name: Install dependencies
         run: uv sync
 
@@ -30,4 +31,4 @@ jobs:
         run: uv run test_matching.py
 
       - name: Download-mirror tests
-        run: uv run python test_downloads.py
+        run: uv run --with mutagen python test_downloads.py
