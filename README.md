@@ -263,6 +263,11 @@ dir and both the tracks and the playlists appear, staying updated every pass:
         Artists - Title.mp3  # tagged + cover art embedded
 ```
 
+**Newest-first ordering.** The `.m3u8` is written by this tool (not spotDL) in
+Spotify **date-added order, newest at the top** — so Jellyfin shows your latest
+additions first, like Spotify. Set `LOCAL_MIRROR_ORDER=oldest` to flip it. Each
+file's mtime is also stamped to its added-at date (Date-Modified sort matches).
+
 **Resumable & incremental.** spotDL `sync` only downloads what's missing —
 already-downloaded files are skipped (`--overwrite skip`), tracks removed from
 the Spotify playlist are deleted locally, and an interrupted run just continues
@@ -270,9 +275,15 @@ next pass (only the file in flight when it stopped is re-fetched). The Spotify
 playlist cover is saved at the highest resolution Spotify offers and refreshed
 only when it changes.
 
+**Hard-to-find tracks.** spotDL falls back from YouTube Music to plain YouTube
+(`LOCAL_MIRROR_AUDIO_PROVIDERS`), which recovers most OSTs / instrumentals /
+indie tracks that aren't YT Music catalog songs. Some genuinely-unavailable
+tracks still log `no audio source` and are skipped.
+
 Optional env: `LOCAL_MIRROR_FORMAT` (mp3 default; changing it after the first
 run orphans old files), `LOCAL_MIRROR_TIMEOUT` (seconds per playlist per pass,
-default 3600), `LOCAL_MIRROR_VERBOSE=1` (echo all spotDL output).
+default 3600), `LOCAL_MIRROR_ORDER` (newest/oldest),
+`LOCAL_MIRROR_AUDIO_PROVIDERS`, `LOCAL_MIRROR_VERBOSE=1` (echo all spotDL output).
 
 Download-mirror caveats:
 

@@ -41,9 +41,10 @@ def ffmpeg_available():
     return (Path.home() / ".spotdl" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).is_file()
 
 
-def spotify_track_index(sp, playlist_id):
-    """{ISRC: added_at} and {'artist|title': added_at} from the live playlist."""
-    by_isrc, by_key = {}, {}
+def read_tracks(sp, playlist_id):
+    """Ordered per-track info from the live playlist: added-at, ISRC, match
+    keys, and display name/artist/duration."""
+    out = []
     page = sp.playlist_items(playlist_id, additional_types=("track",), limit=100)
     while page:
         for item in page.get("items", []):
@@ -55,16 +56,28 @@ def spotify_track_index(sp, playlist_id):
                 when = datetime.fromisoformat(added.replace("Z", "+00:00"))
             except ValueError:
                 continue
-            isrc = (track.get("external_ids") or {}).get("isrc")
-            if isrc:
-                by_isrc[isrc.strip().upper()] = when
-            title = _norm(track.get("name"))
+            name = track.get("name", "")
             artists = [a.get("name", "") for a in track.get("artists", []) if a.get("name")]
+            isrc = (track.get("external_ids") or {}).get("isrc")
+            title = _norm(name)
+            keys = set()
             if title:
                 for artist in {_norm(artists[0] if artists else ""), _norm(" ".join(artists))}:
                     if artist:
-                        by_key[f"{artist}|{title}"] = when
+                        keys.add(f"{artist}|{title}")
+            out.append({"when": when, "isrc": isrc.strip().upper() if isrc else None, "keys": keys,
+                        "name": name, "artist": ", ".join(artists), "duration_ms": track.get("duration_ms")})
         page = sp.next(page) if page.get("next") else None
+    return out
+
+
+def added_at_indexes(tracks):
+    by_isrc, by_key = {}, {}
+    for t in tracks:
+        if t["isrc"]:
+            by_isrc[t["isrc"]] = t["when"]
+        for key in t["keys"]:
+            by_key[key] = t["when"]
     return by_isrc, by_key
 
 
@@ -84,32 +97,63 @@ def match_added_at(isrcs, title, raw_artists, by_isrc, by_key):
     return None
 
 
-def file_added_at(path, by_isrc, by_key):
-    """Match via embedded tags — beats re-deriving spotDL's sanitized filenames,
-    which drift across spotDL versions."""
+def build_m3u(tracks, file_by_isrc, file_by_key, all_rels, newest_first=True):
+    """m3u8 lines ordered by Spotify date-added (newest first by default), each
+    resolved to a downloaded file via ISRC then artist|title. Downloaded files
+    that match no current track are kept at the end so nothing is dropped."""
+    lines, used = ["#EXTM3U"], set()
+    for t in sorted(tracks, key=lambda t: t["when"], reverse=newest_first):
+        rel = (t["isrc"] and file_by_isrc.get(t["isrc"])) \
+            or next((file_by_key[k] for k in t["keys"] if k in file_by_key), None)
+        if not rel or rel in used:
+            continue
+        used.add(rel)
+        lines.append(f"#EXTINF:{int((t['duration_ms'] or 0) / 1000)},{t['artist']} - {t['name']}")
+        lines.append(rel)
+    for rel in all_rels:
+        if rel not in used:
+            used.add(rel)
+            lines.append(rel)
+    return lines
+
+
+def finalize_folder(folder, tracks, newest_first=True):
+    """Stamp each audio file's mtime to its Spotify added-at date AND rewrite
+    `<folder>.m3u8` in date-added order. One tag scan feeds both."""
     import mutagen  # spotDL dependency
 
-    audio = mutagen.File(path, easy=True)
-    if not audio:
-        return None
-    return match_added_at(audio.get("isrc") or [], (audio.get("title") or [""])[0],
-                          audio.get("artist") or [], by_isrc, by_key)
-
-
-def stamp_mtimes(folder, by_isrc, by_key):
+    by_isrc, by_key = added_at_indexes(tracks)
+    file_by_isrc, file_by_key, all_rels = {}, {}, []
     stamped = unmatched = 0
     for path in sorted(folder.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in AUDIO_EXTS:
             continue
+        rel = path.relative_to(folder).as_posix()
+        all_rels.append(rel)
         try:
-            when = file_added_at(path, by_isrc, by_key)
+            audio = mutagen.File(path, easy=True)
         except Exception:
-            when = None
+            audio = None
+        isrcs = (audio.get("isrc") if audio else []) or []
+        title = (audio.get("title") if audio else [""])[0] if audio else ""
+        artists = (audio.get("artist") if audio else []) or []
+        for i in isrcs:
+            file_by_isrc.setdefault(str(i).strip().upper(), rel)
+        norm_title = _norm(title)
+        if norm_title:
+            for raw in artists:
+                for artist in (_norm(raw), _norm(re.split(r"[,;/]", raw)[0])):
+                    if artist:
+                        file_by_key.setdefault(f"{artist}|{norm_title}", rel)
+        when = match_added_at(isrcs, title, artists, by_isrc, by_key)
         if when:
             os.utime(path, (when.timestamp(), when.timestamp()))
             stamped += 1
         else:
             unmatched += 1
+
+    lines = build_m3u(tracks, file_by_isrc, file_by_key, all_rels, newest_first)
+    (folder / f"{folder.name}.m3u8").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return stamped, unmatched
 
 
@@ -139,15 +183,17 @@ def build_sync_cmd(folder, save_file, playlist_url):
     cmd.append(str(save_file) if save_file.exists() else playlist_url)
     if not save_file.exists():
         cmd += ["--save-file", str(save_file)]
-    # Same --output every run so sync's delete step recomputes old paths. Paths
-    # are relative to the playlist folder (cwd), so the m3u stays valid wherever
-    # the music root is mounted. Jellyfin names the playlist after the m3u file.
+    # Same --output every run so sync's delete step recomputes old paths. The
+    # playlist .m3u8 is written by finalize_folder (in date-added order), not by
+    # spotDL, whose order can't be controlled — so no --m3u here.
     cmd += [
         "--output", "{album-artist}/{album}/{artists} - {title}.{output-ext}",
-        "--m3u", f"{folder.name}.m3u8",
         "--overwrite", "skip",  # never re-download a file that already exists (resume-friendly)
         "--simple-tui",
     ]
+    # Fall back from YouTube Music to plain YouTube: OSTs / instrumentals /
+    # indie tracks that aren't catalog "songs" exist there as videos.
+    cmd += ["--audio", *os.getenv("LOCAL_MIRROR_AUDIO_PROVIDERS", "youtube-music youtube").split()]
     client_id, client_secret = os.getenv("SPOTIFY_CLIENT_ID"), os.getenv("SPOTIFY_CLIENT_SECRET")
     if client_id and client_secret:
         cmd += ["--client-id", client_id, "--client-secret", client_secret]
@@ -164,8 +210,11 @@ def _stream_spotdl(cmd, folder, timeout_s):
     next pass resumes."""
     verbose = os.getenv("LOCAL_MIRROR_VERBOSE") == "1"
     downloaded = skipped = 0
+    # Force the child (spotDL) to UTF-8: otherwise its own logging crashes on
+    # cp1252 encoding non-Latin track names ("--- Logging error ---" spam).
+    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, encoding="utf-8", errors="replace", bufsize=1, cwd=str(folder))
+                            text=True, encoding="utf-8", errors="replace", bufsize=1, cwd=str(folder), env=env)
     killer = threading.Timer(timeout_s, proc.kill)
     killer.start()
     try:
@@ -183,6 +232,8 @@ def _stream_spotdl(cmd, folder, timeout_s):
                 skipped += 1
             elif "No results found" in line:
                 log_miss(f"no audio source: {line.split(':', 1)[-1].strip()}", tag="local")
+            elif line.startswith("--- Logging error") or "charmap_encode" in line or line.startswith("self.handleError"):
+                continue  # spotDL child logging noise (defused by the UTF-8 env above)
             elif "rror" in line or "Exception" in line:  # Error / *Error
                 log_warn(line[:200], tag="local")
         proc.wait()
@@ -203,9 +254,11 @@ def _sync_one(sp, playlist, folder, timeout_s):
     if code != 0:
         log_warn(f"'{name}': spotdl exited {code} (partial progress kept; resumes next pass)", tag="local")
 
-    by_isrc, by_key = spotify_track_index(sp, playlist["id"])
-    stamped, _ = stamp_mtimes(folder, by_isrc, by_key)
-    log_summary(f"{name}: {downloaded} downloaded, {skipped} already had, {stamped} date-stamped"
+    # Newest-added first (top of the list, like Spotify); LOCAL_MIRROR_ORDER=oldest flips it.
+    newest_first = os.getenv("LOCAL_MIRROR_ORDER", "newest").strip().lower() != "oldest"
+    stamped, _ = finalize_folder(folder, read_tracks(sp, playlist["id"]), newest_first)
+    order = "newest-first" if newest_first else "oldest-first"
+    log_summary(f"{name}: {downloaded} downloaded, {skipped} already had, {stamped} date-stamped, m3u {order}"
                 f"  (in {fmt_secs(time.monotonic() - started)})", tag="local")
 
 

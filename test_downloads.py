@@ -33,7 +33,7 @@ def test_norm_and_sanitize():
     assert lm.sanitize_folder("...") == "playlist" and lm.sanitize_folder(None) == "playlist"
 
 
-def test_track_index_and_matcher():
+def test_read_tracks_and_indexes():
     a, b = "2024-01-05T10:00:00Z", "2024-03-09T20:30:00Z"
     sp = FakeSp([
         fake_item("Song One", ["Alpha", "Beta"], "USUM71900001", a),
@@ -41,32 +41,32 @@ def test_track_index_and_matcher():
         {"added_at": None, "track": {"name": "skip"}},
         fake_item("Song Three", ["Delta"], None, "2024-05-01T00:00:00Z", shape="item"),  # current Web API shape
     ])
-    by_isrc, by_key = lm.spotify_track_index(sp, "pl1")
+    tracks = lm.read_tracks(sp, "pl1")
+    assert [t["name"] for t in tracks] == ["Song One", "Song Two", "Song Three"]  # playlist order preserved
+    by_isrc, by_key = lm.added_at_indexes(tracks)
     assert by_isrc["USUM71900001"] == datetime(2024, 1, 5, 10, 0, tzinfo=timezone.utc)
-    assert "delta|song three" in by_key
+    assert "delta|song three" in by_key and "alpha beta|song one" in by_key
     assert lm.match_added_at(["usum71900001 "], "?", [], by_isrc, by_key) == by_isrc["USUM71900001"]
     assert lm.match_added_at([], "Song One", ["Alpha, Beta"], by_isrc, by_key) == by_isrc["USUM71900001"]
     assert lm.match_added_at([], "nope", ["nobody"], by_isrc, by_key) is None
 
 
-def test_stamp_mtimes():
-    when = datetime(2023, 6, 1, 12, 0, tzinfo=timezone.utc)
-    with tempfile.TemporaryDirectory() as tmp:
-        folder = Path(tmp)
-        (folder / "Artist").mkdir()
-        (folder / "Artist" / "a.mp3").write_bytes(b"x")  # nested (Jellyfin layout)
-        (folder / "b.mp3").write_bytes(b"x")
-        (folder / "notes.txt").write_bytes(b"x")
-        txt_mtime = (folder / "notes.txt").stat().st_mtime
-        real = lm.file_added_at
-        lm.file_added_at = lambda p, i, k: when if p.name == "a.mp3" else None
-        try:
-            stamped, unmatched = lm.stamp_mtimes(folder, {}, {})
-        finally:
-            lm.file_added_at = real
-        assert (stamped, unmatched) == (1, 1)
-        assert abs((folder / "Artist" / "a.mp3").stat().st_mtime - when.timestamp()) < 1
-        assert (folder / "notes.txt").stat().st_mtime == txt_mtime  # non-audio untouched
+def test_build_m3u_newest_first():
+    def tk(name, isrc, when, dur=180000):
+        return {"when": datetime.fromisoformat(when), "isrc": isrc, "keys": {f"artist|{name.lower()}"},
+                "name": name, "artist": "Artist", "duration_ms": dur}
+    tracks = [tk("Old", "I1", "2023-01-01T00:00:00+00:00"),
+              tk("New", "I2", "2026-07-01T00:00:00+00:00"),
+              tk("Mid", None, "2024-06-01T00:00:00+00:00")]  # no ISRC -> matched by key
+    files = {"I1": "A/Old.mp3", "I2": "A/New.mp3"}
+    keys = {"artist|mid": "A/Mid.mp3"}
+    lines = lm.build_m3u(tracks, files, keys, ["A/Old.mp3", "A/New.mp3", "A/Mid.mp3", "A/Stray.mp3"], newest_first=True)
+    order = [ln for ln in lines if ln.endswith(".mp3")]
+    assert order == ["A/New.mp3", "A/Mid.mp3", "A/Old.mp3", "A/Stray.mp3"]  # newest first, stray kept last
+    assert lines[0] == "#EXTM3U" and any(ln.startswith("#EXTINF:180,Artist - New") for ln in lines)
+    # oldest-first flips the tracks (stray still trails)
+    order = [ln for ln in lm.build_m3u(tracks, files, keys, [], newest_first=False) if ln.endswith(".mp3")]
+    assert order == ["A/Old.mp3", "A/Mid.mp3", "A/New.mp3"]
 
 
 def test_build_sync_cmd():
@@ -76,8 +76,10 @@ def test_build_sync_cmd():
         cmd = lm.build_sync_cmd(folder, save, url)
         assert "sync" in cmd and url in cmd and "--save-file" in cmd
         assert cmd[cmd.index("--output") + 1] == "{album-artist}/{album}/{artists} - {title}.{output-ext}"
-        assert cmd[cmd.index("--m3u") + 1] == f"{folder.name}.m3u8"
         assert cmd[cmd.index("--overwrite") + 1] == "skip"  # existing files skipped
+        assert "--m3u" not in cmd  # we generate the m3u ourselves, in date-added order
+        ai = cmd.index("--audio")
+        assert cmd[ai + 1:ai + 3] == ["youtube-music", "youtube"]  # YT fallback for OST/instrumentals
         save.write_text("{}")
         os.environ["LOCAL_MIRROR_FORMAT"] = "flac"
         try:
