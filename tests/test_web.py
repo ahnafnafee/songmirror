@@ -60,6 +60,23 @@ def test_links_crud(tmp_path):
         assert client.get("/api/links").json() == []
 
 
+def test_transfers_start_and_status(tmp_path, monkeypatch):
+    from spotify_mirror.transfers import TransferService
+
+    monkeypatch.setattr(TransferService, "submit", lambda self, spec: {"id": "j1", "status": "queued"})
+    monkeypatch.setattr(
+        TransferService, "get",
+        lambda self, jid: {"id": jid, "status": "done", "conflicts": [], "_dest_cache_file": "x"},
+    )
+    with TestClient(_app(tmp_path)) as client:
+        r = client.post("/api/transfers", json={"source_provider": "apple", "source_playlist_id": "p1",
+                                                "dest_provider": "ytmusic", "dest_playlist_id": "p2"})
+        assert r.status_code == 202 and r.json()["job_id"] == "j1"
+        g = client.get("/api/transfers/j1").json()
+        assert g["status"] == "done"
+        assert "_dest_cache_file" not in g  # internal field hidden from the API
+
+
 def test_sse_payload_format():
     from spotify_mirror.logs import Event
     from spotify_mirror.web.routers.events import _fmt

@@ -18,18 +18,20 @@ from ..events import EventBus
 from ..playlists import LinkStore
 from ..settings import SettingsStore
 from ..sync_service import SyncService
-from .routers import accounts, events, playlists, settings as settings_router, sync
+from ..transfers import TransferService
+from .routers import accounts, events, playlists, settings as settings_router, sync, transfers as transfers_router
 
 # Built React SPA (Vite output), served in production; in dev the vite server
 # proxies /api and /events to this app instead.
 _DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
-def create_app(settings=None, bus=None, sync_service=None, links=None) -> FastAPI:
+def create_app(settings=None, bus=None, sync_service=None, links=None, transfers=None) -> FastAPI:
     settings = settings or SettingsStore()
     bus = bus or EventBus()
     sync_service = sync_service or SyncService(settings, bus)
     links = links or LinkStore()
+    transfers = transfers or TransferService(settings, bus, sync_service)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -50,12 +52,14 @@ def create_app(settings=None, bus=None, sync_service=None, links=None) -> FastAP
     app.state.bus = bus
     app.state.sync = sync_service
     app.state.links = links
+    app.state.transfers = transfers
 
     app.include_router(accounts.router)
     app.include_router(settings_router.router)
     app.include_router(sync.router)
     app.include_router(events.router)
     app.include_router(playlists.router)
+    app.include_router(transfers_router.router)
 
     @app.get("/health")
     def health():
