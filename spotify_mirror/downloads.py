@@ -14,6 +14,7 @@ import json
 import os
 import queue
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -357,12 +358,28 @@ def _chunks(seq, size):
         yield seq[i : i + size]
 
 
+def _spotdl_cmd():
+    """Base command to invoke spotDL, kept out of this app's own interpreter so
+    spotDL's tight pins (old FastAPI/uvicorn) never constrain the web stack.
+    Precedence: SPOTDL_CMD override -> a `spotdl` on PATH (recommended:
+    `uv tool install spotdl` / `pipx install spotdl`) -> spotDL in this venv.
+    Returns None when spotDL isn't reachable any of those ways."""
+    override = os.getenv("SPOTDL_CMD")
+    if override:
+        return shlex.split(override)
+    if shutil.which("spotdl"):
+        return ["spotdl"]
+    if importlib.util.find_spec("spotdl") is not None:
+        return [sys.executable, "-m", "spotdl"]
+    return None
+
+
 def build_download_cmd(queries):
     """`spotdl download <queries>` — queries is a playlist URL (full download)
     or specific track URLs (incremental). No `sync`, so no whole-playlist
     re-processing when only a few tracks are new; removals are handled here
     instead, and the m3u is written by finalize_folder in date-added order."""
-    cmd = [sys.executable, "-m", "spotdl", "download", *queries]
+    cmd = [*(_spotdl_cmd() or [sys.executable, "-m", "spotdl"]), "download", *queries]
     cmd += [
         "--output", "{album-artist}/{album}/{artists} - {title}.{output-ext}",
         "--overwrite", "skip",  # never re-download a file that already exists (resume-friendly)
@@ -598,8 +615,9 @@ def run(sp, spotify_playlists, download_dir):
     and a changed one runs spotDL only if a genuinely new/removed track appears
     (not merely because some already-known-unavailable tracks are 'missing')."""
     try:
-        if importlib.util.find_spec("spotdl") is None:
-            log_note("local mirror skipped: spotdl not installed (uv sync --extra download)", tag="local")
+        if _spotdl_cmd() is None:
+            log_note("local mirror skipped: spotdl not found "
+                     "(install it: `uv tool install spotdl` or `pipx install spotdl`)", tag="local")
             return
         if not ffmpeg_available():
             log_note("local mirror skipped: ffmpeg not found (install it or run `spotdl --download-ffmpeg`)", tag="local")
