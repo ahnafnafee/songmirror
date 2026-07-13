@@ -567,8 +567,7 @@ logging, stats, snapshot-skip — is inherited from `base.mirror_pair`.
 ## Self-check
 
 ```bash
-uv run test_matching.py
-uv run python test_downloads.py
+uv run pytest          # full test suite (in tests/)
 ```
 
 ## Troubleshooting

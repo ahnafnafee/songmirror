@@ -27,3 +27,7 @@ dev = [
 # isolated external tool (see downloads._spotdl_cmd) so its tight pins never
 # constrain this app's web stack. Install it separately for the local mirror:
 #   uv tool install spotdl    (or: pipx install spotdl)
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]   # so tests/ can import the spotify_mirror package
