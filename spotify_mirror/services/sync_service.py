@@ -64,7 +64,13 @@ class SyncService:
             return await asyncio.to_thread(fn)
 
     async def start(self):
+        """Start the auto-sync scheduler unless the user persisted it as paused.
+        Idempotent — safe to call on every app boot and on resume."""
         self._stopping = False
+        if self._settings.get("AUTO_SYNC", "on") == "off":
+            return  # paused by the user; stays down across restarts until resumed
+        if self._task and not self._task.done():
+            return  # already scheduled
         self._task = asyncio.create_task(self._scheduler())
 
     async def stop(self):

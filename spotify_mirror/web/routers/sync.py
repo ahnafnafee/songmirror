@@ -26,9 +26,13 @@ async def schedule(request: Request, body: dict = Body(default={})):
     sync = request.app.state.sync
     if body.get("interval"):
         request.app.state.settings.save({"SYNC_INTERVAL": body["interval"]})
+    # Persist the on/off choice so it survives restarts — the scheduler reads
+    # AUTO_SYNC on boot (see SyncService.start).
     action = body.get("action")
     if action == "pause":
+        request.app.state.settings.save({"AUTO_SYNC": "off"})
         await sync.stop()
     elif action == "resume":
+        request.app.state.settings.save({"AUTO_SYNC": "on"})
         await sync.start()
     return sync.status()

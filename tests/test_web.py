@@ -61,6 +61,19 @@ def test_sync_run_queues(tmp_path, monkeypatch):
         assert client.post("/api/sync/run?execute=0").status_code == 202
 
 
+def test_auto_sync_pause_persists_across_restart(tmp_path):
+    # Pausing auto-sync must survive a restart — the flag is persisted and the
+    # scheduler reads it on boot, so it can't silently turn itself back on.
+    store = SettingsStore(dir=tmp_path)
+    with TestClient(create_app(settings=store)) as client:
+        assert client.get("/api/sync/status").json()["scheduled"] is True
+        client.post("/api/sync/schedule", json={"action": "pause"})
+        assert client.get("/api/sync/status").json()["scheduled"] is False
+    # A fresh app over the same persisted settings dir == a restart.
+    with TestClient(create_app(settings=SettingsStore(dir=tmp_path))) as client:
+        assert client.get("/api/sync/status").json()["scheduled"] is False
+
+
 def test_events_route_registered(tmp_path):
     # The live stream itself is verified in the browser E2E; TestClient can't
     # cleanly close an infinite SSE generator, so here we assert wiring + format.
