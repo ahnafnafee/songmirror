@@ -17,8 +17,9 @@ DEFAULT_CACHE_FILE = "apple_resolve_cache.json"
 DEFAULT_SONG_CACHE_FILE = "song_cache.db"
 DEFAULT_STOREFRONT = "us"
 DEFAULT_SPOTIFY_REDIRECT_URI = "http://127.0.0.1:8888/callback"
-DEFAULT_SYNC_MODE = "oneway"                          # oneway (Spotify->targets) | nway (bidirectional)
-DEFAULT_PROVIDERS = "spotify,apple,ytmusic"           # peers participating in N-way sync
+DEFAULT_SYNC_MODE = "oneway"                          # oneway (source->targets) | nway (bidirectional)
+DEFAULT_PROVIDERS = "spotify,apple,ytmusic"           # providers participating in sync
+DEFAULT_SYNC_SOURCE = "spotify"                       # one-way source of truth (any connected provider)
 DEFAULT_SPOTIFY_CACHE_FILE = "spotify_resolve_cache.json"
 
 
@@ -57,6 +58,7 @@ class Options:
     refresh_local: bool = False
     sync_mode: str = DEFAULT_SYNC_MODE
     providers: str = DEFAULT_PROVIDERS
+    sync_source: str = DEFAULT_SYNC_SOURCE
     spotify_cache_file: str = DEFAULT_SPOTIFY_CACHE_FILE
 
 
@@ -89,7 +91,10 @@ def parse_args(argv=None):
     p.add_argument("--sync-mode", default=os.getenv("SYNC_MODE", DEFAULT_SYNC_MODE), choices=("oneway", "nway"),
                    help=f"oneway = Spotify->targets (default); nway = bidirectional across all providers.")
     p.add_argument("--providers", default=os.getenv("PROVIDERS", DEFAULT_PROVIDERS),
-                   help=f"N-way peers, comma-separated (default: {DEFAULT_PROVIDERS}).")
+                   help=f"Providers participating in sync, comma-separated (default: {DEFAULT_PROVIDERS}).")
+    p.add_argument("--sync-source", default=os.getenv("SYNC_SOURCE", DEFAULT_SYNC_SOURCE),
+                   choices=("spotify", "apple", "ytmusic"),
+                   help=f"One-way source of truth (default: {DEFAULT_SYNC_SOURCE}).")
     p.add_argument("--spotify-cache-file", default=os.getenv("SPOTIFY_CACHE_FILE", DEFAULT_SPOTIFY_CACHE_FILE),
                    help=f"Spotify resolution cache for N-way writes (default: {DEFAULT_SPOTIFY_CACHE_FILE}).")
     a = p.parse_args(argv)
@@ -103,5 +108,5 @@ def parse_args(argv=None):
         max_removals=a.max_removals, max_adds=a.max_adds, download_dir=a.download_dir,
         storefront=a.storefront, cache_file=a.cache_file, song_cache_file=a.song_cache_file,
         refresh_local=a.refresh_local, sync_mode=a.sync_mode, providers=a.providers,
-        spotify_cache_file=a.spotify_cache_file,
+        sync_source=a.sync_source, spotify_cache_file=a.spotify_cache_file,
     )

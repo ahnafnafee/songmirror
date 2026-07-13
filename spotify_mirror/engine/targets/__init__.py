@@ -41,12 +41,14 @@ _REGISTRY = {
 _SOURCE_ORDER = ["spotify", "apple", "ytmusic"]
 
 
-def build_targets(opts):
-    """One-way targets this run (Spotify is the source, not a target), limited to
-    the providers the user opted into (opts.providers)."""
+def build_targets(opts, sp=None):
+    """One-way mirror targets this run: every opted-in provider except the source
+    (opts.sync_source). `sp` (the Spotify client) is only needed when the source
+    is a non-Spotify provider, so Spotify itself becomes a writable target."""
+    source = getattr(opts, "sync_source", None) or "spotify"
     wanted = {s.strip() for s in (opts.providers or "").split(",") if s.strip()}
-    return [t for src in _SOURCE_ORDER if src != "spotify" and src in wanted
-            for t in (_REGISTRY[src](opts, None),) if t]
+    return [t for src in _SOURCE_ORDER if src != source and src in wanted
+            for t in (_REGISTRY[src](opts, sp),) if t]
 
 
 def build_one(provider_id, opts, sp=None):

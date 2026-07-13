@@ -14,7 +14,7 @@ SECRET_KEYS = {f.key for cls in CONNECTORS.values() for f in cls.config_fields i
 # Non-secret config the UI manages. When settings.json doesn't have a key, fall
 # back to the process environment — a docker-compose env_file / .env (the user's
 # gitignored config) — so the form reflects the actual running values, not blanks.
-CONFIG_KEYS = ("DISPLAY_NAME", "SYNC_MODE", "SYNC_INTERVAL", "PROVIDERS", "MAX_ADDS",
+CONFIG_KEYS = ("DISPLAY_NAME", "SYNC_MODE", "SYNC_SOURCE", "SYNC_INTERVAL", "PROVIDERS", "MAX_ADDS",
                "MAX_REMOVALS", "PLAYLISTS", "DOWNLOAD_DIR", "LOCAL_MIRROR_FORMAT")
 
 

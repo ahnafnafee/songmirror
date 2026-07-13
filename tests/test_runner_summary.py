@@ -17,10 +17,22 @@ class _FakeSongs:
         pass
 
 
+class _FakeSource:
+    """Minimal Spotify-shaped source of truth for run_target."""
+
+    source, name = "spotify", "Spotify"
+
+    def playlist_name(self, pl):
+        return pl.get("name", "")
+
+    def playlist_id(self, pl):
+        return pl.get("id")
+
+
 def test_oneway_returns_summary_shape(monkeypatch):
     monkeypatch.setattr(runner.spotify, "client", lambda writable=False: object())
     monkeypatch.setattr(runner.spotify, "playlists_by_name", lambda sp: {})
-    monkeypatch.setattr(runner, "build_targets", lambda opts: [])
+    monkeypatch.setattr(runner, "build_targets", lambda opts, sp=None: [])
     s = runner.run_pass(_opts())
     assert s["mode"] == "oneway"
     assert s["ok"] is True
@@ -74,7 +86,7 @@ def test_run_target_honors_explicit_pairing(monkeypatch, tmp_path):
     captured = {}
 
     def fake_mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs_, *,
-                         execute, max_removals, max_adds):
+                         execute, max_removals, max_adds, source_key="spotify", source_name="Spotify", name=None):
         captured["tgt_id"] = tgt_playlist["id"]
         return {"clean": True, "added": 1, "removed": 0, "missing": 0, "held": 0,
                 "deferred": 0, "target_count": 1}
@@ -83,10 +95,53 @@ def test_run_target_honors_explicit_pairing(monkeypatch, tmp_path):
 
     selected = [{"id": "sp1", "name": "Workout", "snapshot_id": "snap1"}]
     link = PlaylistLink(name="Pair", members={"spotify": "sp1", "apple": "t99"}, id="LINK1")
-    agg = runner.run_target(FakeTarget(str(tmp_path / "c.json")), selected, lambda pid: [],
-                            songs, _opts(execute=True), links=[link])
+    agg = runner.run_target(FakeTarget(str(tmp_path / "c.json")), selected, lambda pl: [],
+                            songs, _opts(execute=True), links=[link], source=_FakeSource())
 
     assert captured["tgt_id"] == "t99"          # paired target used, not same-name match
     assert agg["added"] == 1
     assert archive.get_state(songs, "LINK1", "apple") is not None  # state keyed by the link id
+    songs.close()
+
+
+def test_mirror_pair_non_spotify_source_never_writes_links(tmp_path):
+    # Safety: the archive `links` table is Spotify-anchored and load-bearing for
+    # N-way identity, so a non-Spotify one-way source must never write to it —
+    # it falls back to track-key matching instead.
+    from spotify_mirror.engine import archive
+    from spotify_mirror.engine.targets.base import mirror_pair
+
+    songs = archive.connect(str(tmp_path / "s.db"))
+
+    class FakeTarget:
+        name, tag, source = "YouTube Music", "yt", "ytmusic"
+        cache_file = str(tmp_path / "c.json")
+
+        def playlist_tracks(self, pl):
+            return []
+
+        def track_id(self, t):
+            return t.get("videoId")
+
+        def expected_ids(self, tracks, links, cache):
+            return {}
+
+        def prefetch(self, tracks, cache):
+            pass
+
+        def resolve(self, track, cache):
+            return f"vid_{track['name']}", "search"
+
+        def add(self, pl, ids):
+            pass
+
+        def remove(self, pl, t):
+            pass
+
+    src = [{"id": "ap1", "name": "Song A", "artists": ["Artist"], "isrc": "US123", "added_at": "2020"}]
+    res = mirror_pair(FakeTarget(), src, {"name": "Mix"}, {"id": "p1"}, {}, songs,
+                      execute=True, max_removals=25, max_adds=200,
+                      source_key="apple", source_name="Apple Music", name="Mix")
+    assert res["added"] == 1
+    assert songs.execute("SELECT COUNT(*) FROM links").fetchone()[0] == 0  # never Spotify-polluted
     songs.close()

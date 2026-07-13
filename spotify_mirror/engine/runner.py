@@ -14,7 +14,8 @@ from dotenv import load_dotenv
 
 from . import archive, spotify
 from .logs import fmt_counts, fmt_secs, log, log_note, log_section, log_summary, log_warn, paint
-from .targets import TargetAuthError, build_peers, build_targets, mirror_pair, reconcile
+from .targets import TargetAuthError, build_one, build_peers, build_targets, mirror_pair, reconcile
+from .targets.base import _normalize
 
 
 def _load_json(path):
@@ -76,25 +77,27 @@ def _load_links():
     return [link for link in LinkStore().list() if link.enabled]
 
 
-def run_target(target, selected, get_sp_tracks, songs, opts, links=None):
-    """Mirror every selected playlist to one target. Returns an aggregate dict.
-    Raises TargetAuthError to abort the whole target (fail closed).
+def run_target(target, selected, get_source_tracks, songs, opts, links=None, source=None):
+    """Mirror every selected source playlist to one target. Returns an aggregate
+    dict. Raises TargetAuthError to abort the whole target (fail closed).
 
-    An explicit PlaylistLink (via `links`) overrides same-name matching: it maps a
-    Spotify playlist to a chosen target playlist by id and shares a stable state
-    key, so differently-named playlists stay paired. Unlinked playlists take the
-    same name-match path as before (empty `links` => byte-for-byte unchanged)."""
+    `source` is the source-of-truth MirrorTarget (Spotify by default, or any
+    provider in one-way mode). An explicit PlaylistLink (via `links`) overrides
+    same-name matching: it maps a source playlist to a chosen target playlist by
+    id and shares a stable state key. Unlinked playlists take the same name-match
+    path (empty `links` => byte-for-byte unchanged when the source is Spotify)."""
+    src_key = source.source
     agg = {"name": target.name, "pairs": 0, "added": 0, "removed": 0,
            "missing": 0, "held": 0, "skipped": 0, "created": 0}
     cache = load_cache(target.cache_file)
     try:
         tgt_by_name = target.list_playlists()
         by_id = {target.playlist_id(pl): pl for pl in tgt_by_name.values() if target.playlist_id(pl)}
-        link_by_sp = {link.members["spotify"]: link for link in (links or [])
-                      if link.members.get("spotify") and target.source in link.members}
+        link_by_src = {link.members[src_key]: link for link in (links or [])
+                       if link.members.get(src_key) and target.source in link.members}
         for sp_playlist in selected:
-            name = sp_playlist["name"]
-            link = link_by_sp.get(sp_playlist.get("id"))
+            name = source.playlist_name(sp_playlist)
+            link = link_by_src.get(source.playlist_id(sp_playlist))
             state_key = link.id if link else name.strip().casefold()
             paired_id = link.members.get(target.source) if link else None
             if paired_id:                       # explicitly paired to a specific target playlist
@@ -131,8 +134,9 @@ def run_target(target, selected, get_sp_tracks, songs, opts, links=None):
 
             try:
                 res = mirror_pair(
-                    target, get_sp_tracks(sp_playlist["id"]), sp_playlist, tgt, cache, songs,
+                    target, get_source_tracks(sp_playlist), sp_playlist, tgt, cache, songs,
                     execute=opts.execute, max_removals=opts.max_removals, max_adds=opts.max_adds,
+                    source_key=src_key, source_name=source.name, name=name,
                 )
                 agg["pairs"] += 1
                 for k in ("added", "removed", "missing", "held"):
@@ -142,7 +146,7 @@ def run_target(target, selected, get_sp_tracks, songs, opts, links=None):
             except TargetAuthError:
                 raise
             except Exception as e:
-                log_warn(f"'{sp_playlist.get('name', '?')}' failed, continuing: {e!r}", tag=target.tag)
+                log_warn(f"'{name}' failed, continuing: {e!r}", tag=target.tag)
     finally:
         save_cache(target.cache_file, cache)
     return agg
@@ -156,21 +160,36 @@ def run_pass(opts):
     load_dotenv(os.getenv("OMNI_ENV_FILE") or ".env", override=True)
     # Writable (modify scopes) only for an actual N-way execute — so dry-runs
     # preview without forcing the one-time re-auth a scope change triggers.
-    sp = spotify.client(writable=(opts.sync_mode == "nway" and opts.execute))
-    sp_by_name = spotify.playlists_by_name(sp)
+    source_provider = opts.sync_source if opts.sync_mode == "oneway" else "spotify"
+    wanted_providers = {s.strip() for s in (opts.providers or "").split(",") if s.strip()}
+    # Spotify needs a writable client whenever it's a write destination: any N-way
+    # execute, or a one-way execute where another provider is the source and
+    # Spotify is one of the (writable) targets.
+    spotify_is_target = (opts.sync_mode == "oneway" and source_provider != "spotify"
+                         and "spotify" in wanted_providers)
+    sp = spotify.client(writable=opts.execute and (opts.sync_mode == "nway" or spotify_is_target))
+
+    # The library whose playlists drive this pass: always Spotify for N-way (the
+    # symmetric reconcile's name master), the chosen source-of-truth for one-way.
+    source = build_one(source_provider, opts, sp)
+    if source is None:
+        log_warn(f"sync source '{source_provider}' is not connected", indent="  ")
+        return _summary(opts, [], pass_started)
+    src_by_name = source.list_playlists()
 
     wanted = {n.strip().casefold() for n in opts.playlists.split(",") if n.strip()} if opts.playlists else None
-    selected = [sp_by_name[n] for n in sorted(sp_by_name) if wanted is None or n in wanted]
+    selected = [src_by_name[n] for n in sorted(src_by_name) if wanted is None or n in wanted]
 
     mode = paint("EXECUTE", "green", "bold") if opts.execute else paint("DRY RUN", "yellow", "bold")
-    log(paint("═══ Spotify playlist mirror ═══", "bold", "cyan"))
+    log(paint("═══ Omni playlist mirror ═══", "bold", "cyan"))
     log(f"  mode: {mode}" + (paint("   ⇄ N-WAY", "magenta", "bold") if opts.sync_mode == "nway" else ""))
+    log(f"  source: {paint(source.name, 'cyan')}")
     log(f"  playlists: {paint(str(len(selected)), 'bold')} selected"
-        + (paint(f" ({', '.join(p['name'] for p in selected)})", "grey") if selected else ""))
+        + (paint(f" ({', '.join(source.playlist_name(p) for p in selected)})", "grey") if selected else ""))
     if wanted:
-        missing = wanted - {p["name"].strip().casefold() for p in selected}
+        missing = wanted - {source.playlist_name(p).strip().casefold() for p in selected}
         if missing:
-            log_warn(f"not found on Spotify: {', '.join(sorted(missing))}", indent="  ")
+            log_warn(f"not found on {source.name}: {', '.join(sorted(missing))}", indent="  ")
 
     if opts.refresh_local:
         if not opts.download_dir:
@@ -190,25 +209,37 @@ def run_pass(opts):
         _post_sync(opts, sp, selected)
         return _summary(opts, per_target, pass_started)
 
-    targets = build_targets(opts)
+    targets = build_targets(opts, sp)
     if not targets:
-        log_warn("no mirror targets configured (set Apple tokens and/or YouTube Music auth)", indent="  ")
+        log_warn("no mirror targets configured — connect another provider and include it in the sync", indent="  ")
         return _summary(opts, [], pass_started)
     log(f"  targets: {paint(', '.join(t.name for t in targets), 'cyan')}"
         + (paint(f"   local downloads -> {opts.download_dir}", "grey") if opts.download_dir and opts.execute else ""))
 
     songs = archive.connect(opts.song_cache_file)
     sp_memo, sp_lock = {}, threading.Lock()
+    src_is_spotify = source.source == "spotify"
     # Disk cache of playlist tracks keyed by Spotify's snapshot_id: while a
     # playlist is unchanged its 7-page fetch is served from disk, so passes
     # don't re-hammer Spotify. snapshot_id changes exactly when the playlist
-    # does, so there's no staleness (unlike a time-based TTL).
-    sp_snap = {p["id"]: p.get("snapshot_id") for p in selected}
+    # does, so there's no staleness. Only Spotify exposes a snapshot id, so the
+    # skip optimization applies solely when Spotify is the source.
+    sp_snap = {p["id"]: p.get("snapshot_id") for p in selected} if src_is_spotify else {}
     tracks_cache_file = os.getenv("SPOTIFY_TRACKS_CACHE", "spotify_tracks_cache.json")
-    tracks_cache = _load_json(tracks_cache_file)
+    tracks_cache = _load_json(tracks_cache_file) if src_is_spotify else {}
     tracks_state = {"dirty": False}
 
-    def get_sp_tracks(playlist_id):
+    def get_source_tracks(playlist):
+        if not src_is_spotify:
+            # No snapshot id to key a disk cache on; read + normalize each pass.
+            # Injecting the source's stable track id keeps mirror_pair's shape.
+            out = []
+            for t in source.playlist_tracks(playlist):
+                norm = _normalize(t, source.source)
+                norm["id"] = source.track_id(t)
+                out.append(norm)
+            return out
+        playlist_id = playlist["id"]
         # Lock guards the memo/cache AND serialises the shared spotipy client.
         with sp_lock:
             if playlist_id in sp_memo:
@@ -230,7 +261,7 @@ def run_pass(opts):
 
     def worker(target):
         try:
-            results[target.tag] = run_target(target, selected, get_sp_tracks, songs, opts, links)
+            results[target.tag] = run_target(target, selected, get_source_tracks, songs, opts, links, source)
         except BaseException as e:  # surface after siblings finish
             errors.append((target, e))
 
@@ -267,12 +298,19 @@ def run_pass(opts):
         if isinstance(err, TargetAuthError):
             raise err  # fatal; main() decides exit vs. loop-continue
 
-    _post_sync(opts, sp, selected)
+    _post_sync(opts, sp, selected, source_is_spotify=src_is_spotify)
     return _summary(opts, [_summary_entry(a["name"], a) for a in results.values()], pass_started)
 
 
-def _post_sync(opts, sp, selected):
-    """Local download mirror + Jellyfin covers — shared by one-way and N-way."""
+def _post_sync(opts, sp, selected, source_is_spotify=True):
+    """Local download mirror + Jellyfin covers — shared by one-way and N-way.
+    Both read Spotify playlist data (spotDL by Spotify track; covers from Spotify
+    art), so they run only when Spotify is the source; a note flags the skip."""
+    if not source_is_spotify:
+        if (opts.download_dir or os.getenv("JELLYFIN_URL")) and opts.execute:
+            log_note("download mirror + Jellyfin covers currently require Spotify as the source — skipped",
+                     tag="local")
+        return
     if opts.download_dir and opts.execute:
         try:
             from . import downloads

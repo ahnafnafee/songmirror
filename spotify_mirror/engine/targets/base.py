@@ -98,18 +98,27 @@ class MirrorTarget:
         raise NotImplementedError
 
 
-def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, execute, max_removals, max_adds):
-    """Reconcile one Spotify→target playlist pair. Returns a stats dict; `clean`
-    is True when everything applied with no guard tripped."""
-    tag, name = target.tag, sp_playlist.get("name", "?")
+def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, execute, max_removals,
+                max_adds, source_key="spotify", source_name="Spotify", name=None):
+    """Reconcile one source→target playlist pair. Returns a stats dict; `clean`
+    is True when everything applied with no guard tripped.
+
+    `source_key`/`source_name` identify the source of truth. The archive `links`
+    table is anchored on Spotify ids (and load-bearing for N-way's identity), so
+    it is only consulted/written when Spotify is the source; a non-Spotify source
+    falls back to track-key matching + the target's own resolve cache, which
+    compute_diff handles natively (the links only make it more precise)."""
+    tag = target.tag
+    name = name or sp_playlist.get("name", "?")
     started = time.monotonic()
     tgt_tracks = target.playlist_tracks(tgt_playlist)
-    log_section(name, f"Spotify {len(sp_tracks)} tracks - {target.name} {len(tgt_tracks)} tracks", tag=tag)
+    log_section(name, f"{source_name} {len(sp_tracks)} tracks - {target.name} {len(tgt_tracks)} tracks", tag=tag)
 
-    archive.upsert_many(songs, "spotify", sp_tracks)
+    archive.upsert_many(songs, source_key, sp_tracks)
     archive.upsert_many(songs, target.source, tgt_tracks)
 
-    links = archive.get_links(songs, target.source, [t.get("id") for t in sp_tracks])
+    links = (archive.get_links(songs, target.source, [t.get("id") for t in sp_tracks])
+             if source_key == "spotify" else {})
     target.prefetch(sp_tracks, cache)
     to_add, to_remove = compute_diff(
         sp_tracks, tgt_tracks, target.expected_ids(sp_tracks, links, cache), target.track_id
@@ -144,7 +153,8 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
             additions.append((tid, label, method))
             present.add(tid)
             methods[method] = methods.get(method, 0) + 1
-    archive.set_links(songs, target.source, new_links)
+    if source_key == "spotify":
+        archive.set_links(songs, target.source, new_links)  # keep the shared table Spotify-anchored
 
     guard = False
     deferred = 0
