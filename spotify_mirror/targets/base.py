@@ -65,6 +65,13 @@ class MirrorTarget:
         """Stable id of a library playlist, for explicit pairing lookups."""
         return playlist.get("id")
 
+    def playlist_name(self, playlist):
+        """Display name of a library playlist (for transfers / labels)."""
+        return playlist.get("name", "")
+
+    def playlist_description(self, playlist):
+        return playlist.get("description", "")
+
     def prefetch(self, sp_tracks, cache):
         """Optional batch work before resolving (Apple: bulk ISRC lookup)."""
 

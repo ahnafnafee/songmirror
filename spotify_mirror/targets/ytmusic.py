@@ -193,6 +193,9 @@ class YTMusicTarget(MirrorTarget):
     def playlist_id(self, playlist):
         return playlist.get("playlistId")
 
+    def playlist_name(self, playlist):
+        return playlist.get("title", "")
+
     def create(self, sp_playlist):
         from .. import spotify
 

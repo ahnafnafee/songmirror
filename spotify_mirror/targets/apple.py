@@ -141,6 +141,12 @@ class AppleMusicTarget(MirrorTarget):
     def playlist_count(self, playlist):
         return playlist.get("attributes", {}).get("trackCount")
 
+    def playlist_name(self, playlist):
+        return playlist.get("attributes", {}).get("name", "")
+
+    def playlist_description(self, playlist):
+        return (playlist.get("attributes", {}).get("description") or {}).get("standard", "")
+
     def prefetch(self, sp_tracks, cache):
         """Batch-resolve ISRCs to catalog candidates via filter[isrc]. Results
         (including empties) are cached forever — ISRCs don't change."""
