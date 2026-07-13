@@ -47,6 +47,19 @@ def test_events_route_registered(tmp_path):
     assert "/events" in _app(tmp_path).openapi()["paths"]
 
 
+def test_links_crud(tmp_path):
+    from spotify_mirror.playlists import LinkStore
+
+    app = create_app(settings=SettingsStore(dir=tmp_path), links=LinkStore(dir=tmp_path))
+    with TestClient(app) as client:
+        assert client.get("/api/links").json() == []
+        lid = client.put("/api/links", json={"name": "Pair", "members": {"spotify": "s1"}}).json()["id"]
+        assert lid
+        assert len(client.get("/api/links").json()) == 1
+        assert client.delete(f"/api/links/{lid}").json() == {"ok": True}
+        assert client.get("/api/links").json() == []
+
+
 def test_sse_payload_format():
     from spotify_mirror.logs import Event
     from spotify_mirror.web.routers.events import _fmt
