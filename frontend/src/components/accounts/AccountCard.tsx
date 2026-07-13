@@ -1,11 +1,14 @@
 import { useState } from 'react'
 
 import { api, errorMessage } from '@/api'
-import type { Account } from '@/types'
+import { cn } from '@/lib/cn'
+import { serviceLogoId, tagDot, tagText } from '@/lib/constants'
+import type { Account, AuthKind } from '@/types'
 
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { ServiceLogo } from '../ui/ServiceLogo'
 import { StatusPill } from '../ui/StatusPill'
 import { ConnectWizardModal } from './ConnectWizardModal'
 
@@ -16,6 +19,21 @@ const SERVICE_BLURBS: Record<string, string> = {
   jellyfin: 'Optional — pushes real playlist cover art to your Jellyfin server.',
 }
 
+const AUTH_KIND_LABELS: Record<AuthKind, string> = {
+  oauth_redirect: 'OAUTH',
+  oauth_device: 'DEVICE CODE',
+  token_paste: 'TOKEN PASTE',
+  api_key: 'API KEY',
+}
+
+/** Card border echoes severity: hairline for healthy, dashed for "nothing
+ * here yet", solid danger only for errors. */
+function borderClass(state: Account['state']): string {
+  if (state === 'error') return 'border-danger'
+  if (state === 'unconfigured') return 'border-dashed border-border-strong'
+  return 'border-border'
+}
+
 export function AccountCard({ account, onChanged }: { account: Account; onChanged: () => void }) {
   const [wizardOpen, setWizardOpen] = useState(false)
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
@@ -23,6 +41,7 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
   const [error, setError] = useState<string | null>(null)
 
   const isConnected = account.state === 'connected' || account.state === 'expired'
+  const logoId = serviceLogoId(account.id)
 
   async function disconnect() {
     setDisconnecting(true)
@@ -39,26 +58,41 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
   }
 
   return (
-    <Card className="flex flex-col gap-4 p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{account.name}</h3>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{SERVICE_BLURBS[account.id] ?? ''}</p>
-        </div>
-        <StatusPill state={account.state} />
+    <Card className={cn('flex flex-col gap-3.5 p-4 sm:p-5', borderClass(account.state))}>
+      <div className="flex flex-wrap items-center gap-2.5">
+        {logoId ? (
+          <ServiceLogo service={logoId} className={cn('size-5 shrink-0', tagText(account.id))} />
+        ) : (
+          <span className={cn('size-2.5 shrink-0 rounded-full', tagDot(account.id))} aria-hidden="true" />
+        )}
+        <h3 className="text-base font-bold text-text">{account.name}</h3>
+        <span className="font-mono text-[10px] tracking-wide text-text-3">{AUTH_KIND_LABELS[account.auth_kind]}</span>
+        <StatusPill state={account.state} className="ml-auto" />
       </div>
 
-      {account.detail && account.state !== 'connected' && (
-        <p className="text-xs text-slate-500 dark:text-slate-400">{account.detail}</p>
-      )}
-      {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+      <p className="text-[13px] leading-relaxed text-text-2">{SERVICE_BLURBS[account.id] ?? ''}</p>
 
-      <div className="mt-auto flex flex-wrap gap-2">
-        <Button variant={isConnected ? 'secondary' : 'primary'} onClick={() => setWizardOpen(true)}>
+      {account.detail && account.state !== 'connected' && account.state !== 'error' && (
+        <p className="text-xs leading-relaxed text-text-3">{account.detail}</p>
+      )}
+
+      {account.state === 'error' && account.detail && (
+        <div className="flex gap-2.5 rounded-control bg-danger-soft px-3.5 py-2.5">
+          <span className="font-mono text-xs font-semibold text-danger" aria-hidden="true">
+            !
+          </span>
+          <p className="text-[12.5px] leading-relaxed text-text-2">{account.detail}</p>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-danger">{error}</p>}
+
+      <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-border pt-3">
+        <Button variant={isConnected ? 'secondary' : 'primary'} size="sm" onClick={() => setWizardOpen(true)}>
           {isConnected ? 'Reconnect' : 'Connect'}
         </Button>
         {isConnected && (
-          <Button variant="ghost" onClick={() => setConfirmingDisconnect(true)}>
+          <Button variant="ghost" size="sm" onClick={() => setConfirmingDisconnect(true)}>
             Disconnect
           </Button>
         )}

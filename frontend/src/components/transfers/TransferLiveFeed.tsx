@@ -12,13 +12,10 @@ export function TransferLiveFeed({ events, connected }: { events: SyncEvent[]; c
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <span
-          className={cn('size-2 rounded-full', connected ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600')}
-          aria-hidden="true"
-        />
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Live activity</h3>
-        <span className="text-xs text-slate-400 dark:text-slate-500">{connected ? 'connected' : 'reconnecting…'}</span>
+      <div className="flex items-center gap-2.5">
+        <span className={cn('size-2 rounded-full', connected ? 'bg-success' : 'bg-neutral')} aria-hidden="true" />
+        <span className="font-mono text-[10.5px] font-semibold tracking-wide text-text-3">LIVE ACTIVITY</span>
+        <span className="text-xs text-text-3">{connected ? 'connected' : 'reconnecting…'}</span>
       </div>
       <EventFeedList
         events={events}

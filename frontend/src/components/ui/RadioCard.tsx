@@ -10,30 +10,37 @@ interface RadioCardProps {
   disabled?: boolean
 }
 
+/** Selected = accent border + soft wash, radio filled (a 5px ring trick, no
+ * extra markup); for the two or three choices that deserve a sentence. */
 export function RadioCard({ name, value, checked, onChange, title, description, disabled }: RadioCardProps) {
   return (
     <label
       className={cn(
-        'flex cursor-pointer flex-col gap-1 rounded-xl border p-4 transition-colors',
-        checked
-          ? 'border-brand-500 bg-brand-50/60 dark:border-brand-500 dark:bg-brand-950/30'
-          : 'border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600',
-        disabled && 'cursor-not-allowed opacity-60',
+        'flex cursor-pointer gap-[11px] rounded-card border-[1.5px] p-[13px_14px] transition-colors duration-fast',
+        checked ? 'border-accent bg-accent-soft' : 'border-border hover:border-border-strong',
+        disabled && 'cursor-not-allowed opacity-45',
       )}
     >
-      <span className="flex items-center gap-2">
-        <input
-          type="radio"
-          name={name}
-          value={value}
-          checked={checked}
-          onChange={onChange}
-          disabled={disabled}
-          className="size-4 accent-brand-600"
-        />
-        <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{title}</span>
+      <span
+        aria-hidden="true"
+        className={cn(
+          'mt-0.5 size-4 shrink-0 rounded-full',
+          checked ? 'border-[5px] border-accent bg-surface' : 'border-[1.5px] border-border-strong bg-field',
+        )}
+      />
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        className="sr-only"
+      />
+      <span className="flex flex-col gap-0.5">
+        <span className="text-[13.5px] font-bold text-text">{title}</span>
+        <span className="text-xs leading-relaxed text-text-2">{description}</span>
       </span>
-      <span className="text-xs text-slate-500 dark:text-slate-400">{description}</span>
     </label>
   )
 }

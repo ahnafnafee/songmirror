@@ -1,8 +1,9 @@
-import { cn } from '@/lib/cn'
 import { tagLabel, TRANSFER_STATUS_STYLES } from '@/lib/constants'
+import { cn } from '@/lib/cn'
 import type { TransferJob } from '@/types'
 
 import { Card } from '../ui/Card'
+import { CountChip } from '../ui/CountChip'
 import { LoadingStatus, Skeleton } from '../ui/Skeleton'
 
 export function TransferProgress({ job, error }: { job: TransferJob | null; error: string | null }) {
@@ -10,7 +11,7 @@ export function TransferProgress({ job, error }: { job: TransferJob | null; erro
     return (
       <Card className="p-4 sm:p-6">
         {error ? (
-          <p className="text-sm text-rose-600 dark:text-rose-400">Could not load transfer status: {error}</p>
+          <p className="text-sm text-danger">Could not load transfer status: {error}</p>
         ) : (
           <LoadingStatus label="Loading transfer status…">
             <div className="flex flex-col gap-3">
@@ -30,38 +31,35 @@ export function TransferProgress({ job, error }: { job: TransferJob | null; erro
     <Card className="flex flex-col gap-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3">
         <span
-          className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium', style.badge)}
+          className={cn(
+            'inline-flex h-[26px] items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12.5px] font-semibold',
+            style.badge,
+          )}
         >
-          <span className={cn('size-1.5 rounded-full', job.status === 'running' && 'animate-pulse', style.dot)} aria-hidden="true" />
+          <span className={cn('font-mono font-semibold', job.status === 'running' && 'animate-pulse')} aria-hidden="true">
+            {style.glyph}
+          </span>
           {style.label}
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-        <span className="font-medium text-slate-800 dark:text-slate-100">{job.source.playlist_name}</span>
-        <span className="text-xs text-slate-400 dark:text-slate-500">on {tagLabel(job.source.provider)}</span>
-        <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">
+      <div className="flex flex-wrap items-center gap-2 text-sm text-text-2">
+        <span className="font-medium text-text">{job.source.playlist_name}</span>
+        <span className="text-xs text-text-3">on {tagLabel(job.source.provider)}</span>
+        <span aria-hidden="true" className="text-text-3">
           →
         </span>
-        <span className="font-medium text-slate-800 dark:text-slate-100">{job.dest.playlist_name}</span>
-        <span className="text-xs text-slate-400 dark:text-slate-500">on {tagLabel(job.dest.provider)}</span>
+        <span className="font-medium text-text">{job.dest.playlist_name}</span>
+        <span className="text-xs text-text-3">on {tagLabel(job.dest.provider)}</span>
       </div>
 
-      {job.error && (
-        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{job.error}</p>
-      )}
+      {job.error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{job.error}</p>}
 
-      <div className="flex flex-wrap gap-2 text-xs font-medium">
-        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-          +{job.added} added
-        </span>
-        {job.deferred > 0 && (
-          <span className="rounded-full bg-orange-50 px-2 py-0.5 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
-            {job.deferred} deferred
-          </span>
-        )}
+      <div className="flex flex-wrap gap-2">
+        <CountChip tone="success" sign="+" value={job.added} />
+        {job.deferred > 0 && <CountChip tone="warning" value={job.deferred} />}
         {unresolvedConflicts > 0 && (
-          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+          <span className="inline-flex h-6 items-center rounded-chip bg-warning-soft px-2 font-mono text-xs font-semibold text-warning">
             {unresolvedConflicts} need review
           </span>
         )}

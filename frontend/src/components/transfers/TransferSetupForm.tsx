@@ -2,18 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { api, errorMessage } from '@/api'
 import type { ProviderPlaylistsEntry } from '@/hooks/useProviderPlaylists'
-import { tagLabel } from '@/lib/constants'
+import { serviceLogoId, tagLabel, tagText } from '@/lib/constants'
 import type { Account, StartTransferRequest } from '@/types'
 
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { Segmented } from '../ui/Segmented'
 import { SelectField } from '../ui/SelectField'
+import { ServiceLogo } from '../ui/ServiceLogo'
 import { TextField } from '../ui/TextField'
-
-// Sentinel for the destination-playlist <select> — everything else in that
-// list is a real playlist id.
-const CREATE_NEW = '__create__'
 
 interface Props {
   /** Connected accounts only — a transfer can't read from or write to a
@@ -23,11 +21,24 @@ interface Props {
   onStarted: (jobId: string) => void
 }
 
+const DEST_MODE_OPTIONS = [
+  { value: 'existing', label: 'Existing playlist' },
+  { value: 'create', label: 'Create new' },
+]
+
+/** A provider id's brand mark, tinted with its identity color — undefined
+ * (no icon) for an unset or unrecognized id. */
+function serviceIcon(providerId: string) {
+  const logoId = serviceLogoId(providerId)
+  return logoId ? <ServiceLogo service={logoId} className={`size-4 ${tagText(providerId)}`} /> : undefined
+}
+
 export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   const [sourceProvider, setSourceProvider] = useState('')
   const [sourcePlaylistId, setSourcePlaylistId] = useState('')
   const [destProvider, setDestProvider] = useState('')
-  const [destChoice, setDestChoice] = useState('') // a playlist id, CREATE_NEW, or '' (unset)
+  const [destMode, setDestMode] = useState<'existing' | 'create'>('existing')
+  const [destPlaylistId, setDestPlaylistId] = useState('')
   const [destName, setDestName] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [starting, setStarting] = useState(false)
@@ -40,7 +51,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   useEffect(() => {
     if (destProvider && destProvider === sourceProvider) {
       setDestProvider('')
-      setDestChoice('')
+      setDestPlaylistId('')
     }
   }, [sourceProvider, destProvider])
 
@@ -48,16 +59,16 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   // whenever the source playlist or the create-new choice changes, but a
   // manual edit in between sticks until one of those changes again.
   useEffect(() => {
-    if (destChoice !== CREATE_NEW) return
+    if (destMode !== 'create') return
     const sourcePlaylist = entries[sourceProvider]?.playlists.find((p) => p.id === sourcePlaylistId)
     if (sourcePlaylist) setDestName(sourcePlaylist.name)
-  }, [destChoice, sourceProvider, sourcePlaylistId, entries])
+  }, [destMode, sourceProvider, sourcePlaylistId, entries])
 
   const sourcePlaylist = entries[sourceProvider]?.playlists.find((p) => p.id === sourcePlaylistId)
-  const destPlaylist = destChoice !== CREATE_NEW ? entries[destProvider]?.playlists.find((p) => p.id === destChoice) : undefined
+  const destPlaylist = destMode === 'existing' ? entries[destProvider]?.playlists.find((p) => p.id === destPlaylistId) : undefined
 
   const formValid = Boolean(
-    sourceProvider && sourcePlaylistId && destProvider && destChoice && (destChoice !== CREATE_NEW || destName.trim()),
+    sourceProvider && sourcePlaylistId && destProvider && (destMode === 'create' ? destName.trim() : destPlaylistId),
   )
 
   function playlistOptions(providerId: string) {
@@ -76,8 +87,8 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
         source_provider: sourceProvider,
         source_playlist_id: sourcePlaylistId,
         dest_provider: destProvider,
-        dest_playlist_id: destChoice === CREATE_NEW ? null : destChoice,
-        dest_name: destChoice === CREATE_NEW ? destName.trim() : (destPlaylist?.name ?? ''),
+        dest_playlist_id: destMode === 'create' ? null : destPlaylistId,
+        dest_name: destMode === 'create' ? destName.trim() : (destPlaylist?.name ?? ''),
       }
       const res = await api.startTransfer(body)
       setConfirming(false)
@@ -92,76 +103,99 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   return (
     <Card className="flex flex-col gap-5 p-4 sm:p-6">
       <div>
-        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Set up a transfer</h2>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          A one-time copy — existing tracks on the destination are kept, this only adds.
+        <h2 className="text-sm font-bold text-text">Set up a transfer</h2>
+        <p className="mt-1 text-xs text-text-3">
+          A one-off copy — existing tracks on the destination are kept, this only adds.
         </p>
       </div>
 
       {accounts.length < 2 ? (
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-text-3">
           Connect at least 2 services on the Accounts page to copy a playlist between them.
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <SelectField
-              label="From (source)"
-              options={[{ value: '', label: 'Choose a service…' }, ...accounts.map((a) => ({ value: a.id, label: a.name }))]}
-              value={sourceProvider}
-              onChange={(e) => {
-                setSourceProvider(e.target.value)
-                setSourcePlaylistId('')
-              }}
-            />
-            <SelectField
-              label="Source playlist"
-              options={playlistOptions(sourceProvider)}
-              value={sourcePlaylistId}
-              disabled={!sourceProvider}
-              onChange={(e) => setSourcePlaylistId(e.target.value)}
-            />
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 flex-1 flex-col gap-3.5 rounded-card border border-border bg-surface p-4 shadow-sm">
+              <span className="font-mono text-[10.5px] font-semibold tracking-[0.1em] text-text-3">SOURCE</span>
+              <SelectField
+                label="Service"
+                icon={serviceIcon(sourceProvider)}
+                options={[{ value: '', label: 'Choose a service…' }, ...accounts.map((a) => ({ value: a.id, label: a.name }))]}
+                value={sourceProvider}
+                onChange={(e) => {
+                  setSourceProvider(e.target.value)
+                  setSourcePlaylistId('')
+                }}
+              />
+              <SelectField
+                label="Playlist"
+                options={playlistOptions(sourceProvider)}
+                value={sourcePlaylistId}
+                disabled={!sourceProvider}
+                onChange={(e) => setSourcePlaylistId(e.target.value)}
+              />
+            </div>
+
+            <span
+              aria-hidden="true"
+              className="flex size-9 shrink-0 rotate-90 items-center justify-center self-center rounded-full border border-border-strong bg-surface-2 text-[15px] font-semibold text-accent sm:size-10 sm:rotate-0 sm:text-[17px]"
+            >
+              →
+            </span>
+
+            <div className="flex min-w-0 flex-1 flex-col gap-3.5 rounded-card border border-border bg-surface p-4 shadow-sm">
+              <span className="font-mono text-[10.5px] font-semibold tracking-[0.1em] text-text-3">DESTINATION</span>
+              <SelectField
+                label="Service"
+                help={!sourceProvider ? 'Pick a source service first.' : undefined}
+                icon={serviceIcon(destProvider)}
+                options={[
+                  { value: '', label: 'Choose a service…' },
+                  ...destProviderOptions.map((a) => ({ value: a.id, label: a.name })),
+                ]}
+                value={destProvider}
+                disabled={!sourceProvider}
+                onChange={(e) => {
+                  setDestProvider(e.target.value)
+                  setDestPlaylistId('')
+                }}
+              />
+
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[12.5px] font-semibold text-text-2">Playlist</span>
+                <Segmented
+                  ariaLabel="Destination playlist"
+                  options={DEST_MODE_OPTIONS}
+                  value={destMode}
+                  onChange={(v) => setDestMode(v as 'existing' | 'create')}
+                />
+              </div>
+
+              {destMode === 'existing' ? (
+                <SelectField
+                  label="Existing playlist"
+                  options={[
+                    { value: '', label: destProvider ? 'Choose a playlist…' : 'Choose a destination service first' },
+                    ...(entries[destProvider]?.playlists.map((p) => ({ value: p.id, label: p.name })) ?? []),
+                  ]}
+                  value={destPlaylistId}
+                  disabled={!destProvider}
+                  onChange={(e) => setDestPlaylistId(e.target.value)}
+                />
+              ) : (
+                <TextField
+                  label="New playlist name"
+                  help="Defaults to the source playlist's name — feel free to change it."
+                  required
+                  value={destName}
+                  onChange={(e) => setDestName(e.target.value)}
+                />
+              )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <SelectField
-              label="To (destination)"
-              help={!sourceProvider ? 'Pick a source service first.' : undefined}
-              options={[
-                { value: '', label: 'Choose a service…' },
-                ...destProviderOptions.map((a) => ({ value: a.id, label: a.name })),
-              ]}
-              value={destProvider}
-              disabled={!sourceProvider}
-              onChange={(e) => {
-                setDestProvider(e.target.value)
-                setDestChoice('')
-              }}
-            />
-            <SelectField
-              label="Destination playlist"
-              options={[
-                { value: '', label: 'Choose an option…' },
-                { value: CREATE_NEW, label: '+ Create a new playlist' },
-                ...(entries[destProvider]?.playlists.map((p) => ({ value: p.id, label: p.name })) ?? []),
-              ]}
-              value={destChoice}
-              disabled={!destProvider}
-              onChange={(e) => setDestChoice(e.target.value)}
-            />
-          </div>
-
-          {destChoice === CREATE_NEW && (
-            <TextField
-              label="New playlist name"
-              help="Defaults to the source playlist's name — feel free to change it."
-              required
-              value={destName}
-              onChange={(e) => setDestName(e.target.value)}
-            />
-          )}
-
-          {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
 
           <div>
             <Button onClick={() => setConfirming(true)} disabled={!formValid}>
@@ -177,7 +211,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
         description={
           sourcePlaylist
             ? `"${sourcePlaylist.name}" will be copied from ${tagLabel(sourceProvider)} to ${
-                destChoice === CREATE_NEW
+                destMode === 'create'
                   ? `a new playlist named "${destName.trim()}"`
                   : `"${destPlaylist?.name ?? ''}"`
               } on ${tagLabel(destProvider)}. Existing tracks on the destination are kept — this only adds.`

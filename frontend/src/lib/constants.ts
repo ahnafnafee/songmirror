@@ -1,123 +1,117 @@
 import type { AccountState, EventKind, TransferStatus } from '../types'
 
-export const ACCOUNT_STATE_STYLES: Record<AccountState, { label: string; badge: string; dot: string }> = {
-  connected: {
-    label: 'Connected',
-    badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-    dot: 'bg-emerald-500',
-  },
-  expired: {
-    label: 'Needs reconnect',
-    badge: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-    dot: 'bg-amber-500',
-  },
-  error: {
-    label: 'Connection error',
-    badge: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
-    dot: 'bg-rose-500',
-  },
-  unconfigured: {
-    label: 'Not connected',
-    badge: 'bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
-    dot: 'bg-slate-400',
-  },
+interface StateStyle {
+  label: string
+  glyph: string
+  badge: string
+  text: string
 }
 
-/** Friendly display names for live-feed service tags. Account ids (used in
- * API paths) and event tags (used on /events) don't always match — e.g. the
- * YouTube Music account id is "ytmusic" but its log tag is "yt" — so this is
- * keyed by whichever string shows up, covering both. */
-export const TAG_LABELS: Record<string, string> = {
-  spotify: 'Spotify',
-  apple: 'Apple Music',
-  yt: 'YouTube Music',
-  ytmusic: 'YouTube Music',
-  jellyfin: 'Jellyfin',
-  sync: 'Sync',
-  local: 'Local files',
+/** connected→success · expired→warning · unconfigured→neutral · error→danger,
+ * per the design spec's StatusPill map. Each pairs a mono glyph with the
+ * word — color is never the only signal. */
+export const ACCOUNT_STATE_STYLES: Record<AccountState, StateStyle> = {
+  connected: { label: 'connected', glyph: '✓', badge: 'bg-success-soft text-success', text: 'text-success' },
+  expired: { label: 'expired — reconnect', glyph: '~', badge: 'bg-warning-soft text-warning', text: 'text-warning' },
+  error: { label: 'error', glyph: '!', badge: 'bg-danger-soft text-danger', text: 'text-danger' },
+  unconfigured: { label: 'not configured', glyph: '·', badge: 'bg-neutral-soft text-neutral', text: 'text-neutral' },
 }
 
-const TAG_STYLES: Record<string, string> = {
-  spotify: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-  apple: 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
-  yt: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-  ytmusic: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-  jellyfin: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
-  sync: 'bg-brand-100 text-brand-800 dark:bg-brand-900/40 dark:text-brand-300',
-  local: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
+export const TRANSFER_STATUS_STYLES: Record<TransferStatus, StateStyle> = {
+  queued: { label: 'queued', glyph: '·', badge: 'bg-neutral-soft text-neutral', text: 'text-neutral' },
+  busy: { label: 'waiting for the sync engine…', glyph: '~', badge: 'bg-warning-soft text-warning', text: 'text-warning' },
+  running: { label: 'running…', glyph: '…', badge: 'bg-accent-soft text-accent', text: 'text-accent' },
+  done: { label: 'done', glyph: '✓', badge: 'bg-success-soft text-success', text: 'text-success' },
+  error: { label: 'error', glyph: '!', badge: 'bg-danger-soft text-danger', text: 'text-danger' },
 }
-const DEFAULT_TAG_STYLE = 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+
+interface ServiceStyle {
+  label: string
+  dot: string
+  soft: string
+  text: string
+}
+
+/** Service identity — dots + soft-tinted badges only, never buttons (the app
+ * accent is teal). Keyed by whichever string shows up: account ids (used in
+ * API paths, e.g. "ytmusic") and live-feed event tags (e.g. "yt") don't
+ * always match, plus two internal, non-service tags ("sync", "local"). */
+const SERVICE_STYLES: Record<string, ServiceStyle> = {
+  spotify: { label: 'Spotify', dot: 'bg-svc-spotify', soft: 'bg-svc-spotify-soft', text: 'text-svc-spotify' },
+  apple: { label: 'Apple Music', dot: 'bg-svc-apple', soft: 'bg-svc-apple-soft', text: 'text-svc-apple' },
+  yt: { label: 'YouTube Music', dot: 'bg-svc-ytmusic', soft: 'bg-svc-ytmusic-soft', text: 'text-svc-ytmusic' },
+  ytmusic: { label: 'YouTube Music', dot: 'bg-svc-ytmusic', soft: 'bg-svc-ytmusic-soft', text: 'text-svc-ytmusic' },
+  jellyfin: { label: 'Jellyfin', dot: 'bg-svc-jellyfin', soft: 'bg-svc-jellyfin-soft', text: 'text-svc-jellyfin' },
+  sync: { label: 'Sync', dot: 'bg-accent', soft: 'bg-accent-soft', text: 'text-accent' },
+  local: { label: 'Local files', dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },
+}
+const DEFAULT_SERVICE_STYLE: ServiceStyle = {
+  label: '',
+  dot: 'bg-neutral',
+  soft: 'bg-neutral-soft',
+  text: 'text-neutral',
+}
 
 export function tagLabel(tag: string): string {
-  return TAG_LABELS[tag] ?? tag
+  return SERVICE_STYLES[tag]?.label || tag
+}
+export function tagDot(tag: string): string {
+  return (SERVICE_STYLES[tag] ?? DEFAULT_SERVICE_STYLE).dot
+}
+export function tagSoft(tag: string): string {
+  return (SERVICE_STYLES[tag] ?? DEFAULT_SERVICE_STYLE).soft
+}
+export function tagText(tag: string): string {
+  return (SERVICE_STYLES[tag] ?? DEFAULT_SERVICE_STYLE).text
 }
 
-export function tagStyle(tag: string): string {
-  return TAG_STYLES[tag] ?? DEFAULT_TAG_STYLE
+/** Provider id -> ServiceLogo id (both the "yt" event tag and the "ytmusic"
+ * account id resolve to the same YouTube Music mark). */
+export function serviceLogoId(idOrTag: string): 'spotify' | 'apple' | 'ytmusic' | 'jellyfin' | null {
+  if (idOrTag === 'spotify') return 'spotify'
+  if (idOrTag === 'apple') return 'apple'
+  if (idOrTag === 'yt' || idOrTag === 'ytmusic') return 'ytmusic'
+  if (idOrTag === 'jellyfin') return 'jellyfin'
+  return null
 }
 
 interface KindStyle {
-  label: string
+  /** Mono glyph shown in the 20px FeedRow tile. Fixed per the design spec:
+   * add + · remove − · hold ~ · miss × · warn !. `note`/`download` are this
+   * app's own additions (extra event kinds the design's 5-kind sample
+   * doesn't cover) styled to the same grammar. */
+  glyph: string
+  tileBg: string
+  tileText: string
+  /** Message text color — miss rows dim relative to the rest. */
   text: string
-  dot: string
   /** Extra classes for the whole row — used for kinds that deserve a
-   * highlighted band (warnings, summaries, section dividers). */
+   * highlighted band (warnings, the pass-complete summary). */
   row?: string
 }
 
 export const KIND_STYLES: Record<EventKind, KindStyle> = {
-  add: { label: 'Added', text: 'text-emerald-700 dark:text-emerald-300', dot: 'bg-emerald-500' },
-  remove: { label: 'Removed', text: 'text-rose-700 dark:text-rose-300', dot: 'bg-rose-500' },
-  hold: { label: 'Held', text: 'text-amber-700 dark:text-amber-300', dot: 'bg-amber-500' },
-  miss: { label: 'Missing', text: 'text-slate-500 dark:text-slate-400', dot: 'bg-slate-400' },
-  download: { label: 'Downloaded', text: 'text-sky-700 dark:text-sky-300', dot: 'bg-sky-500' },
-  note: { label: 'Note', text: 'text-slate-500 dark:text-slate-400', dot: 'bg-slate-300 dark:bg-slate-600' },
+  add: { glyph: '+', tileBg: 'bg-success-soft', tileText: 'text-success', text: 'text-text' },
+  remove: { glyph: '−', tileBg: 'bg-danger-soft', tileText: 'text-danger', text: 'text-text' },
+  hold: { glyph: '~', tileBg: 'bg-warning-soft', tileText: 'text-warning', text: 'text-text' },
+  miss: { glyph: '×', tileBg: 'bg-neutral-soft', tileText: 'text-neutral', text: 'text-text-2' },
+  download: { glyph: '↓', tileBg: 'bg-info-soft', tileText: 'text-info', text: 'text-text' },
+  note: { glyph: '·', tileBg: 'bg-neutral-soft', tileText: 'text-neutral', text: 'text-text-2' },
   warn: {
-    label: 'Warning',
-    text: 'font-semibold text-red-700 dark:text-red-300',
-    dot: 'bg-red-600',
-    row: 'bg-red-50 dark:bg-red-950/30',
+    glyph: '!',
+    tileBg: 'bg-warning-soft',
+    tileText: 'text-warning',
+    text: 'font-semibold text-text',
+    row: 'bg-warning-soft/40',
   },
   summary: {
-    label: 'Summary',
-    text: 'font-semibold text-brand-700 dark:text-brand-300',
-    dot: 'bg-brand-500',
-    row: 'bg-brand-50/70 dark:bg-brand-950/20',
+    glyph: '✓',
+    tileBg: 'bg-accent-soft',
+    tileText: 'text-accent',
+    text: 'font-semibold text-text',
+    row: 'bg-surface-2',
   },
-  section: {
-    label: 'Section',
-    text: 'font-bold text-slate-700 dark:text-slate-200',
-    dot: 'bg-slate-500',
-    row: 'bg-slate-100 dark:bg-slate-800/60',
-  },
-}
-
-export const TRANSFER_STATUS_STYLES: Record<TransferStatus, { label: string; badge: string; dot: string }> = {
-  queued: {
-    label: 'Queued',
-    badge: 'bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
-    dot: 'bg-slate-400',
-  },
-  busy: {
-    label: 'Waiting for the sync engine…',
-    badge: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-    dot: 'bg-amber-500',
-  },
-  running: {
-    label: 'Running…',
-    badge: 'bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300',
-    dot: 'bg-brand-500',
-  },
-  done: {
-    label: 'Done',
-    badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-    dot: 'bg-emerald-500',
-  },
-  error: {
-    label: 'Error',
-    badge: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
-    dot: 'bg-rose-500',
-  },
+  section: { glyph: '', tileBg: '', tileText: '', text: 'text-text-3' },
 }
 
 export const DOWNLOAD_FORMAT_OPTIONS: Array<{ value: string; label: string }> = [

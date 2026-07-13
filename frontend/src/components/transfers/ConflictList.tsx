@@ -21,19 +21,34 @@ export function ConflictList({ jobId, conflicts, onResolved }: ConflictListProps
   if (conflicts.length === 0) return null
 
   const unresolvedCount = conflicts.filter((c) => !c.resolved).length
+  const resolvedCount = conflicts.length - unresolvedCount
 
   return (
-    <Card className="flex flex-col gap-4 p-4 sm:p-6">
-      <div>
-        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-          Conflicts {unresolvedCount > 0 ? `(${unresolvedCount} need review)` : '(all resolved)'}
-        </h2>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          These tracks couldn't be automatically matched on the destination service. Find the matching track there
-          and paste its link (or raw id) to resolve one.
-        </p>
+    <Card className="flex flex-col overflow-hidden">
+      <div className="flex flex-wrap items-start gap-3 p-4 sm:p-6">
+        <div>
+          <h2 className="text-sm font-bold text-text">
+            {conflicts.length} track{conflicts.length === 1 ? '' : 's'} need{conflicts.length === 1 ? 's' : ''} a hand
+          </h2>
+          <p className="mt-1 text-xs text-text-3">
+            These tracks couldn't be automatically matched on the destination service. Find the matching track there
+            and paste its link (or raw id) to resolve one.
+          </p>
+        </div>
+        <div className="ml-auto flex shrink-0 gap-1.5">
+          {unresolvedCount > 0 && (
+            <span className="inline-flex h-6 items-center rounded-full bg-warning-soft px-2.5 text-xs font-semibold text-warning">
+              {unresolvedCount} unresolved
+            </span>
+          )}
+          {resolvedCount > 0 && (
+            <span className="inline-flex h-6 items-center rounded-full bg-success-soft px-2.5 text-xs font-semibold text-success">
+              {resolvedCount} resolved
+            </span>
+          )}
+        </div>
       </div>
-      <ul className="flex flex-col gap-3">
+      <ul className="flex flex-col divide-y divide-border border-t border-border">
         {conflicts.map((conflict) => (
           <ConflictRow key={conflict.key} jobId={jobId} conflict={conflict} onResolved={onResolved} />
         ))}
@@ -63,27 +78,34 @@ function ConflictRow({ jobId, conflict, onResolved }: { jobId: string; conflict:
   }
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{conflict.name}</p>
-          <p className="truncate text-xs text-slate-500 dark:text-slate-400">{conflict.artist}</p>
+    <li className={cn('flex flex-col gap-3 p-4 sm:px-6', !conflict.resolved && 'bg-surface-2')}>
+      <div className="flex items-start gap-3">
+        <span
+          className={cn(
+            'flex size-[22px] shrink-0 items-center justify-center rounded-chip font-mono text-[13px] font-semibold',
+            conflict.resolved ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning',
+          )}
+          aria-hidden="true"
+        >
+          {conflict.resolved ? '✓' : '~'}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-text">{conflict.name}</p>
+          <p className="truncate text-xs text-text-3">{conflict.artist}</p>
         </div>
         <span
           className={cn(
-            'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
-            conflict.resolved
-              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-              : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+            'shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold',
+            conflict.resolved ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning',
           )}
         >
-          {conflict.resolved ? 'Resolved' : 'Needs review'}
+          {conflict.resolved ? 'resolved' : 'unresolved'}
         </span>
       </div>
 
       {!conflict.resolved && (
         <form
-          className="flex flex-col gap-3 sm:flex-row sm:items-end"
+          className="flex flex-col gap-3 pl-[34px] sm:flex-row sm:items-end"
           onSubmit={(e) => {
             e.preventDefault()
             void handleResolve()
@@ -102,7 +124,7 @@ function ConflictRow({ jobId, conflict, onResolved }: { jobId: string; conflict:
           </Button>
         </form>
       )}
-      {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+      {error && <p className="pl-[34px] text-xs text-danger">{error}</p>}
     </li>
   )
 }

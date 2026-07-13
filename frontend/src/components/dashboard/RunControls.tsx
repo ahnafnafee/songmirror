@@ -56,11 +56,11 @@ export function RunControls({ disabled, onQueued }: RunControlsProps) {
           Run now (execute)
         </Button>
       </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <p className="text-xs text-text-3">
         Dry run previews what would change without touching your playlists. Execute writes those changes to your
         connected services.
       </p>
-      {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       <ConfirmDialog
         open={confirmingExecute}

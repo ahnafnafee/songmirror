@@ -26,8 +26,8 @@ export default function App() {
 function NotFound() {
   return (
     <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
-      <p className="text-lg font-semibold text-slate-700 dark:text-slate-200">Page not found</p>
-      <p className="text-sm text-slate-500 dark:text-slate-400">That page doesn't exist in Omni Playlist Sync.</p>
+      <p className="font-serif text-xl italic text-text">Page not found</p>
+      <p className="text-sm text-text-3">That page doesn't exist in Omni Playlist Sync.</p>
       <Link to="/" className={`${BUTTON_BASE_CLASSES} ${BUTTON_SIZE_CLASSES.md} ${BUTTON_VARIANT_CLASSES.primary}`}>
         Back to Dashboard
       </Link>

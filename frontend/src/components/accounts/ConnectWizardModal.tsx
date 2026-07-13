@@ -163,11 +163,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected }: Prop
           <SuccessStep accountName={account.name} />
         ) : (
           <>
-            {error && (
-              <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-                {error}
-              </p>
-            )}
+            {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
             {account.auth_kind === 'oauth_redirect' &&
               (redirectInfo ? (
@@ -202,7 +198,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected }: Prop
             {(account.auth_kind === 'token_paste' || account.auth_kind === 'api_key') && (
               <>
                 {directResult && directResult.state !== 'connected' && (
-                  <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                  <p className="rounded-control bg-warning-soft px-3 py-2 text-sm text-warning">
                     {directResult.detail || 'Could not connect with those values. Double-check them and try again.'}
                   </p>
                 )}
@@ -273,18 +269,16 @@ function FieldsStep({
 function RedirectStep({ info }: { info: ConnectRedirectResponse }) {
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-          First, whitelist this exact redirect URI in your app's dashboard:
-        </p>
+      <div className="rounded-control border border-border p-3">
+        <p className="text-sm font-medium text-text-2">First, whitelist this exact redirect URI in your app's dashboard:</p>
         <div className="mt-2 flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded-md bg-slate-100 px-2 py-1.5 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+          <code className="min-w-0 flex-1 truncate rounded-chip bg-inset px-2 py-1.5 font-mono text-xs text-text-2">
             {info.redirect_uri}
           </code>
           <CopyButton value={info.redirect_uri} />
         </div>
       </div>
-      <p className="text-sm text-slate-500 dark:text-slate-400">
+      <p className="text-sm text-text-3">
         Once that's saved on their side, continue to sign in. You'll be sent back here automatically.
       </p>
       <div className="flex justify-end">
@@ -297,9 +291,9 @@ function RedirectStep({ info }: { info: ConnectRedirectResponse }) {
 function DeviceStep({ info }: { info: ConnectDeviceResponse }) {
   return (
     <div className="flex flex-col items-center gap-4 text-center">
-      <p className="text-sm text-slate-600 dark:text-slate-300">Open the link below on any device and enter this code:</p>
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <span className="break-all rounded-lg bg-slate-100 px-4 py-2 font-mono text-xl font-semibold tracking-wide text-slate-900 dark:bg-slate-800 dark:text-slate-100 sm:text-2xl sm:tracking-widest">
+      <p className="text-sm text-text-2">Open the link below on any device and enter this code:</p>
+      <div className="flex w-full flex-col items-center gap-2 rounded-control border border-border bg-inset p-4">
+        <span className="break-all font-mono text-2xl font-semibold tracking-[0.18em] text-text sm:tracking-[0.22em]">
           {info.user_code}
         </span>
         <CopyButton value={info.user_code} />
@@ -307,7 +301,7 @@ function DeviceStep({ info }: { info: ConnectDeviceResponse }) {
       <LinkButton href={info.verification_url} target="_blank" rel="noopener noreferrer">
         Open the sign-in page
       </LinkButton>
-      <p className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+      <p className="flex items-center gap-2 text-xs text-text-3">
         <Spinner className="size-3.5 shrink-0" />
         Waiting for authorization — checking automatically every {info.interval}s.
       </p>
@@ -317,10 +311,10 @@ function DeviceStep({ info }: { info: ConnectDeviceResponse }) {
 
 function SuccessStep({ accountName }: { accountName: string }) {
   return (
-    <p
-      role="status"
-      className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-    >
+    <p role="status" className="flex items-center gap-2 rounded-control bg-success-soft px-3 py-2.5 text-sm text-success">
+      <span className="font-mono font-semibold" aria-hidden="true">
+        ✓
+      </span>
       {accountName} is connected.
     </p>
   )

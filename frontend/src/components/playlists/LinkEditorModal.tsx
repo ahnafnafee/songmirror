@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { api, errorMessage } from '@/api'
 import type { ProviderPlaylistsEntry } from '@/hooks/useProviderPlaylists'
+import { serviceLogoId, tagText } from '@/lib/constants'
 import type { Account, LinkDirection, LinkMembers, PlaylistLink } from '@/types'
 
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { RadioCard } from '../ui/RadioCard'
 import { SelectField } from '../ui/SelectField'
+import { ServiceLogo } from '../ui/ServiceLogo'
 import { TextField } from '../ui/TextField'
 import { Toggle } from '../ui/Toggle'
 
@@ -123,19 +125,26 @@ export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries
       onClose={onClose}
       title={link ? `Edit "${link.name}"` : 'New pairing'}
       description="Link playlists across services that don't share a name, or limit a sync to only specific services."
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="submit" form="link-editor-form" loading={saving} disabled={!formValid}>
+            {link ? 'Save changes' : 'Create pairing'}
+          </Button>
+        </>
+      }
     >
       <form
-        className="flex flex-col gap-5"
+        id="link-editor-form"
+        className="flex flex-col gap-5 py-1"
         onSubmit={(e) => {
           e.preventDefault()
           void handleSave()
         }}
       >
-        {error && (
-          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-            {error}
-          </p>
-        )}
+        {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
         <TextField
           label="Pairing name"
@@ -146,11 +155,9 @@ export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries
         />
 
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Services</p>
+          <p className="text-[12.5px] font-semibold text-text-2">Services</p>
           {rowIds.length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Connect at least two services on the Accounts page to create a pairing.
-            </p>
+            <p className="text-sm text-text-3">Connect at least two services on the Accounts page to create a pairing.</p>
           ) : (
             rowIds.map((id) => {
               const connected = connectedIds.has(id)
@@ -165,11 +172,13 @@ export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries
                     { value: OMIT, label: 'Not included in this pairing' },
                     { value: KEEP, label: `Keep current (${currentRaw === null ? 'create new' : currentRaw})` },
                   ]
+              const logoId = serviceLogoId(id)
               return (
                 <SelectField
                   key={id}
                   label={connected ? accountName(id) : `${accountName(id)} (not connected)`}
                   help={connected ? undefined : 'Reconnect this service on the Accounts page to change its playlist.'}
+                  icon={logoId ? <ServiceLogo service={logoId} className={`size-4 ${tagText(id)}`} /> : undefined}
                   options={options}
                   value={memberChoices[id] ?? OMIT}
                   onChange={(e) => setMemberChoice(id, e.target.value)}
@@ -178,12 +187,12 @@ export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries
             })
           )}
           {rowIds.length > 0 && !hasEnoughMembers && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">Include at least 2 services to form a pairing.</p>
+            <p className="text-xs text-warning">Include at least 2 services to form a pairing.</p>
           )}
         </div>
 
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Sync direction</p>
+          <p className="text-[12.5px] font-semibold text-text-2">Sync direction</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <RadioCard
               name="link-direction"
@@ -225,15 +234,6 @@ export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries
           label="Enabled"
           description="Paused pairings are kept but skipped during sync passes."
         />
-
-        <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={saving} disabled={!formValid}>
-            {link ? 'Save changes' : 'Create pairing'}
-          </Button>
-        </div>
       </form>
     </Modal>
   )

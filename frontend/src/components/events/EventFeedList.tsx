@@ -46,7 +46,7 @@ export function EventFeedList({ events, paused, onPausedChange, emptyTitle, empt
       tabIndex={0}
       role="log"
       aria-label={ariaLabel}
-      className="thin-scrollbar flex max-h-80 flex-col gap-0.5 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-slate-50/60 p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-slate-800 dark:bg-slate-950/40 sm:max-h-[28rem]"
+      className="thin-scrollbar flex max-h-80 flex-col gap-0.5 overflow-y-auto overflow-x-hidden rounded-card border border-border bg-inset p-1.5 focus:outline-none sm:max-h-[28rem]"
     >
       {events.map((event, i) => (
         // Events carry no stable id from the backend; index is fine since

@@ -13,6 +13,10 @@ interface ConfirmDialogProps {
   onCancel: () => void
 }
 
+/** The Modal shell at a fixed ~400px width, body text only, no fields —
+ * every execute and every delete passes through one of these. The primary
+ * is never auto-focused (Modal focuses the dialog container, not a button),
+ * so a stray keypress can't confirm a destructive action by accident. */
 export function ConfirmDialog({
   open,
   title,
@@ -25,19 +29,23 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   return (
-    <Modal open={open} onClose={onCancel} title={title} widthClassName="max-w-md">
-      <p className="text-sm text-slate-600 dark:text-slate-300">{description}</p>
-      {/* Full-width stacked buttons on phones — two side-by-side labels
-          ("Cancel" + a longer confirm label) can get uncomfortably tight in
-          a narrow sheet; from `sm` up there's room for the usual inline row. */}
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
-        <Button variant="secondary" onClick={onCancel} disabled={loading}>
-          {cancelLabel}
-        </Button>
-        <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={loading}>
-          {confirmLabel}
-        </Button>
-      </div>
+    <Modal
+      open={open}
+      onClose={onCancel}
+      title={title}
+      widthClassName="max-w-[400px]"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={loading}>
+            {cancelLabel}
+          </Button>
+          <Button variant={danger ? 'danger-ghost' : 'primary'} onClick={onConfirm} loading={loading}>
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm leading-relaxed text-text-2">{description}</p>
     </Modal>
   )
 }

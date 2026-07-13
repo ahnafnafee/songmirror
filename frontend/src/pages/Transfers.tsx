@@ -33,23 +33,19 @@ export default function Transfers() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-2xl">
-          Transfers
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Transfers</h1>
+        <p className="mt-1 text-sm text-text-3">
           Copy a single playlist from one connected service to another, one time — no ongoing sync.
         </p>
       </div>
 
       {accountsError && (
-        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-          Could not load accounts: {accountsError}
-        </p>
+        <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not load accounts: {accountsError}</p>
       )}
 
       {accountsLoading && !accounts ? (
         <LoadingStatus label="Loading accounts…">
-          <Skeleton className="h-72 w-full rounded-2xl" />
+          <Skeleton className="h-72 w-full rounded-card" />
         </LoadingStatus>
       ) : (
         <TransferSetupForm accounts={connectedAccounts} entries={entries} onStarted={handleStarted} />

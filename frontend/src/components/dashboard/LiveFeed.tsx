@@ -4,11 +4,13 @@ import { EventFeedList } from '@/components/events/EventFeedList'
 import { useEventStream } from '@/hooks/useEventStream'
 import { cn } from '@/lib/cn'
 
-const COUNTER_META: Array<{ key: 'added' | 'removed' | 'held' | 'missing'; label: string; sign: string; className: string }> = [
-  { key: 'added', label: 'added', sign: '+', className: 'text-emerald-600 dark:text-emerald-400' },
-  { key: 'removed', label: 'removed', sign: '-', className: 'text-rose-600 dark:text-rose-400' },
-  { key: 'held', label: 'held', sign: '', className: 'text-amber-600 dark:text-amber-400' },
-  { key: 'missing', label: 'missing', sign: '', className: 'text-slate-500 dark:text-slate-400' },
+import { CountChip, type CountChipTone } from '../ui/CountChip'
+
+const COUNTER_META: Array<{ key: 'added' | 'removed' | 'held' | 'missing'; sign: string; tone: CountChipTone }> = [
+  { key: 'added', sign: '+', tone: 'success' },
+  { key: 'removed', sign: '−', tone: 'danger' },
+  { key: 'held', sign: '~', tone: 'warning' },
+  { key: 'missing', sign: '×', tone: 'neutral' },
 ]
 
 /** Live-tails the /events SSE stream for the sync dashboard, with running
@@ -20,30 +22,20 @@ export function LiveFeed() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <span
-            className={cn('size-2 rounded-full', connected ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600')}
+            className={cn('size-2 rounded-full', connected ? 'bg-success' : 'bg-neutral')}
             aria-hidden="true"
           />
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Live activity</h2>
-          <span className="text-xs text-slate-400 dark:text-slate-500">
-            {connected ? 'connected' : 'reconnecting…'}
-          </span>
+          <span className="font-mono text-[10.5px] font-semibold tracking-wide text-text-3">LIVE FEED</span>
           {paused && (
-            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              Paused
-            </span>
+            <span className="rounded-chip bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-text-2">Paused</span>
           )}
         </div>
-        <div className="flex flex-wrap gap-3 text-xs font-medium">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 font-mono text-[10.5px] tracking-wide text-text-3">THIS PASS</span>
           {COUNTER_META.map((c) => (
-            <span key={c.key}>
-              <span className={c.className}>
-                {c.sign}
-                {counters[c.key]}
-              </span>{' '}
-              <span className="text-slate-400 dark:text-slate-500">{c.label}</span>
-            </span>
+            <CountChip key={c.key} tone={c.tone} sign={c.sign} value={counters[c.key]} />
           ))}
         </div>
       </div>

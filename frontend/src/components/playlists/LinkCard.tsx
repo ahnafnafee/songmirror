@@ -3,11 +3,13 @@ import { useState } from 'react'
 import { api, errorMessage } from '@/api'
 import type { ProviderPlaylistsEntry } from '@/hooks/useProviderPlaylists'
 import { cn } from '@/lib/cn'
+import { tagDot } from '@/lib/constants'
 import type { Account, PlaylistLink } from '@/types'
 
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { Toggle } from '../ui/Toggle'
 
 function providerName(accounts: Account[], id: string): string {
   return accounts.find((a) => a.id === id)?.name ?? id
@@ -29,9 +31,12 @@ interface LinkCardProps {
   onChanged: () => void
 }
 
+/** Pairing rows lead with the enable toggle — flips inline without opening
+ * the editor — per the design's Playlists layout. */
 export function LinkCard({ link, accounts, playlistEntries, onEdit, onChanged }: LinkCardProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [togglingEnabled, setTogglingEnabled] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function handleDelete() {
@@ -48,63 +53,83 @@ export function LinkCard({ link, accounts, playlistEntries, onEdit, onChanged }:
     }
   }
 
+  async function handleToggleEnabled(next: boolean) {
+    setTogglingEnabled(true)
+    setError(null)
+    try {
+      await api.upsertLink({
+        id: link.id,
+        name: link.name,
+        members: link.members,
+        direction: link.direction,
+        source: link.source,
+        enabled: next,
+      })
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setTogglingEnabled(false)
+    }
+  }
+
   const memberEntries = Object.entries(link.members)
 
   return (
-    <Card className="flex flex-col gap-3 p-4 sm:p-5">
-      <div className="min-w-0">
-        <h3 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">{link.name}</h3>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          <span
-            className={cn(
-              'rounded-full px-2 py-0.5 text-xs font-medium',
-              link.direction === 'nway'
-                ? 'bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300'
-                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-            )}
-          >
-            {link.direction === 'nway' ? 'Bidirectional' : 'One-way'}
-          </span>
-          {!link.enabled && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-              Paused
+    <Card className={cn('flex flex-col gap-3 p-4 transition-opacity duration-fast sm:p-5', !link.enabled && 'opacity-80')}>
+      <div className="flex items-start gap-3">
+        <span className="pt-0.5">
+          <Toggle
+            checked={link.enabled}
+            onChange={(next) => void handleToggleEnabled(next)}
+            disabled={togglingEnabled}
+            label={`${link.enabled ? 'Disable' : 'Enable'} pairing "${link.name}"`}
+            hideLabel
+          />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-[14.5px] font-bold text-text">{link.name}</h3>
+            <span className="inline-flex h-[22px] items-center rounded-chip border border-border-strong px-2 font-mono text-[10.5px] font-semibold text-text-2">
+              {link.direction === 'nway' ? '⇄ N-WAY' : '→ ONE-WAY'}
             </span>
-          )}
+            {!link.enabled && (
+              <span className="inline-flex h-[22px] items-center rounded-full bg-neutral-soft px-2.5 text-[11.5px] font-semibold text-neutral">
+                paused
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
       {memberEntries.length > 0 ? (
-        <ul className="flex flex-col gap-1.5 text-sm">
+        <ul className="flex flex-wrap gap-x-3.5 gap-y-1.5 pl-[54px] text-[12.5px] text-text-2 sm:pl-[62px]">
           {memberEntries.map(([providerId, playlistId]) => {
             const isSource = link.direction === 'oneway' && link.source === providerId
             return (
-              <li key={providerId} className="flex items-center justify-between gap-3">
-                <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                  {providerName(accounts, providerId)}
-                  {isSource && (
-                    <span className="ml-1.5 rounded-full bg-brand-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                      Source
-                    </span>
-                  )}
-                </span>
-                <span className="min-w-0 truncate text-right font-medium text-slate-700 dark:text-slate-200">
-                  {playlistLabel(playlistEntries, providerId, playlistId)}
-                </span>
+              <li key={providerId} className="inline-flex items-center gap-1.5">
+                {/* Dot conveys the service at a glance (matches the design);
+                    the name stays in the DOM for anyone who can't rely on
+                    color alone. */}
+                <span className={cn('size-[7px] shrink-0 rounded-full', tagDot(providerId))} aria-hidden="true" />
+                <span className="sr-only">{providerName(accounts, providerId)}: </span>
+                {playlistLabel(playlistEntries, providerId, playlistId)}
+                {isSource && <span className="font-mono text-[10px] text-text-3">SOURCE</span>}
               </li>
             )
           })}
         </ul>
       ) : (
-        <p className="text-sm text-slate-400 dark:text-slate-500">No services included yet.</p>
+        <p className="pl-[54px] text-sm text-text-3 sm:pl-[62px]">No services included yet.</p>
       )}
 
-      {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+      {error && <p className="pl-[54px] text-xs text-danger sm:pl-[62px]">{error}</p>}
 
-      <div className="mt-auto flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-        <Button variant="secondary" onClick={onEdit}>
+      <div className="mt-auto flex flex-wrap gap-2 border-t border-border pt-3">
+        <Button variant="secondary" size="sm" onClick={onEdit}>
           Edit
         </Button>
-        <Button variant="ghost" onClick={() => setConfirmingDelete(true)}>
+        <Button variant="ghost" size="sm" onClick={() => setConfirmingDelete(true)}>
           Delete
         </Button>
       </div>

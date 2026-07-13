@@ -29,12 +29,8 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-2xl">
-          Dashboard
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Watch your playlists sync in real time, or kick off a pass yourself.
-        </p>
+        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Dashboard</h1>
+        <p className="mt-1 text-sm text-text-3">Watch your playlists sync in real time, or kick off a pass yourself.</p>
       </div>
 
       <Card className="flex flex-col gap-6 p-4 sm:p-6">
@@ -44,8 +40,8 @@ export default function Dashboard() {
           onToggleSchedule={() => void toggleSchedule()}
           scheduleBusy={scheduleBusy}
         />
-        {scheduleError && <p className="text-sm text-rose-600 dark:text-rose-400">{scheduleError}</p>}
-        <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
+        {scheduleError && <p className="text-sm text-danger">{scheduleError}</p>}
+        <div className="border-t border-border pt-4">
           <RunControls disabled={!status || status.running} onQueued={() => void refresh()} />
         </div>
       </Card>

@@ -23,28 +23,22 @@ export default function Playlists() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-2xl">
-          Playlists
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Browse what's on each connected service, and pair up playlists that don't share a name.
-        </p>
+        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Playlists</h1>
+        <p className="mt-1 text-sm text-text-3">Browse what's on each connected service, and pair up playlists that don't share a name.</p>
       </div>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Browse</h2>
+        <h2 className="text-[17px] font-bold text-text">Browse</h2>
 
         {accountsError && (
-          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-            Could not load accounts: {accountsError}
-          </p>
+          <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not load accounts: {accountsError}</p>
         )}
 
         {accountsLoading && !accounts ? (
           <LoadingStatus label="Loading accounts…">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-40 w-full rounded-2xl" />
+                <Skeleton key={i} className="h-40 w-full rounded-card" />
               ))}
             </div>
           </LoadingStatus>
@@ -61,36 +55,41 @@ export default function Playlists() {
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Pairings</h2>
+          <div className="flex items-baseline gap-2.5">
+            <h2 className="text-[17px] font-bold text-text">Pairings</h2>
+            {links && (
+              <span className="font-mono text-[11.5px] text-text-3">
+                {links.length} link{links.length === 1 ? '' : 's'} · {links.filter((l) => l.enabled).length} active
+              </span>
+            )}
+          </div>
           <Button
             onClick={() => setEditorTarget('new')}
             disabled={connectedAccounts.length < 2}
             title={connectedAccounts.length < 2 ? 'Connect at least 2 services first' : undefined}
           >
-            Add pairing
+            + New pairing
           </Button>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-text-3">
           Playlists that already share a name sync automatically. Add a pairing here to link differently-named
           playlists, or to scope a sync to only specific services.
         </p>
 
         {linksError && (
-          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-            Could not load pairings: {linksError}
-          </p>
+          <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not load pairings: {linksError}</p>
         )}
 
         {linksLoading && !links ? (
           <LoadingStatus label="Loading pairings…">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-3">
               {[0, 1].map((i) => (
-                <Skeleton key={i} className="h-40 w-full rounded-2xl" />
+                <Skeleton key={i} className="h-24 w-full rounded-card" />
               ))}
             </div>
           </LoadingStatus>
         ) : links && links.length > 0 ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-3">
             {links.map((link) => (
               <LinkCard
                 key={link.id}

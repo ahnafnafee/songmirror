@@ -10,6 +10,10 @@ interface ModalProps {
   title: string
   description?: string
   children: ReactNode
+  /** A fixed action row, docked on surface-2 below a border — e.g. Cancel +
+   * Confirm. Omit for modals whose actions live inline in the body (the
+   * connect wizard's per-step submit buttons). */
+  footer?: ReactNode
   widthClassName?: string
 }
 
@@ -22,10 +26,11 @@ const FOCUSABLE_SELECTOR =
  * above page content regardless of where it's used.
  *
  * Responsive shape: on phones/small tablets it renders as a near-full-width
- * bottom sheet (edge-to-edge, rounded top corners only, anchored to the
- * bottom of the viewport) so it never fights a narrow viewport for width;
- * from `sm` up it's the conventional centered, rounded dialog. */
-export function Modal({ open, onClose, title, description, children, widthClassName = 'max-w-lg' }: ModalProps) {
+ * bottom sheet (edge-to-edge, rounded top corners only, drag-handle
+ * affordance, anchored to the bottom of the viewport) so it never fights a
+ * narrow viewport for width; from `sm` up it's the conventional centered,
+ * rounded dialog. Only the body scrolls — header and footer stay docked. */
+export function Modal({ open, onClose, title, description, children, footer, widthClassName = 'max-w-lg' }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -65,13 +70,8 @@ export function Modal({ open, onClose, title, description, children, widthClassN
   if (!open) return null
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
-      <button
-        type="button"
-        aria-label="Close dialog"
-        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-overlay sm:items-center sm:p-4">
+      <button type="button" aria-label="Close dialog" className="absolute inset-0" onClick={onClose} />
       <div
         ref={dialogRef}
         role="dialog"
@@ -79,28 +79,42 @@ export function Modal({ open, onClose, title, description, children, widthClassN
         aria-labelledby="modal-title"
         tabIndex={-1}
         className={cn(
-          'relative z-10 flex max-h-[92dvh] w-full flex-col overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl outline-none dark:bg-slate-900',
-          'sm:max-h-[90vh] sm:rounded-2xl sm:p-6',
+          'relative z-10 flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-modal border border-border-strong bg-surface shadow-lg outline-none',
+          'sm:max-h-[90vh] sm:rounded-modal',
           widthClassName,
         )}
       >
-        <div className="mb-4 flex items-start justify-between gap-4">
+        {/* Drag-handle affordance — visual only below sm; no real gesture is wired. */}
+        <div className="flex justify-center pb-1 pt-2.5 sm:hidden">
+          <span className="h-1 w-9 rounded-full bg-border-strong" aria-hidden="true" />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 px-5 pb-4 pt-1 sm:px-6 sm:pt-5">
           <div className="min-w-0">
-            <h2 id="modal-title" className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            <h2 id="modal-title" className="text-[15px] font-bold text-text">
               {title}
             </h2>
-            {description && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>}
+            {description && <p className="mt-1 text-sm text-text-2">{description}</p>}
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-2 hover:text-text-2 sm:size-7"
           >
             <CloseIcon />
           </button>
         </div>
-        {children}
+
+        <div className={cn('min-h-0 flex-1 overflow-y-auto px-5 sm:px-6', footer ? 'pb-4' : 'pb-5 sm:pb-6')}>
+          {children}
+        </div>
+
+        {footer && (
+          <div className="flex flex-col gap-3 border-t border-border bg-surface-2 px-5 py-3.5 sm:flex-row sm:justify-end sm:px-6">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body,

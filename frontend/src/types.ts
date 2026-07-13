@@ -111,11 +111,13 @@ export interface SyncEvent {
   data?: Record<string, unknown> | null
 }
 
-/** GET /api/playlists?provider=<id> — one entry per playlist on that service. */
+/** GET /api/playlists?provider=<id> — one entry per playlist on that service.
+ * `image` is a cover-art URL and may be an empty string (no art available). */
 export interface ProviderPlaylist {
   id: string
   name: string
   count: number
+  image: string
 }
 
 export type LinkDirection = 'oneway' | 'nway'

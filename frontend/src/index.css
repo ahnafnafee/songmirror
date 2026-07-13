@@ -1,3 +1,9 @@
+/* ============================================================
+   OMNI PLAYLIST SYNC — design tokens, per frontend/design-source/omni-theme.css
+   (spec no. 001 rev A). Fonts are bundled via @fontsource/* — imported in
+   main.tsx, not here — so nothing is fetched from a CDN at runtime.
+   ============================================================ */
+
 @import 'tailwindcss';
 
 /* Class-based dark mode: toggled by the `dark` class on <html> (see
@@ -5,29 +11,147 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono:
-    ui-monospace, 'Cascadia Code', 'Segoe UI Mono', Consolas, monospace;
+  /* ---- type ---- */
+  --font-sans: 'Schibsted Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, serif; /* display moments only */
+  --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
 
-  /* Brand accent — used for primary actions, links, focus rings, the active
-     nav tab. Kept distinct from the semantic add/remove/hold/miss palette
-     used for live-feed event kinds and data visualizations. */
-  --color-brand-50: #f4f2ff;
-  --color-brand-100: #ebe7ff;
-  --color-brand-200: #d9d2ff;
-  --color-brand-300: #bcadff;
-  --color-brand-400: #9c82ff;
-  --color-brand-500: #7c5cff;
-  --color-brand-600: #6a3ffa;
-  --color-brand-700: #5a2fe0;
-  --color-brand-800: #4a27b5;
-  --color-brand-900: #3d238e;
-  --color-brand-950: #251556;
+  /* ---- surfaces (light) ---- */
+  --color-bg: #f3f0e9; /* page */
+  --color-surface: #fffdf8; /* cards */
+  --color-surface-2: #f6f2ea; /* nested / hover / docks */
+  --color-inset: #eae5db; /* wells: feed, code, pair-code */
+  --color-field: #fffefb; /* inputs */
+  --color-border: #e1dace;
+  --color-border-strong: #c6beaf;
+  --color-overlay: rgb(30 25 20 / 0.45);
+
+  /* ---- text ---- */
+  --color-text: #1c1915;
+  --color-text-2: #524c43;
+  --color-text-3: #716a5f;
+
+  /* ---- accent · Signal Teal ---- */
+  --color-accent: #0e7d85;
+  --color-accent-hover: #0b6b72;
+  --color-accent-active: #095a60;
+  --color-accent-soft: rgb(14 125 133 / 0.1);
+  --color-on-accent: #ffffff;
+
+  /* ---- semantic (each with a -soft tint) ---- */
+  --color-success: #1b7f4c;
+  --color-success-soft: rgb(27 127 76 / 0.11); /* add */
+  --color-danger: #bc3d30;
+  --color-danger-soft: rgb(188 61 48 / 0.1); /* remove */
+  --color-warning: #8f6a12;
+  --color-warning-soft: rgb(143 106 18 / 0.12); /* hold */
+  --color-neutral: #6e675e;
+  --color-neutral-soft: rgb(110 103 94 / 0.1); /* miss */
+  --color-info: #2f66a8;
+  --color-info-soft: rgb(47 102 168 / 0.11);
+
+  /* ---- service identity · dots + badges only, never buttons ---- */
+  --color-svc-spotify: #128f43;
+  --color-svc-spotify-soft: rgb(18 143 67 / 0.11);
+  --color-svc-apple: #d93043;
+  --color-svc-apple-soft: rgb(217 48 67 / 0.1);
+  --color-svc-ytmusic: #c43227;
+  --color-svc-ytmusic-soft: rgb(196 50 39 / 0.1);
+  --color-svc-jellyfin: #7a58c5;
+  --color-svc-jellyfin-soft: rgb(122 88 197 / 0.11);
+
+  /* ---- radii · squarer = steadier ---- */
+  --radius-chip: 6px; /* chips, glyph tiles */
+  --radius-control: 8px; /* buttons, inputs, selects */
+  --radius-card: 12px;
+  --radius-modal: 16px;
+  /* pills: rounded-full, reserved for status */
+
+  /* ---- shadows (weight in light theme; dark leans on borders) ---- */
+  --shadow-sm: 0 1px 2px rgb(43 36 26 / 0.06), 0 4px 14px -6px rgb(43 36 26 / 0.1);
+  --shadow-md: 0 6px 18px -6px rgb(43 36 26 / 0.16);
+  --shadow-lg: 0 24px 64px -16px rgb(43 36 26 / 0.3);
+
+  /* ---- motion ---- */
+  --ease-out-quart: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 120ms; /* hover, press */
+  --duration-base: 200ms; /* fades, toggles, feed rows in */
+  --duration-slow: 320ms; /* modals, drawer */
 }
 
-html {
-  color-scheme: light dark;
+/* ---- dark theme overrides · warm charcoal ---- */
+.dark {
+  --color-bg: #121010;
+  --color-surface: #1a1716;
+  --color-surface-2: #231f1d;
+  --color-inset: #0b0a09;
+  --color-field: #161312;
+  --color-border: #2c2724;
+  --color-border-strong: #403a35;
+  --color-overlay: rgb(8 6 5 / 0.64);
+
+  --color-text: #f1ede5;
+  --color-text-2: #b7aea2;
+  --color-text-3: #8d8478;
+
+  --color-accent: #4fc0c8;
+  --color-accent-hover: #6fd0d6;
+  --color-accent-active: #3aa9b2;
+  --color-accent-soft: rgb(79 192 200 / 0.13);
+  --color-on-accent: #072a2d;
+
+  --color-success: #5fc985;
+  --color-success-soft: rgb(95 201 133 / 0.13);
+  --color-danger: #ef8172;
+  --color-danger-soft: rgb(239 129 114 / 0.13);
+  --color-warning: #e2b45f;
+  --color-warning-soft: rgb(226 180 95 / 0.14);
+  --color-neutral: #9a9186;
+  --color-neutral-soft: rgb(154 145 134 / 0.13);
+  --color-info: #7fa9de;
+  --color-info-soft: rgb(127 169 222 / 0.13);
+
+  --color-svc-spotify: #3bce6e;
+  --color-svc-spotify-soft: rgb(59 206 110 / 0.13);
+  --color-svc-apple: #fa5c71;
+  --color-svc-apple-soft: rgb(250 92 113 / 0.12);
+  --color-svc-ytmusic: #f4453e;
+  --color-svc-ytmusic-soft: rgb(244 69 62 / 0.12);
+  --color-svc-jellyfin: #ae8cec;
+  --color-svc-jellyfin-soft: rgb(174 140 236 / 0.13);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 6px 18px -6px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 24px 64px -16px rgb(0 0 0 / 0.65);
+}
+
+/* ---- base ---- */
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color-scheme: light dark;
+  }
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+  :focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--color-bg),
+      0 0 0 4px var(--color-accent);
+    border-radius: var(--radius-control);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 html,
@@ -39,46 +163,27 @@ body {
      `body` into an unexpected extra scroll container that can break
      `position: sticky` children (the nav bar). `clip` doesn't trigger that
      coupling. This is a safety net, not a substitute for components sizing
-     themselves to fit — see individual component comments for the real fixes. */
+     themselves to fit. */
   overflow-x: clip;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  @apply antialiased;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Slim, low-contrast scrollbars for the live event feed panel. */
+/* Slim, low-contrast scrollbars for inset wells (live feed, etc). */
 .thin-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-slate-300) transparent;
-}
-.dark .thin-scrollbar {
-  scrollbar-color: var(--color-slate-700) transparent;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
 .thin-scrollbar::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 .thin-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--color-slate-300);
+  background-color: var(--color-border-strong);
   border-radius: 9999px;
-}
-.dark .thin-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--color-slate-700);
-}
-
-/* Respect reduced-motion preferences for the pulsing "running" indicator and
-   other transitions. */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
 }

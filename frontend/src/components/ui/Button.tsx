@@ -7,8 +7,9 @@ import { Spinner } from './Spinner'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
-  /** Visual density (padding/font-size) — tap height stays >=44px at every
-   * size, see buttonStyles.ts. Defaults to "md". */
+  /** sm/md/lg — sm and md are 44px tall below `md` (touch) and shrink to
+   * their nominal 32/40px from `md` up; lg (48px) is the mobile-primary size
+   * and stays constant. Defaults to "md". */
   size?: ButtonSize
   loading?: boolean
   icon?: ReactNode

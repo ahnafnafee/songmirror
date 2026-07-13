@@ -10,9 +10,12 @@ interface SelectFieldProps extends SelectHTMLAttributes<HTMLSelectElement> {
   help?: ReactNode
   error?: string
   options: Array<{ value: string; label: string }>
+  /** Optional leading decoration inside the field (e.g. a ServiceLogo for a
+   * service picker) — shifts the select's text right to make room. */
+  icon?: ReactNode
 }
 
-export function SelectField({ label, help, error, options, className, id, ...rest }: SelectFieldProps) {
+export function SelectField({ label, help, error, options, icon, className, id, ...rest }: SelectFieldProps) {
   const autoId = useId()
   const fieldId = id ?? autoId
   const helpId = help ? `${fieldId}-help` : undefined
@@ -20,34 +23,51 @@ export function SelectField({ label, help, error, options, className, id, ...res
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={fieldId} className="text-sm font-medium text-slate-700 dark:text-slate-200">
+      <label htmlFor={fieldId} className="text-[12.5px] font-semibold text-text-2">
         {label}
       </label>
-      <select
-        id={fieldId}
-        className={cn(
-          FIELD_INPUT_CLASSES,
-          'bg-white dark:bg-slate-800',
-          error && 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/30',
-          className,
+      <div className="relative">
+        {icon && (
+          <span aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
+            {icon}
+          </span>
         )}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={cn(helpId, errorId) || undefined}
-        {...rest}
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+        <select
+          id={fieldId}
+          className={cn(
+            FIELD_INPUT_CLASSES,
+            'appearance-none bg-field pr-9',
+            icon ? 'pl-9' : undefined,
+            error && 'border-danger focus:border-danger',
+            className,
+          )}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={cn(helpId, errorId) || undefined}
+          {...rest}
+        >
+          {options.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-3"
+        >
+          ▾
+        </span>
+      </div>
       {help && (
-        <p id={helpId} className="text-xs text-slate-500 dark:text-slate-400">
+        <p id={helpId} className="text-xs text-text-3">
           {help}
         </p>
       )}
       {error && (
-        <p id={errorId} className="text-xs text-rose-600 dark:text-rose-400">
+        <p id={errorId} className="flex items-start gap-1.5 text-xs text-danger">
+          <span className="font-mono font-semibold" aria-hidden="true">
+            !
+          </span>
           {error}
         </p>
       )}
