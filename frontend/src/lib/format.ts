@@ -48,6 +48,15 @@ export function formatCountdown(epochSeconds: number, nowMs: number = Date.now()
   return 'less than a minute'
 }
 
+/** Formats a playlist's track count for display, e.g. "118 tracks". `null`/
+ * `undefined` means the service doesn't expose a count cheaply (Apple Music)
+ * — returns `null` so callers omit the segment entirely rather than render
+ * the literal "null". */
+export function formatTrackCount(count: number | null | undefined): string | null {
+  if (count === null || count === undefined) return null
+  return `${count} track${count === 1 ? '' : 's'}`
+}
+
 /** Loosely validates the interval text format the backend accepts
  * (`parse_interval`): digits optionally followed by s/m/h. */
 export function isValidIntervalText(value: string): boolean {

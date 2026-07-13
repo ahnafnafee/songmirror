@@ -1,37 +1,18 @@
 import { Link } from 'react-router-dom'
-import { LuMusic2 } from 'react-icons/lu'
 
 import type { ProviderPlaylistsEntry } from '@/hooks/useProviderPlaylists'
 import { cn } from '@/lib/cn'
 import { serviceLogoId, tagText } from '@/lib/constants'
-import type { Account, ProviderPlaylist } from '@/types'
+import { formatTrackCount } from '@/lib/format'
+import type { Account } from '@/types'
 
 import { Card } from '../ui/Card'
+import { CoverArt } from '../ui/CoverArt'
 import { EmptyState } from '../ui/EmptyState'
 import { LoadingStatus, Skeleton } from '../ui/Skeleton'
 import { ServiceLogo } from '../ui/ServiceLogo'
 import { StatusPill } from '../ui/StatusPill'
 import { BUTTON_BASE_CLASSES, BUTTON_SIZE_CLASSES, BUTTON_VARIANT_CLASSES } from '../ui/buttonStyles'
-
-/** A playlist's cover art as a rounded tile, with a graceful placeholder
- * (music-note glyph on surface-2) when the service didn't return one. */
-function CoverArt({ playlist }: { playlist: ProviderPlaylist }) {
-  if (playlist.image) {
-    return (
-      <img
-        src={playlist.image}
-        alt=""
-        loading="lazy"
-        className="size-9 shrink-0 rounded-chip border border-border object-cover"
-      />
-    )
-  }
-  return (
-    <span className="flex size-9 shrink-0 items-center justify-center rounded-chip border border-border bg-surface-2" aria-hidden="true">
-      <LuMusic2 className="size-4 text-text-3" aria-hidden="true" />
-    </span>
-  )
-}
 
 /** One provider's playlists for the Browse section. Handles all four states
  * explicitly: not connected, loading, errored, and loaded (possibly empty). */
@@ -66,7 +47,7 @@ export function ProviderPlaylistsCard({ account, entry }: { account: Account; en
           description="Connect this service and its playlists appear here, ready for pairing."
           action={
             <Link to="/accounts" className={cn(BUTTON_BASE_CLASSES, BUTTON_SIZE_CLASSES.sm, BUTTON_VARIANT_CLASSES.primary)}>
-              Connect {account.name}
+              Connect
             </Link>
           }
         />
@@ -81,17 +62,17 @@ export function ProviderPlaylistsCard({ account, entry }: { account: Account; en
       ) : entry.error ? (
         <p className="text-sm text-danger">Could not load playlists: {entry.error}</p>
       ) : entry.playlists.length > 0 ? (
-        <ul className="flex flex-col divide-y divide-border">
+        <ul className="thin-scrollbar flex max-h-80 flex-col divide-y divide-border overflow-y-auto">
           {entry.playlists.map((p, i) => (
             <li key={p.id} className="flex items-center gap-3 py-2">
               <span className="shrink-0 font-mono text-[10px] text-text-3" aria-hidden="true">
                 {String(i + 1).padStart(2, '0')}
               </span>
-              <CoverArt playlist={p} />
+              <CoverArt image={p.image} />
               <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-text">{p.name}</span>
-              <span className="shrink-0 font-mono text-[11.5px] text-text-3">
-                {p.count} track{p.count === 1 ? '' : 's'}
-              </span>
+              {formatTrackCount(p.count) && (
+                <span className="shrink-0 font-mono text-[11.5px] text-text-3">{formatTrackCount(p.count)}</span>
+              )}
             </li>
           ))}
         </ul>

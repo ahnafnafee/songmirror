@@ -115,11 +115,13 @@ export interface SyncEvent {
 }
 
 /** GET /api/playlists?provider=<id> — one entry per playlist on that service.
- * `image` is a cover-art URL and may be an empty string (no art available). */
+ * `image` is a cover-art URL and may be an empty string (no art available).
+ * `count` is `null` when the service doesn't expose a track count cheaply
+ * (Apple Music) — never render the literal "null", see formatTrackCount(). */
 export interface ProviderPlaylist {
   id: string
   name: string
-  count: number
+  count: number | null
   image: string
 }
 

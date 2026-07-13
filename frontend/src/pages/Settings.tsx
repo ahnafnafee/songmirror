@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 
 import { api, errorMessage } from '@/api'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
+import { PlaylistFilterField } from '@/components/settings/PlaylistFilterField'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { RadioCard } from '@/components/ui/RadioCard'
@@ -114,7 +115,7 @@ export default function Settings() {
             void save()
           }}
         >
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
             <SettingsGroup label="PROFILE">
               <TextField
                 label="Display name"
@@ -184,13 +185,7 @@ export default function Settings() {
             </SettingsGroup>
 
             <SettingsGroup label="PLAYLIST FILTER">
-              <TextField
-                label="Playlists to sync"
-                help="Comma-separated playlist names. Leave empty to sync every same-named pair."
-                placeholder="e.g. Discover Weekly, Roadtrip"
-                value={form.PLAYLISTS ?? ''}
-                onChange={(e) => setField('PLAYLISTS', e.target.value)}
-              />
+              <PlaylistFilterField value={form.PLAYLISTS ?? ''} onChange={(v) => setField('PLAYLISTS', v)} />
             </SettingsGroup>
 
             <SettingsGroup label="DOWNLOAD MIRROR">

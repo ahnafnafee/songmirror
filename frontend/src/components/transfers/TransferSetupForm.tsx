@@ -9,6 +9,7 @@ import type { Account, StartTransferRequest } from '@/types'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { PlaylistPickerField } from '../ui/PlaylistPickerField'
 import { Segmented } from '../ui/Segmented'
 import { SelectField } from '../ui/SelectField'
 import { ServiceLogo } from '../ui/ServiceLogo'
@@ -72,14 +73,6 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
     sourceProvider && sourcePlaylistId && destProvider && (destMode === 'create' ? destName.trim() : destPlaylistId),
   )
 
-  function playlistOptions(providerId: string) {
-    const entry = entries[providerId]
-    return [
-      { value: '', label: entry?.loading ? 'Loading…' : 'Choose a playlist…' },
-      ...(entry?.playlists.map((p) => ({ value: p.id, label: `${p.name} (${p.count} track${p.count === 1 ? '' : 's'})` })) ?? []),
-    ]
-  }
-
   async function handleStart() {
     setStarting(true)
     setError(null)
@@ -140,18 +133,23 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                     setSourcePlaylistId('')
                   }}
                 />
-                <SelectField
+                <PlaylistPickerField
                   label="Playlist"
-                  options={playlistOptions(sourceProvider)}
+                  playlists={entries[sourceProvider]?.playlists ?? []}
+                  loading={entries[sourceProvider]?.loading}
                   value={sourcePlaylistId}
                   disabled={!sourceProvider}
-                  onChange={(e) => setSourcePlaylistId(e.target.value)}
+                  onChange={setSourcePlaylistId}
                 />
               </div>
               {sourcePlaylist && (
                 <div className="flex items-baseline gap-2.5 border-t border-border px-4 py-2.5">
-                  <span className="font-mono text-[26px] font-bold leading-none tracking-wide text-accent">{sourcePlaylist.count}</span>
-                  <span className="font-mono text-[9px] tracking-[0.1em] text-text-3">TRACKS · SNAPSHOT AT COPY TIME</span>
+                  <span className="font-mono text-[26px] font-bold leading-none tracking-wide text-accent">
+                    {sourcePlaylist.count ?? '—'}
+                  </span>
+                  <span className="font-mono text-[9px] tracking-[0.1em] text-text-3">
+                    {sourcePlaylist.count === null ? 'TRACK COUNT UNAVAILABLE' : 'TRACKS · SNAPSHOT AT COPY TIME'}
+                  </span>
                 </div>
               )}
             </div>
@@ -206,15 +204,14 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                 </div>
 
                 {destMode === 'existing' ? (
-                  <SelectField
+                  <PlaylistPickerField
                     label="Existing playlist"
-                    options={[
-                      { value: '', label: destProvider ? 'Choose a playlist…' : 'Choose a destination service first' },
-                      ...(entries[destProvider]?.playlists.map((p) => ({ value: p.id, label: p.name })) ?? []),
-                    ]}
+                    placeholder={destProvider ? 'Choose a playlist…' : 'Choose a destination service first'}
+                    playlists={entries[destProvider]?.playlists ?? []}
+                    loading={entries[destProvider]?.loading}
                     value={destPlaylistId}
                     disabled={!destProvider}
-                    onChange={(e) => setDestPlaylistId(e.target.value)}
+                    onChange={setDestPlaylistId}
                   />
                 ) : (
                   <TextField
