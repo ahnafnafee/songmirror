@@ -125,7 +125,10 @@ def run_target(target, selected, get_sp_tracks, songs, opts):
 
 def run_pass(opts):
     pass_started = time.monotonic()
-    load_dotenv(override=True)  # pick up re-captured tokens without a restart
+    # The web app points OMNI_ENV_FILE at SettingsStore's managed file so wizard
+    # saves win; the headless CLI falls back to a plain .env. Either way this
+    # picks up re-captured tokens without a restart.
+    load_dotenv(os.getenv("OMNI_ENV_FILE") or ".env", override=True)
     # Writable (modify scopes) only for an actual N-way execute — so dry-runs
     # preview without forcing the one-time re-auth a scope change triggers.
     sp = spotify.client(writable=(opts.sync_mode == "nway" and opts.execute))
