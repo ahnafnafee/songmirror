@@ -13,6 +13,40 @@ you remove disappear, and an optional download mirror keeps offline copies
 organized for your media server. Flip on [N-way mode](#bidirectional-n-way-sync)
 and a change made on *any* provider propagates to the others.
 
+## Web GUI (self-hosted)
+
+Prefer clicking to editing `.env`? A built-in web app (FastAPI + a React SPA)
+lets you connect each service in your browser, choose what syncs, run a pass on
+demand, and watch every match/add/remove stream live.
+
+```bash
+docker compose up -d          # then open http://<host>:8080
+```
+
+Or run it directly:
+
+```bash
+uv sync
+uv run uvicorn spotify_mirror.web:app --host 0.0.0.0 --port 8080
+# frontend hot-reload during development: pnpm -C frontend install && pnpm -C frontend dev
+```
+
+- **Connect accounts in the browser** — one-click OAuth for Spotify and YouTube
+  Music (you supply your own app's client id/secret once), guided token paste for
+  Apple Music, an API key for Jellyfin. No hand-editing `.env`.
+- **Live sync view** — a real-time feed of matches, adds, removals, and holds as a
+  pass runs, with per-service counters.
+- **Run now or on a schedule** — the web app owns the schedule and one-off runs;
+  dry-run by default.
+- **Responsive** — works on a phone.
+
+> **Security:** the UI has no login and stores your service credentials on disk
+> (owner-only under `data/`). Bind it to your LAN only — **do not port-forward it
+> to the internet.** A password gate is the intended next step before any exposure.
+
+The headless CLI below still works for anyone who prefers `.env` + cron / Task
+Scheduler.
+
 ## Features
 
 - 🔁 **True mirroring** — adds *and* removals, not append-only. Spotify is the
@@ -336,8 +370,8 @@ folder by Date Modified to get date-added order (newest last).
 Enable:
 
 ```bash
-uv sync --extra download
-# ffmpeg required: winget install ffmpeg   (or: uv run spotdl --download-ffmpeg)
+uv tool install spotdl   # isolated CLI; or: pipx install spotdl
+# ffmpeg required: winget install ffmpeg   (or: spotdl --download-ffmpeg)
 ```
 
 Set `DOWNLOAD_DIR` in `.env` (e.g. `F:\Torrent\Music`) — runs as part of each
@@ -426,7 +460,7 @@ sync → Jellyfin library scan → next sync sets covers. From Docker, point
 Download-mirror caveats:
 
 - **Private playlists fail** in spotDL's default auth — make mirrored playlists
-  public/unlisted, or do one interactive `uv run spotdl --user-auth ...` run;
+  public/unlisted, or do one interactive `spotdl --user-auth ...` run;
   failures are logged per playlist and skipped.
 - First run is slow (~10–30 s per track, YouTube throttling); later passes only
   touch deltas.

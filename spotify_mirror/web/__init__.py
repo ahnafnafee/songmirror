@@ -8,13 +8,20 @@ engine directly.
 import asyncio
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from ..events import EventBus
 from ..settings import SettingsStore
 from ..sync_service import SyncService
 from .routers import accounts, events, settings as settings_router, sync
+
+# Built React SPA (Vite output), served in production; in dev the vite server
+# proxies /api and /events to this app instead.
+_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
 def create_app(settings=None, bus=None, sync_service=None) -> FastAPI:
@@ -49,6 +56,22 @@ def create_app(settings=None, bus=None, sync_service=None) -> FastAPI:
     @app.get("/health")
     def health():
         return {"ok": True}
+
+    if (_DIST / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_DIST / "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    def spa(full_path: str):
+        # Serve the SPA shell for any non-API path (client-side routing).
+        if full_path.startswith(("api/", "events", "oauth/")):
+            return JSONResponse({"detail": "not found"}, status_code=404)
+        index = _DIST / "index.html"
+        if index.is_file():
+            return FileResponse(str(index))
+        return JSONResponse(
+            {"detail": "frontend not built — run: pnpm -C frontend install && pnpm -C frontend build"},
+            status_code=503,
+        )
 
     return app
 

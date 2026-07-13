@@ -1,0 +1,19 @@
+.git
+.venv
+**/__pycache__/
+*.pyc
+.pytest_cache/
+# frontend build inputs/outputs we never want in the image context
+frontend/node_modules/
+frontend/dist/
+node_modules/
+# runtime state / caches (never bake into the image)
+data/
+downloads/
+.cache
+*.db
+*_cache.json
+download_state.json
+ytmusic_browser.json
+docs/
+quality_reports/

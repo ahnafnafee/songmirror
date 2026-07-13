@@ -5,7 +5,10 @@ services:
     build: .
     container_name: omni-playlist-sync
     env_file: .env
+    ports:
+      - "8080:8080"   # web GUI (LAN-only — do not port-forward to the internet)
     environment:
+      OMNI_ENV_FILE: /data/app.env   # SettingsStore's managed env; wizard saves win
       SPOTIFY_TOKEN_CACHE: /data/spotify_token_cache
       APPLE_CACHE_FILE: /data/apple_resolve_cache.json
       SONG_CACHE_FILE: /data/song_cache.db
