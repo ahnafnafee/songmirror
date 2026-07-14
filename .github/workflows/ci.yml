@@ -36,7 +36,11 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         with:
-          version: 11
+          # Pin the exact local pnpm (matches the lockfile); `standalone` fetches
+          # the pnpm binary directly instead of the npm self-install, which errors
+          # ("Cannot use 'in' operator … 'integrity'") on some 11.x targets.
+          version: 11.5.1
+          standalone: true
 
       - uses: actions/setup-node@v7
         with:
