@@ -43,11 +43,13 @@ _SOURCE_ORDER = ["spotify", "apple", "ytmusic"]
 
 def build_targets(opts, sp=None):
     """One-way mirror targets this run: every opted-in provider except the source
-    (opts.sync_source). `sp` (the Spotify client) is only needed when the source
-    is a non-Spotify provider, so Spotify itself becomes a writable target."""
+    (opts.sync_source). An empty opts.providers means every configured provider
+    (the same 'empty = all' convention as opts.playlists, and what the UI shows).
+    `sp` (the Spotify client) is only needed when the source is a non-Spotify
+    provider, so Spotify itself becomes a writable target."""
     source = getattr(opts, "sync_source", None) or "spotify"
     wanted = {s.strip() for s in (opts.providers or "").split(",") if s.strip()}
-    return [t for src in _SOURCE_ORDER if src != source and src in wanted
+    return [t for src in _SOURCE_ORDER if src != source and (not wanted or src in wanted)
             for t in (_REGISTRY[src](opts, sp),) if t]
 
 
@@ -66,8 +68,11 @@ def is_peer(provider_id):
 
 
 def build_peers(opts, sp):
-    """N-way peer nodes, limited to opts.providers and to what's configured,
-    in ISRC-rich-first order. Needs the Spotify client for the Spotify peer."""
+    """N-way peer nodes, limited to opts.providers and to what's configured, in
+    ISRC-rich-first order. An empty opts.providers means every configured provider
+    (matching the UI, which shows every connected peer when none are explicitly
+    chosen) — so a job saved without touching the Services step still syncs rather
+    than silently finding zero peers. Needs the Spotify client for the Spotify peer."""
     wanted = {s.strip() for s in (opts.providers or "").split(",") if s.strip()}
-    return [peer for src in _SOURCE_ORDER if src in wanted
+    return [peer for src in _SOURCE_ORDER if not wanted or src in wanted
             for peer in (_REGISTRY[src](opts, sp),) if peer]

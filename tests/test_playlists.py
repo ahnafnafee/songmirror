@@ -30,6 +30,20 @@ def test_build_targets_respects_providers(monkeypatch):
     assert targets.build_targets(opts) == ["APPLE"]
 
 
+def test_empty_providers_means_all(monkeypatch):
+    # An empty providers list means "every configured provider" (matching the UI +
+    # the empty-playlists convention), NOT "none" — so a job saved without touching
+    # the Services step still syncs instead of finding zero peers.
+    monkeypatch.setitem(targets._REGISTRY, "spotify", lambda o, sp: "SP")
+    monkeypatch.setitem(targets._REGISTRY, "apple", lambda o, sp: "APPLE")
+    monkeypatch.setitem(targets._REGISTRY, "ytmusic", lambda o, sp: "YT")
+    opts = parse_args([])
+    opts.providers = ""
+    opts.sync_source = "spotify"
+    assert targets.build_targets(opts) == ["APPLE", "YT"]                  # all except the source
+    assert targets.build_peers(opts, sp="client") == ["SP", "APPLE", "YT"]  # every peer
+
+
 def test_browse_normalizes_rows(monkeypatch, tmp_path):
     from omni_sync.services.playlists import PlaylistService
     from omni_sync.services.settings import SettingsStore
