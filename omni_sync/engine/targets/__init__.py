@@ -15,7 +15,7 @@ from .spotify_target import SpotifyTarget
 from . import ytmusic
 
 __all__ = ["AppleMusicTarget", "SpotifyTarget", "MirrorTarget", "TargetAuthError",
-           "mirror_pair", "reconcile", "build_targets", "build_peers", "build_one"]
+           "mirror_pair", "reconcile", "build_targets", "build_peers", "build_one", "is_peer"]
 
 
 def _apple(opts):
@@ -56,6 +56,13 @@ def build_one(provider_id, opts, sp=None):
     the web layer to browse or transfer one specific service."""
     builder = _REGISTRY.get(provider_id)
     return builder(opts, sp) if builder else None
+
+
+def is_peer(provider_id):
+    """Whether a provider is a sync/transfer peer — i.e. has a MirrorTarget that
+    can read and write tracks. False for browse/output-only services like
+    Jellyfin, which the download mirror feeds instead of track-level writes."""
+    return provider_id in _REGISTRY
 
 
 def build_peers(opts, sp):

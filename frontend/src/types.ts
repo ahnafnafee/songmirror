@@ -21,6 +21,10 @@ export interface Account {
   fields: AccountField[]
   state: AccountState
   detail: string | null
+  /** Whether this service can be a sync/transfer peer (reads and writes tracks).
+   * False for browse-only services like Jellyfin, which the download mirror
+   * feeds — the sync and transfer pickers filter on this. */
+  transferable: boolean
 }
 
 /** Shared shape for the plain `{ok: true}` acks (config save, settings save,

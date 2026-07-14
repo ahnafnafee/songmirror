@@ -7,6 +7,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import HTMLResponse
 
+from ...engine.targets import is_peer
 from ...services.accounts import CONNECTORS
 from ...services.accounts.base import DeviceCode
 
@@ -36,6 +37,9 @@ def list_accounts(request: Request):
             "id": cid, "name": c.name, "auth_kind": c.auth_kind,
             "fields": [asdict(f) for f in c.config_fields],
             "state": st.state, "detail": st.detail,
+            # Browse-only services (Jellyfin) can't be a sync/transfer peer — the
+            # UI filters its source/destination pickers on this.
+            "transferable": is_peer(cid),
         })
     return out
 

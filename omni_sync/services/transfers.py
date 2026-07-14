@@ -15,7 +15,7 @@ from ..engine.config import parse_args
 from ..engine.logs import log_add, log_miss
 from ..engine.matching import spotify_track_keys, track_key
 from ..engine.runner import load_cache, save_cache
-from ..engine.targets import build_one
+from ..engine.targets import build_one, is_peer
 from ..engine.targets.base import TargetAuthError, _normalize
 
 
@@ -186,6 +186,11 @@ class TransferService:
         job["status"] = "running"
         self._settings.apply_to_env()
         opts = parse_args([])
+        for side, prov in (("source", spec["source_provider"]), ("destination", spec["dest_provider"])):
+            if not is_peer(prov):  # e.g. Jellyfin — browse-only, can't read/write tracks
+                job["status"], job["error"] = "error", f"'{prov}' can't be a transfer {side} — it's a browse-only service."
+                self._emit("warn", f"transfer: {job['error']}", "transfer")
+                return
         src = self._build(spec["source_provider"], opts)
         dst = self._build(spec["dest_provider"], opts)
         if src is None or dst is None:

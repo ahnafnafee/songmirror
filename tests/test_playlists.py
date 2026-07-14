@@ -14,6 +14,13 @@ def test_build_one_known_dispatches(monkeypatch):
     assert targets.build_one("spotify", parse_args([])) is sentinel
 
 
+def test_is_peer_excludes_browse_only():
+    # A sync/transfer peer has a MirrorTarget; browse-only Jellyfin does not.
+    assert targets.is_peer("spotify") and targets.is_peer("apple") and targets.is_peer("ytmusic")
+    assert not targets.is_peer("jellyfin")
+    assert not targets.is_peer("bogus")
+
+
 def test_build_targets_respects_providers(monkeypatch):
     # Deselecting a provider (via opts.providers) excludes it from one-way targets.
     monkeypatch.setitem(targets._REGISTRY, "apple", lambda o, sp: "APPLE")

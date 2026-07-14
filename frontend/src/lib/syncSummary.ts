@@ -1,11 +1,5 @@
 import type { Account, SyncJob } from '@/types'
 
-// The N-way sync peers — mirrors the backend's own DEFAULT_PROVIDERS
-// (engine/config.py). Jellyfin is a real connected account but isn't a sync
-// peer (it only ever receives pushed cover art), so it never appears as a
-// Services/Providers toggle or a Source-of-truth choice.
-const SYNC_PEER_IDS = ['spotify', 'apple', 'ytmusic']
-
 export function parseCsv(value: string): string[] {
   return value
     .split(',')
@@ -17,9 +11,13 @@ export function joinCsv(values: string[]): string {
   return values.join(',')
 }
 
-/** The N-way sync peers among `accounts`, in their original order. */
+/** The sync/transfer peers among `accounts`, in their original order. Keyed off
+ * the backend's `transferable` flag (its targets registry is the single source
+ * of truth), so browse-only services like Jellyfin — a connected account that
+ * only receives pushed cover art — never appear as a Services/Providers toggle,
+ * a Source-of-truth choice, or a transfer endpoint. */
 export function syncPeersOf(accounts: Account[]): Account[] {
-  return accounts.filter((a) => SYNC_PEER_IDS.includes(a.id))
+  return accounts.filter((a) => a.transferable)
 }
 
 /** Whichever peer is locked as the source in one-way mode — `null` in

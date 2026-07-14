@@ -46,7 +46,13 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const destProviderOptions = useMemo(() => accounts.filter((a) => a.id !== sourceProvider), [accounts, sourceProvider])
+  // Only sync/transfer peers can be an endpoint — browse-only services like
+  // Jellyfin (a local mirror the download step feeds) are filtered out.
+  const transferable = useMemo(() => accounts.filter((a) => a.transferable), [accounts])
+  const destProviderOptions = useMemo(
+    () => transferable.filter((a) => a.id !== sourceProvider),
+    [transferable, sourceProvider],
+  )
 
   // A source change invalidates a same-provider destination selection —
   // clear it rather than let a stale, now-hidden option linger.
@@ -103,9 +109,10 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
         </p>
       </div>
 
-      {accounts.length < 2 ? (
+      {transferable.length < 2 ? (
         <p className="text-sm text-text-3">
-          Connect at least 2 services on the Accounts page to copy a playlist between them.
+          Connect at least 2 transferable services on the Accounts page to copy a playlist between
+          them. Browse-only services like Jellyfin can't be a transfer endpoint.
         </p>
       ) : (
         <>
@@ -126,7 +133,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                 <SelectField
                   label="Service"
                   icon={serviceIcon(sourceProvider)}
-                  options={[{ value: '', label: 'Choose a service…' }, ...accounts.map((a) => ({ value: a.id, label: a.name }))]}
+                  options={[{ value: '', label: 'Choose a service…' }, ...transferable.map((a) => ({ value: a.id, label: a.name }))]}
                   value={sourceProvider}
                   onChange={(e) => {
                     setSourceProvider(e.target.value)
