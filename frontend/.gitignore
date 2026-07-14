@@ -15,6 +15,7 @@ dist-ssr
 # e2e test artifacts (debugging aid only; CI doesn't write these - see
 # TAKE_SCREENSHOTS in e2e/verify.cjs)
 e2e/screenshots/
+e2e/*.txt
 
 # Editor directories and files
 .vscode/*

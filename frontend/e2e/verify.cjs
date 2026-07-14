@@ -1646,15 +1646,36 @@ async function main() {
       console.log(`${noButtonYet ? 'ok        ' : 'FAIL      '} no "jump to newest" button while at the bottom`)
       if (!noButtonYet) results.push({ label: 'live feed no button at bottom', overflow: true })
 
-      // Scroll away to read older lines.
+      // Scroll away to read older lines - all the way to the very top of a
+      // 38-row list in a ~320-448px container, a large/unambiguous jump
+      // rather than a specific offset, so "away from the bottom" holds
+      // regardless of the exact row height a given runner's font rendering
+      // produces (that's what makes this robust across OSes, not the exact
+      // scrollTop value, which is runner-dependent and must never be
+      // hard-coded/asserted on directly).
       await feed.evaluate((el) => {
         el.scrollTop = 0
       })
-      await page.waitForTimeout(200)
+      // Poll for the actual UI effect (the button appearing) instead of a
+      // fixed sleep + one-shot isVisible(): `isAtBottom` only flips once the
+      // 'scroll' event has been processed, an async gap with no fixed
+      // duration - and if a burst of new events lands in that same window,
+      // it's exactly the scenario that must NOT snap the scroll back (see
+      // useStickToBottom.ts's growth effect for how that race is avoided).
+      const buttonAfterScrollUp = await jumpButton
+        .waitFor({ state: 'visible', timeout: 5000 })
+        .then(() => true)
+        .catch(() => false)
       const scrolledUp = await feedScroll()
-      const buttonAfterScrollUp = await jumpButton.isVisible().catch(() => false)
-      console.log(`${buttonAfterScrollUp ? 'ok        ' : 'FAIL      '} scrolling up reveals the "jump to newest" button (scrollTop=${scrolledUp.top})`)
+      console.log(`${buttonAfterScrollUp ? 'ok        ' : 'FAIL      '} scrolling up reveals the "jump to newest" button (scrollTop=${scrolledUp.top}, gap=${scrolledUp.atBottomGap})`)
       if (!buttonAfterScrollUp) results.push({ label: 'live feed button on scroll up', overflow: true })
+      // Decisively away from the bottom (hundreds of px), not merely past
+      // the 32px stick threshold - guards against a runner-specific row
+      // height accidentally landing the scroll position just past the
+      // threshold rather than clearly away from it.
+      const decisivelyAway = scrolledUp.atBottomGap > 200
+      console.log(`${decisivelyAway ? 'ok        ' : 'FAIL      '} the scrolled-away position is decisively clear of the bottom, not just past the threshold (gap=${scrolledUp.atBottomGap})`)
+      if (!decisivelyAway) results.push({ label: 'live feed scroll decisively away', overflow: true })
 
       await shot(page, 'livefeed-scrolled-up-with-button')
 
@@ -1671,16 +1692,22 @@ async function main() {
       console.log(`${newCountOk ? 'ok        ' : 'FAIL      '} the button shows a "N new" count for events missed while scrolled up (text="${buttonCountText.trim()}")`)
       if (!newCountOk) results.push({ label: 'live feed button new count', overflow: true })
 
-      // (c) Clicking the button returns to bottom and hides itself.
+      // (c) Clicking the button returns to bottom and hides itself. Waiting
+      // for the button to actually hide (rather than a fixed sleep) is the
+      // real sync point - the scroll itself is instant (see scrollToBottom's
+      // 'auto' behavior), but the state update that hides the button still
+      // goes through a render.
       await jumpButton.click()
-      await page.waitForTimeout(200)
+      const buttonHidAfterClick = await jumpButton
+        .waitFor({ state: 'hidden', timeout: 5000 })
+        .then(() => true)
+        .catch(() => false)
+      console.log(`${buttonHidAfterClick ? 'ok        ' : 'FAIL      '} the button hides itself after being clicked`)
+      if (!buttonHidAfterClick) results.push({ label: 'live feed button hides after click', overflow: true })
       const afterClick = await feedScroll()
       const backAtBottom = afterClick.atBottomGap <= 32
       console.log(`${backAtBottom ? 'ok        ' : 'FAIL      '} clicking the button scrolls back to the newest line (gap=${afterClick.atBottomGap})`)
       if (!backAtBottom) results.push({ label: 'live feed button returns to bottom', overflow: true })
-      const buttonGoneAfterClick = (await jumpButton.count()) === 0
-      console.log(`${buttonGoneAfterClick ? 'ok        ' : 'FAIL      '} the button hides itself after returning to the bottom`)
-      if (!buttonGoneAfterClick) results.push({ label: 'live feed button hides after click', overflow: true })
 
       await checkOverflow(page, 'Dashboard live feed with jump-to-newest button @ 1280', results)
       await context.close()
