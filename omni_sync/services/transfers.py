@@ -19,13 +19,18 @@ from ..engine.targets import build_one
 from ..engine.targets.base import TargetAuthError, _normalize
 
 
-def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_progress=None):
+def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_progress=None, should_continue=None):
     """Copy `src_pl` (on `source`) into `dest_pl` (on `dest`). Returns
-    {added, deferred, not_found: [{name, artist, key}]}. `not_found` are tracks
-    that resolved to nothing on the destination — the conflict queue.
+    {added, deferred, not_found: [{name, artist, key}], completed}. `not_found`
+    are tracks that resolved to nothing on the destination — the conflict queue.
 
     `on_progress(processed, total, added)` (optional) fires after each source
     track is examined, so a caller can surface live progress against the total.
+
+    `should_continue()` (optional) returns "run" | "pause" | "stop"; it's checked
+    before each track and, on anything but "run", ends the copy early with
+    `completed=False`. Adds gathered before the break are still written, so a
+    later re-run skips them (its dedup rebuilds from the destination) and resumes.
     """
     src = [_normalize(t, source.source) for t in source.playlist_tracks(src_pl)]
     dst = [_normalize(t, dest.source) for t in dest.playlist_tracks(dest_pl)]
@@ -35,7 +40,11 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
     if on_progress:
         on_progress(0, total, 0)  # publish the total once source is read, before matching begins
     additions, not_found = [], []
+    completed = True
     for i, norm in enumerate(sorted(src, key=lambda n: n["added_at"]), 1):
+        if should_continue and should_continue() != "run":
+            completed = False  # paused or stopped — leave the rest for a re-run
+            break
         keys = spotify_track_keys(norm)
         if not keys & seen:  # skip tracks already on the destination
             try:
@@ -59,7 +68,7 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
     additions = additions[:max_adds]
     if execute and additions:
         dest.add(dest_pl, additions)
-    return {"added": len(additions), "deferred": deferred, "not_found": not_found}
+    return {"added": len(additions), "deferred": deferred, "not_found": not_found, "completed": completed}
 
 
 def _friendly_error(e):
@@ -99,6 +108,8 @@ class TransferService:
                      "playlist_name": spec.get("dest_name", "")},
             "added": 0, "deferred": 0, "conflicts": [], "error": None,
             "total": 0, "processed": 0,  # live progress: source tracks examined / total
+            "_spec": spec,      # kept so resume can re-run the same copy
+            "_control": "run",  # "run" | "pause" | "stop" — polled by the running loop
         }
         self._jobs[job["id"]] = job
         asyncio.create_task(self._run(job, spec))
@@ -106,6 +117,49 @@ class TransferService:
 
     def get(self, job_id):
         return self._jobs.get(job_id)
+
+    @staticmethod
+    def public(job):
+        """A job dict without its internal (_-prefixed) fields — the API shape."""
+        return {k: v for k, v in job.items() if not k.startswith("_")}
+
+    def list_active(self):
+        """Active jobs (queued/running/paused) for the dashboard. Terminal jobs
+        (done/stopped/error) are dropped so the in-memory list can't grow without
+        bound in any view — the Transfers page still fetches its own job by id."""
+        active = {"queued", "running", "paused"}
+        return [self.public(j) for j in self._jobs.values() if j["status"] in active]
+
+    def pause(self, job_id):
+        """Ask a running transfer to stop at the next track and hold as `paused`.
+        The worker thread returns, freeing the shared engine for scheduled syncs."""
+        job = self._jobs.get(job_id)
+        if not job or job["status"] != "running":
+            return False
+        job["_control"] = "pause"
+        return True
+
+    def resume(self, job_id):
+        """Re-run a paused transfer from its stored spec; dedup skips what's
+        already on the destination, so it continues where it left off."""
+        job = self._jobs.get(job_id)
+        if not job or job["status"] != "paused":
+            return False
+        job["_control"] = "run"
+        job["status"] = "queued"
+        asyncio.create_task(self._run(job, job["_spec"]))
+        return True
+
+    def stop(self, job_id):
+        """Abort a transfer for good. Adds already written stay on the destination
+        (stop means 'add no more', not 'undo')."""
+        job = self._jobs.get(job_id)
+        if not job or job["status"] in ("done", "error", "stopped"):
+            return False
+        job["_control"] = "stop"
+        if job["status"] in ("queued", "paused"):
+            job["status"] = "stopped"  # no running worker will react — mark it now
+        return True
 
     def resolve(self, job_id, key, dest_id):
         """Accept a manual match for a conflict — write it to the destination's
@@ -125,6 +179,10 @@ class TransferService:
         return True
 
     async def _run(self, job, spec):
+        if job.get("_control") == "stop":  # stopped while still queued — never start
+            job["status"] = "stopped"
+            return
+        job["_control"] = "run"
         job["status"] = "running"
         self._settings.apply_to_env()
         opts = parse_args([])
@@ -135,6 +193,9 @@ class TransferService:
             self._emit("warn", f"transfer: {job['error']}", "transfer")
             return
         job["_dest_cache_file"] = dst.cache_file
+        # Adds already on the destination from an earlier (paused) run — this
+        # run's transfer() skips them via dedup, so keep the counter cumulative.
+        base_added = job["added"]
 
         def work():
             src_pl = self._find(src, spec["source_playlist_id"])
@@ -147,20 +208,25 @@ class TransferService:
             self._emit("section", f"transfer: {job['source']['playlist_name']} -> {dst.name}", "transfer")
 
             def on_progress(processed, total, added):
-                job["processed"], job["total"], job["added"] = processed, total, added
+                job["processed"], job["total"], job["added"] = processed, total, base_added + added
 
-            res = transfer(src, dst, src_pl, dest_pl, cache, execute=True,
-                           max_adds=opts.max_adds, on_progress=on_progress)
+            res = transfer(src, dst, src_pl, dest_pl, cache, execute=True, max_adds=opts.max_adds,
+                           on_progress=on_progress, should_continue=lambda: job.get("_control", "run"))
             save_cache(dst.cache_file, cache)
             return res
 
         try:
             res = await self._sync.run_exclusive(work)
-            job["added"], job["deferred"] = res["added"], res["deferred"]
+            job["added"] = base_added + res["added"]
+            job["deferred"] = res["deferred"]
             job["conflicts"] = [{**c, "resolved": False} for c in res["not_found"]]
-            job["status"] = "done"
-            self._emit("summary", f"transfer done: +{res['added']} ({len(res['not_found'])} unmatched)",
-                       "transfer", {"job_id": job["id"]})
+            if res["completed"]:
+                job["status"] = "done"
+                self._emit("summary", f"transfer done: +{job['added']} ({len(res['not_found'])} unmatched)",
+                           "transfer", {"job_id": job["id"]})
+            else:
+                job["status"] = "stopped" if job.get("_control") == "stop" else "paused"
+                self._emit("note", f"transfer {job['status']}: +{job['added']} so far", "transfer")
         except Exception as e:
             job["status"], job["error"] = "error", _friendly_error(e)
             self._emit("warn", f"transfer failed: {job['error']}", "transfer")

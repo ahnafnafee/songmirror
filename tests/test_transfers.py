@@ -62,6 +62,55 @@ def test_transfer_reports_progress():
     assert calls[-1] == (3, 3, 1)                           # every track scanned, 1 added
 
 
+def test_transfer_stops_early_on_signal():
+    added, progress = [], []
+
+    def gate():
+        return "stop" if len(progress) >= 2 else "run"  # break before the 3rd track
+
+    res = transfer(_Src(), _dst_factory(added), {"id": "s"}, {"id": "d"},
+                   {"search": {}, "isrc": {}, "dirty": False}, execute=True, max_adds=100,
+                   on_progress=lambda p, t, a: progress.append(p) if p else None,
+                   should_continue=gate)
+    assert res["completed"] is False                       # bailed before finishing
+    assert res["added"] == 1 and added == ["dest-Match"]   # adds gathered so far still written
+
+
+def test_transfer_service_control_transitions(tmp_path):
+    svc = TransferService(SettingsStore(dir=tmp_path), EventBus(), None)
+    svc._jobs = {
+        "run1": {"id": "run1", "status": "running", "_control": "run", "_spec": {}},
+        "pause1": {"id": "pause1", "status": "paused", "added": 5, "_control": "pause", "_spec": {}},
+        "done1": {"id": "done1", "status": "done", "_control": "run"},
+    }
+    assert {j["id"] for j in svc.list_active()} == {"run1", "pause1"}   # terminal jobs dropped
+    assert all("_spec" not in j for j in svc.list_active())            # internals stripped
+    assert svc.pause("run1") and svc._jobs["run1"]["_control"] == "pause"
+    assert svc.pause("done1") is False                                # only a running job pauses
+    assert svc.stop("pause1") and svc._jobs["pause1"]["status"] == "stopped"  # no worker -> mark now
+    assert svc.stop("done1") is False                                 # terminal can't be stopped
+
+
+def test_transfer_service_resume_reruns(monkeypatch, tmp_path):
+    async def scenario():
+        svc = TransferService(SettingsStore(dir=tmp_path), EventBus(), None)
+        ran = []
+
+        async def fake_run(job, spec):
+            ran.append((job["id"], spec))
+
+        monkeypatch.setattr(svc, "_run", fake_run)
+        svc._jobs["p"] = {"id": "p", "status": "paused", "added": 5,
+                          "_control": "pause", "_spec": {"k": 1}}
+        assert svc.resume("p") is True
+        assert svc._jobs["p"]["status"] == "queued"
+        await asyncio.sleep(0)                             # let the scheduled task run
+        assert ran == [("p", {"k": 1})]
+        assert svc.resume("p") is False                    # already queued, not paused
+
+    asyncio.run(scenario())
+
+
 def test_run_exclusive_queues_behind_sync(monkeypatch, tmp_path):
     order = []
 
