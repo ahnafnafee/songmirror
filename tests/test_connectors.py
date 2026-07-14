@@ -57,3 +57,27 @@ def test_ytmusic_begin_device_surfaces_code(tmp_path, monkeypatch):
     assert isinstance(dc, DeviceCode)
     assert dc.user_code == "ABCD-1234"
     assert dc.device_code == "dev123"
+
+
+def test_ytmusic_enable_disable_browser_mode(tmp_path, monkeypatch):
+    # Pasting music.youtube.com headers writes a browser-auth file, validates the
+    # cookies with one call, and flips on the no-quota (youtubei) mode; disable reverts.
+    import ytmusicapi
+
+    c = _conn("ytmusic", tmp_path)
+    monkeypatch.setenv("YTMUSIC_BROWSER_AUTH", str(tmp_path / "browser.json"))
+
+    def fake_setup(filepath=None, headers_raw=None):
+        with open(filepath, "w") as f:
+            f.write("{}")
+
+    monkeypatch.setattr(ytmusicapi, "setup", fake_setup)
+    monkeypatch.setattr("ytmusicapi.YTMusic",
+                        lambda *a, **k: type("Y", (), {"get_library_playlists": lambda self, limit=None: []})())
+
+    assert c.enable_browser("Cookie: x").state == "connected"
+    assert c._store.get("YTMUSIC_PREFER_BROWSER") == "1"
+    assert c.status().detail.startswith("no-quota")  # browser mode surfaces as connected
+    assert c.enable_browser("").state == "error"  # empty paste rejected
+    c.disable_browser()
+    assert c._store.get("YTMUSIC_PREFER_BROWSER") == "0"

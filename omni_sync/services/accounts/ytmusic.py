@@ -34,12 +34,50 @@ class YTMusicConnector(Connector):
             client_secret=self._store.get("YTMUSIC_OAUTH_CLIENT_SECRET"),
         )
 
+    def _browser_path(self):
+        return (os.getenv("YTMUSIC_BROWSER_AUTH") or self._store.get("YTMUSIC_BROWSER_AUTH")
+                or "data/ytmusic_browser.json")
+
+    def _browser_active(self):
+        pref = str(self._store.get("YTMUSIC_PREFER_BROWSER") or os.getenv("YTMUSIC_PREFER_BROWSER") or "")
+        return pref.lower() in ("1", "on", "true", "yes") and os.path.exists(self._browser_path())
+
     def status(self) -> ConnStatus:
+        if self._browser_active():
+            return ConnStatus("connected", "no-quota (browser cookies) mode")
         if not self._configured("YTMUSIC_OAUTH_CLIENT_ID", "YTMUSIC_OAUTH_CLIENT_SECRET"):
             return ConnStatus("unconfigured")
         if os.path.exists(self._auth_file()):
             return ConnStatus("connected", "token present")
         return ConnStatus("unconfigured", "not authorized yet")
+
+    def enable_browser(self, headers_raw: str) -> ConnStatus:
+        """Turn on the no-quota (youtubei) backend from pasted music.youtube.com
+        request headers: parse them into a ytmusicapi browser-auth file, validate
+        the cookies with one authenticated call, then flip YTMUSIC_PREFER_BROWSER."""
+        import ytmusicapi
+        from ytmusicapi import YTMusic
+
+        if not (headers_raw or "").strip():
+            return ConnStatus("error", "paste the request headers from music.youtube.com first")
+        path = self._browser_path()
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        try:
+            ytmusicapi.setup(filepath=path, headers_raw=headers_raw)
+        except Exception as e:
+            return ConnStatus("error", f"couldn't parse those headers ({e!r})")
+        try:
+            YTMusic(path).get_library_playlists(limit=1)  # cookies valid?
+        except Exception as e:
+            return ConnStatus("error", f"YouTube Music rejected the cookies ({e!r})")
+        self._store.save({"YTMUSIC_BROWSER_AUTH": path, "YTMUSIC_PREFER_BROWSER": "1"})
+        return ConnStatus("connected", "no-quota (browser cookies) mode")
+
+    def disable_browser(self) -> ConnStatus:
+        """Revert to the durable OAuth Data API; the cookie file is left in place
+        so re-enabling doesn't need another paste."""
+        self._store.save({"YTMUSIC_PREFER_BROWSER": "0"})
+        return self.status()
 
     def begin_device(self) -> DeviceCode:
         code = self._creds().get_code()

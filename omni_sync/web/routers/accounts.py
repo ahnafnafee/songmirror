@@ -97,3 +97,19 @@ def disconnect(cid: str, request: Request):
     c = _conn(request, cid)
     request.app.state.settings.save({f.key: "" for f in c.config_fields})  # blanks -> unconfigured
     return {"ok": True}
+
+
+@router.post("/api/accounts/ytmusic/browser")
+async def ytmusic_enable_browser(request: Request, body: dict = Body(...)):
+    """Turn on YouTube Music's no-quota (browser cookies) backend from pasted
+    music.youtube.com request headers — the fix for large backfills hitting the
+    Data API quota."""
+    st = _conn(request, "ytmusic").enable_browser(body.get("headers", ""))
+    return {"state": st.state, "detail": st.detail}
+
+
+@router.delete("/api/accounts/ytmusic/browser")
+def ytmusic_disable_browser(request: Request):
+    """Revert YouTube Music to the durable OAuth Data API."""
+    st = _conn(request, "ytmusic").disable_browser()
+    return {"state": st.state, "detail": st.detail}
