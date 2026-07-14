@@ -186,6 +186,28 @@ def test_syncs_crud(tmp_path):
         assert jid not in [j["id"] for j in client.get("/api/syncs").json()]
 
 
+def test_download_dir_prefers_container_override(tmp_path, monkeypatch):
+    # In Docker the download path is a container bind-mount (/music). An
+    # OMNI_DOWNLOAD_DIR override must win over a UI-saved DOWNLOAD_DIR — inside
+    # the Linux container that value can be a host path (a Windows F:\ path) that
+    # spotDL would otherwise write to the ephemeral container filesystem, never
+    # reaching the mounted volume. Non-Docker: unset, so the UI value is used.
+    from omni_sync.services.sync_service import SyncService
+    from omni_sync.services.syncs import SyncJob
+
+    store = SettingsStore(dir=tmp_path)
+    store.save({"DOWNLOAD_DIR": "F:\\Torrent\\Music"})
+    svc = SyncService(store, None, syncs=SyncStore(dir=tmp_path))
+    job = SyncJob(name="T", download=True)
+
+    monkeypatch.setenv("OMNI_DOWNLOAD_DIR", "/music")
+    assert svc._opts_for(job, execute=True).download_dir == "/music"
+    monkeypatch.delenv("OMNI_DOWNLOAD_DIR")
+    assert svc._opts_for(job, execute=True).download_dir == "F:\\Torrent\\Music"
+    job.download = False  # opted out -> no download dir regardless of config
+    assert svc._opts_for(job, execute=True).download_dir == ""
+
+
 def test_transfers_start_and_status(tmp_path, monkeypatch):
     from omni_sync.services.transfers import TransferService
 

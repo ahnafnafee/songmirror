@@ -13,6 +13,7 @@ through the EventBus.
 """
 
 import asyncio
+import os
 import time
 
 from ..engine import logs
@@ -53,7 +54,13 @@ class SyncService:
         opts.playlists = job.playlists
         opts.max_adds = job.max_adds
         opts.max_removals = job.max_removals
-        opts.download_dir = (self._settings.get("DOWNLOAD_DIR", "") or "") if job.download else ""
+        # OMNI_DOWNLOAD_DIR (a container-internal bind-mount path set by
+        # docker-compose) wins over the UI-saved DOWNLOAD_DIR: inside the
+        # container that UI value can be a host path (e.g. a Windows F:\ path)
+        # that doesn't exist on the container's filesystem, so spotDL would write
+        # into the ephemeral container instead of the mounted volume. Unset
+        # outside Docker, so the UI value is used there.
+        opts.download_dir = (os.getenv("OMNI_DOWNLOAD_DIR") or self._settings.get("DOWNLOAD_DIR", "") or "") if job.download else ""
         return opts
 
     async def run_job(self, job_id, execute=False):

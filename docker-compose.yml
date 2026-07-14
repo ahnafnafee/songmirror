@@ -27,10 +27,13 @@ services:
       YTMUSIC_CACHE_FILE: /data/ytmusic_resolve_cache.json
       SPOTIFY_CACHE_FILE: /data/spotify_resolve_cache.json   # N-way Spotify search cache
       SPOTIFY_OAUTH_OPEN_BROWSER: "0"
-      # Container path; the host music dir (DOWNLOAD_DIR in .env, e.g.
-      # F:\Torrent\Music) is bind-mounted to it below. This overrides the
-      # Windows DOWNLOAD_DIR that .env sets for direct `uv run`.
-      DOWNLOAD_DIR: /music
+      # Container-internal download path (the host music dir is bind-mounted to
+      # it below). OMNI_DOWNLOAD_DIR is authoritative over any UI-saved
+      # DOWNLOAD_DIR — that value can be a host path (e.g. F:\Torrent\Music) the
+      # container's Linux filesystem doesn't have, which would send spotDL into
+      # the ephemeral container instead of the mount. Set the HOST location via
+      # DOWNLOAD_DIR in .env (it drives the mount below), not the in-app field.
+      OMNI_DOWNLOAD_DIR: /music
     volumes:
       - ./data:/data
       - "${DOWNLOAD_DIR:-./downloads}:/music"
