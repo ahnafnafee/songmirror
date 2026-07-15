@@ -64,7 +64,8 @@ def test_ytmusic_browser_backend_maps_shapes_and_is_selected(monkeypatch, tmp_pa
             ]}
 
         def get_library_playlists(self, limit=None):
-            return [{"playlistId": "p1", "title": "Mix", "count": "12 songs"}]
+            return [{"playlistId": "p1", "title": "Mix", "count": "12 songs",
+                     "thumbnails": [{"url": "http://yt/cover.jpg"}]}]
 
     monkeypatch.setattr("ytmusicapi.YTMusic", FakeYTM)
     auth = tmp_path / "browser.json"
@@ -79,7 +80,9 @@ def test_ytmusic_browser_backend_maps_shapes_and_is_selected(monkeypatch, tmp_pa
     assert len(tracks) == 1
     t = tracks[0]
     assert (t["videoId"], t["setVideoId"], t["artist"], t["duration_ms"]) == ("v1", "s1", "A, B", 200000)
-    assert target.list_playlists() == {"mix": {"playlistId": "p1", "title": "Mix", "count": "12 songs"}}
+    assert target.list_playlists() == {
+        "mix": {"playlistId": "p1", "title": "Mix", "count": "12 songs",
+                "thumbnails": [{"url": "http://yt/cover.jpg"}]}}
 
 
 def test_apple_playlist_count_uses_meta_total_and_caches():
