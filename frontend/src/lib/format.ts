@@ -25,20 +25,25 @@ export function formatInterval(seconds: number): string {
 }
 
 /** Formats a Unix-epoch-seconds timestamp (as sent on /events) as a local
- * HH:MM:SS clock reading for the live feed. */
+ * 12-hour clock reading for the live feed, e.g. "12:44:35 AM". The 2-digit
+ * hour keeps the mono column a constant width. */
 export function formatClock(ts: number): string {
   return new Date(ts * 1000).toLocaleTimeString(undefined, {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false,
+    hour12: true,
   })
 }
 
 /** Formats a Unix-epoch-seconds timestamp as a local wall-clock reading for
  * the dashboard's "next check" card, e.g. "8:00 PM". */
 export function formatClockTime(epochSeconds: number): string {
-  return new Date(epochSeconds * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return new Date(epochSeconds * 1000).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
 }
 
 /** Formats the time remaining until a future Unix-epoch-seconds timestamp as
