@@ -7,7 +7,7 @@ export const RemotionRoot: React.FC = () => {
   return (
     <>
       <Composition
-        id="OmniSyncPromo"
+        id="SongMirrorPromo"
         component={Promo}
         durationInFrames={TOTAL_FRAMES}
         fps={FPS}
@@ -17,7 +17,7 @@ export const RemotionRoot: React.FC = () => {
       />
       {/* Same film with a static background — the GIF-optimized source. */}
       <Composition
-        id="OmniSyncPromoLite"
+        id="SongMirrorPromoLite"
         component={Promo}
         durationInFrames={TOTAL_FRAMES}
         fps={FPS}

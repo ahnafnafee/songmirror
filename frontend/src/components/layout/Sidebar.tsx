@@ -14,7 +14,7 @@ import {
 } from 'react-icons/lu'
 import type { IconType } from 'react-icons'
 
-import omniMark from '@/assets/brand/omni-mark.png'
+import songmirrorMark from '@/assets/brand/songmirror-mark.png'
 import { useSidebarCollapsed } from '@/hooks/useSidebarCollapsed'
 import { cn } from '@/lib/cn'
 
@@ -87,7 +87,7 @@ export function Sidebar() {
           ) : (
             <>
               <Logo />
-              <span className="truncate text-[15px] font-extrabold tracking-tight text-text">Omni Sync</span>
+              <span className="truncate text-[15px] font-extrabold tracking-tight text-text">SongMirror</span>
               <button
                 type="button"
                 onClick={toggleCollapsed}
@@ -133,7 +133,7 @@ export function Sidebar() {
       {/* Mobile: slim top bar + dropdown drawer */}
       <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-2.5 border-b border-border bg-surface/90 px-4 backdrop-blur lg:hidden">
         <Logo />
-        <span className="truncate text-[14.5px] font-extrabold tracking-tight text-text">Omni Sync</span>
+        <span className="truncate text-[14.5px] font-extrabold tracking-tight text-text">SongMirror</span>
         <button
           type="button"
           className="ml-auto inline-flex size-11 shrink-0 items-center justify-center rounded-control border border-border bg-surface-2 text-text"
@@ -178,5 +178,5 @@ export function Sidebar() {
 function Logo() {
   // Orange mark on a transparent background — theme-agnostic, no light/dark
   // swap needed.
-  return <img src={omniMark} alt="" className="size-7 shrink-0" />
+  return <img src={songmirrorMark} alt="" className="size-7 shrink-0" />
 }

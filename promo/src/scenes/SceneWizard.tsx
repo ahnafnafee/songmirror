@@ -17,7 +17,7 @@ export const SceneWizard: React.FC<{ dur: number }> = ({ dur }) => (
     sub="Pick a single source of truth, or let every connected service mirror every other. N-way sync, on your schedule."
     src="shots/wizard.png"
     imgAspect={0.70313}
-    label="omni-sync · new sync"
+    label="songmirror · new sync"
     panFrom={0.32}
     panTo={0.5}
   />

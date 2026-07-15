@@ -76,7 +76,7 @@ const CONNECT_GUIDES: Record<string, ConnectGuideContent> = {
     steps: [
       <>Open the Spotify Developer Dashboard and log in.</>,
       <>
-        Click <strong>Create app</strong>; name it anything (e.g. “Omni Sync”); website and description don’t matter.
+        Click <strong>Create app</strong>; name it anything (e.g. “SongMirror”); website and description don’t matter.
       </>,
       <>
         Open the app → <strong>Settings</strong>, copy the <strong>Client ID</strong>, then click{' '}
@@ -148,7 +148,7 @@ const CONNECT_GUIDES: Record<string, ConnectGuideContent> = {
         In Jellyfin, open <strong>Dashboard → API Keys</strong> (under Advanced).
       </>,
       <>
-        Click <strong>+</strong>, name the key “Omni Sync”, and copy it.
+        Click <strong>+</strong>, name the key “SongMirror”, and copy it.
       </>,
       <>
         Paste the URL and key below; <strong>User ID</strong> is optional.

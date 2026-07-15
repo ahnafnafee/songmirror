@@ -68,8 +68,8 @@ export const SceneOutro: React.FC<{ dur: number }> = ({ dur }) => {
               lineHeight: 1,
             }}
           >
-            <span style={{ color: COLORS.text }}>Omni </span>
-            <span style={{ color: COLORS.orange }}>Sync</span>
+            <span style={{ color: COLORS.text }}>Song</span>
+            <span style={{ color: COLORS.orange }}>Mirror</span>
           </div>
         </div>
 
@@ -87,7 +87,7 @@ export const SceneOutro: React.FC<{ dur: number }> = ({ dur }) => {
           }}
         >
           <span style={{ color: COLORS.textMuted }}>github.com/</span>
-          <span style={{ color: COLORS.orange }}>ahnafnafee/omni-playlist-sync</span>
+          <span style={{ color: COLORS.orange }}>ahnafnafee/songmirror</span>
         </div>
 
         <div

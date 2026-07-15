@@ -72,8 +72,8 @@ export const SceneLogo: React.FC<{ dur: number }> = ({ dur }) => {
             textShadow: "0 6px 44px rgba(242,96,26,0.35)",
           }}
         >
-          <span style={{ color: COLORS.text }}>Omni </span>
-          <span style={{ color: COLORS.orange }}>Sync</span>
+          <span style={{ color: COLORS.text }}>Song</span>
+          <span style={{ color: COLORS.orange }}>Mirror</span>
         </div>
 
         <div style={{ opacity: eyeP }}>

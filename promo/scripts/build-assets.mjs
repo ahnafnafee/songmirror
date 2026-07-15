@@ -36,27 +36,27 @@ mkdirSync(resolve(root, "out"), { recursive: true });
 mkdirSync(assets, { recursive: true });
 
 // 1. Full-quality MP4 deliverable.
-run(`npx remotion render OmniSyncPromo out/omni-sync-demo.mp4 --codec=h264 --crf=18`);
+run(`npx remotion render SongMirrorPromo out/songmirror-demo.mp4 --codec=h264 --crf=18`);
 copyFileSync(
-  resolve(root, "out/omni-sync-demo.mp4"),
-  resolve(assets, "omni-sync-demo.mp4"),
+  resolve(root, "out/songmirror-demo.mp4"),
+  resolve(assets, "songmirror-demo.mp4"),
 );
 
 // 2. Lite MP4 — GIF source only.
-run(`npx remotion render OmniSyncPromoLite out/omni-sync-lite.mp4 --codec=h264 --crf=16`);
+run(`npx remotion render SongMirrorPromoLite out/songmirror-lite.mp4 --codec=h264 --crf=16`);
 
 // 3. High-quality GIF via a diff-optimised palette.
 const scale = `scale=${WIDTH}:-1:flags=lanczos`;
 run(
-  `ffmpeg -y -i out/omni-sync-lite.mp4 -vf "fps=${FPS},${scale},palettegen=stats_mode=diff:max_colors=${COLORS}" out/palette.png`,
+  `ffmpeg -y -i out/songmirror-lite.mp4 -vf "fps=${FPS},${scale},palettegen=stats_mode=diff:max_colors=${COLORS}" out/palette.png`,
 );
 run(
-  `ffmpeg -y -i out/omni-sync-lite.mp4 -i out/palette.png -lavfi "fps=${FPS},${scale},paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" out/omni-sync-raw.gif`,
+  `ffmpeg -y -i out/songmirror-lite.mp4 -i out/palette.png -lavfi "fps=${FPS},${scale},paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" out/songmirror-raw.gif`,
 );
 
 // 4. Shrink under budget and write the deliverable.
-const gifOut = resolve(assets, "omni-sync-demo.gif");
-run(`npx --yes gifsicle -O3 --lossy=${LOSSY} out/omni-sync-raw.gif -o "${gifOut}"`);
-copyFileSync(gifOut, resolve(root, "out/omni-sync-demo.gif"));
+const gifOut = resolve(assets, "songmirror-demo.gif");
+run(`npx --yes gifsicle -O3 --lossy=${LOSSY} out/songmirror-raw.gif -o "${gifOut}"`);
+copyFileSync(gifOut, resolve(root, "out/songmirror-demo.gif"));
 
-console.log(`\nDone. Wrote:\n  ${resolve(assets, "omni-sync-demo.mp4")}\n  ${gifOut}`);
+console.log(`\nDone. Wrote:\n  ${resolve(assets, "songmirror-demo.mp4")}\n  ${gifOut}`);

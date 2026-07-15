@@ -1,7 +1,7 @@
 import React from "react";
 import { Img, staticFile } from "remotion";
 
-// The Omni Sync logo mark with an optional soft tangerine halo behind it.
+// The SongMirror logo mark with an optional soft tangerine halo behind it.
 export const Mark: React.FC<{ size: number; glow?: number }> = ({
   size,
   glow = 0.5,

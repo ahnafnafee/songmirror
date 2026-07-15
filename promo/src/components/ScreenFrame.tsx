@@ -12,7 +12,7 @@ export const ScreenFrame: React.FC<{
   viewportHeight: number;
   pan?: number;
   label?: string;
-}> = ({ src, imgAspect, width, viewportHeight, pan = 0, label = "omni-sync" }) => {
+}> = ({ src, imgAspect, width, viewportHeight, pan = 0, label = "songmirror" }) => {
   const bar = 40;
   const scaledH = width * imgAspect;
   const maxOffset = Math.max(0, scaledH - viewportHeight);

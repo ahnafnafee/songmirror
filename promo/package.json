@@ -1,14 +1,14 @@
 {
-  "name": "omni-sync-promo",
+  "name": "songmirror-promo",
   "version": "1.0.0",
   "private": true,
-  "description": "Remotion promo video for Omni Sync (Omni Playlist Sync)",
+  "description": "Remotion promo video for SongMirror",
   "scripts": {
     "start": "remotion studio",
     "build:assets": "node scripts/build-assets.mjs",
-    "render:mp4": "remotion render OmniSyncPromo out/omni-sync-demo.mp4 --codec=h264 --crf=18",
-    "render:lite": "remotion render OmniSyncPromoLite out/omni-sync-lite.mp4 --codec=h264 --crf=16",
-    "still": "remotion still OmniSyncPromo out/still.png",
+    "render:mp4": "remotion render SongMirrorPromo out/songmirror-demo.mp4 --codec=h264 --crf=18",
+    "render:lite": "remotion render SongMirrorPromoLite out/songmirror-lite.mp4 --codec=h264 --crf=16",
+    "still": "remotion still SongMirrorPromo out/still.png",
     "upgrade": "remotion upgrade"
   },
   "dependencies": {

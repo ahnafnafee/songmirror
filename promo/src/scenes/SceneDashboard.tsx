@@ -16,8 +16,8 @@ export const SceneDashboard: React.FC<{ dur: number }> = ({ dur }) => (
     }
     sub="See every sync, service and change at a glance — Spotify, Apple Music, YouTube Music and a local Jellyfin mirror."
     src="shots/dashboard.png"
-    imgAspect={0.86172}
-    label="omni-sync · dashboard"
+    imgAspect={0.92969}
+    label="songmirror · dashboard"
     panFrom={0}
     panTo={0.14}
   />

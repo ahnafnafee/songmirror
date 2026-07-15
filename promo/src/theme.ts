@@ -1,4 +1,4 @@
-// Central brand + layout tokens for the Omni Sync promo.
+// Central brand + layout tokens for the SongMirror promo.
 
 export const COLORS = {
   // Near-black stage

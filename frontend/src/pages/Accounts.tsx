@@ -11,7 +11,7 @@ export default function Accounts() {
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Accounts</h1>
         <p className="text-[13.5px] text-text-3">
-          Credentials never leave this machine. They're stored in Omni's own data folder.
+          Credentials never leave this machine. They're stored in SongMirror's own data folder.
         </p>
       </div>
 
