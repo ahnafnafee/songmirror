@@ -1,5 +1,5 @@
 [project]
-name = "omni-playlist-sync"
+name = "songmirror"
 version = "0.1.0"
 description = "Bidirectional N-way playlist sync across Spotify, Apple Music, and YouTube Music, with optional local audio copies"
 readme = "README.md"

@@ -55,7 +55,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
         finally:
             await sync_service.shutdown()
 
-    app = FastAPI(title="Omni Playlist Sync", lifespan=lifespan)
+    app = FastAPI(title="SongMirror", lifespan=lifespan)
     app.state.settings = settings
     app.state.bus = bus
     app.state.sync = sync_service

@@ -1,11 +1,6 @@
 <div align="center"><a name="readme-top"></a>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/wordmark-dark.png">
-  <img src="./.github/assets/wordmark-light.png" alt="Omni Playlist Sync" width="440">
-</picture>
-
-# Omni Playlist Sync
+# SongMirror
 
 Self-hosted, always-on **playlist sync for Spotify, Apple Music, and YouTube Music** — plus a local, Jellyfin-ready audio mirror.<br/>
 A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and FreeYourMusic** that _you_ own and run.
@@ -33,7 +28,7 @@ A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and Fre
 
 <sup>Set it up once — every playlist you curate stays mirrored across every service, in date-added order.</sup>
 
-<a href="./.github/assets/omni-sync-demo.mp4"><img src="./.github/assets/omni-sync-demo.gif" alt="Omni Playlist Sync demo — logo reveal, dashboard, one-way and bidirectional sync setup, live playlist transfers, and ISRC-accurate matching across Spotify, Apple Music, and YouTube Music" width="88%"></a>
+<a href="./.github/assets/omni-sync-demo.mp4"><img src="./.github/assets/omni-sync-demo.gif" alt="SongMirror demo — logo reveal, dashboard, one-way and bidirectional sync setup, live playlist transfers, and ISRC-accurate matching across Spotify, Apple Music, and YouTube Music" width="88%"></a>
 
 <sup>▶ <a href="./.github/assets/omni-sync-demo.mp4">Watch the 1080p version</a></sup>
 
@@ -74,7 +69,7 @@ A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and Fre
 
 ## ✨ Features
 
-Omni Playlist Sync keeps your playlists identical everywhere without manual re-adding, one-by-one copying, or a paid cloud service holding your library. It is **cross-platform, self-hosted, and open source**.
+SongMirror keeps your playlists identical everywhere without manual re-adding, one-by-one copying, or a paid cloud service holding your library. It is **cross-platform, self-hosted, and open source**.
 
 - 🔁 **True mirroring, not append-only** — adds _and_ removals. Choose a source of truth (Spotify by default) and the others follow it.
 - ⇄ **Bidirectional N-way sync** — an add or removal on _any_ connected service propagates to all the others, echo-free, behind removal guards.
@@ -102,11 +97,11 @@ Omni Playlist Sync keeps your playlists identical everywhere without manual re-a
 
 **One dashboard for every library — sync status, jobs, live activity, and service health**
 
-<img src="./.github/assets/dashboard.png" alt="Omni Playlist Sync dashboard showing sync status, configured sync jobs, a live activity feed, and connected Spotify, Apple Music, YouTube Music, and Jellyfin services" width="82%">
+<img src="./.github/assets/dashboard.png" alt="SongMirror dashboard showing sync status, configured sync jobs, a live activity feed, and connected Spotify, Apple Music, YouTube Music, and Jellyfin services" width="82%">
 
 **Set up any number of syncs — one-way or bidirectional — in a short wizard**
 
-<img src="./.github/assets/sync-wizard.png" alt="The Omni Playlist Sync setup wizard: choosing a one-way or bidirectional (N-way) direction for a sync job" width="82%">
+<img src="./.github/assets/sync-wizard.png" alt="The SongMirror setup wizard: choosing a one-way or bidirectional (N-way) direction for a sync job" width="82%">
 
 **Connect every service in your browser — one-click OAuth, guided token paste, or an API key**
 
@@ -129,8 +124,8 @@ Omni Playlist Sync keeps your playlists identical everywhere without manual re-a
 The fastest way to run it is Docker — the container serves the web UI and runs your syncs on schedule.
 
 ```bash
-git clone https://github.com/ahnafnafee/omni-playlist-sync.git
-cd omni-playlist-sync
+git clone https://github.com/ahnafnafee/songmirror.git
+cd songmirror
 docker compose up -d
 ```
 
@@ -153,7 +148,7 @@ uv run uvicorn omni_sync.web:app --host 0.0.0.0 --port 8080   # then open http:/
 
 ## 🐳 Always running: Docker
 
-The Docker container is the recommended deployment: it serves the web UI, runs your syncs on their schedules, and restarts with the host. It runs as **`omni-playlist-sync`** and persists all auth + caches in `./data`.
+The Docker container is the recommended deployment: it serves the web UI, runs your syncs on their schedules, and restarts with the host. It runs as **`songmirror`** and persists all auth + caches in `./data`.
 
 ```bash
 docker compose up -d --build     # build + start in the background
@@ -385,7 +380,7 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 
 ## ⭐ Star history
 
-[![Star History Chart](https://api.star-history.com/svg?repos=ahnafnafee/omni-playlist-sync&type=Date)](https://star-history.com/#ahnafnafee/omni-playlist-sync&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=ahnafnafee/songmirror&type=Date)](https://star-history.com/#ahnafnafee/songmirror&Date)
 
 ## 📄 License
 
@@ -395,26 +390,26 @@ This project is [MIT](./LICENSE) licensed.
 <!-- LINK GROUP -->
 
 [back-to-top]: https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square
-[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/omni-playlist-sync/ci.yml?branch=main&label=CI&labelColor=black&logo=githubactions&logoColor=white&style=flat-square
-[ci-link]: https://github.com/ahnafnafee/omni-playlist-sync/actions/workflows/ci.yml
-[license-shield]: https://img.shields.io/github/license/ahnafnafee/omni-playlist-sync?color=F2601A&labelColor=black&style=flat-square
-[license-link]: https://github.com/ahnafnafee/omni-playlist-sync/blob/main/LICENSE
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/songmirror/ci.yml?branch=main&label=CI&labelColor=black&logo=githubactions&logoColor=white&style=flat-square
+[ci-link]: https://github.com/ahnafnafee/songmirror/actions/workflows/ci.yml
+[license-shield]: https://img.shields.io/github/license/ahnafnafee/songmirror?color=F2601A&labelColor=black&style=flat-square
+[license-link]: https://github.com/ahnafnafee/songmirror/blob/main/LICENSE
 [python-shield]: https://img.shields.io/badge/python-3.13%2B-F2601A?labelColor=black&logo=python&logoColor=white&style=flat-square
 [python-link]: https://www.python.org/
 [docker-shield]: https://img.shields.io/badge/docker-ready-F2601A?labelColor=black&logo=docker&logoColor=white&style=flat-square
-[docker-link]: https://github.com/ahnafnafee/omni-playlist-sync/blob/main/docker-compose.yml
-[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/omni-playlist-sync?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[stars-link]: https://github.com/ahnafnafee/omni-playlist-sync/stargazers
-[forks-shield]: https://img.shields.io/github/forks/ahnafnafee/omni-playlist-sync?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[forks-link]: https://github.com/ahnafnafee/omni-playlist-sync/network/members
-[issues-shield]: https://img.shields.io/github/issues/ahnafnafee/omni-playlist-sync?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[issues-link]: https://github.com/ahnafnafee/omni-playlist-sync/issues
-[last-commit-shield]: https://img.shields.io/github/last-commit/ahnafnafee/omni-playlist-sync?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[last-commit-link]: https://github.com/ahnafnafee/omni-playlist-sync/commits/main
-[github-issues-link]: https://github.com/ahnafnafee/omni-playlist-sync/issues
+[docker-link]: https://github.com/ahnafnafee/songmirror/blob/main/docker-compose.yml
+[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
+[stars-link]: https://github.com/ahnafnafee/songmirror/stargazers
+[forks-shield]: https://img.shields.io/github/forks/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
+[forks-link]: https://github.com/ahnafnafee/songmirror/network/members
+[issues-shield]: https://img.shields.io/github/issues/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
+[issues-link]: https://github.com/ahnafnafee/songmirror/issues
+[last-commit-shield]: https://img.shields.io/github/last-commit/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
+[last-commit-link]: https://github.com/ahnafnafee/songmirror/commits/main
+[github-issues-link]: https://github.com/ahnafnafee/songmirror/issues
 [share-x-shield]: https://img.shields.io/badge/-share%20on%20x-black?labelColor=black&logo=x&logoColor=white&style=flat-square
-[share-x-link]: https://x.com/intent/tweet?text=Omni%20Playlist%20Sync%20%E2%80%94%20self-hosted%20playlist%20sync%20for%20Spotify%2C%20Apple%20Music%20%26%20YouTube%20Music&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fomni-playlist-sync
+[share-x-link]: https://x.com/intent/tweet?text=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20for%20Spotify%2C%20Apple%20Music%20%26%20YouTube%20Music&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
 [share-reddit-shield]: https://img.shields.io/badge/-share%20on%20reddit-black?labelColor=black&logo=reddit&logoColor=white&style=flat-square
-[share-reddit-link]: https://www.reddit.com/submit?title=Omni%20Playlist%20Sync%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20Spotify%2C%20Apple%20Music%20%26%20YouTube%20Music&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fomni-playlist-sync
+[share-reddit-link]: https://www.reddit.com/submit?title=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20Spotify%2C%20Apple%20Music%20%26%20YouTube%20Music&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
 [share-linkedin-shield]: https://img.shields.io/badge/-share%20on%20linkedin-black?labelColor=black&logo=linkedin&logoColor=white&style=flat-square
-[share-linkedin-link]: https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fomni-playlist-sync
+[share-linkedin-link]: https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror

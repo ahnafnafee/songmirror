@@ -29,7 +29,7 @@ function NotFound() {
   return (
     <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
       <p className="text-display text-xl text-text">Page not found</p>
-      <p className="text-sm text-text-3">That page doesn't exist in Omni Playlist Sync.</p>
+      <p className="text-sm text-text-3">That page doesn't exist in SongMirror.</p>
       <Link to="/" className={`${BUTTON_BASE_CLASSES} ${BUTTON_SIZE_CLASSES.md} ${BUTTON_VARIANT_CLASSES.primary}`}>
         Back to Dashboard
       </Link>

@@ -1,9 +1,9 @@
-name: omni-playlist-sync   # compose project (group) name
+name: songmirror   # compose project (group) name
 
 services:
   web:
     build: .
-    container_name: omni-playlist-sync
+    container_name: songmirror
     # A .env is OPTIONAL — every service is configured in the browser and saved
     # under ./data. Keep a .env only to preset things like DOWNLOAD_DIR or
     # credentials. (`required: false` needs Docker Compose v2.24+; on older
