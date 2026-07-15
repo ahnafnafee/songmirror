@@ -114,6 +114,17 @@ class MirrorTarget:
         """Remove one existing target track."""
         raise NotImplementedError
 
+    def remove_occurrences(self, playlist, positioned):
+        """Remove specific physical entries, positioned = [(index, raw_track)] in
+        playlist order — the duplicate-cleanup path, where only ONE copy of a
+        song present multiple times may go. Default: per-entry remove(), which
+        is entry-scoped on YT (playlist-item id / setVideoId). Spotify overrides
+        with a position-addressed call (its remove() drops every occurrence of a
+        uri); Apple overrides with delete-then-re-append (its DELETE addresses
+        the library song, taking every copy with it)."""
+        for _, raw in positioned:
+            self.remove(playlist, raw)
+
 
 def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, execute, max_removals,
                 max_adds, drain_removals=False, should_continue=None, source_key="spotify", source_name="Spotify", name=None):
@@ -251,8 +262,9 @@ def _normalize(track, source):
     }
 
 
-def _canonicalize(target, tracks, songs, cache, key2isrc):
-    """{canonical_id: normalized track} for one provider's current tracks.
+def _entry_cids(target, tracks, songs, cache, key2isrc):
+    """[(canonical_id, normalized track), ...] — one per PHYSICAL entry, in
+    playlist order (so a duplicate copy yields a repeated canonical id).
 
     Canonical precedence: ISRC (direct / provider-native map / same-playlist
     Spotify track_key) -> ISRC via the reverse link to Spotify -> the Spotify id
@@ -266,7 +278,7 @@ def _canonicalize(target, tracks, songs, cache, key2isrc):
            else archive.get_reverse_links(songs, target.source, [target.track_id(t) for t in tracks]))
     sp_isrc = archive.get_isrcs(songs, "spotify", list(rev.values())) if rev else {}
     id2isrc = target.native_isrc_map(cache)  # provider-supplied track_id -> ISRC (Apple, future providers)
-    out = {}
+    out = []
     for t in tracks:
         norm = _normalize(t, target.source)
         isrc = (norm["isrc"] or id2isrc.get(target.track_id(t))
@@ -279,7 +291,16 @@ def _canonicalize(target, tracks, songs, cache, key2isrc):
                 cid = f"i:{sp_isrc[sp_id]}" if sp_id in sp_isrc else f"s:{sp_id}"
             else:
                 cid = f"k:{track_key(norm['name'], norm['artist'])}"
-        out.setdefault(cid, norm)  # first occurrence wins (dedupe within a provider)
+        out.append((cid, norm))
+    return out
+
+
+def _canonicalize(target, tracks, songs, cache, key2isrc):
+    """{canonical_id: normalized track} for one provider's current tracks —
+    first occurrence wins, so duplicate copies collapse to one membership."""
+    out = {}
+    for cid, norm in _entry_cids(target, tracks, songs, cache, key2isrc):
+        out.setdefault(cid, norm)
     return out
 
 

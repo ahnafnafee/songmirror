@@ -135,3 +135,15 @@ class SpotifyTarget(MirrorTarget):
             return
         self._write(lambda: self._sp.playlist_remove_all_occurrences_of_items(playlist["id"], [_uri(tid)]), "remove")
         polite_sleep(0.3)
+
+    def remove_occurrences(self, playlist, positioned):
+        # Position-addressed removal against the read-time snapshot: with the
+        # same uri present twice, remove() would drop BOTH copies. All positions
+        # are evaluated against the one snapshot, so batches never shift indexes.
+        items = [{"uri": _uri(self.track_id(raw)), "positions": [pos]}
+                 for pos, raw in positioned if self.track_id(raw)]
+        snapshot = playlist.get("snapshot_id")
+        for i in range(0, len(items), 100):
+            self._write(lambda chunk=items[i:i + 100]: self._sp.playlist_remove_specific_occurrences_of_items(
+                playlist["id"], chunk, snapshot_id=snapshot), "remove occurrences")
+            polite_sleep(0.3)

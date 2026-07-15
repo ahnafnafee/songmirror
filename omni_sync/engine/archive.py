@@ -236,3 +236,11 @@ def set_playlist_state(conn, playlist, source, canonical_ids):
     conn.executemany("INSERT OR IGNORE INTO playlist_state VALUES (?, ?, ?)",
                      [(playlist, source, cid) for cid in canonical_ids])
     conn.commit()
+
+
+def clear_playlist_state(conn, playlist):
+    """Drop a playlist's stored N-way baselines (every source) — the next pass
+    re-bootstraps from what's actually on each provider, so out-of-band edits
+    (e.g. the duplicate cleanup) are never read back as user deletions."""
+    conn.execute("DELETE FROM playlist_state WHERE playlist = ?", (playlist,))
+    conn.commit()
