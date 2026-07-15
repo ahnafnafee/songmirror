@@ -57,7 +57,7 @@ def _summary_entry(name, agg):
     return entry
 
 
-def _summary(opts, per_target, started, *, ok=True, error=None):
+def _summary(opts, per_target, started, *, ok=True, error=None, interrupted=None):
     """The value the web layer renders after a pass. The CLI ignores it."""
     return {
         "mode": opts.sync_mode,
@@ -65,6 +65,7 @@ def _summary(opts, per_target, started, *, ok=True, error=None):
         "duration_s": round(time.monotonic() - started, 1),
         "ok": ok,
         "error": error,
+        "interrupted": interrupted,  # "pause" | "stop" when a Stop/Pause cut the pass short
         "per_target": per_target,
     }
 
@@ -77,7 +78,7 @@ def _load_links():
     return [link for link in LinkStore().list() if link.enabled]
 
 
-def run_target(target, selected, get_source_tracks, songs, opts, links=None, source=None):
+def run_target(target, selected, get_source_tracks, songs, opts, links=None, source=None, should_continue=None):
     """Mirror every selected source playlist to one target. Returns an aggregate
     dict. Raises TargetAuthError to abort the whole target (fail closed).
 
@@ -96,6 +97,8 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
         link_by_src = {link.members[src_key]: link for link in (links or [])
                        if link.members.get(src_key) and target.source in link.members}
         for sp_playlist in selected:
+            if should_continue and should_continue() != "run":
+                break  # Stop/Pause requested — leave the rest for a re-run
             name = source.playlist_name(sp_playlist)
             link = link_by_src.get(source.playlist_id(sp_playlist))
             state_key = link.id if link else name.strip().casefold()
@@ -153,8 +156,12 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
     return agg
 
 
-def run_pass(opts):
+def run_pass(opts, should_continue=None):
     pass_started = time.monotonic()
+    # Pause/Stop hook: should_continue() returns "run" | "pause" | "stop"; the pass
+    # checks it between playlists and halts, keeping what's already applied. Absent
+    # (CLI / direct calls) ctrl() is always "run", so behaviour is unchanged.
+    ctrl = should_continue or (lambda: "run")
     # The web app points OMNI_ENV_FILE at SettingsStore's managed file so wizard
     # saves win; the headless CLI falls back to a plain .env. Either way this
     # picks up re-captured tokens without a restart.
@@ -204,11 +211,13 @@ def run_pass(opts):
     if opts.sync_mode == "nway":
         songs = archive.connect(opts.song_cache_file)
         try:
-            per_target = _run_nway(opts, sp, selected, songs)
+            per_target = _run_nway(opts, sp, selected, songs, ctrl)
         finally:
             songs.close()
-        _post_sync(opts, sp, selected)
-        return _summary(opts, per_target, pass_started)
+        c = ctrl()
+        if c == "run":
+            _post_sync(opts, sp, selected, should_continue=ctrl)
+        return _summary(opts, per_target, pass_started, interrupted=(None if c == "run" else c))
 
     targets = build_targets(opts, sp)
     if not targets:
@@ -262,7 +271,7 @@ def run_pass(opts):
 
     def worker(target):
         try:
-            results[target.tag] = run_target(target, selected, get_source_tracks, songs, opts, links, source)
+            results[target.tag] = run_target(target, selected, get_source_tracks, songs, opts, links, source, ctrl)
         except BaseException as e:  # surface after siblings finish
             errors.append((target, e))
 
@@ -299,11 +308,14 @@ def run_pass(opts):
         if isinstance(err, TargetAuthError):
             raise err  # fatal; main() decides exit vs. loop-continue
 
-    _post_sync(opts, sp, selected, source_is_spotify=src_is_spotify)
-    return _summary(opts, [_summary_entry(a["name"], a) for a in results.values()], pass_started)
+    c = ctrl()
+    if c == "run":
+        _post_sync(opts, sp, selected, source_is_spotify=src_is_spotify, should_continue=ctrl)
+    return _summary(opts, [_summary_entry(a["name"], a) for a in results.values()], pass_started,
+                    interrupted=(None if c == "run" else c))
 
 
-def _post_sync(opts, sp, selected, source_is_spotify=True):
+def _post_sync(opts, sp, selected, source_is_spotify=True, should_continue=None):
     """Local download mirror + Jellyfin covers — shared by one-way and N-way.
     Both read Spotify playlist data (spotDL by Spotify track; covers from Spotify
     art), so they run only when Spotify is the source; a note flags the skip."""
@@ -316,7 +328,7 @@ def _post_sync(opts, sp, selected, source_is_spotify=True):
         try:
             from . import downloads
 
-            downloads.run(sp, selected, opts.download_dir)
+            downloads.run(sp, selected, opts.download_dir, should_continue=should_continue)
         except Exception as e:
             log_warn(f"local download mirror failed (playlist sync unaffected): {e!r}", tag="local")
 
@@ -327,7 +339,7 @@ def _post_sync(opts, sp, selected, source_is_spotify=True):
         jellyfin.push_covers(selected)
 
 
-def _run_nway(opts, sp, selected, songs):
+def _run_nway(opts, sp, selected, songs, should_continue=None):
     """Bidirectional reconcile: each selected playlist across all peer providers,
     sequentially (each reconcile reads then writes every peer). A change on any
     provider propagates to the others via the stored canonical snapshot."""
@@ -343,6 +355,8 @@ def _run_nway(opts, sp, selected, songs):
     total = {"added": 0, "removed": 0, "missing": 0, "held": 0, "deferred": 0, "removals_skipped": 0}
     try:
         for sp_playlist in selected:
+            if should_continue and should_continue() != "run":
+                break  # Stop/Pause requested — leave the rest for a re-run
             name = sp_playlist["name"]
             key = name.strip().casefold()
             playlists = {}

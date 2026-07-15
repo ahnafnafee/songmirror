@@ -153,7 +153,7 @@ def test_run_exclusive_queues_behind_sync(monkeypatch, tmp_path):
     async def scenario():
         import omni_sync.services.sync_service as m
 
-        async def fake_pass(opts):
+        async def fake_pass(opts, should_continue=None):
             order.append("sync-start")
             await asyncio.sleep(0.05)
             order.append("sync-end")

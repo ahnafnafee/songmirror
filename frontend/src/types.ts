@@ -100,6 +100,8 @@ export interface SyncJobStatus {
   /** Triggered but waiting behind the currently-running pass (passes are
    * serialized). Drives the "Queued" badge. */
   queued: boolean
+  /** Its last pass was cut short by Pause and can be resumed (re-run). */
+  paused: boolean
   next_run_at: number | null
   last: PassSummary | null
 }

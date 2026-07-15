@@ -73,6 +73,7 @@ export default function Sync() {
               peers={peers}
               running={status?.jobs.find((j) => j.id === job.id)?.running ?? false}
               queued={status?.jobs.find((j) => j.id === job.id)?.queued ?? false}
+              paused={status?.jobs.find((j) => j.id === job.id)?.paused ?? false}
               onEdit={() => openEdit(job)}
               onChanged={refreshAll}
             />

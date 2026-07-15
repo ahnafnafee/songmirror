@@ -64,3 +64,15 @@ async def run_sync(job_id: str, request: Request, execute: bool = False):
     # Fire-and-forget onto SyncService's single queue; returns immediately.
     asyncio.create_task(request.app.state.sync.run_job(job_id, execute=execute))
     return JSONResponse({"queued": True}, status_code=202)
+
+
+@router.post("/api/syncs/{job_id}/{action}")
+async def control_sync(job_id: str, action: str, request: Request):
+    """Pause / stop the running pass, or resume a paused one. Returns {ok} — False
+    when the action doesn't apply (e.g. that job isn't the one currently running).
+    Declared after /run so the literal 'run' route isn't shadowed."""
+    svc = request.app.state.sync
+    fn = {"pause": svc.pause, "stop": svc.stop, "resume": svc.resume}.get(action)
+    if fn is None:
+        return JSONResponse({"detail": "unknown action"}, status_code=404)
+    return {"ok": fn(job_id)}
