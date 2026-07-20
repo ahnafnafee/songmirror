@@ -42,39 +42,39 @@ def test_writes_route_to_cookie_when_enabled(monkeypatch):
     assert calls[3] == ("remove_positions", ("pl1", [0, 2]), {})
 
 
-def test_cookie_sync_writes_gated_off_by_default(monkeypatch):
-    # A sync peer (reconcile) must NOT write Spotify in cookie mode by default —
-    # the incident guard. Transfers (sync_peer=False) are unaffected.
+def test_sync_read_requires_isrc(monkeypatch):
+    # An N-way peer (sync_peer=True) reads with require_isrc=True so cross-provider
+    # matching stays reliable; a transfer (sync_peer=False) doesn't need it.
     monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
-    monkeypatch.delenv("SPOTIFY_COOKIE_SYNC", raising=False)
-    monkeypatch.setattr(st, "polite_sleep", lambda *_: None)
-    sync = SpotifyTarget(_BoomSp(), "c.json", sync_peer=True)
-    with pytest.raises(TargetAuthError):
-        sync.add({"id": "p"}, ["t1"])
-    with pytest.raises(TargetAuthError):
-        sync.remove({"id": "p"}, {"id": "t1"})
-    with pytest.raises(TargetAuthError):
-        sync.remove_occurrences({"id": "p"}, [(0, {"id": "t1"})])
-    # Transfer path (default sync_peer=False) still writes via cookie.
-    calls = []
-    monkeypatch.setattr(st.spotify_cookie, "add", lambda *a: calls.append(a))
-    SpotifyTarget(_BoomSp(), "c.json").add({"id": "p"}, ["t1"])
-    assert calls == [("p", ["t1"])]
+    seen = {}
+    monkeypatch.setattr(st.spotify_cookie, "playlist_tracks",
+                        lambda pid, require_isrc=False: (seen.__setitem__(pid, require_isrc), [])[1])
+    SpotifyTarget(_BoomSp(), "c.json", sync_peer=True).playlist_tracks({"id": "sync"})
+    SpotifyTarget(_BoomSp(), "c.json").playlist_tracks({"id": "xfer"})
+    assert seen == {"sync": True, "xfer": False}
 
 
-def test_cookie_sync_writes_allowed_when_opted_in(monkeypatch):
+def test_sync_read_fails_closed_without_isrc(monkeypatch):
+    # If the ISRC backfill can't reach /tracks, a sync read raises so the reconcile
+    # aborts instead of matching on name/artist alone and churning. The incident guard.
     monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
-    monkeypatch.setenv("SPOTIFY_COOKIE_SYNC", "1")
-    calls = []
-    monkeypatch.setattr(st.spotify_cookie, "add", lambda *a: calls.append(a))
-    SpotifyTarget(_BoomSp(), "c.json", sync_peer=True).add({"id": "p"}, ["t1"])
-    assert calls == [("p", ["t1"])]
+
+    def read(pid, require_isrc=False):
+        if require_isrc:
+            raise TargetAuthError("ISRC lookup failed")
+        return []
+
+    monkeypatch.setattr(st.spotify_cookie, "playlist_tracks", read)
+    with pytest.raises(TargetAuthError):
+        SpotifyTarget(_BoomSp(), "c.json", sync_peer=True).playlist_tracks({"id": "p"})
+    assert SpotifyTarget(_BoomSp(), "c.json").playlist_tracks({"id": "p"}) == []  # transfer read is fine
 
 
 def test_reads_route_to_cookie_when_enabled(monkeypatch):
     # Track reads 403 under dev-mode, so cookie mode reads via pathfinder too.
     monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
-    monkeypatch.setattr(st.spotify_cookie, "playlist_tracks", lambda pid: [{"id": "x", "_via": pid}])
+    monkeypatch.setattr(st.spotify_cookie, "playlist_tracks",
+                        lambda pid, require_isrc=False: [{"id": "x", "_via": pid}])
     t = SpotifyTarget(_BoomSp(), "cache.json")  # spotipy read must not be used
     assert t.playlist_tracks({"id": "pl9"}) == [{"id": "x", "_via": "pl9"}]
 

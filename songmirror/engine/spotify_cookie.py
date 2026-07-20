@@ -22,6 +22,7 @@ cookie itself lasts about a year; the connector surfaces when it needs renewing.
 import json
 import os
 import re
+import time
 
 import requests
 
@@ -31,6 +32,7 @@ from .targets.base import TargetAuthError
 
 _PATHFINDER = "https://api-partner.spotify.com/pathfinder/v2/query"
 _SPCLIENT = "https://spclient.wg.spotify.com"   # web-player backend — no api.spotify.com rate limit / dev-mode gate
+_API = "https://api.spotify.com/v1"             # official REST — only for the /tracks ISRC lookup (the first-party token bypasses the dev-mode gate that 403s the dev-app OAuth token here)
 _WEB = "https://open.spotify.com/"
 # Sent as spotify-app-version; loosely paired with the persisted-query hashes and
 # refreshed alongside them. A slightly stale value still resolves in practice.
@@ -55,6 +57,7 @@ _OP_DOC = {
 
 _provider = None   # cached spotify_scraper CookieTokenProvider (lazy)
 _uid = None        # cached cookie-account user id (for rootlist filing)
+_isrc_cache = {}   # track_id -> isrc|None, backfilled from /tracks (see _track_isrcs)
 
 
 def configured():
@@ -221,11 +224,38 @@ def contents(playlist):
             for it in _content_items(playlist)]
 
 
-def playlist_tracks(playlist):
+def _track_isrcs(ids):
+    """{track_id: isrc|None} via the first-party token on /tracks (catalog metadata —
+    the dev-app OAuth token 403s here, the cookie token does not). Cached across the
+    process; only unknown ids are fetched (50 per call, the API cap). Raises on a hard
+    API failure so a caller that NEEDS ISRC (an N-way sync read) fails closed instead
+    of matching on name/artist alone and churning playlists."""
+    want = [i for i in dict.fromkeys(ids) if i and i not in _isrc_cache]
+    for i in range(0, len(want), 50):
+        chunk = want[i:i + 50]
+        for attempt in range(4):
+            r = requests.get(f"{_API}/tracks", params={"ids": ",".join(chunk)},
+                             headers={"Authorization": f"Bearer {_token()}", "User-Agent": _UA},
+                             timeout=REQUEST_TIMEOUT)
+            if r.status_code == 429 and attempt < 3:
+                time.sleep(min(int(r.headers.get("Retry-After") or 2) + 1, 30))
+                continue
+            r.raise_for_status()
+            for t in (r.json().get("tracks") or []):
+                if t:
+                    _isrc_cache[t["id"]] = (t.get("external_ids") or {}).get("isrc")
+            break
+    return {i: _isrc_cache.get(i) for i in ids}
+
+
+def playlist_tracks(playlist, require_isrc=False):
     """Full track dicts (the shape spotify.playlist_tracks yields) via pathfinder —
-    works for private owned playlists the dev-mode official API 403s, and returns
-    [] for a just-created empty playlist. ISRC isn't in this payload, so matching
-    falls back to name/artist/duration (as the web read already does)."""
+    works for private owned playlists the dev-mode official API 403s, and returns []
+    for a just-created empty playlist. The pathfinder payload carries no ISRC; with
+    require_isrc (set for N-way sync reads) it is backfilled from /tracks so
+    cross-provider matching stays reliable, and a hard lookup failure raises so the
+    sync fails closed instead of matching on name/artist alone. Transfers don't need
+    it — a same-provider copy uses the track id directly."""
     out = []
     for it in _content_items(playlist):
         t = (it.get("itemV2") or {}).get("data") or {}
@@ -242,6 +272,10 @@ def playlist_tracks(playlist):
             "duration_ms": (t.get("trackDuration") or {}).get("totalMilliseconds"),
             "added_at": (it.get("addedAt") or {}).get("isoString") or "",
         })
+    if require_isrc and out:
+        isrcs = _track_isrcs([t["id"] for t in out])
+        for t in out:
+            t["isrc"] = isrcs.get(t["id"])
     return out
 
 

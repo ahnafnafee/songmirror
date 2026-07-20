@@ -46,14 +46,6 @@ def spotify_write_backend():
     return (os.getenv("SPOTIFY_WRITE_BACKEND") or DEFAULT_SPOTIFY_WRITE_BACKEND).strip().lower()
 
 
-def spotify_cookie_sync():
-    """Whether N-way sync may WRITE Spotify via the cookie backend. Off by default:
-    the dev-mode cookie read carries no ISRC, so cross-provider matching is
-    unreliable and a bidirectional sync can churn playlists on bad matches.
-    Transfers (explicit, adds-only) are unaffected. Opt in with SPOTIFY_COOKIE_SYNC=1."""
-    return (os.getenv("SPOTIFY_COOKIE_SYNC") or "").strip().lower() in ("1", "on", "true", "yes")
-
-
 def required_env(var_name):
     value = os.getenv(var_name)
     if not value:

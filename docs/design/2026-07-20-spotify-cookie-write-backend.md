@@ -19,17 +19,25 @@ library → read empty dest → add**, none of it touching `api.spotify.com`.
 - **Superseded:** the earlier REST `create` (blocked by the api.spotify.com rate limit) was
   replaced by the spclient path, which sidesteps that host entirely.
 
-## N-way sync safeguard (`SPOTIFY_COOKIE_SYNC`, default off)
+## N-way sync + ISRC (default-on, self-protecting)
 
 Cookie mode makes Spotify writable, which also *unblocks the N-way (bidirectional)
-reconcile* — and the dev-mode cookie read carries **no ISRC**, so cross-provider
-matching is unreliable and a sync can churn playlists (adding karaoke/tribute
-matches, removing unmatched tracks). So cookie-mode **sync** writes to Spotify are
-gated off by default: `SpotifyTarget(sync_peer=True)` fails closed on write (like the
-pre-cookie 403 path) unless `SPOTIFY_COOKIE_SYNC=1`. **Transfers** (explicit,
-adds-only, `sync_peer=False`) always write. Recovery from a churn is possible via the
-`playlist_order` table (full per-provider track lists per capture; restore to the
-last pre-churn capture with original IDs).
+reconcile*. The pathfinder read carries **no ISRC**, so cross-provider matching would
+fall back to name/artist and mis-match (karaoke/tribute versions) → churn. True N-way
+means Spotify reads+writes, so rather than gate it, the read **backfills ISRC**:
+
+- `spotify_cookie.playlist_tracks(require_isrc=True)` (set by `SpotifyTarget(sync_peer=True)`)
+  fetches ISRC from `GET /v1/tracks` with the **first-party cookie token** — that
+  endpoint is dev-mode-restricted for the OAuth dev-app token (403) but the cookie
+  token is accepted (verified: 429 rate-limit, not 403). Cached per process, 50 ids/call.
+- **Fail closed:** if the ISRC lookup can't complete, the sync read *raises* — the
+  reconcile aborts (like the pre-cookie 403 path) instead of matching on name/artist
+  alone. So N-way is on by default *and* can never churn on unreliable matches.
+- **Transfers** (`sync_peer=False`) don't fetch ISRC — a same-provider copy uses the
+  track id directly.
+
+Recovery from a churn is possible via the `playlist_order` table (full per-provider
+track lists per capture; restore to the last pre-churn capture with original IDs).
 
 ## Problem
 
