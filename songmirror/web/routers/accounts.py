@@ -113,3 +113,18 @@ def ytmusic_disable_browser(request: Request):
     """Revert YouTube Music to the durable OAuth Data API."""
     st = _conn(request, "ytmusic").disable_browser()
     return {"state": st.state, "detail": st.detail}
+
+
+@router.post("/api/accounts/spotify/cookie")
+async def spotify_enable_cookie(request: Request, body: dict = Body(...)):
+    """Turn on Spotify's cookie write backend from a pasted sp_dc cookie — the fix
+    for Development-Mode apps that get 403 on playlist create / track edits."""
+    st = _conn(request, "spotify").enable_cookie(body.get("sp_dc", ""))
+    return {"state": st.state, "detail": st.detail}
+
+
+@router.delete("/api/accounts/spotify/cookie")
+def spotify_disable_cookie(request: Request):
+    """Revert Spotify writes to the OAuth dev app."""
+    st = _conn(request, "spotify").disable_cookie()
+    return {"state": st.state, "detail": st.detail}

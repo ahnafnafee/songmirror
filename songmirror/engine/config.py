@@ -30,6 +30,29 @@ DEFAULT_SPOTIFY_CACHE_FILE = "spotify_resolve_cache.json"
 SPOTIFY_SCOPE = ("playlist-read-private playlist-read-collaborative "
                  "playlist-modify-private playlist-modify-public")
 
+# Token cache location when SPOTIFY_TOKEN_CACHE is unset. The connector writes it at
+# connect time and the engine reads it every pass — they MUST resolve the same path,
+# or a reconnect updates a file the engine never reads and its auth stays stale.
+DEFAULT_SPOTIFY_TOKEN_CACHE = "data/spotify_token_cache"
+
+# Which credential Spotify WRITES use. `oauth` = the registered dev app — refused by
+# Spotify Development Mode on playlist create / track edits. `cookie` = the first-party
+# web client via an sp_dc cookie (engine/spotify_cookie.py), which bypasses that gate.
+# Reads are unaffected either way.
+DEFAULT_SPOTIFY_WRITE_BACKEND = "oauth"
+
+
+def spotify_write_backend():
+    return (os.getenv("SPOTIFY_WRITE_BACKEND") or DEFAULT_SPOTIFY_WRITE_BACKEND).strip().lower()
+
+
+def spotify_cookie_sync():
+    """Whether N-way sync may WRITE Spotify via the cookie backend. Off by default:
+    the dev-mode cookie read carries no ISRC, so cross-provider matching is
+    unreliable and a bidirectional sync can churn playlists on bad matches.
+    Transfers (explicit, adds-only) are unaffected. Opt in with SPOTIFY_COOKIE_SYNC=1."""
+    return (os.getenv("SPOTIFY_COOKIE_SYNC") or "").strip().lower() in ("1", "on", "true", "yes")
+
 
 def required_env(var_name):
     value = os.getenv(var_name)

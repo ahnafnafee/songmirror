@@ -79,6 +79,11 @@ export const api = {
    * raw "copy request headers" block from a music.youtube.com XHR. */
   enableYtmusicBrowserMode: (headers: string) => request<PollResponse>('/api/accounts/ytmusic/browser', json({ headers })),
   disableYtmusicBrowserMode: () => request<PollResponse>('/api/accounts/ytmusic/browser', { method: 'DELETE' }),
+  /** Spotify-only cookie write mode: routes playlist writes through a pasted
+   * sp_dc cookie (first-party web client), bypassing the Development-Mode 403s a
+   * self-hosted dev app hits on playlist create / track edits. */
+  enableSpotifyCookieMode: (spDc: string) => request<PollResponse>('/api/accounts/spotify/cookie', json({ sp_dc: spDc })),
+  disableSpotifyCookieMode: () => request<PollResponse>('/api/accounts/spotify/cookie', { method: 'DELETE' }),
 
   // Settings
   getSettings: () => request<Settings>('/api/settings'),

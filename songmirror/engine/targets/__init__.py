@@ -34,9 +34,10 @@ def _apple(opts):
 # Order matters: ISRC-rich providers first so they seed cross-provider identity.
 # `sp` (the Spotify client) is only needed by peers that read/write Spotify.
 _REGISTRY = {
-    "spotify": lambda opts, sp: SpotifyTarget(sp, opts.spotify_cache_file) if sp is not None else None,
-    "apple": lambda opts, sp: _apple(opts),
-    "ytmusic": lambda opts, sp: ytmusic.build(),
+    "spotify": lambda opts, sp, sync_peer=False: (
+        SpotifyTarget(sp, opts.spotify_cache_file, sync_peer=sync_peer) if sp is not None else None),
+    "apple": lambda opts, sp, sync_peer=False: _apple(opts),
+    "ytmusic": lambda opts, sp, sync_peer=False: ytmusic.build(),
 }
 _SOURCE_ORDER = ["spotify", "apple", "ytmusic"]
 
@@ -50,7 +51,7 @@ def build_targets(opts, sp=None):
     source = getattr(opts, "sync_source", None) or "spotify"
     wanted = {s.strip() for s in (opts.providers or "").split(",") if s.strip()}
     return [t for src in _SOURCE_ORDER if src != source and (not wanted or src in wanted)
-            for t in (_REGISTRY[src](opts, sp),) if t]
+            for t in (_REGISTRY[src](opts, sp, sync_peer=True),) if t]
 
 
 def build_one(provider_id, opts, sp=None):
@@ -75,4 +76,4 @@ def build_peers(opts, sp):
     than silently finding zero peers. Needs the Spotify client for the Spotify peer."""
     wanted = {s.strip() for s in (opts.providers or "").split(",") if s.strip()}
     return [peer for src in _SOURCE_ORDER if not wanted or src in wanted
-            for peer in (_REGISTRY[src](opts, sp),) if peer]
+            for peer in (_REGISTRY[src](opts, sp, sync_peer=True),) if peer]

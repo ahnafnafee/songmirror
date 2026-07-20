@@ -9,8 +9,8 @@ need the modify scopes (see spotify.client(writable=True)).
 
 import spotipy
 
-from .. import spotify
-from ..config import polite_sleep
+from .. import spotify, spotify_cookie
+from ..config import polite_sleep, spotify_cookie_sync, spotify_write_backend
 from ..matching import normalize_text, romanized, score_candidate, track_key
 from .base import MirrorTarget, TargetAuthError
 
@@ -24,10 +24,24 @@ class SpotifyTarget(MirrorTarget):
     tag = "spotify"
     source = "spotify"
 
-    def __init__(self, sp, cache_file):
+    def __init__(self, sp, cache_file, sync_peer=False):
         self._sp = sp
         self.cache_file = cache_file
         self._me = None
+        # True when built as an N-way reconcile peer (not a one-off transfer) — gates
+        # destructive cookie-mode sync writes; see _guard_sync_write.
+        self._sync_peer = sync_peer
+
+    def _guard_sync_write(self):
+        """Fail closed when the N-way reconcile tries to write Spotify via the cookie
+        backend without the explicit opt-in. The dev-mode cookie read carries no ISRC,
+        so bidirectional cross-provider matching is unreliable and could churn
+        playlists on bad matches. Transfers are adds-only and pass sync_peer=False."""
+        if self._sync_peer and spotify_write_backend() == "cookie" and not spotify_cookie_sync():
+            raise TargetAuthError(
+                "Spotify sync writes are disabled in cookie mode — its Development-Mode reads lack ISRC, "
+                "so bidirectional matching is unreliable and could churn playlists. Transfers still work; "
+                "set SPOTIFY_COOKIE_SYNC=1 to opt into sync writes once you've verified matching.")
 
     def _user(self):
         if self._me is None:
@@ -64,14 +78,22 @@ class SpotifyTarget(MirrorTarget):
         return spotify.track_total(playlist)
 
     def create(self, sp_playlist):
-        pl = self._write(
-            lambda: self._sp.user_playlist_create(self._user(), sp_playlist.get("name", ""),
-                                                  public=False, description=spotify.description(sp_playlist)),
-            "create playlist")
+        name, desc = sp_playlist.get("name", ""), spotify.description(sp_playlist)
+        if spotify_write_backend() == "cookie":
+            pl = spotify_cookie.create(name, public=False, description=desc)
+        else:
+            pl = self._write(
+                lambda: self._sp.user_playlist_create(self._user(), name, public=False, description=desc),
+                "create playlist")
         polite_sleep(1.0)
         return pl
 
     def playlist_tracks(self, playlist):
+        # In cookie mode the official track read 403s under Development Mode (and a
+        # just-created private playlist has no public scraper fallback), so read via
+        # the same web-player path the writes use.
+        if spotify_write_backend() == "cookie":
+            return spotify_cookie.playlist_tracks(playlist["id"])
         return spotify.playlist_tracks(self._sp, playlist["id"])
 
     def track_id(self, track):
@@ -125,6 +147,10 @@ class SpotifyTarget(MirrorTarget):
         return best_id
 
     def add(self, playlist, target_ids):
+        self._guard_sync_write()
+        if spotify_write_backend() == "cookie":
+            spotify_cookie.add(playlist["id"], target_ids)  # one at a time, in order (see spotify_cookie.add)
+            return
         for tid in target_ids:  # one at a time preserves date-added order
             self._write(lambda t=tid: self._sp.playlist_add_items(playlist["id"], [_uri(t)]), "add")
             polite_sleep(0.3)
@@ -133,10 +159,18 @@ class SpotifyTarget(MirrorTarget):
         tid = self.track_id(track)
         if not tid:
             return
+        self._guard_sync_write()
+        if spotify_write_backend() == "cookie":
+            spotify_cookie.remove(playlist["id"], [tid])
+            return
         self._write(lambda: self._sp.playlist_remove_all_occurrences_of_items(playlist["id"], [_uri(tid)]), "remove")
         polite_sleep(0.3)
 
     def remove_occurrences(self, playlist, positioned):
+        self._guard_sync_write()
+        if spotify_write_backend() == "cookie":
+            spotify_cookie.remove_positions(playlist["id"], [pos for pos, _ in positioned])
+            return
         # Position-addressed removal against the read-time snapshot: with the
         # same uri present twice, remove() would drop BOTH copies. All positions
         # are evaluated against the one snapshot, so batches never shift indexes.

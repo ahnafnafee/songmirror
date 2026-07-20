@@ -17,7 +17,8 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
 from . import spotify_web
-from .config import DEFAULT_SPOTIFY_REDIRECT_URI, REQUEST_TIMEOUT, SPOTIFY_SCOPE, required_env
+from .config import (
+    DEFAULT_SPOTIFY_REDIRECT_URI, DEFAULT_SPOTIFY_TOKEN_CACHE, REQUEST_TIMEOUT, SPOTIFY_SCOPE, required_env)
 from .logs import log, log_note, log_warn
 
 # Connection-level failures spotipy's status-code retry doesn't cover.
@@ -50,7 +51,7 @@ def client(writable=False):
         client_secret=required_env("SPOTIFY_CLIENT_SECRET"),
         redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI", DEFAULT_SPOTIFY_REDIRECT_URI),
         scope=SPOTIFY_SCOPE,
-        cache_path=os.getenv("SPOTIFY_TOKEN_CACHE", ".cache"),
+        cache_path=os.getenv("SPOTIFY_TOKEN_CACHE") or DEFAULT_SPOTIFY_TOKEN_CACHE,
         open_browser=os.getenv("SPOTIFY_OAUTH_OPEN_BROWSER", "1") != "0",
     )
     # With no usable cached token, spotipy prints a URL and calls input() to paste
