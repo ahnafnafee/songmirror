@@ -343,7 +343,7 @@ def _run_nway(opts, sp, selected, songs, should_continue=None):
     """Bidirectional reconcile: each selected playlist across all peer providers,
     sequentially (each reconcile reads then writes every peer). A change on any
     provider propagates to the others via the stored canonical snapshot."""
-    peers = build_peers(opts, sp)
+    peers = build_peers(opts, sp, songs=songs)
     if len(peers) < 2:
         log_warn("N-way sync needs >=2 configured providers (Spotify + Apple and/or YouTube Music)", indent="  ")
         return []

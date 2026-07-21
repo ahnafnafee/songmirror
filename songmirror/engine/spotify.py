@@ -43,6 +43,46 @@ def _retry(fn, what, attempts=5):
             time.sleep(wait)
 
 
+_app_tokens = {}  # client_id -> {"token", "expires_at"}
+
+
+def _isrc_apps():
+    """[(client_id, secret)] for ISRC catalog reads — the SPOTIFY_ISRC_CLIENTS pool
+    ("id:secret,id:secret", set by the connect wizard's ISRC-app section), else the
+    main SPOTIFY_CLIENT_ID/SECRET. An app (client-credentials) token reads /tracks on a
+    rate bucket SEPARATE from the OAuth user token and the web-player cookie token; the
+    pool lets a rate-limited app fail over to the next (see spotify_cookie._track_isrcs).
+    Read fresh each call so a wizard change takes effect without a restart."""
+    pool = []
+    for pair in (os.getenv("SPOTIFY_ISRC_CLIENTS") or "").split(","):
+        cid, _, sec = pair.strip().partition(":")
+        if cid and sec:
+            pool.append((cid, sec))
+    return pool or [(required_env("SPOTIFY_CLIENT_ID"), required_env("SPOTIFY_CLIENT_SECRET"))]
+
+
+def isrc_app_count():
+    return len(_isrc_apps())
+
+
+def app_token(index=0):
+    """Client-credentials bearer for the ISRC app pool[index]. Cached per client_id
+    until ~1 min before expiry. Callers rotate `index` to fail over on a 429."""
+    cid, sec = _isrc_apps()[index % len(_isrc_apps())]
+    cached = _app_tokens.get(cid)
+    now = time.time()
+    if cached and now < cached["expires_at"] - 60:
+        return cached["token"]
+    r = requests.post(
+        "https://accounts.spotify.com/api/token",
+        data={"grant_type": "client_credentials", "client_id": cid, "client_secret": sec},
+        timeout=REQUEST_TIMEOUT)
+    r.raise_for_status()
+    body = r.json()
+    _app_tokens[cid] = {"token": body["access_token"], "expires_at": now + int(body.get("expires_in", 3600))}
+    return _app_tokens[cid]["token"]
+
+
 def client(writable=False):
     # Read and write request the same grant (SPOTIFY_SCOPE) so a read-only pass
     # never downscopes the cached token on refresh — see the module docstring.

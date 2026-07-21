@@ -9,7 +9,7 @@ need the modify scopes (see spotify.client(writable=True)).
 
 import spotipy
 
-from .. import spotify, spotify_cookie
+from .. import archive, spotify, spotify_cookie
 from ..config import polite_sleep, spotify_write_backend
 from ..matching import normalize_text, romanized, score_candidate, track_key
 from .base import MirrorTarget, TargetAuthError
@@ -24,7 +24,7 @@ class SpotifyTarget(MirrorTarget):
     tag = "spotify"
     source = "spotify"
 
-    def __init__(self, sp, cache_file, sync_peer=False):
+    def __init__(self, sp, cache_file, sync_peer=False, songs=None):
         self._sp = sp
         self.cache_file = cache_file
         self._me = None
@@ -32,6 +32,10 @@ class SpotifyTarget(MirrorTarget):
         # cookie mode this makes the read backfill ISRC and FAIL CLOSED if it can't —
         # so a sync never matches Spotify on name/artist alone and churns playlists.
         self._sync_peer = sync_peer
+        # The songs archive (sqlite conn) — a persistent ISRC cache so the peer read
+        # fetches each track's ISRC from /tracks once ever, not every pass (see
+        # playlist_tracks). None for transfers/browse, which don't need ISRC.
+        self._songs = songs
 
     def _user(self):
         if self._me is None:
@@ -85,7 +89,11 @@ class SpotifyTarget(MirrorTarget):
         # read backfills ISRC and fails closed if it can't — so a bidirectional sync
         # never matches Spotify on name/artist alone and churns.
         if spotify_write_backend() == "cookie":
-            return spotify_cookie.playlist_tracks(playlist["id"], require_isrc=self._sync_peer)
+            known = None
+            if self._sync_peer and self._songs is not None:
+                known = lambda ids: archive.get_isrcs(self._songs, "spotify", ids)  # noqa: E731
+            return spotify_cookie.playlist_tracks(
+                playlist["id"], require_isrc=self._sync_peer, known_isrc=known)
         return spotify.playlist_tracks(self._sp, playlist["id"])
 
     def track_id(self, track):

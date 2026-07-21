@@ -34,10 +34,10 @@ def _apple(opts):
 # Order matters: ISRC-rich providers first so they seed cross-provider identity.
 # `sp` (the Spotify client) is only needed by peers that read/write Spotify.
 _REGISTRY = {
-    "spotify": lambda opts, sp, sync_peer=False: (
-        SpotifyTarget(sp, opts.spotify_cache_file, sync_peer=sync_peer) if sp is not None else None),
-    "apple": lambda opts, sp, sync_peer=False: _apple(opts),
-    "ytmusic": lambda opts, sp, sync_peer=False: ytmusic.build(),
+    "spotify": lambda opts, sp, sync_peer=False, songs=None: (
+        SpotifyTarget(sp, opts.spotify_cache_file, sync_peer=sync_peer, songs=songs) if sp is not None else None),
+    "apple": lambda opts, sp, sync_peer=False, songs=None: _apple(opts),
+    "ytmusic": lambda opts, sp, sync_peer=False, songs=None: ytmusic.build(),
 }
 _SOURCE_ORDER = ["spotify", "apple", "ytmusic"]
 
@@ -68,12 +68,13 @@ def is_peer(provider_id):
     return provider_id in _REGISTRY
 
 
-def build_peers(opts, sp):
+def build_peers(opts, sp, songs=None):
     """N-way peer nodes, limited to opts.providers and to what's configured, in
     ISRC-rich-first order. An empty opts.providers means every configured provider
     (matching the UI, which shows every connected peer when none are explicitly
     chosen) — so a job saved without touching the Services step still syncs rather
-    than silently finding zero peers. Needs the Spotify client for the Spotify peer."""
+    than silently finding zero peers. Needs the Spotify client for the Spotify peer.
+    `songs` (the archive conn) backs the Spotify peer's persistent ISRC cache."""
     wanted = {s.strip() for s in (opts.providers or "").split(",") if s.strip()}
     return [peer for src in _SOURCE_ORDER if not wanted or src in wanted
-            for peer in (_REGISTRY[src](opts, sp, sync_peer=True),) if peer]
+            for peer in (_REGISTRY[src](opts, sp, sync_peer=True, songs=songs),) if peer]

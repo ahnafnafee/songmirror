@@ -22,7 +22,6 @@ cookie itself lasts about a year; the connector surfaces when it needs renewing.
 import json
 import os
 import re
-import time
 
 import requests
 
@@ -32,7 +31,7 @@ from .targets.base import TargetAuthError
 
 _PATHFINDER = "https://api-partner.spotify.com/pathfinder/v2/query"
 _SPCLIENT = "https://spclient.wg.spotify.com"   # web-player backend — no api.spotify.com rate limit / dev-mode gate
-_API = "https://api.spotify.com/v1"             # official REST — only for the /tracks ISRC lookup (the first-party token bypasses the dev-mode gate that 403s the dev-app OAuth token here)
+_API = "https://api.spotify.com/v1"             # official REST — the batch /tracks?ids ISRC lookup (client-credentials app token; see _track_isrcs)
 _WEB = "https://open.spotify.com/"
 # Sent as spotify-app-version; loosely paired with the persisted-query hashes and
 # refreshed alongside them. A slightly stale value still resolves in practice.
@@ -225,37 +224,56 @@ def contents(playlist):
 
 
 def _track_isrcs(ids):
-    """{track_id: isrc|None} via the first-party token on /tracks (catalog metadata —
-    the dev-app OAuth token 403s here, the cookie token does not). Cached across the
-    process; only unknown ids are fetched (50 per call, the API cap). Raises on a hard
-    API failure so a caller that NEEDS ISRC (an N-way sync read) fails closed instead
-    of matching on name/artist alone and churning playlists."""
+    """{track_id: isrc|None} from the official catalog via a CLIENT-CREDENTIALS APP token on
+    the BATCH /tracks?ids endpoint (50 ids/call). Cached in-process; only unknown ids fetch.
+
+    Token+endpoint choice — every alternative tested live:
+      • OAuth user token → 403 on /tracks (dev-mode gate).
+      • cookie (first-party) token → does batch, but rate-limits PER-ACCOUNT and, retried
+        into a 429, escalates into an hours-long penalty box. Kept for WRITES, not this.
+      • APP token → a SEPARATE rate bucket from the user account, so ISRC reads never touch
+        the per-account limit. A DEV-MODE app 403s on batch and caps ~300/24h on single; an
+        EXTENDED-QUOTA app does the 50-ids batch — a whole library in ~len/50 calls. The
+        SPOTIFY_ISRC_CLIENTS pool supplies batch-capable app creds.
+
+    Fail-over then fail-CLOSED: a 429 rotates to the next pool app; when the last app 429s it
+    raises, so an N-way sync read fails closed rather than matching blind. No retry INTO a
+    429 on the same app (that's what earns a penalty box). With the DB cache (playlist_tracks'
+    known_isrc), steady-state fetches trend to zero."""
+    from . import spotify
     want = [i for i in dict.fromkeys(ids) if i and i not in _isrc_cache]
+    napps = spotify.isrc_app_count()
     for i in range(0, len(want), 50):
         chunk = want[i:i + 50]
-        for attempt in range(4):
+        for app_idx in range(napps):
             r = requests.get(f"{_API}/tracks", params={"ids": ",".join(chunk)},
-                             headers={"Authorization": f"Bearer {_token()}", "User-Agent": _UA},
+                             headers={"Authorization": f"Bearer {spotify.app_token(app_idx)}", "User-Agent": _UA},
                              timeout=REQUEST_TIMEOUT)
-            if r.status_code == 429 and attempt < 3:
-                time.sleep(min(int(r.headers.get("Retry-After") or 2) + 1, 30))
-                continue
-            r.raise_for_status()
+            if r.status_code == 429 and app_idx < napps - 1:
+                continue   # this app is rate-limited — fail over to the next pool app
+            r.raise_for_status()   # last-app 429 / other error -> HTTPError -> fail-closed upstream
             for t in (r.json().get("tracks") or []):
                 if t:
                     _isrc_cache[t["id"]] = (t.get("external_ids") or {}).get("isrc")
             break
+        if i + 50 < len(want):
+            polite_sleep(0.5)   # space multi-batch backfills; a single-batch pass doesn't sleep
     return {i: _isrc_cache.get(i) for i in ids}
 
 
-def playlist_tracks(playlist, require_isrc=False):
+def playlist_tracks(playlist, require_isrc=False, known_isrc=None):
     """Full track dicts (the shape spotify.playlist_tracks yields) via pathfinder —
     works for private owned playlists the dev-mode official API 403s, and returns []
-    for a just-created empty playlist. The pathfinder payload carries no ISRC; with
-    require_isrc (set for N-way sync reads) it is backfilled from /tracks so
-    cross-provider matching stays reliable, and a hard lookup failure raises so the
-    sync fails closed instead of matching on name/artist alone. Transfers don't need
-    it — a same-provider copy uses the track id directly."""
+    for a just-created empty playlist. The pathfinder payload carries no ISRC (confirmed
+    absent from the entire web-player surface); with require_isrc (set for N-way sync
+    reads) it is backfilled so cross-provider matching stays reliable, and a hard lookup
+    failure raises so the sync fails closed instead of matching on name/artist alone.
+
+    known_isrc(ids) -> {id: isrc}, when given, supplies already-known ISRCs (the
+    persisted songs-DB cache) so only genuinely-new tracks hit the rate-limited /tracks
+    endpoint — the difference between "fetch every track every pass" (which earns a
+    penalty box) and "fetch each track once, ever". Transfers pass neither flag — a
+    same-provider copy uses the track id directly."""
     out = []
     for it in _content_items(playlist):
         t = (it.get("itemV2") or {}).get("data") or {}
@@ -273,9 +291,11 @@ def playlist_tracks(playlist, require_isrc=False):
             "added_at": (it.get("addedAt") or {}).get("isoString") or "",
         })
     if require_isrc and out:
-        isrcs = _track_isrcs([t["id"] for t in out])
+        ids = [t["id"] for t in out]
+        cached = known_isrc(ids) if known_isrc else {}
+        fetched = _track_isrcs([i for i in ids if not cached.get(i)])
         for t in out:
-            t["isrc"] = isrcs.get(t["id"])
+            t["isrc"] = cached.get(t["id"]) or fetched.get(t["id"])
     return out
 
 

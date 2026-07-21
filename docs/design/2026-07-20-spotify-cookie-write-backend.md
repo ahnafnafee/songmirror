@@ -26,10 +26,26 @@ reconcile*. The pathfinder read carries **no ISRC**, so cross-provider matching 
 fall back to name/artist and mis-match (karaoke/tribute versions) → churn. True N-way
 means Spotify reads+writes, so rather than gate it, the read **backfills ISRC**:
 
-- `spotify_cookie.playlist_tracks(require_isrc=True)` (set by `SpotifyTarget(sync_peer=True)`)
-  fetches ISRC from `GET /v1/tracks` with the **first-party cookie token** — that
-  endpoint is dev-mode-restricted for the OAuth dev-app token (403) but the cookie
-  token is accepted (verified: 429 rate-limit, not 403). Cached per process, 50 ids/call.
+- **ISRC exists in exactly one place** — `GET api.spotify.com/v1/tracks`. Confirmed
+  absent from every first-party alternative: 0 hits for `isrc`/`externalId` in the
+  whole web-player JS bundle (pathfinder, including `getTrack`, can't return it),
+  spclient `/metadata/4/track/{gid}` 404s even with a valid client-token, and the
+  track-page HTML is an empty shell. MusicBrainz carries the canonical ISRC where
+  present but only ~13% coverage for an obscure library — safe, too sparse to rely on.
+- **Token × endpoint (all tested live).** ISRC is read with a **client-credentials APP
+  token** — a rate bucket SEPARATE from the OAuth user token and the web-player cookie
+  token, so it never touches the per-account limit. An **extended-quota app on the
+  BATCH endpoint** (`/tracks?ids`, 50 ids/call) is the path: whole library in ~len/50
+  calls, seconds. The gated alternatives: a dev-mode app 403s on batch and caps ~300
+  single calls / 24h; the OAuth user token 403s entirely; the cookie token does batch
+  but rate-limits per-account and, retried into a 429, escalates into an hours-long
+  penalty box (so it stays for writes, not ISRC).
+- **Three rules keep it cheap and safe:** (1) the `SPOTIFY_ISRC_CLIENTS` app pool —
+  configured in the connect wizard's "ISRC lookup app" section — with **429 failover**
+  to the next app; (2) `known_isrc` supplies persisted ISRCs from the `songs` archive
+  (`archive.get_isrcs`) so each track is fetched **once, ever** (steady-state ≈ 0
+  calls); (3) `_track_isrcs` **fails fast** — a 429 rotates apps, never retries into it
+  on one app (that's what escalates a penalty box).
 - **Fail closed:** if the ISRC lookup can't complete, the sync read *raises* — the
   reconcile aborts (like the pre-cookie 403 path) instead of matching on name/artist
   alone. So N-way is on by default *and* can never churn on unreliable matches.
