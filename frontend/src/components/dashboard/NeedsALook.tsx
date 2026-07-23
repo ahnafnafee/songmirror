@@ -1,10 +1,13 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { LuCircleAlert, LuTriangleAlert } from 'react-icons/lu'
+import { LuCircleAlert, LuTriangleAlert, LuX } from 'react-icons/lu'
 import type { IconType } from 'react-icons'
 
 import type { Account, SyncStatus } from '@/types'
 
 import { BUTTON_BASE_CLASSES, BUTTON_SIZE_CLASSES, BUTTON_VARIANT_CLASSES } from '../ui/buttonStyles'
+
+const STORAGE_KEY = 'songmirror-dismissed-alerts'
 
 interface NeedsLookItem {
   key: string
@@ -83,22 +86,76 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
   return items
 }
 
+/** Identity of an item's CURRENT state, not just its slot: the title and
+ * description carry the counts, account name and error text, so a dismissal
+ * only silences the exact situation the user saw. Two held removals dismissed,
+ * then five held next pass -> a new signature, so it surfaces again. */
+function signature(item: NeedsLookItem): string {
+  return `${item.key}|${item.title}|${item.description}`
+}
+
+/** Never throws — an unavailable or corrupted store just means "nothing
+ * dismissed" rather than a render crash (mirrors the live feed's persistence). */
+function loadDismissed(): string[] {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return []
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '[]')
+    return Array.isArray(parsed) ? (parsed as string[]) : []
+  } catch {
+    try {
+      window.localStorage?.removeItem(STORAGE_KEY)
+    } catch {
+      // Storage inaccessible even for a clear — nothing more we can do.
+    }
+    return []
+  }
+}
+
 /** Real, actionable problems only — hidden entirely when there's nothing to
- * flag rather than showing an empty section. */
+ * flag rather than showing an empty section. Each card can be dismissed; the
+ * dismissal persists across reloads until that situation changes or clears. */
 export function NeedsALook({ accounts, status }: { accounts: Account[] | null; status: SyncStatus | null }) {
+  const [dismissed, setDismissed] = useState<string[]>(loadDismissed)
   const items = buildItems(accounts, status)
-  if (items.length === 0) return null
+  const live = items.map(signature).join('\n')
+  // Both sources must have answered before "this item is gone" means anything —
+  // while they're still in flight there are no items at all, and pruning then
+  // would drop every dismissal on each page load.
+  const loaded = accounts !== null && status !== null
+
+  // Forget dismissals whose situation is gone, so the store can't grow without
+  // bound and a problem that recurs later is surfaced fresh rather than staying
+  // silenced by a dismissal from weeks ago.
+  useEffect(() => {
+    if (!loaded) return
+    const active = new Set(live ? live.split('\n') : [])
+    setDismissed((prev) => {
+      const next = prev.filter((k) => active.has(k))
+      return next.length === prev.length ? prev : next
+    })
+  }, [loaded, live])
+
+  useEffect(() => {
+    try {
+      window.localStorage?.setItem(STORAGE_KEY, JSON.stringify(dismissed))
+    } catch {
+      // Unavailable/full storage — dismissals just won't survive this reload.
+    }
+  }, [dismissed])
+
+  const visible = items.filter((item) => !dismissed.includes(signature(item)))
+  if (visible.length === 0) return null
 
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center gap-2.5">
         <h2 className="text-base font-extrabold tracking-tight text-text">Needs a look</h2>
         <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-chip bg-warning-soft px-1.5 font-mono text-xs font-bold text-warning">
-          {items.length}
+          {visible.length}
         </span>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {items.map((item) => (
+        {visible.map((item) => (
           <div
             key={item.key}
             className="flex items-center gap-3 rounded-card border border-border border-l-[3px] border-l-warning bg-surface p-4 shadow-sm"
@@ -126,6 +183,15 @@ export function NeedsALook({ accounts, status }: { accounts: Account[] | null; s
                 {item.action.label}
               </Link>
             )}
+            <button
+              type="button"
+              onClick={() => setDismissed((prev) => [...prev, signature(item)])}
+              title="Dismiss"
+              aria-label={`Dismiss: ${item.title}`}
+              className="flex size-7 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-fast hover:bg-surface-2 hover:text-text"
+            >
+              <LuX className="size-4" aria-hidden="true" />
+            </button>
           </div>
         ))}
       </div>

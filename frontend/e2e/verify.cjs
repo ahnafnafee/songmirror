@@ -621,6 +621,89 @@ async function main() {
     }
 
     // -----------------------------------------------------------------
+    // "Needs a look" alerts are dismissable: one X per card, the count chip
+    // follows, dismissals survive a reload, and a dismissal is FORGOTTEN once
+    // that exact situation changes (a different held-count is a new problem,
+    // not the silenced one). Plus: the sidebar wordmark links home.
+    // -----------------------------------------------------------------
+    {
+      const context = await browser.newContext()
+      await context.addInitScript(() => window.localStorage.setItem('songmirror-theme', 'light'))
+      const page = await context.newPage()
+      await installMocks(page)
+      await page.setViewportSize({ width: 1280, height: 900 })
+      await page.goto(BASE_URL + '/', { waitUntil: 'networkidle' })
+      await page.waitForSelector('h2:has-text("Needs a look")')
+
+      const dismissButtons = () => page.getByRole('button', { name: /^Dismiss: / })
+      const badge = () => page.locator('h2:has-text("Needs a look")').locator('xpath=following-sibling::span[1]')
+      const HELD_ALERT = 'Dismiss: 4 changes held from the last pass'
+
+      // ytmusic error + jellyfin unconfigured + 1 held & 3 deferred changes
+      const startCount = await dismissButtons().count()
+      const startBadge = await badge().innerText()
+      const startOk = startCount === 3 && startBadge === '3'
+      console.log(`${startOk ? 'ok        ' : 'FAIL      '} every "Needs a look" card has a Dismiss control (${startCount} cards, badge "${startBadge}", expected 3)`)
+      if (!startOk) results.push({ label: 'needs a look dismissable cards', overflow: true })
+      await checkOverflow(page, 'Needs a look, dismissable @ 1280', results)
+      await shot(page, 'dashboard-needs-a-look-dismissable')
+
+      await page.getByRole('button', { name: HELD_ALERT, exact: true }).click()
+      await page.waitForTimeout(150)
+      const afterCount = await dismissButtons().count()
+      const afterBadge = await badge().innerText()
+      const goneNow = !(await page.locator('body').innerText()).includes('4 changes held from the last pass')
+      const dismissOk = afterCount === 2 && afterBadge === '2' && goneNow
+      console.log(`${dismissOk ? 'ok        ' : 'FAIL      '} dismissing a card removes it and updates the count (${afterCount} cards, badge "${afterBadge}", text gone=${goneNow})`)
+      if (!dismissOk) results.push({ label: 'needs a look dismiss', overflow: true })
+
+      await page.reload({ waitUntil: 'networkidle' })
+      await page.waitForSelector('h2:has-text("Needs a look")')
+      const afterReload = await dismissButtons().count()
+      const stillGone = !(await page.locator('body').innerText()).includes('4 changes held from the last pass')
+      const persistOk = afterReload === 2 && stillGone
+      console.log(`${persistOk ? 'ok        ' : 'FAIL      '} the dismissal survives a reload (${afterReload} cards, still gone=${stillGone})`)
+      if (!persistOk) results.push({ label: 'needs a look dismiss persistence', overflow: true })
+
+      // Same slot, different situation: a changed held-count is a NEW problem,
+      // so it must resurface — and the stale dismissal is pruned from storage.
+      await page.route('**/api/sync/status', async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback()
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            running: false, mode: null, running_job: null, master: true, scheduled: true,
+            next_run_at: Math.floor(Date.now() / 1000) + 3600,
+            last: {
+              mode: 'nway', execute: true, duration_s: 30, ok: true, error: null,
+              per_target: [{ name: 'Apple Music', added: 0, removed: 0, missing: 0, held: 9, deferred: 0, created: 0, skipped: 0 }],
+            },
+            jobs: [],
+          }),
+        })
+      })
+      await page.reload({ waitUntil: 'networkidle' })
+      await page.waitForSelector('h2:has-text("Needs a look")')
+      await page.waitForTimeout(150)
+      const resurfaced = (await page.locator('body').innerText()).includes('9 changes held from the last pass')
+      const stored = await page.evaluate(() => window.localStorage.getItem('songmirror-dismissed-alerts'))
+      const prunedOk = resurfaced && stored === '[]'
+      console.log(`${prunedOk ? 'ok        ' : 'FAIL      '} a changed situation resurfaces and prunes the stale dismissal (resurfaced=${resurfaced}, stored=${stored})`)
+      if (!prunedOk) results.push({ label: 'needs a look dismiss pruning', overflow: true })
+
+      // The sidebar wordmark is a link home from anywhere in the app.
+      await page.goto(BASE_URL + '/settings', { waitUntil: 'networkidle' })
+      await page.getByRole('link', { name: 'SongMirror', exact: true }).click()
+      await page.waitForURL(BASE_URL + '/')
+      const home = new URL(page.url()).pathname === '/'
+      console.log(`${home ? 'ok        ' : 'FAIL      '} clicking the sidebar logo/wordmark navigates to the dashboard (path "${new URL(page.url()).pathname}")`)
+      if (!home) results.push({ label: 'sidebar logo links home', overflow: true })
+
+      await context.close()
+    }
+
+    // -----------------------------------------------------------------
     // Dashboard "Ongoing transfers" card: one running + one paused active
     // transfer, each with status-appropriate Pause/Resume/Stop controls;
     // clicking them round-trips through the mock's stateful active-jobs
