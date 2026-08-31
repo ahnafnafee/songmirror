@@ -137,13 +137,23 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 
 The fastest way to run it is Docker — Compose pulls the published image, serves the web UI, and runs your syncs on schedule.
 
+For a persistent installation with automatic restarts:
+
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
 docker compose up -d
 ```
 
-Then open **`http://localhost:8888`** and connect your services in the browser. That's it — **no `.env` to edit**; everything is configured in the UI and saved under `./data`.
+Or try the public GHCR image directly without cloning the repository:
+
+```bash
+docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
+```
+
+Then open **`http://localhost:8888`** and connect your services in the browser. The Compose setup needs **no `.env` to start**; everything is configured in the UI and saved under `./data`.
+
+The direct `docker run` option is disposable: `docker stop songmirror` removes the container and its configuration. Use Compose for a durable installation with persistent credentials, caches, and downloads, or see the **[container image guide](docs/docker-image.md)** for tags and digest pinning.
 
 Prefer running it without Docker?
 
