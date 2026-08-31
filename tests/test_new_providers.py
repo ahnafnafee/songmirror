@@ -909,7 +909,8 @@ def test_amazon_renewal_parser_keeps_only_known_auth_cookies():
     raw = (
         "curl 'https://music.amazon.com/pandaToken' "
         "-H 'cookie: session-id=session; at-main-music=music-auth; "
-        "session-token=retail-session; sid=music-session; AMCV_AdobeOrg=analytics; "
+        "session-token=retail-session; sid=music-session; sst-main=sso-auth; "
+        "sso-state-main=sso-state; AMCV_AdobeOrg=analytics; "
         "aws-userInfo=console-profile; am-loader-experiment=bucket'"
     )
 
@@ -918,6 +919,8 @@ def test_amazon_renewal_parser_keeps_only_known_auth_cookies():
         "session-id": "session",
         "session-token": "retail-session",
         "sid": "music-session",
+        "sso-state-main": "sso-state",
+        "sst-main": "sso-auth",
     }
     minimized = serialize_renewal_cookies(raw)
     assert json.loads(minimized) == {
@@ -925,6 +928,8 @@ def test_amazon_renewal_parser_keeps_only_known_auth_cookies():
         "session-id": "session",
         "session-token": "retail-session",
         "sid": "music-session",
+        "sso-state-main": "sso-state",
+        "sst-main": "sso-auth",
     }
     assert "analytics" not in minimized
     assert "console-profile" not in minimized
@@ -988,7 +993,17 @@ def test_amazon_web_client_renews_rejected_token_and_retries_mutation_once(tmp_p
 
         def get(self, url, **kwargs):
             self.calls.append(("GET", url, kwargs))
+            assert url == PANDA_TOKEN_ENDPOINT
+            assert kwargs["cookies"] == {
+                "at-main-music": "rotated-music-auth",
+                "session-id": "session",
+            }
+            return Response(200, {"accessToken": "fresh-access", "expiresIn": 3600})
+
+        def post(self, url, **kwargs):
+            self.calls.append(("POST", url, kwargs))
             if url == CONFIG_ENDPOINT:
+                assert kwargs["params"] == {"skipToken": "false"}
                 assert kwargs["cookies"] == {
                     "at-main-music": "initial-music-auth",
                     "session-id": "session",
@@ -1002,16 +1017,7 @@ def test_amazon_web_client_renews_rejected_token_and_retries_mutation_once(tmp_p
                     },
                     cookies={"at-main-music": "rotated-music-auth", "tracking": "discard"},
                 )
-            assert url == PANDA_TOKEN_ENDPOINT
-            assert kwargs["cookies"] == {
-                "at-main-music": "rotated-music-auth",
-                "session-id": "session",
-            }
-            return Response(200, {"accessToken": "fresh-access", "expiresIn": 3600})
-
-        def post(self, url, **kwargs):
             assert url == ENDPOINT
-            self.calls.append(("POST", url, kwargs))
             self.graphql_calls += 1
             if self.graphql_calls == 1:
                 return Response(401, {"errors": [{"message": "expired"}]})
@@ -1051,6 +1057,234 @@ def test_amazon_web_client_renews_rejected_token_and_retries_mutation_once(tmp_p
     assert persisted["expires_at"] > 0
 
 
+def test_amazon_connection_replays_browser_context_and_proves_panda_renewal(tmp_path):
+    import requests
+
+    from songmirror.amazon_music_web import (
+        CONFIG_ENDPOINT,
+        ENDPOINT,
+        PANDA_TOKEN_ENDPOINT,
+        AmazonMusicWebClient,
+    )
+
+    browser_user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:154.0) "
+        "Gecko/20100101 Firefox/154.0"
+    )
+    browser_referer = "https://music.amazon.com/profiles/profile-7"
+
+    class Response:
+        headers = {}
+
+        def __init__(self, status_code, body, *, url):
+            self.status_code = status_code
+            self._body = body
+            self.url = url
+            self.history = []
+            self.cookies = requests.cookies.RequestsCookieJar()
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise AssertionError(f"unexpected HTTP {self.status_code}")
+
+        def json(self):
+            return self._body
+
+    class Session:
+        def __init__(self):
+            self.calls = []
+            self.cookies = requests.cookies.RequestsCookieJar()
+
+        def get(self, url, **kwargs):
+            self.calls.append(("GET", url, kwargs))
+            assert url == PANDA_TOKEN_ENDPOINT
+            assert kwargs["headers"]["User-Agent"] == browser_user_agent
+            assert kwargs["headers"]["Referer"] == browser_referer
+            assert "cookies" not in kwargs
+            return Response(
+                200,
+                {"accessToken": "fresh-access", "expiresIn": 3600},
+                url=url,
+            )
+
+        def post(self, url, **kwargs):
+            self.calls.append(("POST", url, kwargs))
+            if url == CONFIG_ENDPOINT:
+                assert kwargs["params"] == {"skipToken": "false"}
+                assert kwargs["headers"]["User-Agent"] == browser_user_agent
+                assert kwargs["headers"]["Referer"] == browser_referer
+                assert "cookies" not in kwargs
+                return Response(
+                    200,
+                    {"deviceId": "device-7", "deviceType": "A16ZV8BU3SN1N3"},
+                    url=url,
+                )
+            assert url == ENDPOINT
+            return Response(200, {"data": {"user": {"id": "customer-1"}}}, url=url)
+
+    session = Session()
+    client = AmazonMusicWebClient(
+        json.dumps(
+            {
+                "accessToken": "one-hour-bootstrap",
+                "deviceId": "device-7",
+                "deviceType": "A16ZV8BU3SN1N3",
+            }
+        ),
+        renewal_request=(
+            "POST /config.json?skipToken=false HTTP/2\n"
+            "Host: music.amazon.com\n"
+            f"User-Agent: {browser_user_agent}\n"
+            "Accept-Language: en-US,en;q=0.9\n"
+            f"Referer: {browser_referer}\n"
+            "Cookie: at-main-music=renewable-music; sst-main=durable-sso; "
+            "session-id=session"
+        ),
+        token_file=str(tmp_path / "amazon-session.json"),
+        prefer_persisted=False,
+        session=session,
+    )
+
+    client.validate(require_renewal=True)
+
+    assert [(method, url) for method, url, _ in session.calls] == [
+        ("POST", CONFIG_ENDPOINT),
+        ("GET", PANDA_TOKEN_ENDPOINT),
+        ("POST", ENDPOINT),
+    ]
+    renewal = json.loads(client.serialized_renewal())
+    assert renewal["browser_headers"] == {
+        "accept-language": "en-US,en;q=0.9",
+        "referer": browser_referer,
+        "user-agent": browser_user_agent,
+    }
+    assert renewal["renewal_cookies"]["sst-main"] == "durable-sso"
+    assert renewal["renewal_cookies"]["at-main-music"] == "renewable-music"
+
+
+def test_amazon_session_does_not_rescope_foreign_cookie_names_to_amazon():
+    import requests
+
+    from songmirror.amazon_music_web import AmazonMusicWebClient
+
+    class Session:
+        def __init__(self):
+            self.cookies = requests.cookies.RequestsCookieJar()
+
+    session = Session()
+    client = AmazonMusicWebClient(
+        json.dumps(
+            {
+                "accessToken": "temporary-access",
+                "deviceId": "device-7",
+                "deviceType": "A16ZV8BU3SN1N3",
+            }
+        ),
+        renewal_request="Cookie: session-id=amazon-session",
+        prefer_persisted=False,
+        session=session,
+    )
+    session.cookies.set("sst-main", "foreign-value", domain=".example.test", path="/")
+
+    client._sync_response_cookies(object())
+
+    renewal = json.loads(client.serialized_renewal())
+    assert renewal["renewal_cookies"] == {"session-id": "amazon-session"}
+
+
+@pytest.mark.parametrize(
+    ("first_status", "first_body"),
+    [
+        (200, {"accessToken": "", "expiresIn": 0}),
+        (401, {}),
+    ],
+)
+def test_amazon_web_client_bootstraps_config_after_panda_renewal_fails(
+    first_status,
+    first_body,
+):
+    import requests
+
+    from songmirror.amazon_music_web import (
+        CONFIG_ENDPOINT,
+        PANDA_TOKEN_ENDPOINT,
+        AmazonMusicWebClient,
+    )
+
+    class Response:
+        headers = {}
+
+        def __init__(self, status_code, body, *, url):
+            self.status_code = status_code
+            self._body = body
+            self.url = url
+            self.history = []
+            self.cookies = requests.cookies.RequestsCookieJar()
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise AssertionError(f"HTTP {self.status_code} bypassed the config retry")
+
+        def json(self):
+            return self._body
+
+    class Session:
+        def __init__(self):
+            self.calls = []
+            self.cookies = requests.cookies.RequestsCookieJar()
+            self.panda_calls = 0
+
+        def get(self, url, **kwargs):
+            assert "cookies" not in kwargs
+            assert url == PANDA_TOKEN_ENDPOINT
+            self.calls.append(("GET", url))
+            self.panda_calls += 1
+            if self.panda_calls == 1:
+                return Response(first_status, first_body, url=url)
+            return Response(
+                200,
+                {"accessToken": "renewed-access", "expiresIn": 3600},
+                url=url,
+            )
+
+        def post(self, url, **kwargs):
+            assert url == CONFIG_ENDPOINT
+            assert kwargs["params"] == {"skipToken": "false"}
+            assert "cookies" not in kwargs
+            self.calls.append(("POST", url))
+            return Response(
+                200,
+                {"deviceId": "device-7", "deviceType": "A16ZV8BU3SN1N3"},
+                url=url,
+            )
+
+    session = Session()
+    client = AmazonMusicWebClient(
+        json.dumps(
+            {
+                "accessToken": "expired-access",
+                "deviceId": "device-7",
+                "deviceType": "A16ZV8BU3SN1N3",
+            }
+        ),
+        renewal_request=(
+            "Cookie: at-main-music=renewable-music; sst-main=durable-sso; "
+            "session-id=session"
+        ),
+        prefer_persisted=False,
+        session=session,
+    )
+
+    client._renew(persist=False)
+
+    assert session.calls == [
+        ("GET", PANDA_TOKEN_ENDPOINT),
+        ("POST", CONFIG_ENDPOINT),
+        ("GET", PANDA_TOKEN_ENDPOINT),
+    ]
+    assert client._authorization_context(client.headers)["access_token"] == "renewed-access"
+
+
 def test_amazon_connector_rejects_a_bootstrap_when_renewal_cannot_mint_a_token(tmp_path, monkeypatch):
     import songmirror.amazon_music_web as amazon_web
     from songmirror.services.accounts.amazon_music import AmazonMusicConnector
@@ -1064,9 +1298,11 @@ def test_amazon_connector_rejects_a_bootstrap_when_renewal_cannot_mint_a_token(t
         headers = {}
         cookies = Cookies()
 
-        def __init__(self, status_code, body):
+        def __init__(self, status_code, body, *, url=""):
             self.status_code = status_code
             self._body = body
+            self.url = url
+            self.history = []
 
         def raise_for_status(self):
             if self.status_code >= 400:
@@ -1078,9 +1314,16 @@ def test_amazon_connector_rejects_a_bootstrap_when_renewal_cannot_mint_a_token(t
     class Session:
         def __init__(self):
             self.calls = []
+            self.panda_calls = 0
 
         def get(self, url, **kwargs):
             self.calls.append(("GET", url))
+            assert url == amazon_web.PANDA_TOKEN_ENDPOINT
+            self.panda_calls += 1
+            return Response(200, {"accessToken": "", "expiresIn": 0})
+
+        def post(self, url, **kwargs):
+            self.calls.append(("POST", url))
             if url == amazon_web.CONFIG_ENDPOINT:
                 return Response(
                     200,
@@ -1090,11 +1333,6 @@ def test_amazon_connector_rejects_a_bootstrap_when_renewal_cannot_mint_a_token(t
                         "deviceType": "A16ZV8BU3SN1N3",
                     },
                 )
-            assert url == amazon_web.PANDA_TOKEN_ENDPOINT
-            return Response(200, {"accessToken": "", "expiresIn": 0})
-
-        def post(self, url, **kwargs):
-            self.calls.append(("POST", url))
             assert url == amazon_web.ENDPOINT
             return Response(200, {"data": {"user": {"id": "customer-1"}}})
 
@@ -1114,14 +1352,16 @@ def test_amazon_connector_rejects_a_bootstrap_when_renewal_cannot_mint_a_token(t
                     "deviceType": "A16ZV8BU3SN1N3",
                 }
             ),
-            "AMAZON_MUSIC_RENEWAL_REQUEST": "Cookie: at-main-music=stale-session",
+            "AMAZON_MUSIC_RENEWAL_REQUEST": (
+                "Cookie: at-main-music=stale-session; sst-main=durable-sso"
+            ),
         }
     )
 
     assert status.state == "error"
     assert "/pandaToken did not return an access token" in status.detail
     assert session.calls == [
-        ("GET", amazon_web.CONFIG_ENDPOINT),
+        ("POST", amazon_web.CONFIG_ENDPOINT),
         ("GET", amazon_web.PANDA_TOKEN_ENDPOINT),
     ]
     assert not connector._store.get("AMAZON_MUSIC_WEB_HEADERS")
@@ -1142,9 +1382,11 @@ def test_amazon_connector_persists_renewal_only_after_user_validation(tmp_path, 
         headers = {}
         cookies = Cookies()
 
-        def __init__(self, status_code, body):
+        def __init__(self, status_code, body, *, url=""):
             self.status_code = status_code
             self._body = body
+            self.url = url
+            self.history = []
 
         def raise_for_status(self):
             if self.status_code >= 400:
@@ -1159,13 +1401,16 @@ def test_amazon_connector_persists_renewal_only_after_user_validation(tmp_path, 
 
         def get(self, url, **kwargs):
             self.calls.append(("GET", url))
-            if url == amazon_web.CONFIG_ENDPOINT:
-                return Response(200, {"deviceId": "device-7", "deviceType": "A16ZV8BU3SN1N3"})
             assert url == amazon_web.PANDA_TOKEN_ENDPOINT
             return Response(200, {"accessToken": "fresh-access", "expiresIn": 3600})
 
         def post(self, url, **kwargs):
             self.calls.append(("POST", url))
+            if url == amazon_web.CONFIG_ENDPOINT:
+                return Response(
+                    200,
+                    {"deviceId": "device-7", "deviceType": "A16ZV8BU3SN1N3"},
+                )
             assert url == amazon_web.ENDPOINT
             return Response(200, {"data": {"user": None}})
 
@@ -1186,14 +1431,16 @@ def test_amazon_connector_persists_renewal_only_after_user_validation(tmp_path, 
                     "deviceType": "A16ZV8BU3SN1N3",
                 }
             ),
-            "AMAZON_MUSIC_RENEWAL_REQUEST": "Cookie: at-main-music=candidate-session",
+            "AMAZON_MUSIC_RENEWAL_REQUEST": (
+                "Cookie: at-main-music=candidate-session; sst-main=durable-sso"
+            ),
         }
     )
 
     assert status.state == "error"
     assert "did not recognize a signed-in user" in status.detail
     assert session.calls == [
-        ("GET", amazon_web.CONFIG_ENDPOINT),
+        ("POST", amazon_web.CONFIG_ENDPOINT),
         ("GET", amazon_web.PANDA_TOKEN_ENDPOINT),
         ("POST", amazon_web.ENDPOINT),
     ]
@@ -1244,7 +1491,7 @@ def test_amazon_connector_accepts_web_session_without_beta_approval(tmp_path, mo
     stored = json.loads(connector._store.get("AMAZON_MUSIC_WEB_HEADERS"))
     assert set(stored) == {"authorization", "x-api-key"}
     assert json.loads(connector._store.get("AMAZON_MUSIC_RENEWAL_REQUEST")) == {
-        "at-main-music": "renew-me"
+        "renewal_cookies": {"at-main-music": "renew-me"}
     }
 
 

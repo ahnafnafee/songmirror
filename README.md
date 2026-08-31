@@ -321,7 +321,7 @@ SongMirror refreshes credentials **just in time**, not with a separate token-ref
 | **TIDAL** | A pasted web-player Bearer cannot be renewed and must be captured again after expiry. The optional developer OAuth fallback refreshes automatically when a refresh token is available. |
 | **Qobuz** | The pasted `X-User-Auth-Token` is used until Qobuz rejects it, then must be captured again. |
 | **Deezer** | The short-lived Pipe JWT renews automatically from the saved `refresh-token` before use and once after a `401/403`; rotated renewal state is persisted. |
-| **Amazon Music** | The web access token renews from the allowlisted signed-in browser cookies shortly before known expiry and once after a `401/403`; refreshed device context and rotated cookies are persisted. Logout, security changes, or server-side revocation still require a fresh capture. |
+| **Amazon Music** | The web access token renews through `/pandaToken` using the captured browser user agent, referer, and allowlisted cookies. The current `POST config.json?skipToken=false` flow bootstraps device context when needed, and rotated cookies are persisted. Logout, security changes, or server-side revocation still require a fresh capture. |
 | **Apple Music** | The pasted Bearer and Media-User-Token cannot be renewed by SongMirror and must be captured again after rejection. |
 | **YouTube Music** | Data API OAuth refreshes automatically within 60 seconds of expiry. Browser mode attempts Google's cookie rotation whenever a sync target is built; an already-expired browser session must be exported again. |
 | **Jellyfin** | The API key has no access-token refresh cycle; replace it only if it is revoked or deleted. |
@@ -356,10 +356,10 @@ No developer approval is required for the default connector. It uses the same au
 
 1. Sign in at <https://music.amazon.com> and open DevTools → **Network**.
 2. Reload the page, filter for `config.json`, and select the signed-in request. (`pandaToken` works too when it appears, but it is not required.)
-3. Choose **Copy request headers** or **Copy as cURL**, then paste it into the renewal field.
+3. Choose **Copy request headers** or **Copy as cURL**, then paste it into the renewal field. Keep the complete `User-Agent`, `Referer`, and `Cookie` headers so SongMirror can replay the same browser context.
 4. Optionally copy the signed-in `config.json` **Response** into the bootstrap field; SongMirror can normally fetch that device context using the renewal session.
 
-SongMirror derives the same `AmznMusic` authorization value locally and refreshes it through `music.amazon.com/pandaToken` before expiry or once after an authentication rejection. It stores only a named allowlist of Amazon authentication/session cookies plus limited Music-client device context; analytics, experiment, AWS-console, CSRF, and other unrelated browser data are discarded. Those retained cookies are still sensitive, so keep SongMirror private on your LAN. A logout, password/security change, or Amazon-side revocation can still require one fresh capture.
+SongMirror derives the same `AmznMusic` authorization value locally and refreshes it through `music.amazon.com/pandaToken` before expiry or once after an authentication rejection. During connection it uses the current browser-style config request when device context is needed, requires `/pandaToken` to mint an access token, and rejects the connection if Amazon revokes the Music renewal cookie. It stores only the browser user agent, language, Music referer, a named allowlist of Amazon authentication/session cookies, and limited Music-client device context; analytics, experiment, AWS-console, CSRF, and other unrelated browser data are discarded. Those retained cookies are still sensitive, so keep SongMirror private on your LAN. A logout, password/security change, or Amazon-side revocation can still require one fresh capture.
 
 This is an unsupported first-party web-client interface and Amazon can change it without notice. The documented [Amazon Music Web API](https://developer.amazon.com/docs/music/API_web_overview.html) is still a closed beta; approved partner credentials remain an optional fallback when configured through environment variables.
 
@@ -475,7 +475,7 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 - **`Missing required environment variable`** — fill in `.env` (CLI) or connect the service in the UI.
 - **TIDAL, Qobuz, or Apple reports `Expired` / `401` / `403`** — these pasted sessions have no renewable secret; capture a fresh signed-in request or token in Accounts.
 - **Deezer renewal fails** — capture a fresh `auth.deezer.com/login/renew` request (or its `refresh-token` cookie). A current Pipe Bearer alone is only a temporary bootstrap.
-- **Amazon Music renewal fails** — capture a fresh signed-in `config.json` request. The response JSON is optional; the request's allowlisted authentication cookies are the durable renewal material.
+- **Amazon Music renewal fails** — capture a fresh signed-in `POST /config.json?skipToken=false` request with its complete `User-Agent`, `Referer`, and `Cookie` headers. The response JSON is optional.
 - **YouTube Music browser mode expires** — export fresh browser request headers. For the most durable unattended setup, use Data API OAuth with an in-production consent screen.
 - **Spotify reports Expired** — sign in again at `open.spotify.com` and paste a fresh `sp_dc` cookie in Accounts.
 - **A playlist isn't syncing** — confirm it's in the sync's playlist scope and exists on the source (targets are auto-created on a real pass).
