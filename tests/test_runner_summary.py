@@ -87,6 +87,133 @@ def test_non_spotify_oneway_skips_unconfigured_spotify_when_providers_are_auto(m
     assert summary["per_target"] == []
 
 
+def test_nway_does_not_require_an_unselected_spotify_account(monkeypatch):
+    """N-way pinned its playlist source to Spotify, so a Deezer/YT Music sync
+    still built a Spotify client and died on its missing credentials."""
+
+    class Source:
+        source, name = "deezer", "Deezer"
+
+        @staticmethod
+        def list_playlists():
+            return {}
+
+    def unexpected_spotify(*args, **kwargs):
+        raise AssertionError("Spotify should not be initialized when it is not participating")
+
+    monkeypatch.setattr(runner.spotify, "client", unexpected_spotify)
+    monkeypatch.setattr(runner, "build_one", lambda *args, **kwargs: Source())
+    monkeypatch.setattr(runner, "_run_nway", lambda *args, **kwargs: [])
+
+    summary = runner.run_pass(_opts(sync_mode="nway", providers="deezer,ytmusic"))
+
+    assert summary["ok"] is True
+    assert summary["per_target"] == []
+
+
+def test_nway_keeps_spotify_as_source_when_it_participates(monkeypatch):
+    """The default must not shift for existing syncs that do include Spotify."""
+    seen = []
+
+    class Source:
+        source, name = "spotify", "Spotify"
+
+        @staticmethod
+        def list_playlists():
+            return {}
+
+    def record(provider, *args, **kwargs):
+        seen.append(provider)
+        return Source()
+
+    monkeypatch.setattr(runner.spotify, "client", lambda writable=False: object())
+    monkeypatch.setattr(runner, "build_one", record)
+    monkeypatch.setattr(runner, "_run_nway", lambda *args, **kwargs: [])
+
+    runner.run_pass(_opts(sync_mode="nway", providers="spotify,deezer"))
+
+    assert seen == ["spotify"]
+
+
+def test_nway_order_authority_falls_back_when_spotify_is_absent(monkeypatch):
+    """N-way also pinned its order authority to Spotify, so a Deezer/YT Music
+    sync failed the configuration check with an unconnected order provider.
+    """
+
+    class Peer:
+        def __init__(self, source, name):
+            self.source, self.name, self.tag = source, name, source
+            self.cache_file = "no-such-cache.json"
+
+        @staticmethod
+        def list_playlists():
+            return {}
+
+    monkeypatch.setattr(runner, "build_peers",
+                        lambda *args, **kwargs: [Peer("deezer", "Deezer"),
+                                                 Peer("ytmusic", "YouTube Music")])
+    monkeypatch.setattr(runner, "save_cache", lambda *args, **kwargs: None)
+
+    entries = runner._run_peer_reconcile(
+        _opts(sync_mode="nway", providers="deezer,ytmusic"), None, [], None,
+        label="N-way", authority_sources=None)
+
+    errors = [f["error"] for entry in entries for f in entry.get("failures", [])]
+    assert not any("order provider" in e for e in errors), errors
+
+
+@pytest.mark.parametrize(
+    ("providers", "sync_source"),
+    [
+        pytest.param("", "deezer", id="automatic-providers"),
+        pytest.param("tidal,deezer,ytmusic", "spotify", id="unavailable-first-candidate"),
+    ],
+)
+def test_nway_uses_a_configured_order_authority(monkeypatch, providers, sync_source):
+    """Playlist names and ordering come from a provider participating this pass."""
+
+    class Source:
+        source, name = "deezer", "Deezer"
+
+        @staticmethod
+        def list_playlists():
+            return {}
+
+    class Peer:
+        def __init__(self, source):
+            self.source, self.name, self.tag = source, source.title(), source
+            self.cache_file = "no-such-cache.json"
+
+        @staticmethod
+        def list_playlists():
+            return {}
+
+    def unavailable_spotify(**kwargs):
+        raise RuntimeError("Spotify is not configured")
+
+    monkeypatch.setattr(runner, "spotify_write_backend", lambda: "oauth")
+    monkeypatch.setattr(runner.spotify_cookie, "configured", lambda: False)
+    monkeypatch.setattr(runner.spotify, "client", unavailable_spotify)
+    monkeypatch.setattr(
+        runner, "build_one",
+        lambda provider, *args, **kwargs: Source() if provider == "deezer" else None,
+    )
+    monkeypatch.setattr(
+        runner, "build_peers",
+        lambda *args, **kwargs: [Peer("deezer"), Peer("ytmusic")],
+    )
+
+    summary = runner.run_pass(_opts(
+        sync_mode="nway",
+        providers=providers,
+        sync_source=sync_source,
+    ))
+
+    assert [(entry["name"], entry["failed"]) for entry in summary["per_target"]] == [
+        ("N-way", 0)
+    ]
+
+
 def test_oneway_target_workers_have_independent_archive_connections(monkeypatch, tmp_path):
     """Parallel providers must not operate on one sqlite3.Connection.
 

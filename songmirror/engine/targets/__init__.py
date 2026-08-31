@@ -20,7 +20,8 @@ from . import ytmusic
 
 __all__ = ["AppleMusicTarget", "AmazonMusicTarget", "DeezerTarget", "QobuzTarget",
            "SpotifyTarget", "TidalTarget", "MirrorTarget", "TargetAuthError", "TargetTransientError",
-           "mirror_pair", "reconcile", "build_targets", "build_peers", "build_one", "is_peer"]
+           "mirror_pair", "reconcile", "build_targets", "build_peers", "build_one", "is_peer",
+           "nway_order_candidates"]
 
 
 def _apple(opts):
@@ -72,6 +73,23 @@ _REGISTRY = {
     "ytmusic": lambda opts, sp, sync_peer=False, songs=None: ytmusic.build(),
 }
 _SOURCE_ORDER = ["spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic"]
+
+
+def nway_order_candidates(opts):
+    """Provider ids to try for N-way order authority, in preference order.
+
+    The caller still decides whether a candidate is configured. Empty
+    ``opts.providers`` therefore expands to every known provider rather than
+    assuming Spotify is available. Spotify keeps priority when it can be built,
+    followed by the job's former source when it participates, then registry
+    source order.
+    """
+    wanted = {s.strip() for s in (opts.providers or "").split(",") if s.strip()}
+    participants = [src for src in _SOURCE_ORDER if not wanted or src in wanted]
+    preferred = ("spotify", getattr(opts, "sync_source", None))
+    return tuple(dict.fromkeys(
+        src for src in (*preferred, *participants) if src in participants
+    ))
 
 
 def build_targets(opts, sp=None):

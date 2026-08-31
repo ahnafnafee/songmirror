@@ -15,7 +15,8 @@ from dotenv import load_dotenv
 from . import archive, spotify, spotify_cookie
 from .config import spotify_write_backend
 from .logs import fmt_counts, fmt_secs, log, log_note, log_section, log_summary, log_warn, paint
-from .targets import TargetAuthError, build_one, build_peers, build_targets, mirror_pair, reconcile
+from .targets import (TargetAuthError, build_one, build_peers, build_targets, mirror_pair,
+                      nway_order_candidates, reconcile)
 from .targets.base import _normalize, reconcile_state_key
 
 
@@ -227,6 +228,20 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
     return agg
 
 
+def _wanted_providers(opts):
+    """The providers this job opted into; empty means every configured one."""
+    return {s.strip() for s in (opts.providers or "").split(",") if s.strip()}
+
+
+def _build_nway_order_authority(opts, sp):
+    """Build the first configured provider in N-way authority preference order."""
+    for provider_id in nway_order_candidates(opts):
+        authority = build_one(provider_id, opts, sp)
+        if authority is not None:
+            return authority
+    return None
+
+
 def run_pass(opts, should_continue=None):
     pass_started = time.monotonic()
     # Pause/Stop hook: should_continue() returns "run" | "pause" | "stop"; the pass
@@ -237,11 +252,11 @@ def run_pass(opts, should_continue=None):
     # saves win; the headless CLI falls back to a plain .env. Either way this
     # picks up re-captured tokens without a restart.
     load_dotenv(os.getenv("SONGMIRROR_ENV_FILE") or ".env", override=True)
+    wanted_providers = _wanted_providers(opts)
+    spotify_requested = not wanted_providers or "spotify" in wanted_providers
     # Group mode's order authority also supplies playlist names and ordering.
     # It remains writable because additions from another authority flow back.
-    source_provider = opts.sync_source if opts.sync_mode in {"oneway", "group"} else "spotify"
-    wanted_providers = {s.strip() for s in (opts.providers or "").split(",") if s.strip()}
-    spotify_requested = not wanted_providers or "spotify" in wanted_providers
+    source_provider = opts.sync_source if opts.sync_mode in {"oneway", "group"} else None
     # Spotify needs a writable client whenever it's a write destination: any
     # N-way/group execute, or a one-way execute where another provider is the
     # source and Spotify is one of the targets.
@@ -261,11 +276,18 @@ def run_pass(opts, should_continue=None):
                     raise
                 log_note(f"Spotify skipped: {exc}", tag="spotify")
 
-    # The library whose playlists drive this pass: Spotify for N-way; the chosen
-    # source/order authority for one-way and authoritative-group modes.
-    source = build_one(source_provider, opts, sp)
+    # The library whose playlists drive this pass: a configured participant for
+    # N-way; the chosen source/order authority for one-way and group modes.
+    if opts.sync_mode == "nway":
+        source = _build_nway_order_authority(opts, sp)
+        source_provider = source.source if source is not None else None
+    else:
+        source = build_one(source_provider, opts, sp)
     if source is None:
-        log_warn(f"sync source '{source_provider}' is not connected", indent="  ")
+        if opts.sync_mode == "nway":
+            log_warn("no configured N-way provider can supply playlist names and ordering", indent="  ")
+        else:
+            log_warn(f"sync source '{source_provider}' is not connected", indent="  ")
         return _summary(opts, [], pass_started)
     src_by_name = source.list_playlists()
 
@@ -491,9 +513,12 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                         label, authority_sources):
     """Shared ordered playlist loop for N-way and authoritative-group syncs."""
     peers = build_peers(opts, sp, songs=songs)
-    order_source = opts.sync_source if authority_sources is not None else "spotify"
-    peers.sort(key=lambda peer: (peer.source != order_source))
     peer_sources = {peer.source for peer in peers}
+    order_source = (opts.sync_source if authority_sources is not None else next(
+        (source for source in nway_order_candidates(opts) if source in peer_sources),
+        None,
+    ))
+    peers.sort(key=lambda peer: (peer.source != order_source))
     if authority_sources is not None:
         error = None
         if len(authority_sources) < 2:
@@ -514,7 +539,8 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
         return []
     order_peer = next((peer for peer in peers if peer.source == order_source), None)
     if order_peer is None:
-        error = f"order provider '{order_source}' is not connected"
+        error = (f"order provider '{order_source}' is not connected" if order_source else
+                 "no configured provider can supply N-way playlist names and ordering")
         log_warn(error, indent="  ")
         return [_summary_entry(label, {
             "failed": 1,
