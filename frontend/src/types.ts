@@ -80,6 +80,9 @@ export interface TargetSummary {
   removed: number
   missing: number
   held: number
+  /** Holds caused specifically by an unresolved source/destination catalog
+   * match. Unlike `held`, this excludes removals blocked for other reasons. */
+  uncertain_matches?: number
   deferred: number
   /** Removals held back this pass because they exceeded max_removals and the sync
    * hasn't opted into draining them — surfaced so the skip isn't silent. */

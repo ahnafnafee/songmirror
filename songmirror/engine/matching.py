@@ -220,6 +220,31 @@ def _best(sim, q_variants, c_variants):
     return max((sim(a, b) for a in q_variants for b in c_variants if a and b), default=0.0)
 
 
+def _artist_variants(track):
+    artists = track.get("artists") or ([track["artist"]] if track.get("artist") else [])
+    joined = " ".join(str(artist) for artist in artists if artist)
+    display = track.get("artist") or joined
+    variants = {
+        variant
+        for variant in (
+            normalize_text(joined),
+            romanized(joined),
+            normalize_text(display),
+            romanized(display),
+        )
+        if variant
+    }
+    # Provider punctuation varies for compact stage names (AC/DC vs ACDC,
+    # M|A|R|R|S vs MARRS). Keep the ordinary tokenized forms too so multi-artist
+    # subset matching still behaves as before.
+    variants.update(variant.replace(" ", "") for variant in list(variants))
+    return variants
+
+
+def _artist_similarity(track, candidate):
+    return _best(_sim_loose, _artist_variants(track), _artist_variants(candidate))
+
+
 def fuzzy_in(key, keys, threshold=FUZZY_THRESHOLD):
     # ponytail: O(len(keys)) scan per unmatched track; fine for playlist-sized
     # sets, index it if someone mirrors a 50k-track monster.
@@ -275,14 +300,7 @@ def same_catalog_recording(track, candidate):
     if not wanted or wanted != existing:
         return False
 
-    def artist_variants(value):
-        artists = value.get("artists") or ([value["artist"]] if value.get("artist") else [])
-        joined = " ".join(str(a) for a in artists if a)
-        display = value.get("artist") or joined
-        return {v for v in (normalize_text(joined), romanized(joined),
-                            normalize_text(display), romanized(display)) if v}
-
-    artist_sim = _best(_sim_loose, artist_variants(track), artist_variants(candidate))
+    artist_sim = _artist_similarity(track, candidate)
     if artist_sim < FUZZY_THRESHOLD:
         return False
 
@@ -290,6 +308,37 @@ def same_catalog_recording(track, candidate):
     candidate_duration = candidate.get("duration_ms")
     if duration is not None and candidate_duration is not None:
         return abs(duration - candidate_duration) <= CATALOG_DURATION_TOLERANCE_MS
+    return True
+
+
+def same_unresolved_recording(source_track, existing_track, threshold=0.8):
+    """Whether an unresolved source item can safely protect an existing copy.
+
+    This guard intentionally favors retention, but title and artist evidence
+    must be evaluated independently. Comparing one combined ``title|artist``
+    string lets a shared title and one common artist token outweigh a different
+    performer (for example, two unrelated songs named "Bad Blood"). Duration,
+    when both providers expose it, must also agree closely.
+    """
+    if creative_version_markers(source_track.get("name")) != creative_version_markers(
+        existing_track.get("name")
+    ):
+        return False
+
+    title_similarity = _best(
+        _sim_loose,
+        _name_variants(source_track.get("name")),
+        _name_variants(existing_track.get("name")),
+    )
+    if title_similarity < threshold:
+        return False
+    if _artist_similarity(source_track, existing_track) < FUZZY_THRESHOLD:
+        return False
+
+    source_duration = source_track.get("duration_ms")
+    existing_duration = existing_track.get("duration_ms")
+    if source_duration is not None and existing_duration is not None:
+        return abs(source_duration - existing_duration) <= CATALOG_DURATION_TOLERANCE_MS
     return True
 
 
@@ -342,26 +391,32 @@ def compute_diff(sp_tracks, target_tracks, expected_by_sp, target_id_of, thresho
     return to_add, to_remove
 
 
+def match_unresolved_removals(to_remove, not_found_tracks, threshold=0.8):
+    """Return safe removals and the unresolved source match protecting each hold."""
+    safe, protected = [], []
+    for track in to_remove:
+        source_match = next(
+            (
+                source_track
+                for source_track in not_found_tracks
+                if same_unresolved_recording(source_track, track, threshold)
+            ),
+            None,
+        )
+        if source_match is not None:
+            protected.append((track, source_match))
+        else:
+            safe.append(track)
+    return safe, protected
+
+
 def protect_removals(to_remove, not_found_tracks, threshold=0.8):
     """Split removals into (safe, held): a target track resembling a Spotify
     track that has NO match on that service must not be deleted — that would
-    drop the song with no replacement. Deliberately loose threshold: wrongly
-    holding leaves an extra track; wrongly deleting loses music."""
-    nf_keys = set()
-    nf_keys_by_version = {}
-    for track in not_found_tracks:
-        keys = spotify_track_keys(track)
-        nf_keys |= keys
-        version = frozenset(creative_version_markers(track.get("name")))
-        nf_keys_by_version.setdefault(version, set()).update(keys)
-    safe, held = [], []
-    for track in to_remove:
-        key = track_key(track["name"], track["artist"])
-        compatible_keys = nf_keys_by_version.get(
-            frozenset(creative_version_markers(track.get("name"))), set()
-        )
-        if key in nf_keys or fuzzy_in(key, compatible_keys, threshold):
-            held.append(track)
-        else:
-            safe.append(track)
-    return safe, held
+    drop the song with no replacement. The title threshold is deliberately
+    loose because wrongly holding leaves an extra track while wrongly deleting
+    loses music; artist and duration evidence are still checked independently."""
+    safe, protected = match_unresolved_removals(
+        to_remove, not_found_tracks, threshold
+    )
+    return safe, [track for track, _source_match in protected]

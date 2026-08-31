@@ -177,6 +177,119 @@ def test_oneway_target_workers_have_independent_archive_connections(monkeypatch,
     assert all(result["failed"] == 0 for result in summary["per_target"])
 
 
+def test_oneway_tidal_uses_archived_details_for_a_delisted_playlist_entry(monkeypatch, tmp_path):
+    from songmirror.engine.targets.tidal import TidalTarget
+
+    song_cache = tmp_path / "songs.db"
+    seed = archive.connect(str(song_cache))
+    archived = {
+        "id": "156738999",
+        "name": "Rome",
+        "artist": "Dojo Cuts",
+        "artists": ["Dojo Cuts"],
+        "album": "Rome",
+        "duration_ms": 227_000,
+        "isrc": "QZDMQ1918901",
+    }
+    archive.upsert_many(seed, "tidal", [archived])
+    seed.close()
+
+    class Source:
+        source, name = "spotify", "Spotify"
+
+        @staticmethod
+        def list_playlists():
+            return {"drive": {"id": "spotify-drive", "name": "Drive"}}
+
+        @staticmethod
+        def playlist_name(playlist):
+            return playlist["name"]
+
+        @staticmethod
+        def playlist_id(playlist):
+            return playlist["id"]
+
+        @staticmethod
+        def playlist_tracks(_playlist):
+            return [{**archived, "id": "spotify-rome"}]
+
+    class Response:
+        @staticmethod
+        def json():
+            return {"data": [], "included": []}
+
+    class DelistedTidal(TidalTarget):
+        def __init__(self):
+            self.cache_file = str(tmp_path / "tidal.json")
+            self.country = "US"
+            self._songs = None
+
+        @staticmethod
+        def list_playlists():
+            return {
+                "drive": {
+                    "id": "tidal-drive",
+                    "attributes": {"name": "Drive", "numberOfItems": 1},
+                }
+            }
+
+        @staticmethod
+        def _pages(path, params=None):
+            assert path == "playlists/tidal-drive/relationships/items"
+            yield {
+                "data": [{
+                    "type": "tracks",
+                    "id": "156738999",
+                    "meta": {"itemId": "relationship-rome"},
+                }],
+                "included": [],
+                "links": {},
+            }
+
+        @staticmethod
+        def _request(method, path, **kwargs):
+            assert (method, path) == ("GET", "tracks")
+            return Response()
+
+        @staticmethod
+        def prefetch(source_tracks, cache):
+            pass
+
+        @staticmethod
+        def expected_ids(source_tracks, links, cache):
+            return {"spotify-rome": {"156738999"}}
+
+        @staticmethod
+        def resolve(track, cache):
+            raise AssertionError("the archived TIDAL relationship is already present")
+
+        @staticmethod
+        def add(playlist, target_ids):
+            raise AssertionError("the archived TIDAL relationship is already present")
+
+        @staticmethod
+        def remove(playlist, track):
+            raise AssertionError("the archived TIDAL relationship must be retained")
+
+    target = DelistedTidal()
+    monkeypatch.setattr(runner.spotify, "client", lambda writable=False: object())
+    monkeypatch.setattr(runner, "build_one", lambda *args, **kwargs: Source())
+    monkeypatch.setattr(runner, "build_targets", lambda *args, **kwargs: [target])
+    monkeypatch.setattr(runner, "_load_links", lambda: [])
+    monkeypatch.setattr(runner, "_post_sync", lambda *args, **kwargs: None)
+
+    summary = runner.run_pass(_opts(
+        execute=True,
+        sync_source="spotify",
+        providers="spotify,tidal",
+        playlists="Drive",
+        song_cache_file=str(song_cache),
+    ))
+
+    assert summary["per_target"][0]["failed"] == 0
+    assert target._songs is not None
+
+
 def test_oneway_isolates_a_target_auth_error_and_keeps_sibling_results(monkeypatch, tmp_path):
     from songmirror.engine.targets.base import TargetAuthError
 
@@ -379,7 +492,7 @@ def test_authoritative_group_routes_with_writable_spotify(monkeypatch):
     assert summary["per_target"][0]["added"] == 2
 
 
-def test_run_target_honors_explicit_pairing(monkeypatch, tmp_path):
+def test_run_target_honors_explicit_pairing_and_collects_diagnostics(monkeypatch, tmp_path):
     from songmirror.engine import archive
     from songmirror.services.playlists import PlaylistLink
 
@@ -407,13 +520,22 @@ def test_run_target_honors_explicit_pairing(monkeypatch, tmp_path):
             raise AssertionError("must not create; the paired target already exists")
 
     captured = {}
+    diagnostic = {
+        "category": "uncertain_match",
+        "playlist": "Workout",
+        "provider": "Apple Music",
+        "count": 1,
+        "evidence": "kept existing; unresolved source track replacement",
+    }
 
     def fake_mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs_, *,
                          execute, max_removals, max_adds, drain_removals=False, should_continue=None,
                          source_key="spotify", source_name="Spotify", name=None):
         captured["tgt_id"] = tgt_playlist["id"]
-        return {"clean": True, "added": 1, "removed": 0, "missing": 0, "held": 0,
-                "deferred": 2, "removals_skipped": 0, "target_count": 1}
+        return {"clean": True, "added": 1, "removed": 0, "missing": 0, "held": 1,
+                "deferred": 2, "removals_skipped": 0, "target_count": 1,
+                "uncertain_matches": 1,
+                "change_diagnostics": [diagnostic]}
 
     monkeypatch.setattr(runner, "mirror_pair", fake_mirror_pair)
 
@@ -424,7 +546,10 @@ def test_run_target_honors_explicit_pairing(monkeypatch, tmp_path):
 
     assert captured["tgt_id"] == "t99"          # paired target used, not same-name match
     assert agg["added"] == 1
+    assert agg["held"] == 1
     assert agg["deferred"] == 2
+    assert agg["uncertain_matches"] == 1
+    assert agg["change_diagnostics"] == [diagnostic]
     assert archive.get_state(songs, "LINK1", "apple") is not None  # state keyed by the link id
     songs.close()
 
@@ -850,6 +975,77 @@ def test_one_way_reuses_a_conservative_archived_recording_match(tmp_path):
     songs.close()
 
 
+def test_one_way_uncertain_hold_names_existing_and_unresolved_tracks(tmp_path):
+    from songmirror.engine.targets.base import mirror_pair
+
+    songs = archive.connect(str(tmp_path / "uncertain-hold.db"))
+
+    class Target:
+        name, tag, source = "YouTube Music", "yt", "ytmusic"
+
+        @staticmethod
+        def playlist_tracks(playlist):
+            return [{
+                "id": "youtube-silence",
+                "name": "Sound of Silence Original",
+                "artist": "Disturbed",
+                "artists": ["Disturbed"],
+                "duration_ms": 200_000,
+            }]
+
+        @staticmethod
+        def track_id(track):
+            return track["id"]
+
+        @staticmethod
+        def expected_ids(tracks, links, cache):
+            return {}
+
+        @staticmethod
+        def prefetch(tracks, cache):
+            pass
+
+        @staticmethod
+        def resolve(track, cache):
+            return None, None
+
+        @staticmethod
+        def remove(playlist, track):
+            raise AssertionError("an unresolved equivalent must remain protected")
+
+    stats = mirror_pair(
+        Target(),
+        [{
+            "id": "spotify-silence",
+            "name": "The Sound of Silence",
+            "artist": "Disturbed",
+            "artists": ["Disturbed"],
+            "duration_ms": 200_000,
+        }],
+        {"name": "Drive"},
+        {"id": "youtube-drive"},
+        {"isrc": {}, "search": {}, "dirty": False},
+        songs,
+        execute=True,
+        max_removals=200,
+        max_adds=200,
+    )
+
+    assert stats["held"] == 1
+    assert stats["uncertain_matches"] == 1
+    assert stats["change_diagnostics"] == [{
+        "category": "uncertain_match",
+        "playlist": "Drive",
+        "provider": "YouTube Music",
+        "count": 1,
+        "evidence": (
+            'kept "Sound of Silence Original" — Disturbed; unresolved source track '
+            '"The Sound of Silence" — Disturbed'
+        ),
+    }]
+    songs.close()
+
+
 def test_held_removals_name_the_track_playlist_service_and_reason():
     from songmirror.engine.targets.base import held_removals
 
@@ -874,6 +1070,7 @@ def test_summary_detail_is_bounded_but_counts_are_not():
 def test_summary_entry_carries_detail_and_defaults_it_empty():
     assert runner._summary_entry("N-way", {})["held_removals"] == []
     assert runner._summary_entry("N-way", {})["change_diagnostics"] == []
+    assert runner._summary_entry("N-way", {})["uncertain_matches"] == 0
     entry = runner._summary_entry("N-way", {"held_removals": [{"track": "x"}]})
     assert entry["held_removals"] == [{"track": "x"}]
 

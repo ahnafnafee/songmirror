@@ -198,7 +198,7 @@ function syncStatusFixture(syncsData) {
             { target: 'Apple Music', playlist: 'Road Trip 2025', track: 'Confirmed Candidate', artist: 'Signal', reason: 'removal mirroring is off for this sync', category: 'confirmed_removal_disabled', source: 'Qobuz', evidence: 'two trusted source snapshots confirmed the absence' },
           ],
           change_diagnostics: [
-            { category: 'uncertain_match', playlist: 'Road Trip 2025', provider: 'Apple Music', count: 1, evidence: 'a similar destination track had no safe source-side replacement match' },
+            { category: 'uncertain_match', playlist: 'Road Trip 2025', provider: 'Apple Music', count: 1, evidence: 'kept "Enemy (From Arcane)" — Imagine Dragons; unresolved source track "Enemy (with JID) - from Arcane" — Imagine Dragons' },
             { category: 'unconfirmed_absence', playlist: 'Road Trip 2025', provider: 'Qobuz', count: 2, evidence: 'missing from one trusted snapshot; a second trusted snapshot is required' },
             { category: 'incomplete_read', playlist: 'Some Old Mix', provider: 'YouTube Music', count: 1, evidence: 'read 8 of 10 baseline identities; changes ignored' },
             { category: 'confirmed_absence', playlist: 'Road Trip 2025', provider: 'Qobuz', count: 1, evidence: 'missing from two consecutive trusted snapshots on this provider' },
@@ -1330,7 +1330,10 @@ async function main() {
       if (!startOk) results.push({ label: 'needs a look dismissable cards', overflow: true })
 
       const needsLookText = await page.locator('body').innerText()
-      const heldExplained = needsLookText.includes('1 destination match remained uncertain') && needsLookText.includes('Road Trip 2025')
+      const heldExplained = needsLookText.includes('1 destination match remained uncertain')
+        && needsLookText.includes('Road Trip 2025')
+        && needsLookText.includes('Enemy (From Arcane)')
+        && needsLookText.includes('Enemy (with JID) - from Arcane')
       const firstReadExplained = needsLookText.includes('2 playlist absences awaiting verification') && needsLookText.includes('not treated as a deletion')
       const anomalyExplained = needsLookText.includes('1 provider read signal rejected as unsafe') && needsLookText.includes('changes ignored')
       const confirmedExplained = needsLookText.includes('1 confirmed removal candidate kept') && needsLookText.includes('two consecutive complete reads')
@@ -1362,6 +1365,8 @@ async function main() {
 
       // Same slot, different situation: a changed held-count is a NEW problem,
       // so it must resurface — and the stale dismissal is pruned from storage.
+      // One-way evidence is bounded to 50 detail rows, but the headline must
+      // retain the authoritative aggregate when more tracks were held.
       await page.route('**/api/sync/status', async (route) => {
         if (route.request().method() !== 'GET') return route.fallback()
         await route.fulfill({
@@ -1371,8 +1376,16 @@ async function main() {
             running: false, mode: null, running_job: null, master: true, scheduled: true,
             next_run_at: Math.floor(Date.now() / 1000) + 3600,
             last: {
-              mode: 'nway', execute: true, duration_s: 30, ok: true, error: null,
-              per_target: [{ name: 'Apple Music', added: 0, removed: 0, missing: 0, held: 9, deferred: 0, created: 0, skipped: 0 }],
+              mode: 'oneway', execute: true, duration_s: 30, ok: true, error: null,
+              per_target: [{
+                name: 'Apple Music', added: 0, removed: 0, missing: 60, held: 70,
+                uncertain_matches: 60,
+                deferred: 0, created: 0, skipped: 0,
+                change_diagnostics: Array.from({ length: 50 }, (_, index) => ({
+                  category: 'uncertain_match', playlist: 'Road Trip 2025', provider: 'Apple Music', count: 1,
+                  evidence: `kept "Existing ${index + 1}"; unresolved source track "Source ${index + 1}"`,
+                })),
+              }],
             },
             jobs: [],
           }),
@@ -1381,11 +1394,11 @@ async function main() {
       await page.reload({ waitUntil: 'networkidle' })
       await page.waitForSelector('h2:has-text("Needs a look")')
       await page.waitForTimeout(150)
-      const resurfaced = (await page.locator('body').innerText()).includes('9 destination matches remained uncertain')
+      const resurfaced = (await page.locator('body').innerText()).includes('60 destination matches remained uncertain')
       const stored = await page.evaluate(() => window.localStorage.getItem('songmirror-dismissed-alerts'))
       const prunedOk = resurfaced && stored === '[]'
-      console.log(`${prunedOk ? 'ok        ' : 'FAIL      '} a changed situation resurfaces and prunes the stale dismissal (resurfaced=${resurfaced}, stored=${stored})`)
-      if (!prunedOk) results.push({ label: 'needs a look dismiss pruning', overflow: true })
+      console.log(`${prunedOk ? 'ok        ' : 'FAIL      '} capped one-way evidence keeps the aggregate total and resurfaces the changed situation (resurfaced=${resurfaced}, stored=${stored})`)
+      if (!prunedOk) results.push({ label: 'needs a look aggregate total and dismissal pruning', overflow: true })
 
       // The sidebar wordmark is a link home from anywhere in the app.
       await page.goto(BASE_URL + '/settings', { waitUntil: 'networkidle' })

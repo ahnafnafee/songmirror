@@ -18,7 +18,8 @@ from ..logs import (
     log_remove, log_repair, log_section, log_summary, log_warn, paint,
 )
 from ..matching import (
-    catalog_name, compute_diff, fuzzy_in, protect_removals, romanized,
+    catalog_name, compute_diff, fuzzy_in, match_unresolved_removals,
+    protect_removals, romanized,
     normalize_canonical_id, normalize_isrc, same_catalog_recording,
     spotify_track_keys, track_addition_order_key, track_key,
 )
@@ -104,6 +105,9 @@ class MirrorTarget:
     def hydrate_playlist_counts(self, playlists):
         """Optionally enrich browse rows whose list API omits cheap counts."""
         return playlists
+
+    def bind_archive(self, songs):
+        """Attach this worker's archive connection when a provider needs history."""
 
     def playlist_id(self, playlist):
         """Stable id of a library playlist, for explicit pairing lookups."""
@@ -392,7 +396,8 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
         log_warn(f"{len(additions)} additions exceed --max-adds={max_adds}; deferring {cap_deferred} to next pass", tag=tag)
         additions, guard = additions[:max_adds], True
 
-    removals, held = protect_removals(to_remove, not_found)
+    removals, uncertain_matches = match_unresolved_removals(to_remove, not_found)
+    held = [existing for existing, _unresolved in uncertain_matches]
     removals_skipped, held_back = 0, []
     if not sp_tracks and tgt_tracks:
         log_warn(f"{source_name} returned 0 tracks but {target.name} has {len(tgt_tracks)}; skipping all removals this pass", tag=tag)
@@ -487,10 +492,28 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
         + (paint(f"  via {via}", "grey") if via else ""),
         tag=tag,
     )
+    change_diagnostics = []
+    for existing, unresolved in uncertain_matches:
+        existing_artist = existing.get("artist") or ", ".join(existing.get("artists") or [])
+        unresolved_artist = unresolved.get("artist") or ", ".join(
+            unresolved.get("artists") or []
+        )
+        change_diagnostics.append({
+            "category": "uncertain_match",
+            "playlist": name,
+            "provider": target.name,
+            "count": 1,
+            "evidence": (
+                f'kept "{existing.get("name", "")}" — {existing_artist}; '
+                f'unresolved source track "{unresolved.get("name", "")}" — {unresolved_artist}'
+            ),
+        })
     return {
         "clean": execute and not guard, "added": len(additions), "removed": len(removals),
         "missing": len(not_found), "held": len(held), "deferred": deferred,
+        "uncertain_matches": len(uncertain_matches),
         "removals_skipped": removals_skipped, "held_removals": held_back,
+        "change_diagnostics": change_diagnostics,
         "target_count": len(tgt_tracks) + len(additions) - len(removals),
     }
 
@@ -1062,7 +1085,8 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     authority_bootstrap = authorities is not None and bool(authorities - initialized)
     stats = {"clean": execute and not collapsed and not awaiting_confirmation and not authority_bootstrap,
              "added": 0, "removed": 0, "missing": 0,
-             "held": 0, "deferred": 0, "removals_skipped": 0, "held_removals": [],
+             "held": 0, "uncertain_matches": 0,
+             "deferred": 0, "removals_skipped": 0, "held_removals": [],
              "identity_changes": identity_changes,
              "unconfirmed_absences": awaiting_confirmation,
              "confirmed_absences": confirmed_absence_count,
@@ -1377,6 +1401,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                        "replacement additions incomplete" if provider_add_incomplete else
                        "no re-add match")
         if held and not provider_add_incomplete and not authority_bootstrap:
+            stats["uncertain_matches"] += len(held)
             diagnostics.append({
                 "category": "uncertain_match", "playlist": name,
                 "provider": p.name, "count": len(held),

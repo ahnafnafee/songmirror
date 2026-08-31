@@ -52,7 +52,8 @@ def save_cache(cache_file, cache):
         json.dump({"isrc": cache["isrc"], "search": cache["search"]}, f, indent=1)
 
 
-_SUMMARY_KEYS = ("added", "removed", "missing", "held", "deferred", "removals_skipped",
+_SUMMARY_KEYS = ("added", "removed", "missing", "held", "uncertain_matches",
+                 "deferred", "removals_skipped",
                  "created", "skipped", "failed", "isrc_fallback", "identity_changes",
                  "unconfirmed_absences", "confirmed_absences", "read_anomalies")
 
@@ -134,9 +135,9 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
     path (empty `links` => byte-for-byte unchanged when the source is Spotify)."""
     src_key = source.source
     agg = {"name": target.name, "pairs": 0, "added": 0, "removed": 0, "missing": 0,
-           "held": 0, "deferred": 0, "removals_skipped": 0,
+           "held": 0, "uncertain_matches": 0, "deferred": 0, "removals_skipped": 0,
            "skipped": 0, "created": 0, "failed": 0,
-           "held_removals": [], "failures": []}
+           "held_removals": [], "change_diagnostics": [], "failures": []}
     cache = load_cache(target.cache_file)
     try:
         tgt_by_name = target.list_playlists()
@@ -209,7 +210,11 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
                 agg["pairs"] += 1
                 for k in ("added", "removed", "missing", "held", "deferred", "removals_skipped"):
                     agg[k] += res[k]
+                agg["uncertain_matches"] += res.get("uncertain_matches", 0)
                 _collect_held(agg["held_removals"], res.get("held_removals", []))
+                _collect_diagnostics(
+                    agg["change_diagnostics"], res.get("change_diagnostics", [])
+                )
                 if res["clean"] and snapshot:
                     archive.set_state(songs, state_key, target.source, snapshot, res["target_count"])
             except TargetAuthError:
@@ -357,6 +362,9 @@ def run_pass(opts, should_continue=None):
 
     def worker(target, songs):
         try:
+            binder = getattr(target, "bind_archive", None)
+            if binder is not None:
+                binder(songs)
             results[target.tag] = run_target(target, selected, get_source_tracks, songs, opts, links, source, ctrl)
         except _SourceAuthError as e:
             # A one-way source is shared by every destination. Its failure
@@ -518,7 +526,8 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
     spotify_cookie.take_singles_used()   # drop any residue from a pass that died mid-read
     dirs = {p.source: p.list_playlists() for p in peers}
     caches = {p.source: load_cache(p.cache_file) for p in peers}
-    total = {"added": 0, "removed": 0, "missing": 0, "held": 0, "deferred": 0,
+    total = {"added": 0, "removed": 0, "missing": 0, "held": 0,
+             "uncertain_matches": 0, "deferred": 0,
              "removals_skipped": 0, "failed": 0, "identity_changes": 0,
              "unconfirmed_absences": 0, "confirmed_absences": 0, "read_anomalies": 0}
     # Both lists stay out of `total` so the scalar accumulate loop stays scalar.

@@ -68,6 +68,9 @@ class TidalTarget(MirrorTarget):
             raise RuntimeError("Missing TIDAL OAuth token; connect TIDAL in Accounts")
         self._session = requests.Session()
 
+    def bind_archive(self, songs):
+        self._songs = songs
+
     # -- auth / HTTP ---------------------------------------------------------
     def _access(self, force=False):
         if not force and token_is_live(self._tok):

@@ -114,6 +114,62 @@ def test_diff_replaces_a_wrong_live_variant_instead_of_fuzzy_protecting_it():
     assert held == []
 
 
+def test_removal_guard_does_not_conflate_same_title_tracks_by_different_artists():
+    source = [sp(
+        "Bad Blood",
+        "Black Pistol Fire",
+        None,
+        "",
+        dur=229_320,
+    )]
+    unrelated = ap("Bad Blood", "Black Math", "black-math")
+    unrelated["duration_ms"] = 208_000
+
+    safe, held = protect_removals([unrelated], source)
+
+    assert safe == [unrelated]
+    assert held == []
+
+
+def test_removal_guard_requires_artist_agreement_when_durations_match():
+    source = [sp("The Sound of Silence", "Disturbed", None, "", dur=244_000)]
+    different_artist = ap(
+        "Sound of Silence Original", "Simon & Garfunkel", "different-artist"
+    )
+    different_artist["duration_ms"] = 244_000
+
+    safe, held = protect_removals([different_artist], source)
+
+    assert safe == [different_artist]
+    assert held == []
+
+
+def test_removal_guard_requires_duration_agreement_when_artists_match():
+    source = [sp("The Sound of Silence", "Disturbed", None, "", dur=244_000)]
+    different_recording = ap(
+        "Sound of Silence Original", "Disturbed", "different-recording"
+    )
+    different_recording["duration_ms"] = 180_000
+
+    safe, held = protect_removals([different_recording], source)
+
+    assert safe == [different_recording]
+    assert held == []
+
+
+def test_removal_guard_accepts_punctuation_only_artist_drift():
+    source = [sp("Thunderstruck", "AC/DC", None, "", dur=292_000)]
+    compact_artist = ap("Thunderstruck", "ACDC", "compact-artist")
+    compact_artist["duration_ms"] = 292_000
+
+    to_add, to_remove = compute_diff(source, [compact_artist], {}, cid_of)
+    safe, held = protect_removals(to_remove, source)
+
+    assert to_add == source
+    assert safe == []
+    assert held == [compact_artist]
+
+
 def run():
     assert parse_interval("900") == 900 and parse_interval("15m") == 900 and parse_interval("1h") == 3600
 

@@ -226,8 +226,17 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
   const uncertainRows = diagnosticsByCategory(diagnostics, 'uncertain_match')
   const structuredHeldTotal = diagnosticCount(uncertainRows)
   const heldTotal = targets.reduce((sum, target) => sum + target.held, 0)
-  if (structuredHeldTotal > 0 || (heldTotal > 0 && diagnostics.length === 0)) {
-    const total = structuredHeldTotal || heldTotal
+  const hasUncertainTotal = targets.some((target) => target.uncertain_matches !== undefined)
+  const reportedUncertainTotal = targets.reduce(
+    (sum, target) => sum + (target.uncertain_matches ?? 0),
+    0,
+  )
+  // Exact evidence is intentionally bounded by the backend. Its dedicated
+  // aggregate remains authoritative when more matches exist than fit in that
+  // detail window. Older saved passes fall back to the original held count.
+  const legacyHeldTotal = !hasUncertainTotal && diagnostics.length === 0 ? heldTotal : 0
+  const total = Math.max(structuredHeldTotal, reportedUncertainTotal, legacyHeldTotal)
+  if (total > 0) {
     const details = structuredHeldTotal > 0
       ? diagnosticDetails(uncertainRows)
       : targets.filter((target) => target.held > 0)

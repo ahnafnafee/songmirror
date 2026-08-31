@@ -35,6 +35,9 @@ class SpotifyTarget(MirrorTarget):
         # read instead of being fetched from Spotify's developer API.
         self._songs = songs
 
+    def bind_archive(self, songs):
+        self._songs = songs
+
     def _user(self):
         if self._me is None:
             if spotify_write_backend() == "cookie" or self._sp is None:
