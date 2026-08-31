@@ -6,7 +6,7 @@ from ...amazon_music_web import (
     DEFAULT_WEB_SESSION_FILE,
     AmazonMusicWebAuthError,
     AmazonMusicWebClient,
-    serialize_renewal_cookies,
+    serialize_renewal_request,
     serialize_web_headers,
 )
 from ...oauth import read_token, token_path, write_token
@@ -29,11 +29,11 @@ class AmazonMusicConnector(Connector):
         ),
         Field(
             "AMAZON_MUSIC_RENEWAL_REQUEST",
-            "Signed-in request with SSO cookies",
+            "Signed-in browser request",
             secret=True,
             help=(
                 "Copy the complete headers or cURL for a signed-in config.json request; "
-                "SongMirror verifies that its sst-main cookie can recreate the Music session"
+                "SongMirror preserves its browser context and verifies /pandaToken renewal"
             ),
         ),
     ]
@@ -132,7 +132,7 @@ class AmazonMusicConnector(Connector):
         renewal_raw = values.get("AMAZON_MUSIC_RENEWAL_REQUEST") or ""
         try:
             minimized = serialize_web_headers(raw) if raw.strip() else ""
-            renewal = serialize_renewal_cookies(renewal_raw)
+            renewal = serialize_renewal_request(renewal_raw)
         except ValueError as exc:
             return ConnStatus("error", str(exc))
 
