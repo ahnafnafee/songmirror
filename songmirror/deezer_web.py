@@ -91,11 +91,12 @@ query SongMirrorDeezerSession { me { id } }
 """
 
 PLAYLISTS_QUERY = """
-query SongMirrorDeezerPlaylists {
+query SongMirrorDeezerPlaylists($first: Int, $after: String) {
   me {
     id
-    playlists(sort: {by: LAST_MODIFICATION_DATE, order: DESC}) {
+    playlists(first: $first, after: $after, sort: {by: LAST_MODIFICATION_DATE, order: DESC}) {
       edges {
+        cursor
         node {
           id title description isPrivate isCollaborative estimatedTracksCount
           picture { urls(pictureRequest: {width: 256, height: 256}) }
@@ -103,6 +104,7 @@ query SongMirrorDeezerPlaylists {
           owner { id name }
         }
       }
+      pageInfo { hasNextPage endCursor }
     }
   }
 }
@@ -337,9 +339,25 @@ class DeezerWebClient:
         return str(me["id"])
 
     def list_playlists(self) -> tuple[str, list[dict]]:
-        me = (self.execute("SongMirrorDeezerPlaylists", PLAYLISTS_QUERY).get("me") or {})
-        rows = [edge.get("node") or {} for edge in ((me.get("playlists") or {}).get("edges") or [])]
-        return str(me.get("id") or ""), rows
+        rows = []
+        cursor = None
+        user_id = ""
+        while True:
+            data = self.execute("SongMirrorDeezerPlaylists", PLAYLISTS_QUERY, {"first": 50, "after": cursor})
+            me = data.get("me") or {}
+            if not user_id:
+                user_id = str(me.get("id") or "")
+            connection = me.get("playlists") or {}
+            edges = connection.get("edges") or []
+            rows.extend(edge.get("node") or {} for edge in edges)
+            page = connection.get("pageInfo") or {}
+            if not page.get("hasNextPage"):
+                break
+            next_cursor = page.get("endCursor")
+            if not next_cursor or next_cursor == cursor:
+                break
+            cursor = next_cursor
+        return user_id, rows
 
     def playlist(self, playlist_id: str) -> dict:
         data = self.execute(
