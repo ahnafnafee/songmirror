@@ -12,6 +12,25 @@ from .base import ConnStatus, Connector, Field
 
 API = "https://openapi.tidal.com/v2"
 DEFAULT_TOKEN_FILE = "data/tidal_oauth.json"
+_COLLECTION_SCOPES = {"collection.read", "collection.write"}
+
+
+def _scopes_from_token(token):
+    configured = token.get("scope")
+    if isinstance(configured, str) and configured.strip():
+        return {scope for scope in configured.split() if scope}
+    if isinstance(configured, list):
+        return {str(scope) for scope in configured if str(scope)}
+    return jwt_scopes(str(token.get("access_token") or ""))
+
+
+def _scope_detail(label, scopes):
+    if scopes is not None and not _COLLECTION_SCOPES <= scopes:
+        return (
+            f"{label} (ordinary playlists only; native liked-track sync requires "
+            "collection.read and collection.write via developer OAuth)"
+        )
+    return label
 
 
 class TidalConnector(Connector):
@@ -50,16 +69,9 @@ class TidalConnector(Connector):
             if response.ok:
                 token = context["authorization"].split(None, 1)[1]
                 scopes = jwt_scopes(token)
-                required = {"collection.read", "collection.write"}
                 if scopes is None:
                     return True, "signed-in web-player session"
-                if not required <= scopes:
-                    return (
-                        True,
-                        "signed-in web-player session (ordinary playlists only; native liked-track "
-                        "sync requires collection.read and collection.write via developer OAuth)",
-                    )
-                return True, "signed-in web-player session with native liked-track access"
+                return True, _scope_detail("signed-in web-player session", scopes)
             if response.status_code in (401, 403):
                 return False, "TIDAL rejected or expired the pasted web-player session"
             return False, f"TIDAL returned HTTP {response.status_code}"
@@ -73,7 +85,11 @@ class TidalConnector(Connector):
             ok, detail = self._validate()
             return ConnStatus("connected" if ok else "expired", detail)
         if self._official_connected():
-            return ConnStatus("connected", "developer OAuth fallback")
+            token = read_token(self._official_token_file())
+            return ConnStatus(
+                "connected",
+                _scope_detail("developer OAuth fallback", _scopes_from_token(token)),
+            )
         return ConnStatus("unconfigured", "paste a signed-in TIDAL OpenAPI request")
 
     def submit(self, values):

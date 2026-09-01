@@ -324,6 +324,28 @@ def test_tidal_connector_reports_when_browser_token_is_playlist_only(tmp_path, m
     assert "collection.read and collection.write" in detail
 
 
+def test_tidal_connector_reports_when_developer_token_is_playlist_only(tmp_path, monkeypatch):
+    from songmirror.oauth import write_token
+    from songmirror.services.accounts.tidal import TidalConnector
+
+    payload = base64.urlsafe_b64encode(json.dumps({
+        "exp": 4_102_444_800,
+        "scope": "playlists.read playlists.write search.read",
+    }).encode()).decode().rstrip("=")
+    token_file = tmp_path / "tidal-token.json"
+    write_token(str(token_file), {"access_token": f"header.{payload}.signature"})
+    monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
+    monkeypatch.setenv("TIDAL_CLIENT_ID", "client")
+    monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
+
+    status = TidalConnector(SettingsStore(dir=tmp_path / "settings")).status()
+
+    assert status.state == "connected"
+    assert "developer OAuth fallback" in status.detail
+    assert "ordinary playlists only" in status.detail
+    assert "collection.read and collection.write" in status.detail
+
+
 def test_tidal_legacy_country_rejects_token_like_value(tmp_path, monkeypatch):
     from songmirror.engine.targets.tidal import TidalTarget
     from songmirror.oauth import write_token
