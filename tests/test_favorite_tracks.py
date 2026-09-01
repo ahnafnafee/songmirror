@@ -346,7 +346,13 @@ def test_apple_music_favorite_songs_contract_uses_tagged_system_playlist(monkeyp
     def request(method, url, *, params=None, json_body=None, ok404=False):
         calls.append((method, url, params, json_body, ok404))
         if url.endswith("/me/library/playlists"):
-            return _Response({"data": [favorite_playlist]})
+            playlist = {
+                **favorite_playlist,
+                "attributes": dict(favorite_playlist["attributes"]),
+            }
+            if (params or {}).get("extend") != "tags":
+                playlist["attributes"].pop("tags")
+            return _Response({"data": [playlist]})
         if url.endswith("/p.favorites/tracks"):
             return _Response({"data": [track]})
         return _Response()

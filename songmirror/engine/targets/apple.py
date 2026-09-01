@@ -156,7 +156,11 @@ class AppleMusicTarget(MirrorTarget):
     def list_playlists(self):
         out, offset = {}, 0
         while True:
-            r = self._request("GET", f"{AMP}/me/library/playlists", params={"limit": 100, "offset": offset})
+            r = self._request(
+                "GET",
+                f"{AMP}/me/library/playlists",
+                params={"limit": 100, "offset": offset, "extend": "tags"},
+            )
             data = r.json()
             rows = data.get("data") or []
             for pl in rows:
