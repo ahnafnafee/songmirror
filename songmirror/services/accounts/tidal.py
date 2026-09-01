@@ -107,3 +107,7 @@ class TidalConnector(Connector):
 
     def disconnect(self):
         self._store.save({"TIDAL_WEB_HEADERS": ""})
+        try:
+            os.remove(self._official_token_file())
+        except FileNotFoundError:
+            pass

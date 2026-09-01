@@ -346,6 +346,26 @@ def test_tidal_connector_reports_when_developer_token_is_playlist_only(tmp_path,
     assert "collection.read and collection.write" in status.detail
 
 
+def test_tidal_disconnect_removes_browser_and_developer_credentials(tmp_path, monkeypatch):
+    from songmirror.oauth import write_token
+    from songmirror.services.accounts.tidal import TidalConnector
+
+    token_file = tmp_path / "tidal-token.json"
+    write_token(str(token_file), {"access_token": "developer-access"})
+    monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
+    monkeypatch.setenv("TIDAL_CLIENT_ID", "client")
+    monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
+    store = SettingsStore(dir=tmp_path / "settings")
+    store.save({"TIDAL_WEB_HEADERS": "stored-browser-session"})
+    connector = TidalConnector(store)
+
+    connector.disconnect()
+
+    assert store.get("TIDAL_WEB_HEADERS") == ""
+    assert not token_file.exists()
+    assert connector.status().state == "unconfigured"
+
+
 def test_tidal_legacy_country_rejects_token_like_value(tmp_path, monkeypatch):
     from songmirror.engine.targets.tidal import TidalTarget
     from songmirror.oauth import write_token
