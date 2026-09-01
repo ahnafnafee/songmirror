@@ -1,5 +1,6 @@
 """Contract tests for the additional account-authorized playlist peers."""
 
+import base64
 import json
 
 import pytest
@@ -297,6 +298,32 @@ def test_tidal_connector_accepts_minimized_browser_headers(tmp_path, monkeypatch
     assert "do-not-keep" not in connector._store.get("TIDAL_WEB_HEADERS")
 
 
+def test_tidal_connector_reports_when_browser_token_is_playlist_only(tmp_path, monkeypatch):
+    from songmirror.services.accounts.tidal import TidalConnector
+
+    payload = base64.urlsafe_b64encode(json.dumps({
+        "exp": 4_102_444_800,
+        "scope": "playlists.read playlists.write search.read",
+    }).encode()).decode().rstrip("=")
+    raw = json.dumps({
+        "authorization": f"Bearer header.{payload}.signature",
+        "countryCode": "US",
+    })
+
+    class Response:
+        ok = True
+        status_code = 200
+
+    monkeypatch.setattr("songmirror.services.accounts.tidal.requests.get", lambda *a, **k: Response())
+    connector = TidalConnector(SettingsStore(dir=tmp_path))
+
+    ok, detail = connector._validate(raw)
+
+    assert ok is True
+    assert "ordinary playlists only" in detail
+    assert "collection.read and collection.write" in detail
+
+
 def test_tidal_legacy_country_rejects_token_like_value(tmp_path, monkeypatch):
     from songmirror.engine.targets.tidal import TidalTarget
     from songmirror.oauth import write_token
@@ -308,6 +335,18 @@ def test_tidal_legacy_country_rejects_token_like_value(tmp_path, monkeypatch):
     monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
     monkeypatch.setenv("TIDAL_COUNTRY_CODE", "not-a-country-token-value")
     assert TidalTarget().country == "US"
+
+
+def test_tidal_liked_tracks_fail_fast_when_browser_token_lacks_collection_scopes():
+    from songmirror.engine.targets.base import TargetAuthError
+    from songmirror.engine.targets.tidal import TidalTarget
+
+    target = TidalTarget.__new__(TidalTarget)
+    target._browser_mode = True
+    target._token_scopes = {"playlists.read", "playlists.write", "search.read"}
+
+    with pytest.raises(TargetAuthError, match=r"collection\.read.*collection\.write"):
+        target.validate_favorite_tracks(write=True)
 
 
 def test_tidal_search_uses_query_endpoint_and_included_tracks(monkeypatch):

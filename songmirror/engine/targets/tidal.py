@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import requests
 
-from ...browser_session import jwt_expiry
+from ...browser_session import jwt_expiry, jwt_scopes
 from ...oauth import merge_refresh, read_token, token_is_live, token_path, write_token
 from ...tidal_web import parse_web_headers
 from .. import archive
@@ -28,6 +28,13 @@ TOKEN_URL = "https://auth.tidal.com/v1/oauth2/token"
 DEFAULT_TOKEN_FILE = "data/tidal_oauth.json"
 MAX_ISRC_FILTER_VALUES = 20
 PLAYLIST_ITEM_INCLUDE = ["items", "items.artists", "items.albums", "items.albums.coverArt"]
+
+
+def _scopes_from_token(token):
+    configured = token.get("scope")
+    if configured:
+        return {scope for scope in str(configured).split() if scope}
+    return jwt_scopes(str(token.get("access_token") or ""))
 
 
 class TidalTarget(MirrorTarget):
@@ -54,6 +61,7 @@ class TidalTarget(MirrorTarget):
             self.country = context["country_code"]
             self._client_id = None
             self._tok = {"access_token": access_token}
+            self._token_scopes = _scopes_from_token(self._tok)
             expiry = jwt_expiry(access_token)
             if expiry is not None:
                 self._tok["expires_at"] = expiry
@@ -65,6 +73,7 @@ class TidalTarget(MirrorTarget):
             self.country = configured_country if re.fullmatch(r"[A-Z]{2}", configured_country) else "US"
             self._client_id = required_env("TIDAL_CLIENT_ID")
             self._tok = read_token(self._token_file)
+            self._token_scopes = _scopes_from_token(self._tok)
         if not self._tok.get("access_token") and not self._tok.get("refresh_token"):
             raise RuntimeError("Missing TIDAL OAuth token; connect TIDAL in Accounts")
         self._session = requests.Session()
@@ -96,6 +105,7 @@ class TidalTarget(MirrorTarget):
                 f"TIDAL authorization expired (refresh returned HTTP {response.status_code}); reconnect in Accounts."
             )
         self._tok = merge_refresh(self._tok, response.json())
+        self._token_scopes = _scopes_from_token(self._tok)
         write_token(self._token_file, self._tok)
         return self._tok["access_token"]
 
@@ -411,6 +421,21 @@ class TidalTarget(MirrorTarget):
         for body in self._pages("userCollectionTracks/me/relationships/items", params):
             tracks.extend(self._tracks_from_body(body))
         return tracks
+
+    def validate_favorite_tracks(self, *, write=False, remove=False):
+        if self._token_scopes is None:
+            return
+        required = ["collection.read"]
+        if write:
+            required.append("collection.write")
+        missing = [scope for scope in required if scope not in self._token_scopes]
+        if missing:
+            raise TargetAuthError(
+                "TIDAL token lacks native liked-track scopes "
+                f"{', '.join(missing)}; reconnect with a developer OAuth token granting "
+                "collection.read and collection.write. The pasted web-player token can "
+                "still sync ordinary playlists."
+            )
 
     def add_favorite_tracks(self, target_ids):
         for group in chunks([str(target_id) for target_id in target_ids], 50):

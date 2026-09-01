@@ -18,6 +18,7 @@ from .provider_utils import source_playlist_details
 # playlists carry no trackCount attribute, so each count is a live lookup).
 _COUNT_CACHE = {}
 _PUBLIC_SEARCH_URL = "https://itunes.apple.com/search"
+_FAVORITES_URL = "https://api.music.apple.com/v1/me/favorites"
 # Apple's documented public Search API is limited to roughly 20 calls/minute.
 # It is only a fallback after amp-api throttles, so pace it independently.
 _PUBLIC_SEARCH_INTERVAL_S = 3.1
@@ -275,7 +276,7 @@ class AppleMusicTarget(MirrorTarget):
         for target_id in target_ids:
             self._request(
                 "POST",
-                f"{AMP}/me/favorites",
+                _FAVORITES_URL,
                 params={"ids[songs]": str(target_id)},
             )
             polite_sleep(0.4)
@@ -286,7 +287,7 @@ class AppleMusicTarget(MirrorTarget):
             return
         self._request(
             "DELETE",
-            f"{AMP}/me/favorites",
+            _FAVORITES_URL,
             params={"ids[songs]": str(target_id)},
         )
         polite_sleep(0.4)

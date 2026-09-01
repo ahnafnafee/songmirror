@@ -135,6 +135,12 @@ query SongMirrorAmazonLikedTracks($cursor: String, $limit: Float!) {
 }
 """
 
+WEB_SET_TRACK_LIKE_STATE_MUTATION = """
+mutation SongMirrorAmazonSetTrackLikeState($trackId: String!, $likeState: String!) {
+  setTrackLikeState(trackId: $trackId, likeState: $likeState) { __typename }
+}
+"""
+
 
 def _next_cursor(page, current, context):
     """Return the next cursor, failing closed on contradictory page metadata."""
@@ -529,13 +535,29 @@ class AmazonMusicTarget(MirrorTarget):
             if cursor is None:
                 return tracks
 
+    def validate_favorite_tracks(self, *, write=False, remove=False):
+        if remove and getattr(self, "_web", None) is None:
+            raise TargetAuthError(
+                "Amazon Music exact unlike requires the web-player connection; "
+                "the approved API can only set LIKE or DISLIKE"
+            )
+
     def _set_track_like_state(self, target_id, state):
         if getattr(self, "_web", None) is not None:
-            try:
-                self._web.set_track_like_state(str(target_id), state)
-            except AmazonMusicWebAuthError as exc:
-                raise TargetAuthError(str(exc)) from exc
+            data = self._graphql(
+                "SongMirrorAmazonSetTrackLikeState",
+                WEB_SET_TRACK_LIKE_STATE_MUTATION,
+                {"trackId": str(target_id), "likeState": state},
+                mutation=True,
+            )
+            if not data.get("setTrackLikeState"):
+                raise RuntimeError("Amazon Music liked-track mutation returned no result")
         else:
+            if state == "NEUTRAL":
+                raise TargetAuthError(
+                    "Amazon Music exact unlike requires the web-player connection; "
+                    "the approved API can only set LIKE or DISLIKE"
+                )
             self._request(
                 "PUT",
                 f"me/tracks/{target_id}",

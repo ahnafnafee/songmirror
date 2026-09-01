@@ -5,7 +5,10 @@ the provider transport.  The shared runner can therefore treat these seven
 otherwise-different collections as one logical resource.
 """
 
+import pytest
+
 from songmirror.engine.config import SPOTIFY_SCOPE
+from songmirror.engine.targets.base import TargetAuthError
 from songmirror.engine.targets.amazon_music import AmazonMusicTarget
 from songmirror.engine.targets.apple import AppleMusicTarget
 from songmirror.engine.targets.deezer import DeezerTarget
@@ -279,14 +282,17 @@ def test_amazon_music_likes_contract_uses_neutral_for_unlike(monkeypatch):
 
     tracks = target.favorite_tracks()
     target.add_favorite_tracks(["amazon-2"])
-    target.remove_favorite_track(tracks[0])
+    target.validate_favorite_tracks(write=True, remove=False)
+    with pytest.raises(TargetAuthError, match="exact unlike"):
+        target.validate_favorite_tracks(write=True, remove=True)
+    with pytest.raises(TargetAuthError, match="exact unlike"):
+        target.remove_favorite_track(tracks[0])
 
     assert target.favorite_tracks_name == "My Likes"
     assert [track["id"] for track in tracks] == ["amazon-1"]
     assert calls == [
         ("GET", "me/tracks", {"limit": 100}, None),
         ("PUT", "me/tracks/amazon-2", None, {"likeState": "LIKE"}),
-        ("PUT", "me/tracks/amazon-1", None, {"likeState": "NEUTRAL"}),
     ]
 
     class WebAPI:
@@ -295,6 +301,8 @@ def test_amazon_music_likes_contract_uses_neutral_for_unlike(monkeypatch):
 
         def execute(self, operation, query, variables, *, mutation=False):
             self.calls.append((operation, variables, mutation))
+            if mutation:
+                return {"setTrackLikeState": {"__typename": "SetUserTrackLikeStateResponse"}}
             return {
                 "user": {
                     "tracks": {
@@ -307,9 +315,6 @@ def test_amazon_music_likes_contract_uses_neutral_for_unlike(monkeypatch):
                 },
             }
 
-        def set_track_like_state(self, track_id, state):
-            self.calls.append(("rate", track_id, state))
-
     web = WebAPI()
     target._web = web
     web_tracks = target.favorite_tracks()
@@ -317,8 +322,16 @@ def test_amazon_music_likes_contract_uses_neutral_for_unlike(monkeypatch):
     target.remove_favorite_track(web_tracks[0])
     assert web.calls == [
         ("SongMirrorAmazonLikedTracks", {"cursor": None, "limit": 100}, False),
-        ("rate", "web-amazon-2", "LIKE"),
-        ("rate", "web-amazon-1", "NEUTRAL"),
+        (
+            "SongMirrorAmazonSetTrackLikeState",
+            {"trackId": "web-amazon-2", "likeState": "LIKE"},
+            True,
+        ),
+        (
+            "SongMirrorAmazonSetTrackLikeState",
+            {"trackId": "web-amazon-1", "likeState": "NEUTRAL"},
+            True,
+        ),
     ]
 
 
@@ -368,13 +381,13 @@ def test_apple_music_favorite_songs_contract_uses_tagged_system_playlist(monkeyp
     assert tracks[0]["catalog_id"] == "apple-1"
     assert calls[-2][0:4] == (
         "POST",
-        "https://amp-api.music.apple.com/v1/me/favorites",
+        "https://api.music.apple.com/v1/me/favorites",
         {"ids[songs]": "apple-2"},
         None,
     )
     assert calls[-1][0:4] == (
         "DELETE",
-        "https://amp-api.music.apple.com/v1/me/favorites",
+        "https://api.music.apple.com/v1/me/favorites",
         {"ids[songs]": "apple-1"},
         None,
     )

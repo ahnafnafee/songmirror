@@ -24,6 +24,12 @@ class _SourceAuthError(TargetAuthError):
     """Auth failure raised while reading the one-way source, not a destination."""
 
 
+def _validate_favorite_tracks(target, *, write, remove=False):
+    validator = getattr(target, "validate_favorite_tracks", None)
+    if validator is not None:
+        validator(write=write, remove=remove)
+
+
 def _load_json(path):
     try:
         with open(path) as f:
@@ -234,10 +240,19 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
 
         if getattr(opts, "liked_tracks", False):
             route = liked_route
-            source_resource = source.favorite_tracks_resource()
+            try:
+                _validate_favorite_tracks(source, write=False)
+                source_resource = source.favorite_tracks_resource()
+            except TargetAuthError as exc:
+                raise _SourceAuthError(str(exc)) from exc
             source_name = source_resource.get("name") or f"{source.name} liked tracks"
             target_resource = None
             if route and route.get("kind") == "native":
+                _validate_favorite_tracks(
+                    target,
+                    write=opts.execute,
+                    remove=bool(opts.execute and opts.max_removals > 0),
+                )
                 target_resource = target.favorite_tracks_resource()
             elif route and route.get("kind") == "playlist":
                 destination_name = str(route.get("name") or "").strip()
@@ -781,6 +796,11 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                 resource = None
                 try:
                     if route and route.get("kind") == "native":
+                        _validate_favorite_tracks(
+                            peer,
+                            write=opts.execute,
+                            remove=bool(opts.execute and opts.max_removals > 0),
+                        )
                         resource = peer.favorite_tracks_resource()
                     elif route and route.get("kind") == "playlist":
                         destination_name = str(route.get("name") or "").strip()

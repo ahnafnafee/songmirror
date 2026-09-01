@@ -4,6 +4,7 @@ import os
 
 import requests
 
+from ...browser_session import jwt_scopes
 from ...engine.config import REQUEST_TIMEOUT
 from ...oauth import read_token
 from ...tidal_web import parse_web_headers, serialize_web_headers
@@ -47,7 +48,18 @@ class TidalConnector(Connector):
                 timeout=REQUEST_TIMEOUT,
             )
             if response.ok:
-                return True, "signed-in web-player session"
+                token = context["authorization"].split(None, 1)[1]
+                scopes = jwt_scopes(token)
+                required = {"collection.read", "collection.write"}
+                if scopes is None:
+                    return True, "signed-in web-player session"
+                if not required <= scopes:
+                    return (
+                        True,
+                        "signed-in web-player session (ordinary playlists only; native liked-track "
+                        "sync requires collection.read and collection.write via developer OAuth)",
+                    )
+                return True, "signed-in web-player session with native liked-track access"
             if response.status_code in (401, 403):
                 return False, "TIDAL rejected or expired the pasted web-player session"
             return False, f"TIDAL returned HTTP {response.status_code}"

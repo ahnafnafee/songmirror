@@ -268,6 +268,8 @@ On a sync's **Playlists** step, select the source service's built-in liked colle
 
 This works across Spotify **Liked Songs**, TIDAL/Qobuz/Deezer **Favorite Tracks**, Amazon Music **My Likes**, Apple Music **Favorite Songs**, and YouTube Music **Liked Music**. The same one-way, authoritative-group, and N-way reconciliation paths and safety caps apply. As with ordinary playlists, removal writes remain off by default until **Mirror removals** is enabled.
 
+TIDAL's pasted web-player Bearer is normally limited to ordinary playlists. Native Favorite Tracks sync requires the optional developer OAuth fallback to grant `collection.read` and `collection.write`; the Accounts page reports a playlist-only token, and a sync preflight stops before scanning the source library when those scopes are missing.
+
 Some of these integrations use the providers' first-party web interfaces and can change without notice; the [feasibility assessment](docs/design/2026-09-01-liked-tracks-sync-feasibility.md) records the API and distribution constraints for each provider.
 
 <div align="right">
@@ -355,7 +357,7 @@ That single signed-in web session handles library browsing, playlist reads and w
 
 ### TIDAL
 
-Sign in at <https://listen.tidal.com>, open DevTools → **Network**, open a playlist, and filter for `openapi.tidal.com/v2`. Copy a request's headers (or copy it as cURL) into the wizard. SongMirror keeps only the Bearer token and two-letter catalog country. An existing developer OAuth token remains supported as an environment fallback.
+Sign in at <https://listen.tidal.com>, open DevTools → **Network**, open a playlist, and filter for `openapi.tidal.com/v2`. Copy a request's headers (or copy it as cURL) into the wizard. SongMirror keeps only the Bearer token and two-letter catalog country. This web token supports ordinary playlist sync. Native Favorite Tracks sync needs the existing developer OAuth fallback with `collection.read` and `collection.write`.
 
 Only catalog metadata and the signed-in user's playlists are used; playback assets are outside this integration. Browser tokens are short-lived, so re-paste when the account reports **Expired**.
 
@@ -493,6 +495,7 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 
 - **`Missing required environment variable`** — fill in `.env` (CLI) or connect the service in the UI.
 - **TIDAL, Qobuz, or Apple reports `Expired` / `401` / `403`** — these pasted sessions have no renewable secret; capture a fresh signed-in request or token in Accounts.
+- **TIDAL says the token is playlist-only** — use a developer OAuth token granting `collection.read` and `collection.write`, or route liked tracks to a normal TIDAL playlist instead of Favorite Tracks.
 - **Deezer renewal fails** — capture a fresh `auth.deezer.com/login/renew` request (or its `refresh-token` cookie). A current Pipe Bearer alone is only a temporary bootstrap.
 - **Amazon Music renewal fails** — capture a fresh signed-in `POST /config.json?skipToken=false` request with its complete `User-Agent`, `Referer`, and `Cookie` headers. The response JSON is optional.
 - **YouTube Music browser mode expires** — export fresh browser request headers. For the most durable unattended setup, use Data API OAuth with an in-production consent screen.

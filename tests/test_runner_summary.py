@@ -414,6 +414,66 @@ def test_oneway_liked_tracks_use_each_destinations_selected_resource(monkeypatch
     }
 
 
+def test_oneway_native_likes_preflight_before_reading_the_source(tmp_path):
+    from songmirror.engine.targets.base import TargetAuthError
+
+    events = []
+
+    class Source:
+        source, name = "spotify", "Spotify"
+
+        @staticmethod
+        def validate_favorite_tracks(*, write, remove):
+            events.append(("source-preflight", write, remove))
+
+        @staticmethod
+        def favorite_tracks_resource():
+            return {"id": "liked-tracks", "name": "Liked Songs", "_kind": "liked_tracks"}
+
+    class Target:
+        source, tag, name = "tidal", "tidal", "TIDAL"
+        cache_file = str(tmp_path / "tidal.json")
+
+        @staticmethod
+        def list_playlists():
+            raise AssertionError("a liked-only job must not list playlists")
+
+        @staticmethod
+        def validate_favorite_tracks(*, write, remove):
+            events.append(("target-preflight", write, remove))
+            raise TargetAuthError("missing collection.write")
+
+    def source_tracks(_resource):
+        raise AssertionError("source tracks must not be read after a failed target preflight")
+
+    songs = archive.connect(str(tmp_path / "songs.db"))
+    try:
+        with pytest.raises(TargetAuthError, match="collection.write"):
+            runner.run_target(
+                Target(),
+                [],
+                source_tracks,
+                songs,
+                _opts(
+                    execute=True,
+                    max_removals=0,
+                    apply_large_removals=True,
+                    sync_playlists=False,
+                    liked_tracks=True,
+                    liked_routes={"tidal": {"kind": "native"}},
+                ),
+                links=[],
+                source=Source(),
+            )
+    finally:
+        songs.close()
+
+    assert events == [
+        ("source-preflight", False, False),
+        ("target-preflight", True, False),
+    ]
+
+
 def test_liked_only_job_does_not_select_regular_playlists(monkeypatch):
     class Source:
         source, name = "spotify", "Spotify"

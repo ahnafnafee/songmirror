@@ -84,6 +84,28 @@ def jwt_expiry(token: str) -> int | None:
         return None
 
 
+def jwt_scopes(token: str) -> set[str] | None:
+    """Read a JWT ``scope``/``scp`` claim without validating its signature.
+
+    The caller already received the token from a trusted provider response.  A
+    missing or opaque payload returns ``None`` so capability checks can defer
+    to the provider instead of mistaking an unparseable token for no scopes.
+    """
+
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        body = json.loads(base64.urlsafe_b64decode(payload.encode()).decode())
+        value = body.get("scope", body.get("scp"))
+        if isinstance(value, str):
+            return {item for item in value.split() if item}
+        if isinstance(value, list):
+            return {str(item) for item in value if str(item)}
+        return None
+    except (AttributeError, IndexError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
 def bearer_is_expired(token: str, leeway: int = 60) -> bool:
     expiry = jwt_expiry(token)
     return expiry is not None and expiry <= int(time.time()) + leeway

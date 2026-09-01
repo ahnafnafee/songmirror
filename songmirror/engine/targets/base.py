@@ -85,6 +85,9 @@ class MirrorTarget:
             "_kind": "liked_tracks",
         }
 
+    def validate_favorite_tracks(self, *, write=False, remove=False):
+        """Fail fast when auth cannot read or mutate the native collection."""
+
     def favorite_tracks(self):
         raise NotImplementedError
 
