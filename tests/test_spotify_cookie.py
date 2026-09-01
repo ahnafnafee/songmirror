@@ -218,6 +218,48 @@ def test_reads_route_to_cookie_when_enabled(monkeypatch):
     assert t.playlist_tracks({"id": "pl9"}) == [{"id": "x", "_via": "pl9"}]
 
 
+def test_favorite_tracks_retries_429_after_retry_after(monkeypatch):
+    class Response:
+        def __init__(self, status, body, retry_after=None):
+            self.status_code = status
+            self._body = body
+            self.headers = {} if retry_after is None else {"Retry-After": retry_after}
+
+        def json(self):
+            return self._body
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                error = requests.HTTPError(
+                    f"{self.status_code} Client Error: Too Many Requests for url: "
+                    "https://api.spotify.com/v1/me/tracks?limit=50&offset=0"
+                )
+                error.response = self
+                raise error
+
+    responses = [
+        Response(429, {}, retry_after="7"),
+        Response(200, {"items": [], "next": None}),
+    ]
+    calls = []
+    waits = []
+
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs["params"]))
+        return responses.pop(0)
+
+    monkeypatch.setattr(st.spotify_cookie, "_spc_headers", lambda: {"Authorization": "Bearer test"})
+    monkeypatch.setattr(st.spotify_cookie.requests, "request", request)
+    monkeypatch.setattr("time.sleep", waits.append)
+
+    assert st.spotify_cookie.favorite_tracks() == []
+    assert calls == [
+        ("GET", "https://api.spotify.com/v1/me/tracks", {"limit": 50, "offset": 0}),
+        ("GET", "https://api.spotify.com/v1/me/tracks", {"limit": 50, "offset": 0}),
+    ]
+    assert waits == [7.0]
+
+
 class _Resp:
     def __init__(self, status, tracks=None, body=None, text=""):
         self.status_code, self._tracks, self._body, self.text = status, tracks or [], body, text

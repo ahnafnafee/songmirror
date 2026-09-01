@@ -23,13 +23,14 @@ session can be revoked or rotated; the connector surfaces when it needs renewing
 import json
 import os
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
 from .config import REQUEST_TIMEOUT, polite_sleep
 from .logs import log, log_note, log_warn
-from .targets.base import TargetAuthError
+from .targets.base import TargetAuthError, TargetTransientError
 
 _PATHFINDER = "https://api-partner.spotify.com/pathfinder/v2/query"
 _SPCLIENT = "https://spclient.wg.spotify.com"   # web-player backend — no api.spotify.com rate limit / dev-mode gate
@@ -585,9 +586,10 @@ def playlist_tracks(playlist, require_isrc=False, known_isrc=None):
     )
 
 
-def _user_api(method, path, *, params=None):
-    """Call a current-user REST endpoint with the first-party web token."""
-    for attempt in range(2):
+def _user_api(method, path, *, params=None, attempts=5):
+    """Call a current-user REST endpoint with auth refresh and 429 backoff."""
+    refreshed = False
+    for attempt in range(attempts):
         response = requests.request(
             method,
             f"{_API}/{path.lstrip('/')}",
@@ -595,14 +597,31 @@ def _user_api(method, path, *, params=None):
             headers=_spc_headers(),
             timeout=REQUEST_TIMEOUT,
         )
-        if response.status_code == 401 and attempt == 0:
+        if response.status_code == 401 and not refreshed:
             _prov().invalidate()
+            refreshed = True
             continue
         if response.status_code in (401, 403):
             raise TargetAuthError(
                 f"Spotify refused {method} {path} ({response.status_code}); re-paste the sp_dc cookie "
                 "on the Accounts page."
             )
+        if response.status_code == 429:
+            try:
+                retry_after = max(float(response.headers.get("Retry-After")), 0.0)
+            except (TypeError, ValueError):
+                retry_after = float(min(2 ** attempt, 30))
+            if attempt == attempts - 1:
+                raise TargetTransientError(
+                    f"Spotify kept rate-limiting {method} {path} after {attempts} attempts",
+                    retry_after=retry_after,
+                )
+            log(
+                f"rate-limited on {method} {path}; retrying in {retry_after:g}s",
+                tag="spotify",
+            )
+            time.sleep(retry_after)
+            continue
         response.raise_for_status()
         return response
     raise TargetAuthError(f"Spotify refused {method} {path} after refreshing the cookie token.")
