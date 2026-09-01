@@ -433,8 +433,8 @@ class TidalTarget(MirrorTarget):
             raise TargetAuthError(
                 "TIDAL token lacks native liked-track scopes "
                 f"{', '.join(missing)}; reconnect with a developer OAuth token granting "
-                "collection.read and collection.write. The pasted web-player token can "
-                "still sync ordinary playlists."
+                "collection.read and collection.write. This connection can still sync "
+                "ordinary playlists."
             )
 
     def add_favorite_tracks(self, target_ids):

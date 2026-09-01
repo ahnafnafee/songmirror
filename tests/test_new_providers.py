@@ -367,8 +367,9 @@ def test_tidal_liked_tracks_fail_fast_when_browser_token_lacks_collection_scopes
     target._browser_mode = True
     target._token_scopes = {"playlists.read", "playlists.write", "search.read"}
 
-    with pytest.raises(TargetAuthError, match=r"collection\.read.*collection\.write"):
+    with pytest.raises(TargetAuthError, match=r"collection\.read.*collection\.write") as error:
         target.validate_favorite_tracks(write=True)
+    assert "This connection can still sync ordinary playlists" in str(error.value)
 
 
 def test_tidal_search_uses_query_endpoint_and_included_tracks(monkeypatch):
