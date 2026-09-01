@@ -303,6 +303,30 @@ def _playlist_tracks_api(sp, playlist_id):
     return tracks
 
 
+def saved_tracks(sp):
+    """Every track in the current user's Liked Songs collection.
+
+    Keep pagination explicit instead of using ``sp.next`` so the collection
+    contract remains testable against the provider client alone and so an
+    advertised-but-empty page fails closed rather than looking like removals.
+    """
+    tracks, offset = [], 0
+    while True:
+        results = _retry(
+            lambda: sp.current_user_saved_tracks(limit=50, offset=offset),
+            "saved tracks",
+        )
+        items = results.get("items") or []
+        tracks.extend(_playlist_item_tracks(items))
+        if not results.get("next"):
+            return tracks
+        if not items:
+            raise RuntimeError(
+                f"Spotify Liked Songs read incomplete: stopped at {offset} with another page advertised"
+            )
+        offset += len(items)
+
+
 def _playlist_page_offset(cursor):
     if cursor is None:
         return 0

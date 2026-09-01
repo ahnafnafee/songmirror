@@ -304,6 +304,207 @@ def test_oneway_target_workers_have_independent_archive_connections(monkeypatch,
     assert all(result["failed"] == 0 for result in summary["per_target"])
 
 
+def test_oneway_liked_tracks_use_each_destinations_selected_resource(monkeypatch, tmp_path):
+    """A single liked source can target a native collection and a normal playlist."""
+
+    liked_reads = []
+    playlist_list_reads = []
+
+    class Source:
+        source, name = "spotify", "Spotify"
+
+        @staticmethod
+        def list_playlists():
+            raise AssertionError("a liked-only source must not list regular playlists")
+
+        @staticmethod
+        def favorite_tracks_resource():
+            return {"id": "liked-tracks", "name": "Liked Songs", "_kind": "liked_tracks"}
+
+        @staticmethod
+        def resource_tracks(_resource):
+            liked_reads.append("read")
+            return [{"id": "sp-one", "name": "One", "artist": "Artist", "artists": ["Artist"]}]
+
+        @staticmethod
+        def track_id(track):
+            return track["id"]
+
+    class Target:
+        def __init__(self, source, playlists):
+            self.source = self.tag = source
+            self.name = source.title()
+            self.cache_file = str(tmp_path / f"{source}.json")
+            self._playlists = playlists
+
+        def list_playlists(self):
+            playlist_list_reads.append(self.source)
+            return self._playlists
+
+        @staticmethod
+        def playlist_id(playlist):
+            return playlist["id"]
+
+        @staticmethod
+        def favorite_tracks_resource():
+            return {"id": "liked-tracks", "name": "Favorite Tracks", "_kind": "liked_tracks"}
+
+        @staticmethod
+        def resource_id(resource):
+            return resource["id"]
+
+        @staticmethod
+        def resource_count(_resource):
+            return 0
+
+        @staticmethod
+        def resource_is_editable(_resource):
+            return True
+
+    targets = [
+        Target("tidal", {}),
+        Target("apple", {"spotify liked songs": {"id": "apple-playlist", "name": "Spotify Liked Songs"}}),
+    ]
+    seen = {}
+
+    def capture(target, source_tracks, source_resource, target_resource, *_args, **_kwargs):
+        seen[target.source] = {
+            "source_kind": source_resource["_kind"],
+            "target_kind": target_resource.get("_kind", "playlist"),
+            "target_name": target_resource["name"],
+            "tracks": [track["id"] for track in source_tracks],
+        }
+        return {
+            "clean": True, "added": 0, "removed": 0, "missing": 0,
+            "held": 0, "deferred": 0, "removals_skipped": 0,
+            "held_removals": [], "change_diagnostics": [], "target_count": 0,
+        }
+
+    monkeypatch.setattr(runner.spotify, "client", lambda writable=False: object())
+    monkeypatch.setattr(runner, "build_one", lambda *args, **kwargs: Source())
+    monkeypatch.setattr(runner, "build_targets", lambda *args, **kwargs: targets)
+    monkeypatch.setattr(runner, "mirror_pair", capture)
+    monkeypatch.setattr(runner, "_load_links", lambda: [])
+    monkeypatch.setattr(runner, "_post_sync", lambda *args, **kwargs: None)
+
+    summary = runner.run_pass(_opts(
+        sync_source="spotify",
+        providers="spotify,tidal,apple",
+        sync_playlists=False,
+        liked_tracks=True,
+        liked_routes={
+            "tidal": {"kind": "native"},
+            "apple": {"kind": "playlist", "name": "Spotify Liked Songs"},
+        },
+        song_cache_file=str(tmp_path / "songs.db"),
+    ))
+
+    assert summary["ok"] is True
+    assert liked_reads == ["read"]
+    assert playlist_list_reads == ["apple"]
+    assert seen == {
+        "tidal": {
+            "source_kind": "liked_tracks", "target_kind": "liked_tracks",
+            "target_name": "Favorite Tracks", "tracks": ["sp-one"],
+        },
+        "apple": {
+            "source_kind": "liked_tracks", "target_kind": "playlist",
+            "target_name": "Spotify Liked Songs", "tracks": ["sp-one"],
+        },
+    }
+
+
+def test_liked_only_job_does_not_select_regular_playlists(monkeypatch):
+    class Source:
+        source, name = "spotify", "Spotify"
+
+        @staticmethod
+        def list_playlists():
+            return {"ordinary": {"id": "ordinary", "name": "Ordinary"}}
+
+    selected_names = []
+
+    def capture(_opts, _sp, selected, _songs, _control):
+        selected_names.extend(playlist["name"] for playlist in selected)
+        return []
+
+    monkeypatch.setattr(runner.spotify, "client", lambda writable=False: object())
+    monkeypatch.setattr(runner, "build_one", lambda *args, **kwargs: Source())
+    monkeypatch.setattr(runner, "_run_nway", capture)
+
+    summary = runner.run_pass(_opts(
+        sync_mode="nway",
+        providers="spotify,tidal",
+        sync_playlists=False,
+        liked_tracks=True,
+        liked_routes={"tidal": {"kind": "native"}},
+    ))
+
+    assert summary["ok"] is True
+    assert selected_names == []
+
+
+def test_mirror_pair_writes_through_the_native_liked_resource_boundary(tmp_path):
+    from songmirror.engine.targets.base import MirrorTarget, mirror_pair
+
+    songs = archive.connect(str(tmp_path / "liked-resource.db"))
+
+    class Target(MirrorTarget):
+        name, tag, source = "TIDAL", "tidal", "tidal"
+
+        def playlist_tracks(self, _playlist):
+            raise AssertionError("native liked tracks must not use playlist reads")
+
+        def favorite_tracks(self):
+            return []
+
+        @staticmethod
+        def track_id(track):
+            return track["id"]
+
+        @staticmethod
+        def expected_ids(_tracks, _links, _cache):
+            return {}
+
+        @staticmethod
+        def prefetch(_tracks, _cache):
+            pass
+
+        @staticmethod
+        def resolve(_track, _cache):
+            return "tidal-one", "isrc"
+
+        def add_favorite_tracks(self, target_ids):
+            self.added = list(target_ids)
+
+        def add(self, _playlist, _target_ids):
+            raise AssertionError("native liked tracks must not use playlist writes")
+
+        def remove(self, _playlist, _track):
+            raise AssertionError("native liked tracks must not use playlist writes")
+
+    target = Target()
+    resource = target.favorite_tracks_resource()
+    stats = mirror_pair(
+        target,
+        [{
+            "id": "spotify-one", "isrc": "USAAA2600001", "name": "One",
+            "artist": "Artist", "artists": ["Artist"], "duration_ms": 180_000,
+        }],
+        {"name": "Liked Songs"},
+        resource,
+        {"isrc": {}, "search": {}, "dirty": False},
+        songs,
+        execute=True,
+        max_removals=25,
+        max_adds=200,
+    )
+
+    assert target.added == ["tidal-one"]
+    assert stats["added"] == 1
+    songs.close()
+
+
 def test_oneway_tidal_uses_archived_details_for_a_delisted_playlist_entry(monkeypatch, tmp_path):
     from songmirror.engine.targets.tidal import TidalTarget
 
@@ -1313,6 +1514,75 @@ def test_authoritative_group_forwards_only_its_authority_sources(monkeypatch):
 
     assert seen == [("spotify", {"spotify", "apple"})]
     assert entry["name"] == "Authoritative group"
+
+
+def test_nway_liked_tracks_pair_by_logical_key_and_destination_routes(monkeypatch):
+    class Peer(_Peer):
+        def __init__(self, source, playlists=None):
+            super().__init__(source)
+            self._playlists = playlists or {}
+
+        def list_playlists(self):
+            return self._playlists
+
+        def favorite_tracks_resource(self):
+            return {
+                "id": "liked-tracks", "name": f"{self.name} favorites",
+                "_kind": "liked_tracks",
+            }
+
+        @staticmethod
+        def resource_is_editable(_resource):
+            return True
+
+    peers = [
+        Peer("spotify"),
+        Peer("tidal"),
+        Peer("apple", {
+            "spotify liked songs": {"id": "apple-liked-playlist", "name": "Spotify Liked Songs"},
+        }),
+    ]
+    calls = []
+    monkeypatch.setattr(runner, "build_peers", lambda opts, sp, songs=None: peers)
+    monkeypatch.setattr(runner, "load_cache", lambda path: {})
+    monkeypatch.setattr(runner, "save_cache", lambda path, cache: None)
+
+    def capture(active, name, resources, caches, songs, **kwargs):
+        calls.append({
+            "active": [peer.source for peer in active],
+            "name": name,
+            "kinds": {
+                source: resource.get("_kind", "playlist")
+                for source, resource in resources.items()
+            },
+            "link_key": kwargs.get("link_key"),
+        })
+        return {}
+
+    monkeypatch.setattr(runner, "reconcile", capture)
+
+    runner._run_nway(
+        _opts(
+            sync_mode="nway",
+            sync_source="spotify",
+            providers="spotify,tidal,apple",
+            liked_tracks=True,
+            liked_routes={
+                "tidal": {"kind": "native"},
+                "apple": {"kind": "playlist", "name": "Spotify Liked Songs"},
+            },
+        ),
+        object(),
+        [],
+        _FakeSongs(),
+    )
+
+    assert calls == [{
+        "active": ["spotify", "tidal", "apple"],
+        "name": "Spotify favorites",
+        "kinds": {"spotify": "liked_tracks", "tidal": "liked_tracks", "apple": "playlist"},
+        "link_key": "collection:liked-tracks",
+    }]
 
 
 def test_authoritative_group_preserves_a_skipped_mirror_read_failure(monkeypatch):

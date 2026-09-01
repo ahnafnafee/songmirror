@@ -172,6 +172,42 @@ mutation SongMirrorDeezerRemoveTracks($input: PlaylistRemoveTracksMutationInput!
 }
 """
 
+FAVORITE_TRACKS_QUERY = """
+query SongMirrorDeezerFavoriteTracks($first: Int!, $after: String) {
+  me {
+    userFavorites {
+      tracks(first: $first, after: $after) {
+        edges {
+          cursor
+          favoritedAt
+          node {
+            id title duration
+            album {
+              id displayTitle
+              cover { urls(pictureRequest: {width: 128, height: 128}) }
+            }
+            contributors { edges { node { ... on Artist { id name } } } }
+          }
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+"""
+
+ADD_FAVORITE_TRACK_MUTATION = """
+mutation SongMirrorDeezerAddFavoriteTrack($trackId: String!) {
+  addTrackToFavorite(trackId: $trackId) { track { id } favoritedAt }
+}
+"""
+
+REMOVE_FAVORITE_TRACK_MUTATION = """
+mutation SongMirrorDeezerRemoveFavoriteTrack($trackId: String!) {
+  removeTrackFromFavorite(trackId: $trackId) { track { id } }
+}
+"""
+
 class DeezerWebClient:
     def __init__(
         self,
@@ -399,6 +435,45 @@ class DeezerWebClient:
         if not rows:
             raise RuntimeError("Deezer playlist read incomplete: an empty page advertised more tracks")
         return rows, str(next_cursor)
+
+    def favorite_tracks(self) -> list[dict]:
+        rows = []
+        cursor = None
+        while True:
+            data = self.execute(
+                "SongMirrorDeezerFavoriteTracks",
+                FAVORITE_TRACKS_QUERY,
+                {"first": 100, "after": cursor},
+            )
+            connection = ((((data.get("me") or {}).get("userFavorites") or {}).get("tracks")) or {})
+            edges = connection.get("edges") or []
+            for edge in edges:
+                node = edge.get("node") or {}
+                if node.get("id") is not None:
+                    rows.append({**node, "time_add": edge.get("favoritedAt") or ""})
+            page = connection.get("pageInfo") or {}
+            if not page.get("hasNextPage"):
+                return rows
+            next_cursor = page.get("endCursor")
+            if not edges or not next_cursor or next_cursor == cursor:
+                raise RuntimeError("Deezer favorites returned a non-advancing cursor")
+            cursor = str(next_cursor)
+
+    def add_favorite_track(self, track_id: str) -> None:
+        self.execute(
+            "SongMirrorDeezerAddFavoriteTrack",
+            ADD_FAVORITE_TRACK_MUTATION,
+            {"trackId": str(track_id)},
+            mutation=True,
+        )
+
+    def remove_favorite_track(self, track_id: str) -> None:
+        self.execute(
+            "SongMirrorDeezerRemoveFavoriteTrack",
+            REMOVE_FAVORITE_TRACK_MUTATION,
+            {"trackId": str(track_id)},
+            mutation=True,
+        )
 
     def create(self, title: str, description: str = "") -> dict:
         create_input = {

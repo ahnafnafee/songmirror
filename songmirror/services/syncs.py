@@ -12,7 +12,7 @@ each job is an ordinary pass.
 
 import json
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from ..engine.config import (
@@ -38,6 +38,9 @@ class SyncJob:
     authorities: str = ""                    # group membership authorities, comma-separated
     providers: str = DEFAULT_PROVIDERS        # comma-separated participating providers
     playlists: str = ""                       # comma-separated names (empty = every same-named pair)
+    sync_playlists: bool = True                # false = liked/favorite collection only
+    liked_tracks: bool = False                # include the source provider's native liked/favorite tracks
+    liked_routes: dict = field(default_factory=dict)  # provider -> {kind: native|playlist, name?: str}
     interval: str = DEFAULT_INTERVAL          # this job's own auto-sync cadence
     max_adds: int = DEFAULT_MAX_ADDS
     max_removals: int = DEFAULT_MAX_REMOVALS
@@ -66,6 +69,31 @@ def validate_sync_job(job):
         raise ValueError("max_adds must be at least 1")
     if job.max_removals < 0:
         raise ValueError("max_removals must be at least 0")
+    if not job.sync_playlists and not job.liked_tracks:
+        raise ValueError("select regular playlists, liked tracks, or both")
+    if job.liked_tracks:
+        providers = _provider_ids(job.providers)
+        if not providers:
+            raise ValueError("liked-track sync needs an explicit provider selection")
+        if job.source not in providers:
+            raise ValueError("the liked-track source must be a selected provider")
+        destinations = providers - {job.source}
+        routes = job.liked_routes if isinstance(job.liked_routes, dict) else {}
+        missing_routes = destinations - set(routes)
+        if missing_routes:
+            raise ValueError(
+                "choose a liked-track destination for: " + ", ".join(sorted(missing_routes))
+            )
+        for provider_id in sorted(destinations):
+            route = routes.get(provider_id)
+            if not isinstance(route, dict) or route.get("kind") not in {"native", "playlist"}:
+                raise ValueError(
+                    f"liked-track destination for {provider_id} must be native or playlist"
+                )
+            if route["kind"] == "playlist" and not str(route.get("name") or "").strip():
+                raise ValueError(
+                    f"liked-track playlist destination for {provider_id} needs a name"
+                )
     if job.mode != "group":
         return job
 

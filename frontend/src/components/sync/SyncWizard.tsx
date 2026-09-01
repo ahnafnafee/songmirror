@@ -15,6 +15,7 @@ import { useSettings } from '@/hooks/useSettings'
 import { cn } from '@/lib/cn'
 import { serviceLogoId, tagDot, tagText } from '@/lib/constants'
 import { isValidIntervalText, isValidPositiveInt } from '@/lib/format'
+import { nativeLikedTracksName, providerLikedTracksLabel } from '@/lib/likedTracks'
 import {
   authorityProvidersOf,
   buildSyncSummaryRows,
@@ -24,7 +25,7 @@ import {
   syncPeersOf,
 } from '@/lib/syncSummary'
 import { PlaylistFilterField } from '../settings/PlaylistFilterField'
-import type { Account, SyncJob, SyncJobUpsertRequest, SyncMode } from '@/types'
+import type { Account, LikedTrackRoute, LikedTrackRoutes, SyncJob, SyncJobUpsertRequest, SyncMode } from '@/types'
 
 // Kept as strings locally (not the SyncJob numbers) so they compose directly
 // with TextField and the existing string-based validators; converted to
@@ -37,6 +38,9 @@ interface JobFormState {
   authorities: string
   providers: string
   playlists: string
+  sync_playlists: boolean
+  liked_tracks: boolean
+  liked_routes: LikedTrackRoutes
   interval: string
   max_adds: string
   /** UI-only switch; persisted as max_removals (0 = off, the safe default). */
@@ -54,6 +58,9 @@ const NEW_JOB_DEFAULTS: JobFormState = {
   authorities: '',
   providers: '',
   playlists: '',
+  sync_playlists: true,
+  liked_tracks: false,
+  liked_routes: {},
   interval: '15m',
   max_adds: '200',
   mirror_removals: false,
@@ -63,7 +70,7 @@ const NEW_JOB_DEFAULTS: JobFormState = {
 }
 
 function formFromJob(job: SyncJob | null): JobFormState {
-  if (!job) return NEW_JOB_DEFAULTS
+  if (!job) return { ...NEW_JOB_DEFAULTS, liked_routes: {} }
   return {
     name: job.name,
     enabled: job.enabled,
@@ -72,6 +79,9 @@ function formFromJob(job: SyncJob | null): JobFormState {
     authorities: job.authorities || '',
     providers: job.providers,
     playlists: job.playlists,
+    sync_playlists: job.sync_playlists ?? true,
+    liked_tracks: job.liked_tracks ?? false,
+    liked_routes: { ...(job.liked_routes ?? {}) },
     interval: job.interval,
     max_adds: String(job.max_adds),
     mirror_removals: job.max_removals > 0,
@@ -80,6 +90,26 @@ function formFromJob(job: SyncJob | null): JobFormState {
     apply_large_removals: job.apply_large_removals,
     download: job.download,
   }
+}
+
+/** Keep exactly one explicit destination choice for every participating peer
+ * except the provider whose native liked collection is the source. Existing
+ * choices survive service/source changes; newly-added destinations default to
+ * their own native liked collection. */
+function normalizedLikedRoutes(
+  routes: LikedTrackRoutes,
+  providerIds: Iterable<string>,
+  sourceId: string,
+): LikedTrackRoutes {
+  const normalized: LikedTrackRoutes = {}
+  for (const providerId of providerIds) {
+    if (providerId === sourceId) continue
+    const current = routes[providerId]
+    normalized[providerId] = current?.kind === 'playlist'
+      ? { kind: 'playlist', name: current.name }
+      : { kind: 'native' }
+  }
+  return normalized
 }
 
 const INTERVAL_PRESETS: Array<{ value: string; label: string }> = [
@@ -312,6 +342,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     source: form.source,
     authorities: form.authorities,
   })
+  if (form.liked_tracks) lockedProviderIds.add(syncSource)
   const nonSpotifySourceConflict =
     form.mode !== 'nway' && syncSource !== 'spotify' && (form.download || jellyfinConnected)
 
@@ -348,6 +379,9 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
         if (prev.source) providers.add(prev.source)
         next.providers = csvInPeerOrder(providers)
       }
+      if (next.liked_tracks) {
+        next.liked_routes = normalizedLikedRoutes(next.liked_routes, parseCsv(next.providers), next.source)
+      }
       return next
     })
   }
@@ -357,15 +391,27 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
       const providers = new Set(parseCsv(prev.providers))
       providers.add(id)
       if (prev.mode !== 'group') {
-        return { ...prev, source: id, providers: csvInPeerOrder(providers) }
+        const providerCsv = csvInPeerOrder(providers)
+        return {
+          ...prev,
+          source: id,
+          providers: providerCsv,
+          liked_routes: prev.liked_tracks
+            ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), id)
+            : prev.liked_routes,
+        }
       }
       const authorities = new Set(parseCsv(prev.authorities))
       authorities.add(id)
+      const providerCsv = csvInPeerOrder(providers)
       return {
         ...prev,
         source: id,
         authorities: csvInPeerOrder(authorities),
-        providers: csvInPeerOrder(providers),
+        providers: providerCsv,
+        liked_routes: prev.liked_tracks
+          ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), id)
+          : prev.liked_routes,
       }
     })
   }
@@ -382,10 +428,14 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
       }
       const providers = new Set(parseCsv(prev.providers))
       providers.add(id)
+      const providerCsv = csvInPeerOrder(providers)
       return {
         ...prev,
         authorities: csvInPeerOrder(authorities),
-        providers: csvInPeerOrder(providers),
+        providers: providerCsv,
+        liked_routes: prev.liked_tracks
+          ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), prev.source)
+          : prev.liked_routes,
       }
     })
   }
@@ -397,8 +447,52 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
   // else the first participating peer in syncPeers order. Recomputed on
   // every render, so going back to Direction/Services and changing the
   // source/participants immediately reflects here too.
-  const playlistPickerProviderId =
-    form.mode !== 'nway' ? syncSource : (enabledProviders.has('spotify') ? 'spotify' : syncPeers.find((a) => enabledProviders.has(a.id))?.id) || null
+  const playlistPickerProviderId = form.liked_tracks
+    ? syncSource
+    : form.mode !== 'nway'
+      ? syncSource
+      : (enabledProviders.has('spotify') ? 'spotify' : syncPeers.find((a) => enabledProviders.has(a.id))?.id) || null
+
+  const likedSourceName = syncPeers.find((account) => account.id === syncSource)?.name ?? syncSource
+  const likedPlaylistSuggestion = providerLikedTracksLabel(syncSource, likedSourceName)
+  const likedDestinations = syncPeers.filter(
+    (account) => enabledProviders.has(account.id) && account.id !== syncSource,
+  )
+
+  function setLikedTracks(selected: boolean) {
+    setForm((prev) => {
+      if (!selected) {
+        return { ...prev, sync_playlists: true, liked_tracks: false, liked_routes: {} }
+      }
+      const source = playlistPickerProviderId || prev.source
+      const providers = new Set(parseCsv(prev.providers))
+      if (source) providers.add(source)
+      const providerCsv = csvInPeerOrder(providers)
+      return {
+        ...prev,
+        source,
+        providers: providerCsv,
+        sync_playlists: prev.playlists.trim().length > 0,
+        liked_tracks: true,
+        liked_routes: normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), source),
+      }
+    })
+  }
+
+  function setPlaylistFilter(value: string) {
+    setForm((prev) => ({
+      ...prev,
+      playlists: value,
+      sync_playlists: value.trim().length > 0 || !prev.liked_tracks,
+    }))
+  }
+
+  function setLikedRoute(providerId: string, route: LikedTrackRoute) {
+    setForm((prev) => ({
+      ...prev,
+      liked_routes: { ...prev.liked_routes, [providerId]: route },
+    }))
+  }
 
   function toggleProvider(id: string) {
     if (lockedProviderIds.has(id)) return
@@ -406,7 +500,14 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     for (const lockedId of lockedProviderIds) next.add(lockedId)
     if (next.has(id)) next.delete(id)
     else next.add(id)
-    setField('providers', csvInPeerOrder(next))
+    const providerCsv = csvInPeerOrder(next)
+    setForm((prev) => ({
+      ...prev,
+      providers: providerCsv,
+      liked_routes: prev.liked_tracks
+        ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), prev.source)
+        : prev.liked_routes,
+    }))
   }
 
   const nameValid = form.name.trim().length > 0
@@ -417,11 +518,22 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     form.mode !== 'group' ||
     (authorityIds.size >= 2 && authorityIds.has(syncSource) &&
       [...authorityIds].every((id) => connectedPeerIds.has(id) && enabledProviders.has(id)))
-  const formValid = nameValid && intervalValid && maxAddsValid && maxRemovalsValid && groupValid
+  const likedRoutesValid =
+    !form.liked_tracks ||
+    (enabledProviders.has(syncSource) &&
+      [...enabledProviders]
+        .filter((providerId) => providerId !== syncSource)
+        .every((providerId) => {
+          const route = form.liked_routes[providerId]
+          return route?.kind === 'native' || (route?.kind === 'playlist' && route.name.trim().length > 0)
+        }))
+  const resourceSelectionValid = form.sync_playlists || form.liked_tracks
+  const formValid =
+    nameValid && intervalValid && maxAddsValid && maxRemovalsValid && groupValid && likedRoutesValid && resourceSelectionValid
 
   // Only Direction's name (always valid) aside, Schedule (interval) and
   // Limits (caps) are the only steps with a bad state to block Next on.
-  const stepValid = [groupValid, true, true, intervalValid, maxAddsValid && maxRemovalsValid]
+  const stepValid = [groupValid, true, likedRoutesValid && resourceSelectionValid, intervalValid, maxAddsValid && maxRemovalsValid]
   const isLastStep = step === STEPS.length - 1
 
   const previewJob: SyncJob = {
@@ -433,6 +545,9 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     authorities: form.authorities,
     providers: form.providers,
     playlists: form.playlists,
+    sync_playlists: form.sync_playlists,
+    liked_tracks: form.liked_tracks,
+    liked_routes: form.liked_routes,
     interval: form.interval,
     max_adds: Number(form.max_adds) || 0,
     max_removals: form.mirror_removals ? Number(form.max_removals) || 0 : 0,
@@ -454,6 +569,9 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
         authorities: form.authorities,
         providers: form.providers,
         playlists: form.playlists,
+        sync_playlists: form.sync_playlists,
+        liked_tracks: form.liked_tracks,
+        liked_routes: form.liked_routes,
         interval: form.interval,
         max_adds: Number(form.max_adds),
         max_removals: form.mirror_removals ? Number(form.max_removals) : 0,
@@ -651,6 +769,8 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                           : undefined
                     : form.mode === 'oneway' && account.id === syncSource
                       ? 'source'
+                      : form.liked_tracks && account.id === syncSource
+                        ? 'source'
                       : undefined
                 return (
                   <ProviderChip
@@ -667,11 +787,93 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
           )}
 
           {step === 2 && (
-            <PlaylistFilterField
-              value={form.playlists}
-              onChange={(v) => setField('playlists', v)}
-              preferredProviderId={playlistPickerProviderId}
-            />
+            <div className="flex flex-col gap-4">
+              <PlaylistFilterField
+                value={form.playlists}
+                onChange={setPlaylistFilter}
+                preferredProviderId={playlistPickerProviderId}
+                includeLikedTracks
+                likedTracksSelected={form.liked_tracks}
+                syncAllRegularPlaylists={form.sync_playlists}
+                onLikedTracksChange={setLikedTracks}
+              />
+
+              {form.liked_tracks && (
+                <section className="flex flex-col gap-3.5 border-t border-border pt-3.5">
+                  {form.playlists.trim().length === 0 && (
+                    <Toggle
+                      checked={form.sync_playlists}
+                      onChange={(selected) => setField('sync_playlists', selected)}
+                      label="Also sync every regular playlist"
+                      description="Leave this off for a liked-tracks-only sync."
+                    />
+                  )}
+                  <div>
+                    <h3 className="text-[12.5px] font-semibold text-text-2">Where should liked tracks go?</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-text-3">
+                      Choose each destination's built-in collection or create a regular playlist from{' '}
+                      {likedPlaylistSuggestion}.
+                    </p>
+                  </div>
+
+                  {likedDestinations.length === 0 ? (
+                    <p className="rounded-control border border-dashed border-border-strong px-3 py-2.5 text-xs text-text-3">
+                      Add another service on the Services step to sync these liked tracks anywhere.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-4">
+                      {likedDestinations.map((account) => {
+                        const route = form.liked_routes[account.id] ?? { kind: 'native' as const }
+                        const playlistName = route.kind === 'playlist' ? route.name : ''
+                        return (
+                          <div key={account.id} className="flex flex-col gap-2">
+                            <div className="flex items-center gap-2 text-[12.5px] font-semibold text-text-2">
+                              {serviceLogoId(account.id) ? (
+                                <ServiceLogo service={serviceLogoId(account.id)!} className={cn('size-4', tagText(account.id))} />
+                              ) : (
+                                <span className={cn('size-2 rounded-full', tagDot(account.id))} aria-hidden="true" />
+                              )}
+                              {account.name}
+                            </div>
+                            <div
+                              role="radiogroup"
+                              aria-label={`${account.name} liked-track destination`}
+                              className="grid gap-2 sm:grid-cols-2"
+                            >
+                              <RadioCard
+                                name={`liked-route-${account.id}`}
+                                value="native"
+                                checked={route.kind === 'native'}
+                                onChange={() => setLikedRoute(account.id, { kind: 'native' })}
+                                title={`Use ${account.name} ${nativeLikedTracksName(account.id)}`}
+                                description="Sync directly into this service's built-in liked collection."
+                              />
+                              <RadioCard
+                                name={`liked-route-${account.id}`}
+                                value="playlist"
+                                checked={route.kind === 'playlist'}
+                                onChange={() => setLikedRoute(account.id, { kind: 'playlist', name: likedPlaylistSuggestion })}
+                                title={`Create a new playlist on ${account.name}`}
+                                description="Use a regular playlist with a name you can edit."
+                              />
+                            </div>
+                            {route.kind === 'playlist' && (
+                              <TextField
+                                label={`${account.name} playlist name`}
+                                value={playlistName}
+                                aria-required="true"
+                                onChange={(event) => setLikedRoute(account.id, { kind: 'playlist', name: event.target.value })}
+                                error={!playlistName.trim() ? 'Enter a playlist name.' : undefined}
+                              />
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </section>
+              )}
+            </div>
           )}
 
           {step === 3 && (

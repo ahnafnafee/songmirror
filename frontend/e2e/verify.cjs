@@ -2387,6 +2387,72 @@ async function main() {
     }
 
     // -----------------------------------------------------------------
+    // Native liked collections: selecting the source's Liked Songs must
+    // surface an explicit destination choice for every other provider. The
+    // saved payload distinguishes native collections from new playlists and
+    // preserves the user's edited playlist name.
+    // -----------------------------------------------------------------
+    {
+      const context = await browser.newContext()
+      await context.addInitScript(() => window.localStorage.setItem('songmirror-theme', 'light'))
+      const page = await context.newPage()
+      const allPeersConnected = ACCOUNTS.map((account) => (
+        account.id === 'jellyfin' ? account : { ...account, state: 'connected', detail: null }
+      ))
+      let createdLikedSync = null
+      await installMocks(page, { accounts: allPeersConnected, playlists: SHOWCASE_PLAYLISTS })
+      await page.route('**/api/syncs', async (route) => {
+        if (route.request().method() === 'POST') createdLikedSync = route.request().postDataJSON()
+        await route.fallback()
+      })
+
+      await page.setViewportSize({ width: 1280, height: 1000 })
+      await page.goto(BASE_URL + '/sync', { waitUntil: 'networkidle' })
+      await page.getByRole('button', { name: 'New sync', exact: true }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByLabel('Name', { exact: false }).fill('Every favorite')
+      await dialog.getByRole('radio', { name: 'Playlists', exact: true }).click()
+      const likedCheckbox = dialog.getByRole('checkbox', { name: 'Spotify Liked Songs', exact: true })
+      await dialog.getByText('Spotify Liked Songs', { exact: true }).click()
+      const likedSelected = await likedCheckbox.isChecked()
+      const likedOnlySelected = await dialog
+        .getByRole('switch', { name: 'Also sync every regular playlist', exact: false })
+        .getAttribute('aria-checked') === 'false'
+
+      await dialog.getByText('Where should liked tracks go?', { exact: true }).waitFor()
+      const tidalNativeSelected = await dialog
+        .getByRole('radio', { name: 'Use TIDAL Favorite Tracks', exact: true })
+        .isChecked()
+      await dialog.getByText('Create a new playlist on Apple Music', { exact: true }).click()
+      const appleName = dialog.getByLabel('Apple Music playlist name', { exact: true })
+      const suggestedName = await appleName.inputValue()
+      await appleName.fill('My Apple Likes')
+
+      await dialog.getByRole('button', { name: 'Create sync', exact: true }).click()
+      await dialog.waitFor({ state: 'hidden' })
+      const likedRouteSummaryVisible = await page.getByText('My Apple Likes', { exact: false }).isVisible()
+
+      const expectedNative = ['tidal', 'qobuz', 'deezer', 'amazon', 'ytmusic']
+      const likedPayloadOk =
+        likedSelected &&
+        likedOnlySelected &&
+        tidalNativeSelected &&
+        likedRouteSummaryVisible &&
+        suggestedName === 'Spotify Liked Songs' &&
+        createdLikedSync?.sync_playlists === false &&
+        createdLikedSync?.liked_tracks === true &&
+        createdLikedSync?.liked_routes?.apple?.kind === 'playlist' &&
+        createdLikedSync?.liked_routes?.apple?.name === 'My Apple Likes' &&
+        expectedNative.every((provider) => createdLikedSync?.liked_routes?.[provider]?.kind === 'native') &&
+        !('spotify' in (createdLikedSync?.liked_routes ?? {}))
+      console.log(`${likedPayloadOk ? 'ok        ' : 'FAIL      '} liked-track wizard prompts for every destination and persists native/playlist routes (got ${JSON.stringify(createdLikedSync)})`)
+      if (!likedPayloadOk) results.push({ label: 'wizard liked-track destination payload', overflow: true })
+      await checkOverflow(page, 'Sync list after liked-track create @ 1280', results)
+
+      await context.close()
+    }
+
+    // -----------------------------------------------------------------
     // Sync "queuing": passes are serialized backend-side, but that no longer
     // means every OTHER job's "Sync now"/"Preview" gets disabled while one
     // runs - only the running job's own buttons, and a queued job's own

@@ -64,6 +64,7 @@ class AppleMusicTarget(MirrorTarget):
     name = "Apple Music"
     tag = "apple"
     source = "apple"
+    favorite_tracks_name = "Favorite Songs"
 
     def __init__(self, storefront, cache_file):
         self.storefront = storefront or "us"  # empty -> a broken /catalog//search URL (400)
@@ -245,6 +246,46 @@ class AppleMusicTarget(MirrorTarget):
                     "Apple Music playlist read incomplete: next page was advertised but no rows were returned"
                 )
             offset += len(rows)
+
+    @staticmethod
+    def _has_favorited_tag(playlist):
+        tags = (playlist.get("attributes") or {}).get("tags") or []
+        values = [tag.get("name") if isinstance(tag, dict) else tag for tag in tags]
+        return any(str(value or "").casefold() == "favorited" for value in values)
+
+    def _favorite_playlist(self):
+        playlist = next(
+            (item for item in self.list_playlists().values() if self._has_favorited_tag(item)),
+            None,
+        )
+        if playlist is None:
+            raise RuntimeError(
+                "Apple Music did not return its tagged Favorite Songs system playlist"
+            )
+        return playlist
+
+    def favorite_tracks(self):
+        return self.playlist_tracks(self._favorite_playlist())
+
+    def add_favorite_tracks(self, target_ids):
+        for target_id in target_ids:
+            self._request(
+                "POST",
+                f"{AMP}/me/favorites",
+                params={"ids[songs]": str(target_id)},
+            )
+            polite_sleep(0.4)
+
+    def remove_favorite_track(self, track):
+        target_id = self.track_id(track)
+        if not target_id:
+            return
+        self._request(
+            "DELETE",
+            f"{AMP}/me/favorites",
+            params={"ids[songs]": str(target_id)},
+        )
+        polite_sleep(0.4)
 
     def track_id(self, track):
         return track.get("catalog_id")

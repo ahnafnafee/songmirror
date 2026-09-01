@@ -26,6 +26,7 @@ from .engine.config import REQUEST_TIMEOUT
 from .oauth import read_token, write_token
 
 ENDPOINT = "https://gql.music.amazon.dev"
+WEB_API_ENDPOINT = "https://api.music.amazon.dev/v1"
 CONFIG_ENDPOINT = "https://music.amazon.com/config.json"
 PANDA_TOKEN_ENDPOINT = "https://music.amazon.com/pandaToken"
 MUSIC_HOME_URL = "https://music.amazon.com/"
@@ -790,6 +791,46 @@ class AmazonMusicWebClient:
                 raise RuntimeError(f"Amazon Music web API error: {messages}")
             return body.get("data") or {}
         raise RuntimeError("Amazon Music web request retry budget exhausted")
+
+    def set_track_like_state(self, track_id: str, like_state: str) -> None:
+        """Use the first-party session for Amazon's track-rating endpoint.
+
+        ``NEUTRAL`` is the web client's exact undo state.  It intentionally is
+        not replaced by ``DISLIKE``, which would change the user's preference.
+        """
+        can_renew = bool(self.renewal_cookies)
+        refreshed = self._ensure_access()
+        for _attempt in range(2 if can_renew else 1):
+            headers = {
+                **self.headers,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Origin": "https://music.amazon.com",
+                "Referer": "https://music.amazon.com/",
+            }
+            response = self.session.put(
+                f"{WEB_API_ENDPOINT}/me/tracks/{track_id}",
+                headers=headers,
+                json={"likeState": str(like_state)},
+                timeout=REQUEST_TIMEOUT,
+            )
+            if response.status_code in (401, 403) and can_renew and not refreshed:
+                self._renew()
+                refreshed = True
+                continue
+            if response.status_code in (401, 403):
+                raise AmazonMusicWebAuthError(
+                    "Amazon Music rejected the liked-track change; reconnect with a fresh "
+                    "config.json or /pandaToken request."
+                )
+            response.raise_for_status()
+            if response.content:
+                body = self._response_json(response, "liked-track update")
+                errors = body.get("errors") if isinstance(body, dict) else None
+                if errors:
+                    raise RuntimeError(f"Amazon Music liked-track update failed: {errors}")
+            return
+        raise AmazonMusicWebAuthError("Amazon Music liked-track authorization could not be renewed.")
 
     def validate(self, *, require_renewal: bool = False) -> None:
         if require_renewal:

@@ -44,6 +44,13 @@ Apple bulk-fetches ISRCs), `native_isrc_map()` (expose `{track_id: ISRC}` your r
 cache already knows), `expected_ids()`, `is_editable()`, and
 `hydrate_playlist_counts()` (browse-only enrichment when the listing response omits totals).
 
+**Native liked/favorite collection:** set `favorite_tracks_name` to the provider's user-facing
+name and implement `favorite_tracks()`, `add_favorite_tracks(target_ids)`, and
+`remove_favorite_track(track)`. `MirrorTarget.favorite_tracks_resource()` supplies the stable,
+non-creatable virtual collection and the `resource_*` methods route reads/writes without making
+the reconcile core provider-aware. Add the provider to `frontend/src/lib/likedTracks.ts`, then
+extend its single contract case in `tests/test_favorite_tracks.py`.
+
 ### 2. Targets registry — `songmirror/engine/targets/__init__.py`
 
 Two lines: add a builder to `_REGISTRY` (`source -> builder(opts, sp) -> target | None`,

@@ -33,7 +33,7 @@ from .targets.base import TargetAuthError
 
 _PATHFINDER = "https://api-partner.spotify.com/pathfinder/v2/query"
 _SPCLIENT = "https://spclient.wg.spotify.com"   # web-player backend — no api.spotify.com rate limit / dev-mode gate
-_API = "https://api.spotify.com/v1"             # official REST — the batch /tracks?ids ISRC lookup (client-credentials app token; see _track_isrcs)
+_API = "https://api.spotify.com/v1"             # official REST with either the web-player user token or an ISRC app token
 _WEB = "https://open.spotify.com/"
 # Sent as spotify-app-version; loosely paired with the persisted-query hashes and
 # refreshed alongside them. A slightly stale value still resolves in practice.
@@ -583,6 +583,58 @@ def playlist_tracks(playlist, require_isrc=False, known_isrc=None):
         require_isrc=require_isrc,
         known_isrc=known_isrc,
     )
+
+
+def _user_api(method, path, *, params=None):
+    """Call a current-user REST endpoint with the first-party web token."""
+    for attempt in range(2):
+        response = requests.request(
+            method,
+            f"{_API}/{path.lstrip('/')}",
+            params=params,
+            headers=_spc_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
+        if response.status_code == 401 and attempt == 0:
+            _prov().invalidate()
+            continue
+        if response.status_code in (401, 403):
+            raise TargetAuthError(
+                f"Spotify refused {method} {path} ({response.status_code}); re-paste the sp_dc cookie "
+                "on the Accounts page."
+            )
+        response.raise_for_status()
+        return response
+    raise TargetAuthError(f"Spotify refused {method} {path} after refreshing the cookie token.")
+
+
+def favorite_tracks():
+    """Read Liked Songs with the cookie account's first-party bearer."""
+    from .spotify import _playlist_item_tracks
+
+    tracks, offset = [], 0
+    while True:
+        body = _user_api("GET", "me/tracks", params={"limit": 50, "offset": offset}).json()
+        items = body.get("items") or []
+        tracks.extend(_playlist_item_tracks(items))
+        if not body.get("next"):
+            return tracks
+        if not items:
+            raise RuntimeError(
+                f"Spotify Liked Songs read incomplete: stopped at {offset} with another page advertised"
+            )
+        offset += len(items)
+
+
+def add_favorite_tracks(track_ids):
+    for track_id in track_ids:
+        _user_api("PUT", "me/library", params={"uris": _turi(track_id)})
+        polite_sleep(0.3)
+
+
+def remove_favorite_track(track_id):
+    _user_api("DELETE", "me/library", params={"uris": _turi(track_id)})
+    polite_sleep(0.3)
 
 
 def remove(playlist, track_ids):

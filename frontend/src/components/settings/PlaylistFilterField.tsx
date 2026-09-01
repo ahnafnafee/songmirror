@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
-import { LuCheck, LuChevronDown, LuChevronUp, LuInfo, LuSearch, LuX } from 'react-icons/lu'
+import { LuCheck, LuChevronDown, LuChevronUp, LuHeart, LuInfo, LuSearch, LuX } from 'react-icons/lu'
 
 import { useAccounts } from '@/hooks/useAccounts'
 import { useProviderPlaylists } from '@/hooks/useProviderPlaylists'
 import { cn } from '@/lib/cn'
 import { formatTrackCount } from '@/lib/format'
+import { providerLikedTracksLabel } from '@/lib/likedTracks'
 import type { Account, ProviderPlaylist } from '@/types'
 
 import { CoverArt } from '../ui/CoverArt'
@@ -105,7 +106,13 @@ function PlaylistOptionRow({ playlist, selected, onToggle }: { playlist: Provide
         selected ? 'bg-accent-soft' : 'hover:bg-surface-2',
       )}
     >
-      <input type="checkbox" checked={selected} onChange={onToggle} className="sr-only" />
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={onToggle}
+        aria-label={playlist.name}
+        className="sr-only"
+      />
       <span
         aria-hidden="true"
         className={cn(
@@ -120,6 +127,41 @@ function PlaylistOptionRow({ playlist, selected, onToggle }: { playlist: Provide
       {formatTrackCount(playlist.count) && (
         <span className="shrink-0 font-mono text-[11px] text-text-3">{formatTrackCount(playlist.count)}</span>
       )}
+    </label>
+  )
+}
+
+function LikedTracksOptionRow({ label, selected, onToggle }: { label: string; selected: boolean; onToggle: () => void }) {
+  return (
+    <label
+      className={cn(
+        'flex cursor-pointer items-center gap-3 rounded-control px-2 py-2 transition-colors duration-fast',
+        selected ? 'bg-accent-soft' : 'hover:bg-surface-2',
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={onToggle}
+        aria-label={label}
+        className="sr-only"
+      />
+      <span
+        aria-hidden="true"
+        className={cn(
+          'flex size-[18px] shrink-0 items-center justify-center rounded-[5px] border-[1.5px]',
+          selected ? 'border-accent bg-accent text-on-accent' : 'border-border-strong bg-field',
+        )}
+      >
+        {selected && <LuCheck className="size-3" strokeWidth={3} aria-hidden="true" />}
+      </span>
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-danger-soft text-danger">
+        <LuHeart className="size-4" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-semibold text-text">{label}</span>
+        <span className="block text-[11.5px] text-text-3">Built-in liked collection</span>
+      </span>
     </label>
   )
 }
@@ -150,6 +192,12 @@ interface PlaylistFilterFieldProps {
    * Settings-page behavior (Spotify if connected, else a union of
    * everything connected). */
   preferredProviderId?: string | null
+  /** The sync wizard can opt into the source provider's built-in liked
+   * collection in addition to ordinary playlists. */
+  includeLikedTracks?: boolean
+  likedTracksSelected?: boolean
+  syncAllRegularPlaylists?: boolean
+  onLikedTracksChange?: (selected: boolean) => void
 }
 
 /** Lets a user pick which playlists the "playlist filter" setting names,
@@ -158,7 +206,15 @@ interface PlaylistFilterFieldProps {
  * that don't match any fetched playlist survive as removable manual chips
  * rather than being silently dropped, and a collapsible raw field covers
  * offline entry / anything the picker can't reach. */
-export function PlaylistFilterField({ value, onChange, preferredProviderId }: PlaylistFilterFieldProps) {
+export function PlaylistFilterField({
+  value,
+  onChange,
+  preferredProviderId,
+  includeLikedTracks = false,
+  likedTracksSelected = false,
+  syncAllRegularPlaylists = false,
+  onLikedTracksChange,
+}: PlaylistFilterFieldProps) {
   const source = usePickerSource(preferredProviderId)
   const [search, setSearch] = useState('')
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -185,15 +241,32 @@ export function PlaylistFilterField({ value, onChange, preferredProviderId }: Pl
     onChange(joinCsv(selectedNames.filter((n) => casefold(n) !== key)))
   }
 
-  const isEmpty = selectedNames.length === 0
-  const helpText = 'Comma-separated playlist names. Leave empty to sync every same-named pair.'
+  const likedTracksLabel = providerLikedTracksLabel(source.providerId, source.providerLabel)
+  const showLikedTracks = includeLikedTracks && Boolean(source.providerId) && Boolean(onLikedTracksChange)
+  const isEmpty = selectedNames.length === 0 && !likedTracksSelected
+  const syncingAllWithLiked = likedTracksSelected && syncAllRegularPlaylists && selectedNames.length === 0
+  const selectedCount = selectedNames.length + (likedTracksSelected ? 1 : 0)
+  const helpText = likedTracksSelected
+    ? syncingAllWithLiked
+      ? 'The liked collection and every regular playlist will sync.'
+      : selectedNames.length > 0
+      ? 'The liked collection and selected playlists will sync.'
+      : 'Only the liked collection will sync. Select playlists to include them too.'
+    : 'Comma-separated playlist names. Leave empty to sync every same-named pair.'
 
   // No usable picker source — manual entry is the only option, with a hint
   // about why.
   const noPickerAvailable = !source.hasConnectedAccounts || (Boolean(source.error) && source.playlists.length === 0)
   if (noPickerAvailable) {
     return (
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-3">
+        {showLikedTracks && (
+          <LikedTracksOptionRow
+            label={likedTracksLabel}
+            selected={likedTracksSelected}
+            onToggle={() => onLikedTracksChange?.(!likedTracksSelected)}
+          />
+        )}
         <TextField
           label="Playlists to sync"
           help={
@@ -220,12 +293,24 @@ export function PlaylistFilterField({ value, onChange, preferredProviderId }: Pl
             <LuInfo className="size-3" aria-hidden="true" />
             Syncing all playlists
           </span>
+        ) : syncingAllWithLiked ? (
+          <span className="shrink-0 text-[11.5px] font-medium text-text-3">All + liked tracks</span>
         ) : (
           <span className="shrink-0 text-[11.5px] font-medium text-text-3">
-            {selectedNames.length} selected
+            {selectedCount} selected
           </span>
         )}
       </div>
+
+      {showLikedTracks && (source.loading || source.playlists.length === 0) && (
+        <div className="rounded-control border border-border bg-inset p-1.5">
+          <LikedTracksOptionRow
+            label={likedTracksLabel}
+            selected={likedTracksSelected}
+            onToggle={() => onLikedTracksChange?.(!likedTracksSelected)}
+          />
+        </div>
+      )}
 
       {source.loading && source.playlists.length === 0 ? (
         <div className="flex flex-col gap-1.5">
@@ -254,6 +339,13 @@ export function PlaylistFilterField({ value, onChange, preferredProviderId }: Pl
           )}
 
           <div className="thin-scrollbar flex max-h-64 flex-col gap-0.5 overflow-y-auto rounded-control border border-border bg-inset p-1.5">
+            {showLikedTracks && (
+              <LikedTracksOptionRow
+                label={likedTracksLabel}
+                selected={likedTracksSelected}
+                onToggle={() => onLikedTracksChange?.(!likedTracksSelected)}
+              />
+            )}
             {filteredPlaylists.length === 0 ? (
               <p className="px-2 py-3 text-center text-xs text-text-3">No playlists match "{search}".</p>
             ) : (

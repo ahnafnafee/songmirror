@@ -474,6 +474,50 @@ def test_syncs_crud(tmp_path):
         assert jid not in [j["id"] for j in client.get("/api/syncs").json()]
 
 
+def test_syncs_persist_per_provider_liked_track_routes(tmp_path):
+    """A liked-track job records the user's choice for every destination."""
+    store = SyncStore(dir=tmp_path)
+    with TestClient(create_app(settings=SettingsStore(dir=tmp_path), syncs=store)) as client:
+        created = client.post("/api/syncs", json={
+            "name": "Liked everywhere",
+            "mode": "oneway",
+            "source": "spotify",
+            "providers": "spotify,tidal,apple",
+            "sync_playlists": False,
+            "liked_tracks": True,
+            "liked_routes": {
+                "tidal": {"kind": "native"},
+                "apple": {"kind": "playlist", "name": "Spotify Liked Songs"},
+            },
+        })
+
+        assert created.status_code == 200
+        job = created.json()
+        assert job["liked_tracks"] is True
+        assert job["sync_playlists"] is False
+        assert job["liked_routes"] == {
+            "tidal": {"kind": "native"},
+            "apple": {"kind": "playlist", "name": "Spotify Liked Songs"},
+        }
+        assert client.get("/api/syncs").json()[0]["liked_routes"] == job["liked_routes"]
+
+
+def test_syncs_require_a_liked_track_route_for_every_destination(tmp_path):
+    store = SyncStore(dir=tmp_path)
+    with TestClient(create_app(settings=SettingsStore(dir=tmp_path), syncs=store)) as client:
+        response = client.post("/api/syncs", json={
+            "name": "Incomplete liked sync",
+            "mode": "oneway",
+            "source": "spotify",
+            "providers": "spotify,tidal,apple",
+            "liked_tracks": True,
+            "liked_routes": {"tidal": {"kind": "native"}},
+        })
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "choose a liked-track destination for: apple"
+
+
 def test_syncs_validate_authoritative_groups(tmp_path):
     store = SyncStore(dir=tmp_path)
     with TestClient(create_app(settings=SettingsStore(dir=tmp_path), syncs=store)) as client:

@@ -501,6 +501,54 @@ class _P:
             self._isrcs.remove(raw["isrc"])
 
 
+def test_reconcile_uses_the_collection_resource_boundary(tmp_path):
+    class LikedPeer(_P):
+        def _rows(self):
+            return [
+                {
+                    "id": f"{self.source}-{isrc}", "name": f"Song {isrc}",
+                    "artists": ["A"], "artist": "A", "duration_ms": 1000,
+                    "isrc": isrc, "added_at": "2020",
+                }
+                for isrc in self._isrcs
+            ]
+
+        def playlist_tracks(self, _playlist):
+            raise AssertionError("liked collections must not use playlist reads")
+
+        def resource_tracks(self, _resource):
+            return self._rows()
+
+        def resource_add(self, _resource, ids):
+            return super().add(None, ids)
+
+        def resource_remove(self, _resource, raw):
+            return super().remove(None, raw)
+
+        @staticmethod
+        def resource_id(resource):
+            return resource["id"]
+
+    spotify = LikedPeer("spotify", ["A", "B"])
+    apple = LikedPeer("apple", ["A"])
+    resources = {
+        "spotify": {"id": "liked-tracks", "_kind": "liked_tracks"},
+        "apple": {"id": "liked-tracks", "_kind": "liked_tracks"},
+    }
+    conn = archive.connect(str(tmp_path / "liked-reconcile.db"))
+
+    stats = reconcile(
+        [spotify, apple], "Liked Songs", resources,
+        _caches("spotify", "apple"), conn,
+        execute=True, max_removals=25, max_adds=200,
+        link_key="collection:liked-tracks",
+    )
+
+    assert stats["added"] == 1
+    assert apple.added == ["B"]
+    conn.close()
+
+
 def _caches(*sources):
     return {s: {"isrc": {}, "search": {}, "dirty": False} for s in sources}
 

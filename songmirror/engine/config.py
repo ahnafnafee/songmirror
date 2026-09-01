@@ -5,7 +5,7 @@ import os
 import random
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 AMP = "https://amp-api.music.apple.com/v1"
 REQUEST_TIMEOUT = 30
@@ -28,7 +28,8 @@ DEFAULT_SPOTIFY_CACHE_FILE = "spotify_resolve_cache.json"
 # that asked for a narrower set would silently strip the modify scopes from the
 # cache and make the next N-way (writable) pass demand a reconnect.
 SPOTIFY_SCOPE = ("playlist-read-private playlist-read-collaborative "
-                 "playlist-modify-private playlist-modify-public")
+                 "playlist-modify-private playlist-modify-public "
+                 "user-library-read user-library-modify")
 
 # Token cache location when SPOTIFY_TOKEN_CACHE is unset. The connector writes it at
 # connect time and the engine reads it every pass — they MUST resolve the same path,
@@ -85,6 +86,9 @@ class Options:
     authorities: str = ""
     spotify_cache_file: str = DEFAULT_SPOTIFY_CACHE_FILE
     apply_large_removals: bool = False
+    sync_playlists: bool = True
+    liked_tracks: bool = False
+    liked_routes: dict = field(default_factory=dict)
 
 
 def parse_args(argv=None):

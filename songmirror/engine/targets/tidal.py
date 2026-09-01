@@ -35,6 +35,7 @@ class TidalTarget(MirrorTarget):
     tag = "tidal"
     source = "tidal"
     stable_occurrence_ids = True
+    favorite_tracks_name = "Favorite Tracks"
 
     def __init__(self, songs=None):
         self.cache_file = os.getenv("TIDAL_CACHE_FILE", "tidal_resolve_cache.json")
@@ -399,6 +400,37 @@ class TidalTarget(MirrorTarget):
     def playlist_tracks(self, playlist):
         """Strict sync read: incomplete metadata must abort reconciliation."""
         return self._all_playlist_tracks(playlist)
+
+    def favorite_tracks(self):
+        tracks = []
+        params = {
+            "countryCode": self.country,
+            "sort": "-addedAt",
+            "include": PLAYLIST_ITEM_INCLUDE,
+        }
+        for body in self._pages("userCollectionTracks/me/relationships/items", params):
+            tracks.extend(self._tracks_from_body(body))
+        return tracks
+
+    def add_favorite_tracks(self, target_ids):
+        for group in chunks([str(target_id) for target_id in target_ids], 50):
+            self._request(
+                "POST",
+                "userCollectionTracks/me/relationships/items",
+                json_body={"data": [{"type": "tracks", "id": target_id} for target_id in group]},
+            )
+            polite_sleep(0.3)
+
+    def remove_favorite_track(self, track):
+        target_id = self.track_id(track)
+        if not target_id:
+            return
+        self._request(
+            "DELETE",
+            "userCollectionTracks/me/relationships/items",
+            json_body={"data": [{"type": "tracks", "id": target_id}]},
+        )
+        polite_sleep(0.3)
 
     def playlist_tracks_for_browse(self, playlist):
         """Keep hidden entries visible and removable in the playlist inspector."""

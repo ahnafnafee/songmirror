@@ -86,6 +86,7 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 - 🔁 **True mirroring, not append-only** — adds _and_ removals. Choose a source of truth (Spotify by default) and the others follow it.
 - ⇆ **Authoritative groups** — trust two or more services (for example Spotify + Apple Music) while every other selected service remains a destination-only mirror.
 - ⇄ **Bidirectional N-way sync** — an add or removal on _any_ connected service propagates to all the others, echo-free, behind removal guards.
+- ♥ **Liked and favorite tracks** — sync each service's built-in liked collection across all seven music providers, either into the destination's own favorites or a new named playlist.
 - 🎯 **ISRC-accurate matching** — exact recording identity where available, with Unicode-aware fuzzy title/artist/duration fallbacks (feat-credit drift, "- 2015 Remaster" suffixes, non-Latin scripts, video-only uploads — all handled).
 - 🎛️ **Multiple named syncs** — set up as many independent syncs as you like, each with its own services, playlists, schedule, and safety caps.
 - ↪️ **One-off transfers** — copy any playlist from one service to another with a live progress bar; **pause, resume, or stop** mid-copy, and manually resolve unmatched tracks.
@@ -260,6 +261,14 @@ Bidirectional sync is impossible statelessly, so each logical playlist's canonic
 - **Removals are opt-in** — `MAX_REMOVALS` defaults to 0, so a track that disappears from one provider (deleted there, or silently pulled by licensing) is kept on the others and only logged. Set a cap (or the UI's "Mirror removals" toggle) to propagate deletions.
 
 > **Always dry-run first.** Run without `--execute` (or use **Preview** in the UI) and read the plan — it prints every proposed add/remove on every provider before anything is written.
+
+### Liked and favorite tracks
+
+On a sync's **Playlists** step, select the source service's built-in liked collection. SongMirror then asks where it should go on every selected destination: directly into that service's own liked/favorite collection, or into a new playlist whose suggested name you can edit. A new selection is liked-only; turn on **Also sync every regular playlist** or pick individual playlists to include both.
+
+This works across Spotify **Liked Songs**, TIDAL/Qobuz/Deezer **Favorite Tracks**, Amazon Music **My Likes**, Apple Music **Favorite Songs**, and YouTube Music **Liked Music**. The same one-way, authoritative-group, and N-way reconciliation paths and safety caps apply. As with ordinary playlists, removal writes remain off by default until **Mirror removals** is enabled.
+
+Some of these integrations use the providers' first-party web interfaces and can change without notice; the [feasibility assessment](docs/design/2026-09-01-liked-tracks-sync-feasibility.md) records the API and distribution constraints for each provider.
 
 <div align="right">
 

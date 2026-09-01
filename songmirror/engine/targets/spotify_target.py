@@ -23,6 +23,7 @@ class SpotifyTarget(MirrorTarget):
     name = "Spotify"
     tag = "spotify"
     source = "spotify"
+    favorite_tracks_name = "Liked Songs"
 
     def __init__(self, sp, cache_file, sync_peer=False, songs=None):
         self._sp = sp
@@ -116,6 +117,33 @@ class SpotifyTarget(MirrorTarget):
             return spotify_cookie.playlist_tracks(
                 playlist["id"], require_isrc=False, known_isrc=known)
         return spotify.playlist_tracks(self._sp, playlist["id"])
+
+    def favorite_tracks(self):
+        if spotify_write_backend() == "cookie" or self._sp is None:
+            return spotify_cookie.favorite_tracks()
+        return spotify.saved_tracks(self._sp)
+
+    def add_favorite_tracks(self, target_ids):
+        if spotify_write_backend() == "cookie" or self._sp is None:
+            return spotify_cookie.add_favorite_tracks(target_ids)
+        for target_id in target_ids:
+            self._write(
+                lambda tid=target_id: self._sp.current_user_saved_tracks_add([tid]),
+                "save liked track",
+            )
+            polite_sleep(0.3)
+
+    def remove_favorite_track(self, track):
+        target_id = self.track_id(track)
+        if not target_id:
+            return
+        if spotify_write_backend() == "cookie" or self._sp is None:
+            return spotify_cookie.remove_favorite_track(target_id)
+        self._write(
+            lambda: self._sp.current_user_saved_tracks_delete([target_id]),
+            "remove liked track",
+        )
+        polite_sleep(0.3)
 
     @staticmethod
     def playlist_page_reference(playlist_id, expected_count=None):
