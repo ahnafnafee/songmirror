@@ -5,7 +5,7 @@ import pytest
 import requests
 
 import songmirror.engine.targets.spotify_target as st
-from songmirror.engine.targets.base import TargetAuthError
+from songmirror.engine.targets.base import TargetAuthError, TargetTransientError
 from songmirror.engine.targets.spotify_target import SpotifyTarget
 
 
@@ -218,46 +218,83 @@ def test_reads_route_to_cookie_when_enabled(monkeypatch):
     assert t.playlist_tracks({"id": "pl9"}) == [{"id": "x", "_via": "pl9"}]
 
 
-def test_favorite_tracks_retries_429_after_retry_after(monkeypatch):
-    class Response:
-        def __init__(self, status, body, retry_after=None):
-            self.status_code = status
-            self._body = body
-            self.headers = {} if retry_after is None else {"Retry-After": retry_after}
+def test_favorite_tracks_uses_web_library_when_rest_is_rate_limited(monkeypatch):
+    def library_item(track_id, name, added_at):
+        return {
+            "addedAt": {"isoString": added_at},
+            "track": {
+                "_uri": f"spotify:track:{track_id}",
+                "data": {
+                    "__typename": "Track",
+                    "name": name,
+                    "artists": {"items": [{"profile": {"name": "Artist"}}]},
+                    "albumOfTrack": {
+                        "name": "Album",
+                        "coverArt": {"sources": [
+                            {"url": "https://img/large", "width": 640},
+                            {"url": "https://img/small", "width": 64},
+                        ]},
+                    },
+                    "duration": {"totalMilliseconds": 123_000},
+                    "trackNumber": 4,
+                },
+            },
+        }
 
-        def json(self):
-            return self._body
-
-        def raise_for_status(self):
-            if self.status_code >= 400:
-                error = requests.HTTPError(
-                    f"{self.status_code} Client Error: Too Many Requests for url: "
-                    "https://api.spotify.com/v1/me/tracks?limit=50&offset=0"
-                )
-                error.response = self
-                raise error
-
-    responses = [
-        Response(429, {}, retry_after="7"),
-        Response(200, {"items": [], "next": None}),
-    ]
+    pages = {
+        0: {"items": [library_item("t1", "One", "2026-09-01T00:00:00Z")], "totalCount": 2},
+        1: {"items": [library_item("t2", "Two", "2026-09-02T00:00:00Z")], "totalCount": 2},
+    }
     calls = []
-    waits = []
 
-    def request(method, url, **kwargs):
-        calls.append((method, url, kwargs["params"]))
-        return responses.pop(0)
+    def pathfinder(op, variables):
+        calls.append((op, variables))
+        if op == "fetchLibraryTracks":
+            return {"me": {"library": {"tracks": pages[variables["offset"]]}}}
+        return {}
 
+    def rate_limited_rest(*_args, **_kwargs):
+        raise TargetTransientError("Spotify kept rate-limiting GET me/tracks after 5 attempts")
+
+    monkeypatch.setattr(st.spotify_cookie, "_pf", pathfinder)
     monkeypatch.setattr(st.spotify_cookie, "_spc_headers", lambda: {"Authorization": "Bearer test"})
-    monkeypatch.setattr(st.spotify_cookie.requests, "request", request)
-    monkeypatch.setattr("time.sleep", waits.append)
+    monkeypatch.setattr(st.spotify_cookie.requests, "request", rate_limited_rest)
+    monkeypatch.setattr(st.spotify_cookie, "polite_sleep", lambda _seconds: None)
 
-    assert st.spotify_cookie.favorite_tracks() == []
-    assert calls == [
-        ("GET", "https://api.spotify.com/v1/me/tracks", {"limit": 50, "offset": 0}),
-        ("GET", "https://api.spotify.com/v1/me/tracks", {"limit": 50, "offset": 0}),
+    tracks = st.spotify_cookie.favorite_tracks()
+    st.spotify_cookie.add_favorite_tracks(["new"])
+    st.spotify_cookie.remove_favorite_track("t1")
+
+    assert tracks == [
+        {
+            "id": "t1",
+            "isrc": None,
+            "name": "One",
+            "artists": ["Artist"],
+            "album": "Album",
+            "album_position": 4,
+            "duration_ms": 123_000,
+            "added_at": "2026-09-01T00:00:00Z",
+            "image": "https://img/small",
+        },
+        {
+            "id": "t2",
+            "isrc": None,
+            "name": "Two",
+            "artists": ["Artist"],
+            "album": "Album",
+            "album_position": 4,
+            "duration_ms": 123_000,
+            "added_at": "2026-09-02T00:00:00Z",
+            "image": "https://img/small",
+        },
     ]
-    assert waits == [7.0]
+    assert calls == [
+        ("fetchLibraryTracks", {"offset": 0, "limit": 50}),
+        ("fetchLibraryTracks", {"offset": 1, "limit": 50}),
+        ("addToLibrary", {"libraryItemUris": ["spotify:track:new"]}),
+        ("removeFromLibrary", {"libraryItemUris": ["spotify:track:t1"]}),
+    ]
 
 
 class _Resp:

@@ -23,14 +23,13 @@ session can be revoked or rotated; the connector surfaces when it needs renewing
 import json
 import os
 import re
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
 from .config import REQUEST_TIMEOUT, polite_sleep
 from .logs import log, log_note, log_warn
-from .targets.base import TargetAuthError, TargetTransientError
+from .targets.base import TargetAuthError
 
 _PATHFINDER = "https://api-partner.spotify.com/pathfinder/v2/query"
 _SPCLIENT = "https://spclient.wg.spotify.com"   # web-player backend — no api.spotify.com rate limit / dev-mode gate
@@ -51,12 +50,16 @@ _HASHES = {
     "playlist_read": "a65e12194ed5fc443a1cdebed5fabe33ca5b07b987185d63c72483867ad13cb4",
     "profile": "b197b5adb4b761690f76ad9d9fb278c14c14e7331f357c04a56e7001af7106e0",
     "library": "390c78e5b951029bad359785e69b07b536a509c581cbcd0aded5e5067f187455",
+    "library_tracks": "087278b20b743578a6262c2b0b4bcd20d879c503cc359a2285baf083ef944240",
+    "library_mut": "1ad0d40b3c09660d818b9e770eb1e84745dfbe941df159a64f8772b6fa2bfc3a",
 }
 # Which operation name maps to which hashed document — also drives the re-scrape.
 _OP_DOC = {
     "addToPlaylist": "playlist_mut", "removeFromPlaylist": "playlist_mut",
     "fetchPlaylistContents": "playlist_read", "fetchPlaylist": "playlist_read",
     "profileAttributes": "profile", "libraryV3": "library",
+    "fetchLibraryTracks": "library_tracks",
+    "addToLibrary": "library_mut", "removeFromLibrary": "library_mut",
 }
 
 _provider = None   # cached spotify_scraper CookieTokenProvider (lazy)
@@ -539,6 +542,22 @@ def _normalized_content_tracks(items):
     return out
 
 
+def _normalized_library_tracks(items):
+    """Normalize ``fetchLibraryTracks`` rows through the playlist track shape."""
+    playlist_items = []
+    for item in items:
+        item = item or {}
+        track = item.get("track") or {}
+        data = dict(track.get("data") or {})
+        data["uri"] = data.get("uri") or track.get("_uri") or ""
+        data["trackDuration"] = data.get("trackDuration") or data.get("duration") or {}
+        playlist_items.append({
+            "itemV2": {"data": data},
+            "addedAt": item.get("addedAt") or {},
+        })
+    return _normalized_content_tracks(playlist_items)
+
+
 def _apply_playlist_isrcs(out, *, require_isrc=False, known_isrc=None):
     # Persisted ISRCs remain valuable in cookie-only mode, but a cache miss is
     # deliberately left blank for reconcile to infer from its ISRC-bearing peers.
@@ -586,73 +605,38 @@ def playlist_tracks(playlist, require_isrc=False, known_isrc=None):
     )
 
 
-def _user_api(method, path, *, params=None, attempts=5):
-    """Call a current-user REST endpoint with auth refresh and 429 backoff."""
-    refreshed = False
-    for attempt in range(attempts):
-        response = requests.request(
-            method,
-            f"{_API}/{path.lstrip('/')}",
-            params=params,
-            headers=_spc_headers(),
-            timeout=REQUEST_TIMEOUT,
-        )
-        if response.status_code == 401 and not refreshed:
-            _prov().invalidate()
-            refreshed = True
-            continue
-        if response.status_code in (401, 403):
-            raise TargetAuthError(
-                f"Spotify refused {method} {path} ({response.status_code}); re-paste the sp_dc cookie "
-                "on the Accounts page."
-            )
-        if response.status_code == 429:
-            try:
-                retry_after = max(float(response.headers.get("Retry-After")), 0.0)
-            except (TypeError, ValueError):
-                retry_after = float(min(2 ** attempt, 30))
-            if attempt == attempts - 1:
-                raise TargetTransientError(
-                    f"Spotify kept rate-limiting {method} {path} after {attempts} attempts",
-                    retry_after=retry_after,
-                )
-            log(
-                f"rate-limited on {method} {path}; retrying in {retry_after:g}s",
-                tag="spotify",
-            )
-            time.sleep(retry_after)
-            continue
-        response.raise_for_status()
-        return response
-    raise TargetAuthError(f"Spotify refused {method} {path} after refreshing the cookie token.")
-
-
 def favorite_tracks():
-    """Read Liked Songs with the cookie account's first-party bearer."""
-    from .spotify import _playlist_item_tracks
+    """Read Liked Songs through the web player's library query.
 
-    tracks, offset = [], 0
+    The first-party bearer is heavily throttled on ``api.spotify.com/me/tracks``;
+    pathfinder is the web player's native surface and avoids that REST bucket.
+    """
+    tracks, offset, limit = [], 0, 50
     while True:
-        body = _user_api("GET", "me/tracks", params={"limit": 50, "offset": offset}).json()
-        items = body.get("items") or []
-        tracks.extend(_playlist_item_tracks(items))
-        if not body.get("next"):
-            return tracks
-        if not items:
+        data = _pf("fetchLibraryTracks", {"offset": offset, "limit": limit})
+        page = (((data.get("me") or {}).get("library") or {}).get("tracks") or {})
+        items = page.get("items") or []
+        total = page.get("totalCount")
+        if total is None:
+            raise RuntimeError("Spotify Liked Songs read incomplete: page did not include totalCount")
+        if not items and offset < int(total):
             raise RuntimeError(
-                f"Spotify Liked Songs read incomplete: stopped at {offset} with another page advertised"
+                f"Spotify Liked Songs read incomplete: stopped at {offset} of {total} tracks"
             )
+        tracks.extend(_normalized_library_tracks(items))
         offset += len(items)
+        if offset >= int(total):
+            return tracks
 
 
 def add_favorite_tracks(track_ids):
     for track_id in track_ids:
-        _user_api("PUT", "me/library", params={"uris": _turi(track_id)})
+        _pf("addToLibrary", {"libraryItemUris": [_turi(track_id)]})
         polite_sleep(0.3)
 
 
 def remove_favorite_track(track_id):
-    _user_api("DELETE", "me/library", params={"uris": _turi(track_id)})
+    _pf("removeFromLibrary", {"libraryItemUris": [_turi(track_id)]})
     polite_sleep(0.3)
 
 
