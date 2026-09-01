@@ -425,11 +425,22 @@ class TidalTarget(MirrorTarget):
     def validate_favorite_tracks(self, *, write=False, remove=False):
         if self._token_scopes is None:
             return
-        required = ["collection.read"]
-        if write:
-            required.append("collection.write")
+        if self._browser_mode:
+            required = ["r_usr"]
+            if write:
+                required.append("w_usr")
+        else:
+            required = ["collection.read"]
+            if write:
+                required.append("collection.write")
         missing = [scope for scope in required if scope not in self._token_scopes]
         if missing:
+            if self._browser_mode:
+                raise TargetAuthError(
+                    "TIDAL web-player token lacks native liked-track access "
+                    f"({', '.join(missing)}); paste a fresh signed-in OpenAPI request "
+                    "in Accounts. This connection can still sync ordinary playlists."
+                )
             raise TargetAuthError(
                 "TIDAL token lacks native liked-track scopes "
                 f"{', '.join(missing)}; reconnect with a developer OAuth token granting "

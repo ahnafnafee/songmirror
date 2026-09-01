@@ -12,7 +12,8 @@ from .base import ConnStatus, Connector, Field
 
 API = "https://openapi.tidal.com/v2"
 DEFAULT_TOKEN_FILE = "data/tidal_oauth.json"
-_COLLECTION_SCOPES = {"collection.read", "collection.write"}
+_BROWSER_COLLECTION_SCOPES = ("r_usr", "w_usr")
+_DEVELOPER_COLLECTION_SCOPES = ("collection.read", "collection.write")
 
 
 def _scopes_from_token(token):
@@ -24,11 +25,17 @@ def _scopes_from_token(token):
     return jwt_scopes(str(token.get("access_token") or ""))
 
 
-def _scope_detail(label, scopes):
-    if scopes is not None and not _COLLECTION_SCOPES <= scopes:
+def _scope_detail(label, scopes, *, browser=False):
+    required = _BROWSER_COLLECTION_SCOPES if browser else _DEVELOPER_COLLECTION_SCOPES
+    if scopes is not None and not set(required) <= scopes:
+        guidance = (
+            "in a fresh pasted web-player session"
+            if browser
+            else "via developer OAuth"
+        )
         return (
             f"{label} (ordinary playlists only; native liked-track sync requires "
-            "collection.read and collection.write via developer OAuth)"
+            f"{' and '.join(required)} {guidance})"
         )
     return label
 
@@ -71,7 +78,7 @@ class TidalConnector(Connector):
                 scopes = jwt_scopes(token)
                 if scopes is None:
                     return True, "signed-in web-player session"
-                return True, _scope_detail("signed-in web-player session", scopes)
+                return True, _scope_detail("signed-in web-player session", scopes, browser=True)
             if response.status_code in (401, 403):
                 return False, "TIDAL rejected or expired the pasted web-player session"
             return False, f"TIDAL returned HTTP {response.status_code}"
