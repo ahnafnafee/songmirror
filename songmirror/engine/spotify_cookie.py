@@ -334,14 +334,36 @@ def _library_image_sources(images):
     return out
 
 
-def library_playlists():
-    """Every playlist in the signed-in account's library.
+def _hydrate_playlist_name(uri):
+    """Best-effort single-playlist name lookup for a blank libraryV3 row. Some
+    followed playlists are nameless even here, so None is a valid outcome —
+    the caller falls back to a placeholder rather than treating it as fatal."""
+    try:
+        data = _pf("fetchPlaylist", {
+            "uri": uri, "offset": 0, "limit": 0, "enableWatchFeedEntrypoint": False,
+        })
+    except Exception as e:
+        log_warn(f"could not hydrate playlist name for {uri} ({e!r})", tag="spotify")
+        return None
+    return ((data.get("playlistV2") or {}).get("name") or "").strip() or None
+
+
+def library_directory():
+    """Every playlist in the signed-in account's library, plus whether the
+    read had to skip or guess at any row (`partial`).
 
     ``libraryV3`` is the web player's own filtered library query. It avoids the
     old rootlist plus one metadata request per playlist, and its capability data
     identifies followed playlists that are readable but not editable.
+
+    A row with no resolvable id is dropped; a row with an id but no name gets a
+    targeted lookup, falling back to a placeholder if that also comes back
+    nameless. Either way `partial` is set: `library_playlists()` ignores it for
+    browsing, but a sync consumer must not treat an absence as authoritative
+    when it's set.
     """
     out, offset, limit = [], 0, 100
+    partial = False
     while True:
         variables = {
             "filters": ["Playlists"], "order": "Alphabetical", "textFilter": None,
@@ -363,14 +385,26 @@ def library_playlists():
             if data.get("__typename") != "Playlist":
                 continue
             uri = data.get("uri") or item.get("_uri") or ""
-            if not str(uri).startswith("spotify:playlist:") or not data.get("name"):
-                raise RuntimeError("Spotify library read incomplete: playlist metadata was missing")
+            if not str(uri).startswith("spotify:playlist:"):
+                log_warn("skipping library row with no resolvable playlist id", tag="spotify")
+                partial = True
+                continue
+            name = data.get("name") or ""
+            if not name:
+                name = _hydrate_playlist_name(uri) or ""
+                if not name:
+                    pid = str(uri).rsplit(":", 1)[-1]
+                    name = f"Untitled playlist ({pid})"
+                    partial = True
+                    log_warn(
+                        f"playlist {pid} has no name even after a direct lookup - "
+                        f"using a fallback label", tag="spotify")
             owner = (data.get("ownerV2") or {}).get("data") or {}
             editable = bool((data.get("currentUserCapabilities") or {}).get("canEditItems"))
             out.append({
                 "id": str(uri).rsplit(":", 1)[-1],
                 "uri": uri,
-                "name": data.get("name") or "",
+                "name": name,
                 "description": data.get("description") or "",
                 "snapshot_id": data.get("revisionId"),
                 "owner": {"id": owner.get("username") or owner.get("id")},
@@ -380,7 +414,13 @@ def library_playlists():
             })
         offset += len(rows)
         if offset >= int(total):
-            return out
+            return out, partial
+
+
+def library_playlists():
+    """Tolerant, browse-facing view of `library_directory()`. A sync consumer
+    should call `library_directory()` directly and check `partial` instead."""
+    return library_directory()[0]
 
 
 def _playlist_track_total(playlist):

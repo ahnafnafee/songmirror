@@ -62,8 +62,15 @@ class SpotifyTarget(MirrorTarget):
     # -- MirrorTarget ----------------------------------------------------------
     def list_playlists(self):
         if spotify_write_backend() == "cookie" or self._sp is None:
+            playlists, partial = spotify_cookie.library_directory()
+            if partial:
+                # An incomplete listing must not read as "doesn't exist" and create a duplicate.
+                raise TargetAuthError(
+                    "Spotify library read is incomplete - refusing to sync so an "
+                    "existing playlist isn't duplicated. Check the warnings above."
+                )
             best = {}
-            for playlist in spotify_cookie.library_playlists():
+            for playlist in playlists:
                 key = self.playlist_name(playlist).strip().casefold()
                 if not key:
                     continue
