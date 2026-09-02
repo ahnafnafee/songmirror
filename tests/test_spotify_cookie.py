@@ -115,6 +115,60 @@ def test_cookie_library_playlists_are_read_in_one_filtered_request(monkeypatch):
     })]
 
 
+def test_pathfinder_read_retries_transient_connection_failure(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+
+    calls = []
+    sleeps = []
+
+    class Response:
+        status_code = 200
+        content = b"{}"
+
+        def json(self):
+            return {"data": {"me": {"libraryV3": {"items": []}}}}
+
+        def raise_for_status(self):
+            return None
+
+    def post(*args, **kwargs):
+        calls.append((args, kwargs))
+        if len(calls) == 1:
+            raise requests.ConnectionError("temporary name resolution failure")
+        return Response()
+
+    monkeypatch.setattr(sc, "_headers", lambda: {})
+    monkeypatch.setattr(sc.requests, "post", post)
+    monkeypatch.setattr(sc, "polite_sleep", sleeps.append)
+
+    result = sc._pf("libraryV3", {"limit": 100})
+
+    assert result == {"me": {"libraryV3": {"items": []}}}
+    assert len(calls) == 2
+    assert sleeps == [1]
+
+
+def test_pathfinder_mutation_does_not_retry_connection_failure(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+
+    calls = []
+    sleeps = []
+
+    def post(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise requests.ConnectionError("ambiguous mutation connection failure")
+
+    monkeypatch.setattr(sc, "_headers", lambda: {})
+    monkeypatch.setattr(sc.requests, "post", post)
+    monkeypatch.setattr(sc, "polite_sleep", sleeps.append)
+
+    with pytest.raises(requests.ConnectionError, match="ambiguous mutation"):
+        sc._pf("addToLibrary", {"uris": ["spotify:track:one"]})
+
+    assert len(calls) == 1
+    assert sleeps == []
+
+
 def test_cookie_browse_hydrates_track_counts_and_caches_by_revision(monkeypatch):
     from songmirror.engine import spotify_cookie as sc
 

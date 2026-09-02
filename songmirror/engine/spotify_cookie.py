@@ -67,6 +67,13 @@ _catalog = None    # cached spotify_scraper SpotifyClient (lazy)
 _uid = None        # cached cookie-account user id (for rootlist filing)
 _isrc_cache = {}   # track_id -> isrc|None, backfilled from /tracks (see _track_isrcs)
 _playlist_count_cache = {}  # playlist_id -> (revision_id, total); libraryV3 omits totals
+_PATHFINDER_TRANSIENT = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+    requests.exceptions.ReadTimeout,
+)
+_PATHFINDER_READ_ATTEMPTS = 5
+_PATHFINDER_MUTATION_DOCS = {"playlist_mut", "library_mut"}
 
 
 def configured():
@@ -164,6 +171,34 @@ def _persisted_missing(body):
     return False
 
 
+def _post_pathfinder(body, op, *, retry):
+    """Send one Pathfinder document, retrying only semantically safe reads.
+
+    Pathfinder carries both queries and mutations over HTTP POST. A connection
+    failure is safe to replay for a query, but a mutation may already have
+    reached Spotify before the response disappeared, so mutations deliberately
+    remain single-attempt.
+    """
+    attempts = _PATHFINDER_READ_ATTEMPTS if retry else 1
+    for attempt in range(attempts):
+        try:
+            return requests.post(
+                _PATHFINDER,
+                headers=_headers(),
+                data=json.dumps(body),
+                timeout=REQUEST_TIMEOUT,
+            )
+        except _PATHFINDER_TRANSIENT:
+            if attempt == attempts - 1:
+                raise
+            wait = min(2**attempt, 8)
+            log(
+                f"pathfinder connection issue ({op}); retrying in about {wait}s",
+                tag="spotify",
+            )
+            polite_sleep(wait)
+
+
 def _pf(op, variables):
     """Run a pathfinder operation, self-healing a stale hash and a stale token.
 
@@ -176,7 +211,7 @@ def _pf(op, variables):
     for _ in range(3):
         body = {"variables": variables, "operationName": op,
                 "extensions": {"persistedQuery": {"version": 1, "sha256Hash": _HASHES[doc]}}}
-        r = requests.post(_PATHFINDER, headers=_headers(), data=json.dumps(body), timeout=REQUEST_TIMEOUT)
+        r = _post_pathfinder(body, op, retry=doc not in _PATHFINDER_MUTATION_DOCS)
         if r.status_code == 401:
             _prov().invalidate()
             continue
