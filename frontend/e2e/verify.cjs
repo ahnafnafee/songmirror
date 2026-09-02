@@ -44,7 +44,7 @@ const ACCOUNTS = [
     id: 'tidal',
     name: 'TIDAL',
     auth_kind: 'token_paste',
-    fields: [{ key: 'TIDAL_WEB_HEADERS', label: 'OpenAPI request headers', secret: true, help: '', required: true }],
+    fields: [{ key: 'TIDAL_WEB_HEADERS', label: 'Web-player token response', secret: true, help: 'Copy the oauth2/token Response JSON', required: true }],
     state: 'unconfigured',
     detail: null,
     transferable: true,
@@ -424,6 +424,40 @@ const SHOWCASE_TRANSFER_JOB = {
 // Route mocking
 // ---------------------------------------------------------------------------
 
+// A pasted public playlist link resolves to a source that is NOT in the
+// fixture library, which is the whole point of the feature.
+const LINK_PREVIEW = {
+  provider: 'spotify',
+  playlist_id: 'pl_public_link',
+  name: "Someone Else's Mix",
+  description: 'A public playlist nobody here follows',
+  count: 42,
+  image: '',
+  external_url: 'https://open.spotify.com/playlist/pl_public_link',
+}
+
+const RESOLVE_CACHE_PROVIDERS = [
+  { id: 'spotify', name: 'Spotify', total: 3, manual: 1, unmatched: 1 },
+  { id: 'deezer', name: 'Deezer', total: 1, manual: 0, unmatched: 0 },
+]
+
+let resolveCacheEntries = [
+  {
+    key: 'highway song demo|blackfoot', name: 'highway song demo', artist: 'blackfoot',
+    target_id: '', manual: false, url: '',
+  },
+  {
+    key: 'silver springs live|fleetwood mac', name: 'silver springs live', artist: 'fleetwood mac',
+    target_id: '4cOdK2wGLETKBW3PvgPWqT', manual: true,
+    url: 'https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT',
+  },
+  {
+    key: 'wide open road|the triffids', name: 'wide open road', artist: 'the triffids',
+    target_id: '1DFixLWuPkv3KT3TnV35m3', manual: false,
+    url: 'https://open.spotify.com/track/1DFixLWuPkv3KT3TnV35m3',
+  },
+]
+
 async function installMocks(page, opts = {}) {
   // Fresh per installation (one per test context/page) so CRUD mutations in
   // one test never leak into another.
@@ -465,6 +499,7 @@ async function installMocks(page, opts = {}) {
     if (/^\/api\/accounts\/[^/]+\/connect$/.test(p) && method === 'POST') {
       const id = p.split('/')[3]
       if (id === 'spotify') return json({ kind: 'token_paste', state: 'connected', detail: 'signed-in web session · no developer API' })
+      if (id === 'tidal') return json({ kind: 'token_paste', state: 'connected', detail: 'signed-in web-player session with automatic token renewal' })
       if (id === 'ytmusic') return json({ kind: 'device', user_code: 'ABCD-WXYZ', verification_url: 'https://google.com/device', device_code: 'devcode123', interval: 30 })
       if (id === 'apple') return json({ kind: 'token_paste', state: 'connected', detail: null })
       return json({ kind: 'api_key', state: 'unconfigured', detail: 'Could not reach the Jellyfin server at that URL.' })
@@ -570,6 +605,46 @@ async function installMocks(page, opts = {}) {
       return json(active ?? TRANSFER_JOB)
     }
     if (/^\/api\/transfers\/[^/]+\/resolve$/.test(p) && method === 'POST') return json({ ok: true })
+    if (p === '/api/transfers/preview' && method === 'POST') {
+      const body = JSON.parse(req.postData() || '{}')
+      if (!String(body.url || '').includes('playlist')) {
+        return json({ detail: 'That does not look like a playlist link.' }, 422)
+      }
+      return json(LINK_PREVIEW)
+    }
+
+    if (p === '/api/resolve-cache' && method === 'GET') return json(RESOLVE_CACHE_PROVIDERS)
+    if (/^\/api\/resolve-cache\/[^/]+$/.test(p) && method === 'GET') {
+      const kind = url.searchParams.get('kind') || 'all'
+      const needle = (url.searchParams.get('q') || '').toLowerCase()
+      const rows = resolveCacheEntries.filter((row) => {
+        if (kind === 'manual' && !row.manual) return false
+        if (kind === 'unmatched' && row.target_id) return false
+        return !needle || row.key.toLowerCase().includes(needle)
+      })
+      return json({ total: rows.length, entries: rows })
+    }
+    if (/^\/api\/resolve-cache\/[^/]+$/.test(p) && method === 'PUT') {
+      const body = JSON.parse(req.postData() || '{}')
+      const updated = {
+        ...resolveCacheEntries.find((row) => row.key === body.key),
+        target_id: body.target_id,
+        manual: true,
+        url: `https://open.spotify.com/track/${body.target_id}`,
+      }
+      resolveCacheEntries = resolveCacheEntries.map((row) => (row.key === body.key ? updated : row))
+      return json(updated)
+    }
+    if (/^\/api\/resolve-cache\/[^/]+$/.test(p) && method === 'DELETE') {
+      const body = JSON.parse(req.postData() || '{}')
+      resolveCacheEntries = resolveCacheEntries.filter((row) => row.key !== body.key)
+      return json({ ok: true })
+    }
+    if (/^\/api\/resolve-cache\/[^/]+\/clear-unmatched$/.test(p) && method === 'POST') {
+      const before = resolveCacheEntries.length
+      resolveCacheEntries = resolveCacheEntries.filter((row) => row.target_id)
+      return json({ removed: before - resolveCacheEntries.length })
+    }
 
     // Pause/resume/stop mutate the same active-jobs store the list route
     // reads from, so a click's effect shows up on the very next poll -
@@ -674,6 +749,79 @@ async function shot(page, name) {
   await page.screenshot({ path: path.join(SHOT_DIR, `${name}.png`), fullPage: true })
 }
 
+async function checkMobileMappingLayout(page, results) {
+  await page.setViewportSize({ width: 320, height: 844 })
+  await page.waitForTimeout(150)
+
+  const geometry = await page.getByRole('listitem').filter({ hasText: 'silver springs live' }).evaluate((row) => {
+    const summary = row.children[0]
+    const title = summary?.children[0]
+    const status = summary?.children[1]
+    const actions = summary?.children[2]
+    const input = row.querySelector('input')
+    const save = [...row.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Save')
+    if (!title || !status || !actions || !input || !save) return null
+
+    const rowBox = row.getBoundingClientRect()
+    const styles = getComputedStyle(row)
+    const contentWidth = rowBox.width - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight)
+    const titleBox = title.getBoundingClientRect()
+    const statusBox = status.getBoundingClientRect()
+    const actionsBox = actions.getBoundingClientRect()
+    const inputBox = input.getBoundingClientRect()
+    const saveBox = save.getBoundingClientRect()
+    return {
+      contentWidth: Math.round(contentWidth),
+      actionsWidth: Math.round(actionsBox.width),
+      saveWidth: Math.round(saveBox.width),
+      inputWidth: Math.round(inputBox.width),
+      sectionsStacked: titleBox.bottom <= statusBox.top && statusBox.bottom <= actionsBox.top,
+      editorStacked: inputBox.bottom <= saveBox.top,
+      actionHeight: Math.round(actionsBox.height),
+      saveHeight: Math.round(saveBox.height),
+    }
+  })
+
+  const ok = geometry !== null
+    && geometry.sectionsStacked
+    && geometry.editorStacked
+    && Math.abs(geometry.actionsWidth - geometry.contentWidth) <= 1
+    && Math.abs(geometry.saveWidth - geometry.contentWidth) <= 1
+    && Math.abs(geometry.inputWidth - geometry.contentWidth) <= 1
+    && geometry.actionHeight >= 44
+    && geometry.saveHeight >= 44
+  console.log((ok ? 'ok        ' : 'FAIL      ') + ' mapping rows use full-width stacked touch controls @ 320 ' + JSON.stringify(geometry))
+  if (!ok) results.push({ label: 'mapping mobile touch layout', overflow: true, geometry })
+}
+
+async function checkMappingGuidance(page, results) {
+  const guidance = page.getByRole('region', { name: 'How to use mappings' })
+  const guidanceText = await guidance.innerText()
+  const guidanceOk = guidanceText.includes('Choose a service')
+    && guidanceText.includes('paste the correct track link')
+    && guidanceText.includes('search again')
+  console.log((guidanceOk ? 'ok        ' : 'FAIL      ') + ' mappings explains the review-and-correct workflow')
+  if (!guidanceOk) results.push({ label: 'mapping workflow guidance', overflow: true })
+
+  const noMatchHelp = page.getByRole('button', { name: 'About no-match mappings' }).first()
+  await noMatchHelp.focus()
+  const noMatchTooltip = page.getByRole('tooltip')
+  const noMatchHelpOk = await noMatchTooltip.isVisible()
+    && (await noMatchTooltip.innerText()).includes('next sync or transfer searches again')
+  console.log((noMatchHelpOk ? 'ok        ' : 'FAIL      ') + ' no-match status explains its meaning and next actions')
+  if (!noMatchHelpOk) results.push({ label: 'no-match mapping help', overflow: true })
+  await noMatchHelp.press('Escape')
+
+  const manualHelp = page.getByRole('button', { name: 'About hand-set mappings' }).first()
+  await manualHelp.focus()
+  const manualTooltip = page.getByRole('tooltip')
+  const manualHelpOk = await manualTooltip.isVisible()
+    && (await manualTooltip.innerText()).includes('uses this exact track')
+  console.log((manualHelpOk ? 'ok        ' : 'FAIL      ') + ' hand-set status explains that it overrides search')
+  if (!manualHelpOk) results.push({ label: 'hand-set mapping help', overflow: true })
+  await manualHelp.press('Escape')
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -739,6 +887,45 @@ async function main() {
         }
         return context
       }
+    }
+
+    if (process.env.E2E_ONLY === 'mappings-mobile') {
+      const context = await browser.newContext()
+      const page = await context.newPage()
+      await installMocks(page)
+      await page.goto(BASE_URL + '/mappings', { waitUntil: 'commit', timeout: 10000 })
+      await page.waitForSelector('text=silver springs live', { timeout: 5000 })
+      await page.getByRole('listitem').filter({ hasText: 'silver springs live' })
+        .getByRole('button', { name: 'Edit', exact: true }).click()
+      await checkMobileMappingLayout(page, results)
+      await checkOverflow(page, 'Mappings @ 320', results)
+      await shot(page, 'mappings-mobile')
+      await context.close()
+      if (results.some((result) => result.overflow)) {
+        throw new Error(`mobile mapping verification failed: ${JSON.stringify(results)}`)
+      }
+      return
+    }
+
+    if (process.env.E2E_ONLY === 'mappings-ux') {
+      const context = await browser.newContext({ viewport: { width: 320, height: 844 } })
+      const page = await context.newPage()
+      await installMocks(page)
+      await page.goto(BASE_URL + '/mappings', { waitUntil: 'commit', timeout: 10000 })
+      await page.waitForSelector('text=silver springs live', { timeout: 5000 })
+      await checkMappingGuidance(page, results)
+      await checkOverflow(page, 'Mappings guidance @ 320', results)
+      await page.evaluate(() => window.scrollTo(0, 0))
+      await page.waitForTimeout(100)
+      await shot(page, 'mappings-ux-mobile')
+      if (TAKE_SCREENSHOTS) {
+        await page.screenshot({ path: path.join(SHOT_DIR, 'mappings-ux-mobile-viewport.png') })
+      }
+      await context.close()
+      if (results.some((result) => result.overflow)) {
+        throw new Error(`mapping guidance verification failed: ${JSON.stringify(results)}`)
+      }
+      return
     }
 
     const widths = [320, 375, 1280]
@@ -1066,6 +1253,195 @@ async function main() {
       await checkOverflow(page, 'Showcase transfer @ 1280', results)
       await shot(page, 'transfers-showcase')
 
+      await context.close()
+    }
+
+    // -----------------------------------------------------------------
+    // Transfers: a pasted public playlist link as the source. The point of
+    // the feature is that the playlist is NOT in the fixture library, so
+    // the picker could never have offered it.
+    // -----------------------------------------------------------------
+    {
+      const context = await browser.newContext()
+      const page = await context.newPage()
+      await installMocks(page)
+      await page.setViewportSize({ width: 1280, height: 900 })
+      await page.goto(BASE_URL + '/transfers', { waitUntil: 'commit', timeout: 10000 })
+      await page.waitForSelector('h1:has-text("Transfers")', { timeout: 10000 })
+
+      await page.getByRole('radio', { name: 'Paste a link' }).click()
+      const serviceSelects = await page.getByLabel('Service', { exact: true }).count()
+      const linkModeHidesPickers = serviceSelects === 1   // destination only
+      console.log((linkModeHidesPickers ? 'ok        ' : 'FAIL      ') + ' link mode replaces the source pickers with a link field (service selects: ' + serviceSelects + ')')
+      if (!linkModeHidesPickers) results.push({ label: 'link mode source pickers', overflow: true })
+
+      // A paste that is not a playlist link surfaces the server's own copy.
+      await page.getByLabel('Playlist link', { exact: true }).fill('https://open.spotify.com/album/123')
+      await page.getByRole('button', { name: 'Open link', exact: true }).click()
+      await page.waitForSelector('text=That does not look like a playlist link.', { timeout: 5000 })
+      console.log('ok         a link that is not a playlist shows the server message')
+
+      await page.getByLabel('Playlist link', { exact: true }).fill('https://open.spotify.com/playlist/pl_public_link')
+      await page.getByRole('button', { name: 'Open link', exact: true }).click()
+      await page.waitForSelector('text=Someone Else', { timeout: 5000 })
+      const errorGone = (await page.getByText('That does not look like a playlist link.').count()) === 0
+      console.log((errorGone ? 'ok        ' : 'FAIL      ') + ' resolving a valid link clears the previous error')
+      if (!errorGone) results.push({ label: 'link preview clears error', overflow: true })
+
+      // The resolved link fills in what the library picker would have, so the
+      // rest of the form works unchanged.
+      const countShown = (await page.getByText('42', { exact: true }).count()) > 0
+      console.log((countShown ? 'ok        ' : 'FAIL      ') + ' the resolved playlist count reaches the source counter')
+      if (!countShown) results.push({ label: 'link preview count', overflow: true })
+
+      await page.getByLabel('Service', { exact: true }).selectOption('apple')
+      await page.waitForTimeout(200)
+      await page.getByRole('radio', { name: 'Create new' }).click()
+      // The name is filled by an effect, so it lands a tick after the click.
+      await page.waitForTimeout(300)
+      const defaultedName = await page.getByLabel(/New playlist name/).inputValue()
+      const nameFromLink = defaultedName === "Someone Else's Mix"
+      console.log((nameFromLink ? 'ok        ' : 'FAIL      ') + ' "Create new" defaults its name from the resolved link (got "' + defaultedName + '")')
+      if (!nameFromLink) results.push({ label: 'link preview names the new playlist', overflow: true })
+
+      const copyEnabled = await page.getByRole('button', { name: 'Copy playlist', exact: true }).isEnabled()
+      console.log((copyEnabled ? 'ok        ' : 'FAIL      ') + ' a link source can start a transfer')
+      if (!copyEnabled) results.push({ label: 'link source startable', overflow: true })
+
+      // Editing the link after resolving invalidates it, so a stale preview can
+      // never be the thing that gets copied.
+      await page.getByLabel('Playlist link', { exact: true }).fill('https://open.spotify.com/playlist/other')
+      const staleCleared = (await page.getByText('Someone Else').count()) === 0
+      console.log((staleCleared ? 'ok        ' : 'FAIL      ') + ' editing the link drops the previous preview')
+      if (!staleCleared) results.push({ label: 'stale link preview cleared', overflow: true })
+
+      await checkOverflow(page, 'Transfers link mode @ 1280', results)
+      await shot(page, 'transfers-link-mode')
+      await context.close()
+    }
+
+    // -----------------------------------------------------------------
+    // Mappings: the resolve caches as an editable table.
+    // -----------------------------------------------------------------
+    {
+      const context = await browser.newContext()
+      const page = await context.newPage()
+      await installMocks(page)
+      await page.setViewportSize({ width: 1280, height: 900 })
+      await page.goto(BASE_URL + '/mappings', { waitUntil: 'commit', timeout: 10000 })
+      await page.waitForSelector('h1:has-text("Mappings")', { timeout: 10000 })
+      await page.waitForSelector('text=silver springs live', { timeout: 5000 })
+
+      await checkMappingGuidance(page, results)
+
+      const handSet = await page.getByText('set by hand', { exact: true }).count()
+      const noMatch = await page.getByText('no match', { exact: true }).count()
+      const badgesOk = handSet === 1 && noMatch === 1
+      console.log((badgesOk ? 'ok        ' : 'FAIL      ') + ' rows distinguish hand-set from unmatched (hand-set=' + handSet + ', no-match=' + noMatch + ')')
+      if (!badgesOk) results.push({ label: 'mapping row badges', overflow: true })
+
+      await page.getByRole('radio', { name: 'No match' }).click()
+      await page.waitForFunction(
+        () => document.body.innerText.includes('highway song demo')
+          && !document.body.innerText.includes('silver springs live'),
+        { timeout: 5000 },
+      )
+      console.log('ok         the "No match" filter narrows to unmatched rows')
+
+      await page.getByRole('radio', { name: 'All' }).click()
+      await page.waitForSelector('text=silver springs live', { timeout: 5000 })
+      await page.getByLabel('Search', { exact: true }).fill('triffids')
+      await page.waitForFunction(
+        () => document.body.innerText.includes('wide open road')
+          && !document.body.innerText.includes('silver springs live'),
+        { timeout: 5000 },
+      )
+      console.log('ok         search filters on the server and narrows the table')
+      await page.getByLabel('Search', { exact: true }).fill('')
+      await page.waitForSelector('text=silver springs live', { timeout: 5000 })
+
+      // Correcting a wrong match: the row picks up the new id and is recorded
+      // as hand-set.
+      await page.getByRole('listitem').filter({ hasText: 'wide open road' })
+        .getByRole('button', { name: 'Edit', exact: true }).click()
+      await page.getByLabel('Track link or id', { exact: true }).fill('CORRECTEDID')
+      await page.getByRole('button', { name: 'Save', exact: true }).click()
+      await page.waitForSelector('text=CORRECTEDID', { timeout: 5000 })
+      const nowManual = (await page.getByText('set by hand', { exact: true }).count()) === 2
+      console.log((nowManual ? 'ok        ' : 'FAIL      ') + ' a corrected mapping is recorded as hand-set')
+      if (!nowManual) results.push({ label: 'corrected mapping marked manual', overflow: true })
+
+      // Clearing the negative cache is the bulk action, behind a confirm.
+      await page.getByRole('button', { name: /Clear 1 no-match entry/ }).click()
+      await page.getByRole('dialog').getByRole('button', { name: 'Clear entries', exact: true }).click()
+      await page.waitForFunction(
+        () => !document.body.innerText.includes('highway song demo'),
+        { timeout: 5000 },
+      )
+      console.log('ok         clearing no-match entries removes them from the table')
+
+      await checkOverflow(page, 'Mappings @ 1280', results)
+      await shot(page, 'mappings')
+
+      // Touch widths, where the 44px tap-target buttons are the tallest thing
+      // in a row: every real iPad CSS width, plus the sm boundary. A row is left
+      // open for editing so the Cancel/Edit swap is in frame.
+      await page.getByRole('listitem').filter({ hasText: 'silver springs live' })
+        .getByRole('button', { name: 'Edit', exact: true }).click()
+      await page.waitForTimeout(200)
+      for (const width of [656, 690, 768, 820, 834, 1024, 1180]) {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.waitForTimeout(150)
+        const geom = await page.evaluate(() => {
+          const rows = [...document.querySelectorAll('li')].filter((li) => li.querySelector('button'))
+          return rows.map((li) => {
+            const status = li.querySelector('code, [class*=warning-soft]')
+            const action = li.querySelector('button')
+            const sb = status.getBoundingClientRect()
+            const ab = action.getBoundingClientRect()
+            return {
+              code: li.querySelector('code') ? Math.round(li.querySelector('code').getBoundingClientRect().left) : null,
+              action: Math.round(ab.left),
+              // Centre offset between the status chip and the action button:
+              // this is the "vertically off" symptom, invisible to a left-edge check.
+              dy: Math.round((sb.top + sb.height / 2) - (ab.top + ab.height / 2)),
+            }
+          })
+        })
+        const codeLefts = new Set(geom.filter((g) => g.code !== null).map((g) => g.code))
+        const actionLefts = new Set(geom.map((g) => g.action))
+        const worstDy = Math.max(...geom.map((g) => Math.abs(g.dy)))
+        const ok = geom.length > 1 && codeLefts.size <= 1 && actionLefts.size <= 1 && worstDy <= 1
+        console.log((ok ? 'ok        ' : 'FAIL      ') + ` mapping rows align horizontally and centre vertically @ ${width} (code=${[...codeLefts]}, action=${[...actionLefts]}, worst dy=${worstDy}px)`)
+        if (!ok) results.push({ label: `mapping alignment @ ${width}`, overflow: true })
+        await checkOverflow(page, `Mappings @ ${width}`, results)
+      }
+      await page.setViewportSize({ width: 690, height: 1000 })
+      await page.waitForTimeout(150)
+
+      // The Save button belongs to the input beside it, not to the hint under
+      // it: as the field's own help text that hint extends the field's box and
+      // items-end drops Save below the input.
+      const saveGeom = await page.evaluate(() => {
+        const input = document.querySelector('li input[type=text], li input:not([type])')
+        const save = [...document.querySelectorAll('li button')].find((b) => b.textContent.trim() === 'Save')
+        if (!input || !save) return null
+        const ib = input.getBoundingClientRect()
+        const sb = save.getBoundingClientRect()
+        return {
+          dyCentre: Math.round((sb.top + sb.height / 2) - (ib.top + ib.height / 2)),
+          dyBottom: Math.round(sb.bottom - ib.bottom),
+        }
+      })
+      const saveAligned = saveGeom !== null && Math.abs(saveGeom.dyCentre) <= 1 && Math.abs(saveGeom.dyBottom) <= 1
+      console.log((saveAligned ? 'ok        ' : 'FAIL      ') + ' the Save button lines up with its input ' + JSON.stringify(saveGeom))
+      if (!saveAligned) results.push({ label: 'save button alignment', overflow: true })
+
+      await shot(page, 'mappings-tablet')
+
+      await checkMobileMappingLayout(page, results)
+      await checkOverflow(page, 'Mappings @ 320', results)
+      await shot(page, 'mappings-mobile')
       await context.close()
     }
 
@@ -1650,6 +2026,33 @@ async function main() {
       await checkOverflow(page, `ConnectWizard device step @ ${width}`, results)
       await shot(page, `connect-wizard-device-${width}`)
       await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+
+      // TIDAL imports the web player's complete token response so the refresh
+      // token—not just the short-lived bearer—is available for renewal.
+      await page
+        .locator('h3', { hasText: 'TIDAL' })
+        .locator('xpath=ancestor::div[contains(@class,"rounded-card")][1]')
+        .getByRole('button', { name: 'Connect', exact: true })
+        .click()
+      const tidalDialog = page.getByRole('dialog')
+      const tidalSession = tidalDialog.locator('#browser-session-TIDAL_WEB_HEADERS')
+      const tidalRequirementsOk =
+        (await tidalSession.evaluate((node) => node.required)) &&
+        (await tidalDialog.getByText('oauth2/token', { exact: false }).count()) > 0 &&
+        (await tidalDialog.getByText('refresh_token', { exact: false }).count()) > 0 &&
+        (await tidalDialog.locator('textarea').count()) === 1
+      console.log(
+        `${tidalRequirementsOk ? 'ok        ' : 'FAIL      '} TIDAL requests a renewable web-player token response`,
+      )
+      if (!tidalRequirementsOk) results.push({ label: 'TIDAL field requirements', overflow: true })
+      await tidalSession.fill('{"access_token":"token","refresh_token":"refresh"}')
+      await tidalDialog.getByRole('button', { name: 'Connect', exact: true }).click()
+      const tidalSuccess = tidalDialog.getByRole('status')
+      await tidalSuccess.waitFor({ state: 'visible' })
+      const tidalConnectedOk = (await tidalSuccess.innerText()).includes('TIDAL is connected.')
+      console.log(`${tidalConnectedOk ? 'ok        ' : 'FAIL      '} TIDAL web session completes directly`)
+      if (!tidalConnectedOk) results.push({ label: 'TIDAL web session connection', overflow: true })
+      await tidalDialog.getByRole('button', { name: 'Close', exact: true }).click()
 
       // Deezer's durable renewal request is required, but its current Pipe
       // Bearer is only an optional bootstrap.  Browser-session textareas used

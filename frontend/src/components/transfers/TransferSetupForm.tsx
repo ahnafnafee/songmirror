@@ -4,7 +4,7 @@ import { api, errorMessage } from '@/api'
 import type { ProviderPlaylistsEntry } from '@/hooks/useProviderPlaylists'
 import { cn } from '@/lib/cn'
 import { serviceLogoId, tagLabel, tagText } from '@/lib/constants'
-import type { Account, StartTransferRequest } from '@/types'
+import type { Account, StartTransferRequest, TransferSourcePreview } from '@/types'
 
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
@@ -28,6 +28,11 @@ const DEST_MODE_OPTIONS = [
   { value: 'create', label: 'Create new' },
 ]
 
+const SOURCE_MODE_OPTIONS = [
+  { value: 'library', label: 'Your library' },
+  { value: 'link', label: 'Paste a link' },
+]
+
 /** A provider id's brand mark, tinted with its identity color — undefined
  * (no icon) for an unset or unrecognized id. */
 function serviceIcon(providerId: string) {
@@ -36,8 +41,13 @@ function serviceIcon(providerId: string) {
 }
 
 export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
+  const [sourceMode, setSourceMode] = useState<'library' | 'link'>('library')
   const [sourceProvider, setSourceProvider] = useState('')
   const [sourcePlaylistId, setSourcePlaylistId] = useState('')
+  const [sourceLink, setSourceLink] = useState('')
+  const [preview, setPreview] = useState<TransferSourcePreview | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const [destProvider, setDestProvider] = useState('')
   const [destMode, setDestMode] = useState<'existing' | 'create'>('existing')
   const [destPlaylistId, setDestPlaylistId] = useState('')
@@ -58,11 +68,19 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   // manual edit in between sticks until one of those changes again.
   useEffect(() => {
     if (destMode !== 'create') return
-    const sourcePlaylist = entries[sourceProvider]?.playlists.find((p) => p.id === sourcePlaylistId)
-    if (sourcePlaylist) setDestName(sourcePlaylist.name)
-  }, [destMode, sourceProvider, sourcePlaylistId, entries])
+    const name =
+      sourceMode === 'link'
+        ? preview?.name
+        : entries[sourceProvider]?.playlists.find((p) => p.id === sourcePlaylistId)?.name
+    if (name) setDestName(name)
+  }, [destMode, sourceMode, preview, sourceProvider, sourcePlaylistId, entries])
 
-  const sourcePlaylist = entries[sourceProvider]?.playlists.find((p) => p.id === sourcePlaylistId)
+  // In link mode the preview IS the source: it carries the name and count the
+  // library picker would otherwise supply.
+  const sourcePlaylist =
+    sourceMode === 'link'
+      ? (preview && { id: preview.playlist_id, name: preview.name, count: preview.count })
+      : entries[sourceProvider]?.playlists.find((p) => p.id === sourcePlaylistId)
   const destPlaylist = destMode === 'existing' ? entries[destProvider]?.playlists.find((p) => p.id === destPlaylistId) : undefined
 
   // A transfer writes tracks, so an existing destination must be a playlist you
@@ -79,6 +97,47 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   const formValid =
     Boolean(sourceProvider && sourcePlaylistId && destProvider && (destMode === 'create' ? destName.trim() : destPlaylistId)) &&
     !sameTarget
+
+  async function handlePreview() {
+    const url = sourceLink.trim()
+    if (!url) return
+    setPreviewing(true)
+    setPreviewError(null)
+    try {
+      const resolved = await api.previewTransferSource(url)
+      setPreview(resolved)
+      // A resolved link fills in exactly what the library picker would have, so
+      // everything downstream (confirm, start, progress) is unchanged.
+      setSourceProvider(resolved.provider)
+      setSourcePlaylistId(resolved.playlist_id)
+    } catch (err) {
+      setPreview(null)
+      setSourceProvider('')
+      setSourcePlaylistId('')
+      setPreviewError(errorMessage(err))
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
+  function clearLink(next: string) {
+    setSourceLink(next)
+    // A link edited after resolving is no longer the thing that was resolved.
+    if (preview) {
+      setPreview(null)
+      setSourceProvider('')
+      setSourcePlaylistId('')
+    }
+    setPreviewError(null)
+  }
+
+  function switchSourceMode(next: 'library' | 'link') {
+    setSourceMode(next)
+    setSourceProvider('')
+    setSourcePlaylistId('')
+    setPreview(null)
+    setPreviewError(null)
+  }
 
   async function handleStart() {
     setStarting(true)
@@ -131,24 +190,70 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                 </span>
               </div>
               <div className="flex flex-1 flex-col gap-3.5 p-4">
-                <SelectField
-                  label="Service"
-                  icon={serviceIcon(sourceProvider)}
-                  options={[{ value: '', label: 'Choose a service…' }, ...transferable.map((a) => ({ value: a.id, label: a.name }))]}
-                  value={sourceProvider}
-                  onChange={(e) => {
-                    setSourceProvider(e.target.value)
-                    setSourcePlaylistId('')
-                  }}
-                />
-                <PlaylistPickerField
-                  label="Playlist"
-                  playlists={entries[sourceProvider]?.playlists ?? []}
-                  loading={entries[sourceProvider]?.loading}
-                  value={sourcePlaylistId}
-                  disabled={!sourceProvider}
-                  onChange={setSourcePlaylistId}
-                />
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[12.5px] font-semibold text-text-2">Source</span>
+                  <Segmented
+                    ariaLabel="Source playlist"
+                    options={SOURCE_MODE_OPTIONS}
+                    value={sourceMode}
+                    onChange={(v) => switchSourceMode(v as 'library' | 'link')}
+                  />
+                </div>
+
+                {sourceMode === 'library' ? (
+                  <>
+                    <SelectField
+                      label="Service"
+                      icon={serviceIcon(sourceProvider)}
+                      options={[{ value: '', label: 'Choose a service…' }, ...transferable.map((a) => ({ value: a.id, label: a.name }))]}
+                      value={sourceProvider}
+                      onChange={(e) => {
+                        setSourceProvider(e.target.value)
+                        setSourcePlaylistId('')
+                      }}
+                    />
+                    <PlaylistPickerField
+                      label="Playlist"
+                      playlists={entries[sourceProvider]?.playlists ?? []}
+                      loading={entries[sourceProvider]?.loading}
+                      value={sourcePlaylistId}
+                      disabled={!sourceProvider}
+                      onChange={setSourcePlaylistId}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <TextField
+                      label="Playlist link"
+                      help="A public playlist URL from any connected service. It does not have to be saved in your library."
+                      placeholder="https://open.spotify.com/playlist/…"
+                      value={sourceLink}
+                      onChange={(e) => clearLink(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          void handlePreview()
+                        }
+                      }}
+                    />
+                    <div className="flex items-center gap-2.5">
+                      <Button
+                        variant="secondary"
+                        onClick={() => void handlePreview()}
+                        disabled={!sourceLink.trim() || previewing}
+                      >
+                        {previewing ? 'Opening…' : 'Open link'}
+                      </Button>
+                      {preview && (
+                        <span className="flex min-w-0 items-center gap-1.5 text-xs text-text-3">
+                          {serviceIcon(preview.provider)}
+                          <span className="truncate font-semibold text-text-2">{preview.name}</span>
+                        </span>
+                      )}
+                    </div>
+                    {previewError && <p className="text-sm text-danger">{previewError}</p>}
+                  </>
+                )}
               </div>
               {sourcePlaylist && (
                 <div className="flex items-baseline gap-2.5 border-t border-border px-4 py-2.5">
@@ -187,7 +292,13 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
               <div className="flex flex-1 flex-col gap-3.5 p-4">
                 <SelectField
                   label="Service"
-                  help={!sourceProvider ? 'Pick a source service first.' : undefined}
+                  help={
+                    !sourceProvider
+                      ? sourceMode === 'link'
+                        ? 'Open a playlist link first.'
+                        : 'Pick a source service first.'
+                      : undefined
+                  }
                   icon={serviceIcon(destProvider)}
                   options={[
                     { value: '', label: 'Choose a service…' },

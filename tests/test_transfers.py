@@ -2,10 +2,14 @@
 
 import asyncio
 
+import pytest
+
 from songmirror.services.events import EventBus
 from songmirror.services.settings import SettingsStore
 from songmirror.services.sync_service import SyncService
-from songmirror.services.transfers import TransferService, transfer
+from songmirror.services.transfers import (
+    TransferPreviewError, TransferService, transfer,
+)
 
 
 class _Src:
@@ -274,6 +278,108 @@ def test_transfer_orders_mixed_timestamp_formats_chronologically():
     assert added == ["dest-old", "dest-new"]
 
 
+def test_resumed_transfer_replays_newer_tracks_after_a_resolved_conflict():
+    class Source:
+        source = "spotify"
+
+        def playlist_tracks(self, playlist):
+            return [
+                {"id": value.lower(), "name": value, "artists": ["Artist"],
+                 "duration_ms": 1, "added_at": f"202{index}-01-01T00:00:00Z"}
+                for index, value in enumerate(("A", "B", "C", "D"))
+            ]
+
+    class Destination:
+        source = "apple"
+
+        def __init__(self):
+            self.replayed = []
+
+        def playlist_tracks(self, playlist):
+            return [
+                {"id": value.lower(), "name": value, "artist": "Artist", "duration_ms": 1}
+                for value in ("A", "C", "D")
+            ]
+
+        def resolve(self, track, cache):
+            return ("b", "manual") if track["name"] == "B" else (None, None)
+
+        def track_id(self, track):
+            return track["id"]
+
+        def replay_chronology(self, playlist, ordered_entries):
+            self.replayed.append([
+                (target_id, None if original is None else original[0])
+                for target_id, original in ordered_entries
+            ])
+
+        def add(self, playlist, ids):
+            raise AssertionError("the resumed gap must use chronology repair")
+
+    destination = Destination()
+    result = transfer(
+        Source(), destination, {"id": "source"}, {"id": "destination"},
+        {"search": {}, "isrc": {}, "dirty": False},
+        execute=True, max_adds=200,
+    )
+
+    assert destination.replayed == [[("b", None), ("c", 1), ("d", 2)]]
+    assert result["added"] == 1
+    assert result["chronology_replayed"] == 2
+
+
+def test_transfer_replay_uses_a_resolved_existing_id_despite_metadata_drift():
+    class Source:
+        source = "spotify"
+
+        def playlist_tracks(self, playlist):
+            return [
+                {"id": key, "name": name, "artists": ["Artist"],
+                 "duration_ms": 1, "added_at": f"202{index}-01-01T00:00:00Z"}
+                for index, (key, name) in enumerate((
+                    ("a", "A"), ("b", "B"), ("c", "The Middle"), ("d", "D")
+                ))
+            ]
+
+    class Destination:
+        source = "apple"
+
+        def __init__(self):
+            self.replayed = []
+
+        def playlist_tracks(self, playlist):
+            return [
+                {"id": key, "name": name, "artist": "Artist", "duration_ms": 1}
+                for key, name in (("a", "A"), ("c", "Middle"), ("d", "D"))
+            ]
+
+        def resolve(self, track, cache):
+            return {"B": "b", "The Middle": "c"}.get(track["name"]), "search"
+
+        def track_id(self, track):
+            return track["id"]
+
+        def replay_chronology(self, playlist, ordered_entries):
+            self.replayed.append([
+                (target_id, None if original is None else original[0])
+                for target_id, original in ordered_entries
+            ])
+
+        def add(self, playlist, ids):
+            raise AssertionError("the resolved existing id must not be added as a duplicate")
+
+    destination = Destination()
+    result = transfer(
+        Source(), destination, {"id": "source"}, {"id": "destination"},
+        {"search": {}, "isrc": {}, "dirty": False},
+        execute=True, max_adds=200,
+    )
+
+    assert destination.replayed == [[("b", None), ("c", 1), ("d", 2)]]
+    assert result["added"] == 1
+    assert result["chronology_replayed"] == 2
+
+
 def test_transfer_dry_run_adds_nothing():
     added = []
     res = transfer(_Src(), _dst_factory(added), {"id": "s"}, {"id": "d"},
@@ -379,6 +485,13 @@ class _Prov:
 
     def find_playlist(self, playlist_id):
         return next((pl for pl in self.list_playlists().values() if self.playlist_id(pl) == playlist_id), None)
+
+    def fetch_playlist(self, playlist_id):
+        # Stands in for a provider that can read a playlist outside the library.
+        return {"id": playlist_id, "name": f"Public {playlist_id}", "_public": True}
+
+    def playlist_count(self, pl):
+        return 7
 
     def playlist_name(self, pl):
         return pl.get("name", "")
@@ -488,3 +601,96 @@ def test_transfer_service_normalizes_manual_id_before_writing_cache(monkeypatch,
     asyncio.run(scenario())
 
     assert "4160591112" in out["cache"]["search"].values()
+
+
+# -- pasted-link transfer sources --------------------------------------------
+def test_find_prefers_the_library_over_a_public_read(tmp_path):
+    # A library hit keeps its own dict, which carries the `_owned` / `_editable`
+    # flags a bare public read cannot supply.
+    svc = TransferService(SettingsStore(dir=tmp_path), EventBus(), None)
+    found = svc._find(_Prov(str(tmp_path / "c.json"), []), "p1")
+    assert found == {"id": "p1", "name": "X"}
+
+
+def test_find_falls_back_to_a_public_read_for_an_id_not_in_the_library(tmp_path):
+    svc = TransferService(SettingsStore(dir=tmp_path), EventBus(), None)
+    found = svc._find(_Prov(str(tmp_path / "c.json"), []), "not-in-library")
+    assert found == {"id": "not-in-library", "name": "Public not-in-library", "_public": True}
+
+
+def _preview_service(monkeypatch, tmp_path, target):
+    svc = TransferService(SettingsStore(dir=tmp_path), EventBus(), None)
+    monkeypatch.setattr(TransferService, "_build", lambda self, pid, opts: target)
+    return svc
+
+
+def test_preview_resolves_a_public_link_into_a_startable_source(monkeypatch, tmp_path):
+    svc = _preview_service(monkeypatch, tmp_path, _Prov(str(tmp_path / "c.json"), []))
+    preview = svc.preview("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
+    assert preview["provider"] == "spotify"
+    assert preview["playlist_id"] == "37i9dQZF1DXcBWIGoYBM5M"
+    assert preview["name"] == "Public 37i9dQZF1DXcBWIGoYBM5M"
+    assert preview["count"] == 7
+    assert preview["external_url"] == (
+        "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
+
+
+def test_preview_rejects_text_that_is_not_a_playlist_link(tmp_path):
+    svc = TransferService(SettingsStore(dir=tmp_path), EventBus(), None)
+    with pytest.raises(TransferPreviewError):
+        svc.preview("just some words")
+
+
+def test_preview_names_the_service_when_the_link_is_not_a_playlist(tmp_path):
+    svc = TransferService(SettingsStore(dir=tmp_path), EventBus(), None)
+    with pytest.raises(TransferPreviewError, match="Spotify"):
+        svc.preview("https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3")
+
+
+def test_preview_says_so_when_the_source_service_is_not_connected(monkeypatch, tmp_path):
+    svc = _preview_service(monkeypatch, tmp_path, None)
+    with pytest.raises(TransferPreviewError, match="not connected"):
+        svc.preview("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
+
+
+def test_preview_says_so_when_the_provider_cannot_read_a_link(monkeypatch, tmp_path):
+    class _LibraryOnly(_Prov):
+        def fetch_playlist(self, playlist_id):
+            return None   # e.g. a provider with no public playlist read
+
+    svc = _preview_service(monkeypatch, tmp_path, _LibraryOnly(str(tmp_path / "c.json"), []))
+    with pytest.raises(TransferPreviewError, match="Save it to your library"):
+        svc.preview("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
+
+
+def test_preview_surfaces_a_provider_failure_as_readable_copy(monkeypatch, tmp_path):
+    class _Broken(_Prov):
+        def find_playlist(self, playlist_id):
+            raise RuntimeError("boom")
+
+    svc = _preview_service(monkeypatch, tmp_path, _Broken(str(tmp_path / "c.json"), []))
+    with pytest.raises(TransferPreviewError, match="could not open that playlist"):
+        svc.preview("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
+
+
+def test_resolving_a_conflict_records_the_choice_as_hand_set(monkeypatch, tmp_path):
+    from songmirror.engine.runner import load_cache
+
+    out = {}
+
+    async def scenario():
+        _, dst = _service(monkeypatch, tmp_path)
+        bus = EventBus()
+        bus.bind_loop(asyncio.get_running_loop())
+        sync = SyncService(SettingsStore(dir=tmp_path), bus)
+        svc = TransferService(SettingsStore(dir=tmp_path), bus, sync)
+        job = svc.submit({"source_provider": "apple", "source_playlist_id": "p1",
+                          "dest_provider": "ytmusic", "dest_playlist_id": "p1"})
+        j = await _await_job(svc, job["id"])
+        out["key"] = j["conflicts"][0]["key"]
+        svc.resolve(job["id"], out["key"], "chosen-id")
+        out["cache"] = load_cache(dst.cache_file)
+
+    asyncio.run(scenario())
+    # The resolve-mappings view can tell this apart from a match the matcher guessed.
+    assert out["cache"]["manual"] == {out["key"]}

@@ -18,19 +18,8 @@ from ..engine.config import parse_args, spotify_write_backend
 from ..engine.logs import log_warn
 from ..engine.targets import build_one
 from .playlist_exports import render_backup
+from .playlist_links import external_url, provider_label
 from .settings import _open_private
-
-
-_PROVIDER_NAMES = {
-    "spotify": "Spotify",
-    "tidal": "TIDAL",
-    "qobuz": "Qobuz",
-    "deezer": "Deezer",
-    "amazon": "Amazon Music",
-    "apple": "Apple Music",
-    "ytmusic": "YouTube Music",
-    "jellyfin": "Jellyfin",
-}
 
 
 class PlaylistServiceError(RuntimeError):
@@ -89,7 +78,7 @@ def _pl_id(pl):
     return _pl_name(pl)
 
 
-def _pl_image(pl):
+def playlist_image(pl):
     """Best-effort cover-art URL across provider shapes (empty string if none)."""
     def entry_url(value):
         if isinstance(value, str):
@@ -145,29 +134,6 @@ def _pl_image(pl):
     return ""
 
 
-def _external_url(provider_id, kind, item_id):
-    """Stable first-party web URL for a provider playlist or track."""
-    item_id = quote(str(item_id), safe="")
-    routes = {
-        "spotify": f"https://open.spotify.com/{kind}/{item_id}",
-        "tidal": f"https://listen.tidal.com/{kind}/{item_id}",
-        "qobuz": f"https://open.qobuz.com/{kind}/{item_id}",
-        "deezer": f"https://www.deezer.com/{kind}/{item_id}",
-        "amazon": f"https://music.amazon.com/{kind}s/{item_id}",
-        "apple": (
-            f"https://music.apple.com/library/playlist/{item_id}"
-            if kind == "playlist"
-            else f"https://music.apple.com/song/{item_id}"
-        ),
-        "ytmusic": (
-            f"https://music.youtube.com/playlist?list={item_id}"
-            if kind == "playlist"
-            else f"https://music.youtube.com/watch?v={item_id}"
-        ),
-    }
-    return routes.get(provider_id, "")
-
-
 def _track_artist(track):
     if track.get("artist"):
         return str(track["artist"])
@@ -187,7 +153,7 @@ class PlaylistService:
         self._settings = settings
 
     def _failure(self, provider_id, action, exc):
-        label = _PROVIDER_NAMES.get(provider_id, provider_id)
+        label = provider_label(provider_id)
         log_warn(f"{action} failed: {exc!r}", tag=provider_id)
         raise PlaylistBrowseError(
             f"{label} could not {action} right now. Retry; if it continues, reconnect the account."
@@ -207,7 +173,7 @@ class PlaylistService:
         except Exception as exc:
             self._failure(provider_id, "load playlists", exc)
         if target is None:
-            label = _PROVIDER_NAMES.get(provider_id, provider_id)
+            label = provider_label(provider_id)
             raise PlaylistBrowseError(
                 f"{label} is not available. Connect or reconnect the account and retry."
             )
@@ -291,8 +257,8 @@ class PlaylistService:
         except Exception as exc:
             self._failure(provider_id, "load playlists", exc)
         rows = [{"id": _pl_id(pl), "name": _pl_name(pl), "count": target.playlist_count(pl),
-                 "image": _pl_image(pl), "owned": bool(pl.get("_owned", True)),
-                 "external_url": _external_url(provider_id, "playlist", _pl_id(pl))}
+                 "image": playlist_image(pl), "owned": bool(pl.get("_owned", True)),
+                 "external_url": external_url(provider_id, "playlist", _pl_id(pl))}
                 for pl in playlists]
         self._prune_details(provider_id, [row["id"] for row in rows])
         return sorted(rows, key=lambda r: (r["name"] or "").casefold())
@@ -322,7 +288,7 @@ class PlaylistService:
                 "artist": _track_artist(track),
                 "album": track.get("album") or track.get("albumName"),
                 "duration_ms": track.get("duration_ms") or track.get("durationInMillis"),
-                "image": str(track.get("image") or _pl_image(track) or ""),
+                "image": str(track.get("image") or playlist_image(track) or ""),
                 "added_at": str(
                     track.get("added_at")
                     or track.get("addedAt")
@@ -331,7 +297,7 @@ class PlaylistService:
                 ),
                 "external_url": (
                     "" if unavailable
-                    else _external_url(provider_id, "track", track_id)
+                    else external_url(provider_id, "track", track_id)
                 ),
             }
             try:
@@ -355,10 +321,10 @@ class PlaylistService:
             "name": target.playlist_name(playlist),
             "description": _plain_text(target.playlist_description(playlist)),
             "count": len(tracks) if count is None else count,
-            "image": _pl_image(playlist),
+            "image": playlist_image(playlist),
             "owned": bool(playlist.get("_owned", True)),
             "editable": bool(target.is_editable(playlist)),
-            "external_url": _external_url(provider_id, "playlist", playlist_id),
+            "external_url": external_url(provider_id, "playlist", playlist_id),
             "tracks": tracks,
         }
 
@@ -416,7 +382,7 @@ class PlaylistService:
             if playlist is None:
                 self._invalidate_detail(provider_id, playlist_id)
                 raise PlaylistNotFoundError(
-                    f"That {_PROVIDER_NAMES.get(provider_id, provider_id)} playlist no longer exists. Refresh Browse."
+                    f"That {provider_label(provider_id)} playlist no longer exists. Refresh Browse."
                 )
             return self._read_detail(
                 provider_id,
@@ -453,7 +419,7 @@ class PlaylistService:
                 if playlist is None:
                     self._invalidate_detail(provider_id, playlist_id)
                     raise PlaylistNotFoundError(
-                        f"That {_PROVIDER_NAMES.get(provider_id, provider_id)} playlist no longer exists. Refresh Browse."
+                        f"That {provider_label(provider_id)} playlist no longer exists. Refresh Browse."
                     )
                 playlists = [playlist]
             else:
@@ -472,7 +438,7 @@ class PlaylistService:
             details.sort(key=lambda detail: (detail["name"].casefold(), detail["id"]))
             return render_backup(
                 provider_id,
-                _PROVIDER_NAMES.get(provider_id, getattr(target, "name", provider_id)),
+                provider_label(provider_id) or getattr(target, "name", provider_id),
                 details,
                 export_format,
                 filename_scope="all-playlists" if playlist_id is None else None,
@@ -530,7 +496,7 @@ class PlaylistService:
             if playlist is None:
                 self._invalidate_detail(provider_id, playlist_id)
                 raise PlaylistNotFoundError(
-                    f"That {_PROVIDER_NAMES.get(provider_id, provider_id)} playlist no longer exists. Refresh Browse."
+                    f"That {provider_label(provider_id)} playlist no longer exists. Refresh Browse."
                 )
             tracks, next_cursor = page_reader(playlist, cursor=cursor)
         except PlaylistServiceError:

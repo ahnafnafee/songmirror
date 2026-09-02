@@ -3,6 +3,7 @@
 // (see vite.config.ts). No client-side base URL needed either way.
 import type {
   Account,
+  ClearUnmatchedResponse,
   ConnectResponse,
   LinkUpsertRequest,
   OkResponse,
@@ -13,6 +14,10 @@ import type {
   ProviderPlaylistDetail,
   RemovePlaylistTrackRequest,
   RemovePlaylistTracksRequest,
+  ResolveCacheEntry,
+  ResolveCacheKind,
+  ResolveCachePage,
+  ResolveCacheProvider,
   ResolveConflictRequest,
   RunResponse,
   ScheduleRequest,
@@ -24,6 +29,7 @@ import type {
   SyncStatus,
   TransferControlResponse,
   TransferJob,
+  TransferSourcePreview,
 } from './types'
 
 export class ApiError extends Error {
@@ -218,6 +224,42 @@ export const api = {
   stopTransfer: (id: string) => request<TransferControlResponse>(`/api/transfers/${encodeURIComponent(id)}/stop`, { method: 'POST' }),
   resolveTransferConflict: (id: string, body: ResolveConflictRequest) =>
     request<OkResponse>(`/api/transfers/${encodeURIComponent(id)}/resolve`, json(body)),
+  /** Resolve a pasted public playlist link into a startable transfer source.
+   * The link is parsed on the server, so the URL grammar has one home. */
+  previewTransferSource: (url: string) =>
+    request<TransferSourcePreview>('/api/transfers/preview', json({ url })),
+
+  // Resolve mappings (the per-provider match caches)
+  getResolveCacheProviders: () => request<ResolveCacheProvider[]>('/api/resolve-cache'),
+  getResolveCacheEntries: (
+    provider: string,
+    params: { q?: string; kind?: ResolveCacheKind; offset?: number; limit?: number },
+  ) => {
+    const query = new URLSearchParams()
+    if (params.q) query.set('q', params.q)
+    if (params.kind) query.set('kind', params.kind)
+    if (params.offset) query.set('offset', String(params.offset))
+    if (params.limit) query.set('limit', String(params.limit))
+    const suffix = query.size ? `?${query.toString()}` : ''
+    return request<ResolveCachePage>(`/api/resolve-cache/${encodeURIComponent(provider)}${suffix}`)
+  },
+  /** The key travels in the body: it is "<name>|<artist>" and routinely
+   * contains slashes. */
+  setResolveCacheEntry: (provider: string, key: string, targetId: string) =>
+    request<ResolveCacheEntry>(`/api/resolve-cache/${encodeURIComponent(provider)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ key, target_id: targetId }),
+    }),
+  deleteResolveCacheEntry: (provider: string, key: string) =>
+    request<OkResponse>(`/api/resolve-cache/${encodeURIComponent(provider)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ key }),
+    }),
+  clearResolveCacheUnmatched: (provider: string) =>
+    request<ClearUnmatchedResponse>(
+      `/api/resolve-cache/${encodeURIComponent(provider)}/clear-unmatched`,
+      { method: 'POST' },
+    ),
 }
 
 export function errorMessage(err: unknown): string {

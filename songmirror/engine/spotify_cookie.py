@@ -340,18 +340,55 @@ def _library_image_sources(images):
     return out
 
 
-def _hydrate_playlist_name(uri):
-    """Best-effort single-playlist name lookup for a blank libraryV3 row. Some
-    followed playlists are nameless even here, so None is a valid outcome —
-    the caller falls back to a placeholder rather than treating it as fatal."""
+def _fetch_playlist_v2(uri):
+    """The web player's own playlist header payload for one uri, or None."""
     try:
         data = _pf("fetchPlaylist", {
             "uri": uri, "offset": 0, "limit": 0, "enableWatchFeedEntrypoint": False,
         })
     except Exception as e:
-        log_warn(f"could not hydrate playlist name for {uri} ({e!r})", tag="spotify")
+        log_warn(f"could not read playlist {uri} ({e!r})", tag="spotify")
         return None
-    return ((data.get("playlistV2") or {}).get("name") or "").strip() or None
+    playlist = data.get("playlistV2") or {}
+    # A uri the account cannot see comes back as a typed "not found" node rather
+    # than an error, so an absent name is the real signal that there is nothing here.
+    return playlist if playlist.get("name") is not None else None
+
+
+def _hydrate_playlist_name(uri):
+    """Best-effort single-playlist name lookup for a blank libraryV3 row. Some
+    followed playlists are nameless even here, so None is a valid outcome:
+    the caller falls back to a placeholder rather than treating it as fatal."""
+    playlist = _fetch_playlist_v2(uri)
+    return ((playlist or {}).get("name") or "").strip() or None
+
+
+def playlist_metadata(playlist_id):
+    """One playlist by id, library membership irrelevant, in library-row shape.
+
+    Backs the pasted-link transfer source: the same header query that hydrates a
+    nameless library row also reads a public playlist the account merely has
+    access to. None when the account cannot see it.
+    """
+    uri = _puri(playlist_id)
+    playlist = _fetch_playlist_v2(uri)
+    if playlist is None:
+        return None
+    owner = (playlist.get("ownerV2") or {}).get("data") or {}
+    editable = bool((playlist.get("currentUserCapabilities") or {}).get("canEditItems"))
+    total = (playlist.get("content") or {}).get("totalCount")
+    return {
+        "id": str(playlist_id),
+        "uri": uri,
+        "name": playlist.get("name") or "",
+        "description": playlist.get("description") or "",
+        "snapshot_id": playlist.get("revisionId"),
+        "owner": {"id": owner.get("username") or owner.get("id")},
+        "images": _library_image_sources(playlist.get("images")),
+        "items": {"total": int(total) if total is not None else None},
+        "_owned": editable,
+        "_editable": editable,
+    }
 
 
 def library_directory() -> LibraryDirectory:
@@ -362,11 +399,12 @@ def library_directory() -> LibraryDirectory:
     old rootlist plus one metadata request per playlist, and its capability data
     identifies followed playlists that are readable but not editable.
 
-    Known folder rows are ignored. Any other unresolved row, or a playlist with
-    no usable id, makes the result partial. A row with an id but no name gets a
-    targeted lookup; a failed lookup falls back to a placeholder and also makes
-    the result partial. `library_playlists()` tolerates that state for browsing,
-    but a sync consumer must not treat an absence as authoritative when it is set.
+    Known folder rows and typed NotFound tombstones are ignored. Any other
+    unresolved row, or a playlist with no usable id, makes the result partial.
+    A row with an id but no name gets a targeted lookup; a failed lookup falls
+    back to a placeholder and also makes the result partial. `library_playlists()`
+    tolerates that state for browsing, but a sync consumer must not treat an
+    absence as authoritative when it is set.
     """
     out, offset, limit = [], 0, 100
     partial = False
@@ -390,6 +428,11 @@ def library_directory() -> LibraryDirectory:
             data = item.get("data") or {}
             row_type = data.get("__typename")
             if row_type != "Playlist":
+                if row_type == "NotFound":
+                    # Spotify keeps tombstones for deleted or inaccessible
+                    # playlists in an otherwise complete library page. The
+                    # typed absence is not an unresolved live playlist.
+                    continue
                 if row_type != "Folder":
                     log_warn(
                         f"skipping unresolved Spotify library row ({row_type or 'unknown type'})",

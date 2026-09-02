@@ -29,6 +29,7 @@ __all__ = ["AppleMusicTarget", "AmazonMusicTarget", "DeezerTarget", "QobuzTarget
            "SpotifyTarget", "TidalTarget", "MirrorTarget", "TargetAuthError",
            "TargetDirectoryIncompleteError", "TargetTransientError",
            "mirror_pair", "reconcile", "build_targets", "build_peers", "build_one", "is_peer",
+           "target_class", "provider_ids",
            "nway_order_candidates"]
 
 
@@ -81,6 +82,33 @@ _REGISTRY = {
     "ytmusic": lambda opts, sp, sync_peer=False, songs=None: ytmusic.build(),
 }
 _SOURCE_ORDER = ["spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic"]
+
+# The same providers as _REGISTRY, by class rather than by builder, for the
+# class-level facts a caller needs WITHOUT credentials (where the resolution
+# cache lives, how a pasted track id is normalized). test_targets_accessors
+# asserts the two stay in step. The YT browser backend subclasses YTMusicTarget
+# and inherits both, so one entry covers both YT modes.
+_CLASSES = {
+    "spotify": SpotifyTarget,
+    "tidal": TidalTarget,
+    "qobuz": QobuzTarget,
+    "deezer": DeezerTarget,
+    "amazon": AmazonMusicTarget,
+    "apple": AppleMusicTarget,
+    "ytmusic": ytmusic.YTMusicTarget,
+}
+
+
+def provider_ids():
+    """Every sync/transfer provider id, in presentation order."""
+    return tuple(_SOURCE_ORDER)
+
+
+def target_class(provider_id):
+    """A provider's MirrorTarget subclass, or None. Unlike build_one this needs
+    no configured account, so it answers class-level questions for a service the
+    user has not connected."""
+    return _CLASSES.get(provider_id)
 
 
 def nway_order_candidates(opts):

@@ -834,3 +834,28 @@ def test_jellyfin_list_playlists_fills_counts(monkeypatch):
 
     monkeypatch.setattr(jellyfin.requests, "get", fake_get)
     assert jellyfin.list_playlists() == [{"id": "p1", "name": "Mix", "count": 7, "image": ""}]
+
+
+def test_every_registered_provider_has_a_class_and_a_cache_path():
+    # _CLASSES mirrors _REGISTRY so class-level facts (cache path, manual-id
+    # normalization) are reachable without credentials. This is the check that
+    # keeps the two maps from drifting when a provider is added.
+    from songmirror.engine.config import parse_args
+    from songmirror.engine.targets import _CLASSES, _REGISTRY, target_class
+
+    assert set(_CLASSES) == set(_REGISTRY)
+    opts = parse_args([])
+    for provider_id in _REGISTRY:
+        assert target_class(provider_id).resolve_cache_path(opts), provider_id
+
+
+def test_a_target_opens_the_cache_path_its_class_advertises(monkeypatch, tmp_path):
+    # The store and the engine must agree on the file, including an operator
+    # override of the environment variable.
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    monkeypatch.setenv("DEEZER_CACHE_FILE", str(tmp_path / "moved.json"))
+    target = DeezerTarget.__new__(DeezerTarget)
+    target.cache_file = target.resolve_cache_path()
+    assert target.cache_file == DeezerTarget.resolve_cache_path()
+    assert target.cache_file == str(tmp_path / "moved.json")

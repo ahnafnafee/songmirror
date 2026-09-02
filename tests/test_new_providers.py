@@ -1,6 +1,5 @@
 """Contract tests for the additional account-authorized playlist peers."""
 
-import base64
 import json
 
 import pytest
@@ -274,41 +273,61 @@ def test_tidal_browse_read_keeps_unknown_entry_as_removable_placeholder():
     }]
 
 
-def test_tidal_connector_accepts_minimized_browser_headers(tmp_path, monkeypatch):
-    from songmirror.services.accounts.tidal import TidalConnector
-    from songmirror.tidal_web import parse_web_headers
-
-    store = SettingsStore(dir=tmp_path / "settings")
-    monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
-    connector = TidalConnector(store)
-    monkeypatch.setattr(connector, "_validate", lambda raw=None: (True, "accepted"))
-    status = connector.submit(
-        {
-            "TIDAL_WEB_HEADERS": (
-                "GET /v2/playlists?countryCode=GB HTTP/2\n"
-                "authorization: Bearer header.eyJleHAiOjQxMDI0NDQ4MDB9.sig\n"
-                "cookie: do-not-keep"
-            )
-        }
-    )
-    assert status.state == "connected"
-    stored = parse_web_headers(connector._store.get("TIDAL_WEB_HEADERS"))
-    assert stored["authorization"].startswith("Bearer ")
-    assert stored["country_code"] == "US"  # relative request lines do not expose a parseable URL
-    assert "do-not-keep" not in connector._store.get("TIDAL_WEB_HEADERS")
-
-
-def test_tidal_connector_accepts_browser_user_scopes_for_native_likes(tmp_path, monkeypatch):
-    from songmirror.services.accounts.tidal import TidalConnector
+def _tidal_web_token(*, exp=4_102_444_800, scopes="r_usr w_usr", country="US", client="web-client"):
+    import base64
 
     payload = base64.urlsafe_b64encode(json.dumps({
-        "exp": 4_102_444_800,
-        "scope": "r_usr w_usr",
+        "exp": exp,
+        "scope": scopes,
+        "cc": country,
+        "cid": client,
     }).encode()).decode().rstrip("=")
-    raw = json.dumps({
-        "authorization": f"Bearer header.{payload}.signature",
-        "countryCode": "US",
+    return f"header.{payload}.signature"
+
+
+def test_tidal_connector_accepts_renewable_web_player_token_response(tmp_path, monkeypatch):
+    from songmirror.services.accounts.tidal import TidalConnector
+
+    token_file = tmp_path / "tidal-web-session.json"
+    monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
+
+    class Response:
+        ok = True
+        status_code = 200
+
+    monkeypatch.setattr("songmirror.services.accounts.tidal.requests.get", lambda *a, **k: Response())
+    store = SettingsStore(dir=tmp_path / "settings")
+    connector = TidalConnector(store)
+    status = connector.submit({
+        "TIDAL_WEB_HEADERS": json.dumps({
+            "access_token": _tidal_web_token(),
+            "refresh_token": "web-refresh",
+            "expires_in": 86_400,
+            "scope": "r_usr w_usr",
+            "email": "discard@example.test",
+        }),
     })
+
+    assert connector.auth_kind == "token_paste"
+    assert [field.key for field in connector.config_fields] == ["TIDAL_WEB_HEADERS"]
+    assert status.state == "connected"
+    assert "automatic token renewal" in status.detail
+    stored = json.loads(store.get("TIDAL_WEB_HEADERS"))
+    assert stored["authorization"].startswith("Bearer ")
+    assert stored["refresh_token"] == "web-refresh"
+    assert stored["client_id"] == "web-client"
+    assert stored["country_code"] == "US"
+    assert "email" not in stored
+    persisted = json.loads(token_file.read_text(encoding="utf-8"))
+    assert persisted["auth_mode"] == "tidal_web"
+    assert persisted["refresh_token"] == "web-refresh"
+
+
+def test_tidal_connector_still_accepts_legacy_openapi_headers(tmp_path, monkeypatch):
+    from songmirror.services.accounts.tidal import TidalConnector
+
+    monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
 
     class Response:
         ok = True
@@ -316,99 +335,148 @@ def test_tidal_connector_accepts_browser_user_scopes_for_native_likes(tmp_path, 
 
     monkeypatch.setattr("songmirror.services.accounts.tidal.requests.get", lambda *a, **k: Response())
     connector = TidalConnector(SettingsStore(dir=tmp_path))
-
-    ok, detail = connector._validate(raw)
-
-    assert ok is True
-    assert detail == "signed-in web-player session"
-
-
-def test_tidal_connector_reports_when_developer_token_is_playlist_only(tmp_path, monkeypatch):
-    from songmirror.oauth import write_token
-    from songmirror.services.accounts.tidal import TidalConnector
-
-    payload = base64.urlsafe_b64encode(json.dumps({
-        "exp": 4_102_444_800,
-        "scope": "playlists.read playlists.write search.read",
-    }).encode()).decode().rstrip("=")
-    token_file = tmp_path / "tidal-token.json"
-    write_token(str(token_file), {"access_token": f"header.{payload}.signature"})
-    monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
-    monkeypatch.setenv("TIDAL_CLIENT_ID", "client")
-    monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
-
-    status = TidalConnector(SettingsStore(dir=tmp_path / "settings")).status()
+    status = connector.submit({
+        "TIDAL_WEB_HEADERS": (
+            "authorization: Bearer " + _tidal_web_token() + "\n"
+            "cookie: do-not-keep"
+        ),
+    })
 
     assert status.state == "connected"
-    assert "developer OAuth fallback" in status.detail
-    assert "ordinary playlists only" in status.detail
-    assert "collection.read and collection.write" in status.detail
+    assert "re-paste" in status.detail
+    assert "do-not-keep" not in connector._store.get("TIDAL_WEB_HEADERS")
 
 
-def test_tidal_disconnect_removes_browser_and_developer_credentials(tmp_path, monkeypatch):
-    from songmirror.oauth import write_token
+def test_tidal_target_renews_web_token_and_keeps_rotated_refresh(tmp_path, monkeypatch):
+    from songmirror.engine.targets.tidal import TidalTarget
+    from songmirror.tidal_web import TOKEN_URL
+
+    token_file = tmp_path / "tidal-web-session.json"
+    raw = json.dumps({
+        "access_token": _tidal_web_token(exp=1),
+        "refresh_token": "initial-refresh",
+        "scope": "r_usr w_usr",
+    })
+    monkeypatch.setenv("TIDAL_WEB_HEADERS", raw)
+    monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
+    calls = []
+
+    class Response:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            body = {
+                "access_token": _tidal_web_token(client="web-client"),
+                "expires_in": 86_400,
+                "scope": "r_usr w_usr",
+            }
+            if len(calls) == 1:
+                body["refresh_token"] = "rotated-refresh"
+            return body
+
+    def refresh(url, **kwargs):
+        calls.append((url, kwargs))
+        return Response()
+
+    monkeypatch.setattr("songmirror.tidal_web.requests.post", refresh)
+    target = TidalTarget()
+
+    assert target._access() == _tidal_web_token(client="web-client")
+    assert calls[0] == (
+        TOKEN_URL,
+        {
+            "data": {
+                "client_id": "web-client",
+                "grant_type": "refresh_token",
+                "refresh_token": "initial-refresh",
+                "scope": "r_usr w_usr",
+            },
+            "timeout": 30,
+        },
+    )
+    target._access(force=True)
+    persisted = json.loads(token_file.read_text(encoding="utf-8"))
+    assert persisted["refresh_token"] == "rotated-refresh"
+
+
+def test_tidal_connector_reports_rate_limit_as_temporary_error_and_caches_it(tmp_path, monkeypatch):
+    from songmirror.services.accounts.tidal import TidalConnector
+
+    raw = json.dumps({
+        "access_token": _tidal_web_token(),
+        "refresh_token": "web-refresh",
+        "scope": "r_usr w_usr",
+    })
+    monkeypatch.setenv("TIDAL_WEB_HEADERS", raw)
+    monkeypatch.setenv("TIDAL_TOKEN_FILE", str(tmp_path / "tidal-web-session.json"))
+    calls = []
+
+    class Response:
+        ok = False
+        status_code = 429
+
+    monkeypatch.setattr(
+        "songmirror.services.accounts.tidal.requests.get",
+        lambda *a, **k: calls.append((a, k)) or Response(),
+    )
+    TidalConnector._status_cache.clear()
+    connector = TidalConnector(SettingsStore(dir=tmp_path / "settings"))
+
+    first = connector.status()
+    second = TidalConnector(SettingsStore(dir=tmp_path / "settings")).status()
+
+    assert first.state == second.state == "error"
+    assert "rate limit" in first.detail.lower()
+    assert "try again" in first.detail.lower()
+    assert len(calls) == 1
+
+
+def test_tidal_disconnect_removes_web_and_developer_credentials(tmp_path, monkeypatch):
+    from songmirror.oauth import read_token, write_token
     from songmirror.services.accounts.tidal import TidalConnector
 
     token_file = tmp_path / "tidal-token.json"
-    write_token(str(token_file), {"access_token": "developer-access"})
-    monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
+    write_token(str(token_file), {"access_token": "web-access", "auth_mode": "tidal_web"})
     monkeypatch.setenv("TIDAL_CLIENT_ID", "client")
     monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
     store = SettingsStore(dir=tmp_path / "settings")
-    store.save({"TIDAL_WEB_HEADERS": "stored-browser-session"})
+    store.save({
+        "TIDAL_WEB_HEADERS": "stored-browser-session",
+        "TIDAL_OAUTH_STATE": "state",
+        "TIDAL_OAUTH_VERIFIER": "verifier",
+    })
     connector = TidalConnector(store)
 
     connector.disconnect()
 
     assert store.get("TIDAL_WEB_HEADERS") == ""
+    assert store.get("TIDAL_OAUTH_STATE") == ""
+    assert store.get("TIDAL_OAUTH_VERIFIER") == ""
     assert not token_file.exists()
+    assert read_token(str(token_file)) == {}
     assert connector.status().state == "unconfigured"
 
 
-def test_tidal_legacy_country_rejects_token_like_value(tmp_path, monkeypatch):
-    from songmirror.engine.targets.tidal import TidalTarget
-    from songmirror.oauth import write_token
-
-    token_file = tmp_path / "tidal.json"
-    write_token(str(token_file), {"access_token": "access"})
-    monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
-    monkeypatch.setenv("TIDAL_CLIENT_ID", "client")
-    monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
-    monkeypatch.setenv("TIDAL_COUNTRY_CODE", "not-a-country-token-value")
-    assert TidalTarget().country == "US"
-
-
-def test_tidal_liked_tracks_accept_browser_user_scopes():
+def test_tidal_liked_tracks_accept_web_player_user_scopes():
     from songmirror.engine.targets.tidal import TidalTarget
 
     target = TidalTarget.__new__(TidalTarget)
-    target._browser_mode = True
     target._token_scopes = {"r_usr", "w_usr"}
 
     target.validate_favorite_tracks(write=True)
 
 
-def test_tidal_liked_tracks_accept_developer_collection_scopes():
-    from songmirror.engine.targets.tidal import TidalTarget
-
-    target = TidalTarget.__new__(TidalTarget)
-    target._browser_mode = False
-    target._token_scopes = {"collection.read", "collection.write"}
-
-    target.validate_favorite_tracks(write=True)
-
-
-def test_tidal_liked_tracks_fail_fast_when_browser_token_lacks_write_scope():
+def test_tidal_liked_tracks_fail_fast_when_web_token_lacks_write_scope():
     from songmirror.engine.targets.base import TargetAuthError
     from songmirror.engine.targets.tidal import TidalTarget
 
     target = TidalTarget.__new__(TidalTarget)
-    target._browser_mode = True
     target._token_scopes = {"r_usr"}
 
     with pytest.raises(TargetAuthError, match=r"w_usr") as error:
         target.validate_favorite_tracks(write=True)
-    assert "paste a fresh signed-in OpenAPI request" in str(error.value)
+    assert "capture a fresh TIDAL web-player token response" in str(error.value)
 
 
 def test_tidal_search_uses_query_endpoint_and_included_tracks(monkeypatch):
@@ -550,6 +618,52 @@ def test_qobuz_maps_playlist_tracks_and_entry_ids(monkeypatch):
     assert (track["id"], track["relationship_id"], track["artist"], track["duration_ms"], track["isrc"]) == (
         "9", 44, "Singer", 201000, "GBBBB2600002"
     )
+
+
+def test_qobuz_only_allows_duplicate_adds_for_chronology_staging(monkeypatch):
+    from songmirror.engine.targets import qobuz as qobuz_module
+    from songmirror.engine.targets.qobuz import QobuzTarget
+
+    calls = []
+    target = QobuzTarget.__new__(QobuzTarget)
+    target._request = lambda method, endpoint, params=None: calls.append(params)
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    target.add({"id": "playlist"}, ["ordinary"])
+    target.add_chronology_copies({"id": "playlist"}, ["replayed"])
+
+    assert [call["no_duplicate"] for call in calls] == ["true", "false"]
+
+
+@pytest.mark.parametrize("module_name,class_name", [
+    ("songmirror.engine.targets.apple", "AppleMusicTarget"),
+    ("songmirror.engine.targets.deezer", "DeezerTarget"),
+])
+def test_catalog_scoped_removal_counts_keeper_readds_in_chronology_cap(module_name, class_name):
+    import importlib
+
+    target_class = getattr(importlib.import_module(module_name), class_name)
+    target = target_class.__new__(target_class)
+    entries = [("b", None), ("c", (1, {})), ("d", (2, {}))]
+
+    assert target.chronology_replay_write_cost(entries) == 5
+
+
+def test_apple_chronology_retirement_surfaces_a_failed_keeper_readd():
+    from songmirror.engine.targets.apple import AppleMusicTarget
+
+    target = AppleMusicTarget.__new__(AppleMusicTarget)
+    row = {"relationship_id": "library-song", "catalog_id": "catalog-song"}
+    target.playlist_tracks = lambda _playlist: [row, dict(row)]
+    target.remove = lambda _playlist, _track: None
+
+    def fail_add(_playlist, _ids):
+        raise RuntimeError("add failed")
+
+    target.add = fail_add
+
+    with pytest.raises(RuntimeError, match="add failed"):
+        target.retire_chronology_originals({"id": "playlist"}, [(0, row)])
 
 
 def test_qobuz_playlist_read_follows_total_across_short_pages(monkeypatch):
@@ -1657,6 +1771,9 @@ def test_amazon_web_backend_maps_playlists_tracks_and_mutations():
     append_calls = [variables for operation, variables, _ in target._web.calls
                     if operation == "SongMirrorAmazonAppendTracks"]
     assert [call["trackIds"] for call in append_calls] == [["asin-1"], ["asin-2"]]
+    assert [call["rejectDuplicates"] for call in append_calls] == [True, True]
+    target.add_chronology_copies(playlist, ["asin-1"])
+    assert target._web.calls[-1][1]["rejectDuplicates"] is False
     target.remove(playlist, track)
     assert target._web.calls[-1][2] is True
 
@@ -1897,3 +2014,252 @@ def test_amazon_web_playlist_contract_has_art_and_omits_empty_optional_create_va
     assert "images { url width height imageType aspectRatio }" in query
     assert variables == {"title": "Argonaut", "visibility": "PRIVATE"}
     assert mutation is True
+
+
+# -- reading a playlist by id, outside the library ----------------------------
+class _JsonResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+def _apple_target(request, storefront="us"):
+    from songmirror.engine.targets.apple import AppleMusicTarget
+
+    target = AppleMusicTarget.__new__(AppleMusicTarget)
+    target.storefront = storefront
+    target._request = request
+    return target
+
+
+def test_apple_reads_a_shared_playlist_from_the_catalog_not_the_library():
+    # A pasted Apple link always carries a `pl.` catalog id. The library endpoint
+    # cannot open one, so fetch_playlist has to take the other route.
+    calls = []
+
+    def request(method, url, params=None, json_body=None, ok404=False):
+        calls.append(url)
+        # The real catalog shape: no trackCount, and the first page of tracks
+        # embedded on the relationship.
+        return _JsonResponse({"data": [{
+            "id": "pl.u-abc",
+            "attributes": {"name": "Shared mix", "description": {"standard": "Hi"}},
+            "relationships": {"tracks": {"data": [{"id": "a"}, {"id": "b"}]}},
+        }]})
+
+    target = _apple_target(request, storefront="gb")
+    playlist = target.fetch_playlist("pl.u-abc")
+
+    assert calls == ["https://amp-api.music.apple.com/v1/catalog/gb/playlists/pl.u-abc"]
+    assert playlist["_catalog"] is True
+    assert target.playlist_name(playlist) == "Shared mix"
+    assert target.playlist_description(playlist) == "Hi"
+    assert target.playlist_count(playlist) == 2
+
+
+def test_apple_reads_catalog_playlist_tracks_from_the_catalog_route():
+    calls = []
+
+    def request(method, url, params=None, json_body=None, ok404=False):
+        calls.append((url, params))
+        return _JsonResponse({"data": [{
+            "id": "catalog-1",
+            "attributes": {"name": "One", "artistName": "A", "playParams": {"id": "catalog-1"}},
+        }]})
+
+    target = _apple_target(request)
+    tracks = target.playlist_tracks({"id": "pl.u-abc", "_catalog": True, "attributes": {}})
+
+    assert [track["catalog_id"] for track in tracks] == ["catalog-1"]
+    assert calls[0][0] == "https://amp-api.music.apple.com/v1/catalog/us/playlists/pl.u-abc/tracks"
+
+
+def test_apple_library_playlist_reads_are_unchanged():
+    calls = []
+
+    def request(method, url, params=None, json_body=None, ok404=False):
+        calls.append(url)
+        return _JsonResponse({"data": []})
+
+    target = _apple_target(request)
+    target.playlist_tracks({"id": "p.library", "attributes": {}})
+
+    assert calls == ["https://amp-api.music.apple.com/v1/me/library/playlists/p.library/tracks"]
+
+
+def test_apple_will_not_try_the_catalog_for_a_library_id():
+    # `p.` ids are private to one account; there is no catalog resource to ask for.
+    def request(*args, **kwargs):
+        raise AssertionError("a library id must not reach the catalog endpoint")
+
+    assert _apple_target(request).fetch_playlist("p.library") is None
+
+
+def test_deezer_fetches_a_public_playlist_by_id():
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+    calls = []
+    target._request = lambda method, path, params=None: (
+        calls.append((method, path)) or {"id": 42, "title": "Public", "nb_tracks": 3})
+
+    playlist = target.fetch_playlist("42")
+
+    assert calls == [("GET", "playlist/42")]
+    assert target.playlist_name(playlist) == "Public"
+    assert target.playlist_count(playlist) == 3
+
+
+def test_a_provider_that_cannot_read_a_public_playlist_returns_none():
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+
+    def refuse(method, path, params=None):
+        raise RuntimeError("HTTP 403")
+
+    target._request = refuse
+    # None, never an exception: the caller turns it into "save it to your library
+    # first" rather than a failed transfer.
+    assert target.fetch_playlist("42") is None
+
+
+def test_youtube_fetches_a_public_playlist_by_id():
+    from songmirror.engine.targets.ytmusic import YTMusicTarget
+
+    target = YTMusicTarget.__new__(YTMusicTarget)
+    calls = []
+
+    def request(method, path, params=None):
+        calls.append((method, path, params))
+        return _JsonResponse({"items": [{
+            "id": "PLpublic",
+            "snippet": {"title": "Public", "description": "d"},
+            "contentDetails": {"itemCount": 9},
+        }]})
+
+    target._request = request
+    playlist = target.fetch_playlist("PLpublic")
+
+    assert calls[0][2]["id"] == "PLpublic"     # by id, not `mine=true`
+    assert target.playlist_id(playlist) == "PLpublic"
+    assert target.playlist_name(playlist) == "Public"
+    assert target.playlist_count(playlist) == 9
+
+
+def test_every_provider_answers_the_public_read_contract():
+    # A new provider inherits the base "cannot do this" answer rather than
+    # breaking the transfer form with an AttributeError.
+    from songmirror.engine.targets import provider_ids, target_class
+
+    for provider_id in provider_ids():
+        assert callable(target_class(provider_id).fetch_playlist)
+
+
+def test_apple_catalog_playlist_count_comes_from_the_embedded_page():
+    # Apple gives a catalog playlist no count anywhere: no trackCount attribute
+    # and no meta.total on either route. The embedded first page is the whole
+    # playlist exactly when Apple advertises no next page.
+    def request(*args, **kwargs):
+        raise AssertionError("the count must not cost a request")
+
+    target = _apple_target(request)
+    playlist = {
+        "id": "pl.u-abc",
+        "_catalog": True,
+        "attributes": {"name": "Shared mix"},
+        "relationships": {"tracks": {"data": [{"id": "a"}, {"id": "b"}, {"id": "c"}]}},
+    }
+    assert target.playlist_count(playlist) == 3
+
+
+def test_apple_catalog_playlist_count_is_unknown_when_the_page_is_truncated():
+    def request(*args, **kwargs):
+        raise AssertionError("the count must not cost a request")
+
+    target = _apple_target(request)
+    playlist = {
+        "id": "pl.u-abc",
+        "_catalog": True,
+        "attributes": {"name": "Long mix"},
+        # A next link means the embedded rows are a page, not the total, so the
+        # page size must never be reported as the count.
+        "relationships": {"tracks": {"data": [{"id": "a"}, {"id": "b"}], "next": "/more"}},
+    }
+    assert target.playlist_count(playlist) is None
+
+
+def test_apple_library_playlist_count_still_reads_meta_total():
+    calls = []
+
+    def request(method, url, params=None, json_body=None, ok404=False):
+        calls.append(url)
+        return _JsonResponse({"meta": {"total": 41}})
+
+    target = _apple_target(request)
+    count = target.playlist_count({"id": "p.library", "attributes": {"lastModifiedDate": "x"}})
+
+    assert count == 41
+    assert calls == ["https://amp-api.music.apple.com/v1/me/library/playlists/p.library/tracks"]
+
+
+def _amazon_web_target(execute):
+    """An Amazon target on its web (GraphQL) backend, with a stub transport."""
+    from songmirror.engine.targets.amazon_music import AmazonMusicTarget
+
+    class _Web:
+        def execute(self, operation_name, query, variables=None, *, mutation=False):
+            return execute(operation_name, query, variables or {})
+
+    target = AmazonMusicTarget.__new__(AmazonMusicTarget)
+    target._web = _Web()
+    return target
+
+
+def test_amazon_web_search_sends_the_field_with_the_query():
+    # Dropping the field turns an ISRC lookup into a free-text search for the
+    # ISRC string, which matches nothing and leaves the ISRC cache empty.
+    seen = {}
+
+    def execute(operation_name, query, variables):
+        seen.update(variables)
+        seen["query_text"] = query
+        return {"searchTracks": {"edges": []}}
+
+    _amazon_web_target(execute)._search("isrc", "AULYA1500053")
+
+    assert seen["field"] == "isrc"
+    assert seen["query"] == "AULYA1500053"
+    assert "$field: String!" in seen["query_text"]
+
+
+def test_amazon_prefetch_caches_the_isrc_match_regardless_of_case():
+    # Amazon returns ISRCs in mixed case, so an exact string comparison drops
+    # real matches and caches an empty candidate list forever.
+    def execute(operation_name, query, variables):
+        return {"searchTracks": {"edges": [
+            {"node": {"id": "B00LPG7FHY", "title": "To The Stars",
+                      "isrc": "ushr11435801",          # lower case, same recording
+                      "contributingArtists": {"edges": []}}},
+            {"node": {"id": "B0OTHER", "title": "Other",
+                      "isrc": "GBAAA0000001",
+                      "contributingArtists": {"edges": []}}},
+        ]}}
+
+    target = _amazon_web_target(execute)
+    cache = {"isrc": {}, "search": {}, "manual": set(), "dirty": False}
+    target.prefetch([{"isrc": "USHR11435801"}], cache)
+
+    candidates = cache["isrc"]["USHR11435801"]
+    assert [c["id"] for c in candidates] == ["B00LPG7FHY"]   # the other ISRC is not a match
+
+
+def test_amazon_prefetch_records_a_genuine_miss_as_empty():
+    def execute(operation_name, query, variables):
+        return {"searchTracks": {"edges": []}}
+
+    cache = {"isrc": {}, "search": {}, "manual": set(), "dirty": False}
+    _amazon_web_target(execute).prefetch([{"isrc": "GBAAA0000001"}], cache)
+    assert cache["isrc"]["GBAAA0000001"] == []

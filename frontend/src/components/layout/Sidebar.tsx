@@ -7,6 +7,7 @@ import {
   LuLink2,
   LuListMusic,
   LuMenu,
+  LuMilestone,
   LuPanelLeftClose,
   LuPanelLeftOpen,
   LuRefreshCw,
@@ -30,6 +31,7 @@ const NAV_ITEMS: Array<{ to: string; label: string; end: boolean; icon: IconType
   { to: '/playlists', label: 'Playlists', end: false, icon: LuListMusic },
   { to: '/sync', label: 'Sync', end: false, icon: LuRefreshCw },
   { to: '/transfers', label: 'Transfers', end: false, icon: LuArrowLeftRight },
+  { to: '/mappings', label: 'Mappings', end: false, icon: LuMilestone },
   { to: '/settings', label: 'Settings', end: false, icon: LuSettings2 },
 ]
 

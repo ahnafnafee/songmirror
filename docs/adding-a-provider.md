@@ -28,6 +28,11 @@ Subclass `MirrorTarget` (`targets/base.py`). **Required** (no default — must i
 | `add(playlist, target_ids)` | append in order, **one request per id** (never batch — preserves date-added order) |
 | `remove(playlist, track)` | remove one existing track |
 
+The base class also supplies `replay_chronology()`. It stages duplicate copies of a recovered track and every newer
+entry before retiring the old copies, so every replacement write succeeds before the original suffix is touched.
+If the provider's ordinary `add()` suppresses duplicates, override `add_chronology_copies()` with the same ordered,
+one-request-per-track behavior but with duplicate insertion enabled. Amazon Music and Qobuz are the reference adapters.
+
 **Override only if your dict shape differs from Spotify's** (`{"id", "name", "images", ...}`):
 `playlist_id`, `playlist_name`, `playlist_description`, `playlist_count`. See `apple.py`
 (`attributes.name`) and `ytmusic.py` (`playlistId`/`title`) for non-Spotify shapes.
@@ -44,6 +49,21 @@ Apple bulk-fetches ISRCs), `native_isrc_map()` (expose `{track_id: ISRC}` your r
 cache already knows), `expected_ids()`, `is_editable()`, and
 `hydrate_playlist_counts()` (browse-only enrichment when the listing response omits totals).
 
+**Resolve-cache path:** implement `resolve_cache_path(opts)` as a `classmethod` returning where
+your `cache_file` lives (usually one `os.getenv`), and have `__init__` set
+`self.cache_file = self.resolve_cache_path()`. The Mappings UI reads the path from the class,
+with no configured account, so the environment lookup must have exactly one home.
+
+**Reading a playlist by id, outside the library:** implement `fetch_playlist(playlist_id)` if the
+service can open a playlist the account neither owns nor follows. Return the provider-native
+playlist dict (the shape `playlist_page_reference` builds, with the real name, description and
+count), or `None` when it cannot. That is what backs the "paste a playlist link" transfer source;
+the base class returns `None`, so skipping it just means links to your service are refused with a
+clear message instead of breaking. Most services need one metadata GET, because their track reads
+are already addressed by bare id. Apple is the exception worth reading: a public link carries a
+`pl.` **catalog** id, which its library endpoints cannot open at all, so its `fetch_playlist`
+tags the reference `_catalog` and `playlist_tracks` branches on it.
+
 **Native liked/favorite collection:** set `favorite_tracks_name` to the provider's user-facing
 name and implement `favorite_tracks()`, `add_favorite_tracks(target_ids)`, and
 `remove_favorite_track(track)`. `MirrorTarget.favorite_tracks_resource()` supplies the stable,
@@ -53,9 +73,11 @@ extend its single contract case in `tests/test_favorite_tracks.py`.
 
 ### 2. Targets registry — `songmirror/engine/targets/__init__.py`
 
-Two lines: add a builder to `_REGISTRY` (`source -> builder(opts, sp) -> target | None`,
-returning `None` when unconfigured) and the id to `_SOURCE_ORDER`. **Put ISRC-rich
-providers first** — they seed cross-provider identity for the rest.
+Three lines: add a builder to `_REGISTRY` (`source -> builder(opts, sp) -> target | None`,
+returning `None` when unconfigured), the class to `_CLASSES` (the same providers by class, for the
+facts a caller needs without credentials), and the id to `_SOURCE_ORDER`. **Put ISRC-rich
+providers first** — they seed cross-provider identity for the rest. `test_targets_accessors`
+asserts `_CLASSES` and `_REGISTRY` cover the same providers, so a missed line fails there.
 
 ### 3. Connector (auth) — `songmirror/services/accounts/<svc>.py`
 

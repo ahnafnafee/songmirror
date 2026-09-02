@@ -176,7 +176,7 @@ def test_library_directory_rejects_a_playlist_uri_without_an_id(monkeypatch):
     assert partial is True
 
 
-def test_library_directory_marks_a_not_found_playlist_row_partial(monkeypatch):
+def test_library_directory_ignores_a_not_found_playlist_tombstone(monkeypatch):
     from songmirror.engine import spotify_cookie as sc
 
     rows = [
@@ -185,6 +185,21 @@ def test_library_directory_marks_a_not_found_playlist_row_partial(monkeypatch):
             "_uri": "spotify:playlist:0123456789abcdefghijkl",
             "data": {"__typename": "NotFound"},
         }},
+    ]
+    monkeypatch.setattr(sc, "_pf", lambda op, variables: _library_page(rows, 2))
+
+    playlists, partial = sc.library_directory()
+
+    assert [p["id"] for p in playlists] == ["good"]
+    assert partial is False
+
+
+def test_library_directory_marks_an_unknown_library_row_partial(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+
+    rows = [
+        _row("spotify:playlist:good", name="Good"),
+        {"item": {"data": {"__typename": "MysteryNode"}}},
     ]
     monkeypatch.setattr(sc, "_pf", lambda op, variables: _library_page(rows, 2))
 

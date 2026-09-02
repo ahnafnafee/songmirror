@@ -12,16 +12,28 @@ import uuid
 
 from ..engine import logs, spotify, spotify_cookie
 from ..engine.config import parse_args, spotify_write_backend
-from ..engine.logs import log_add, log_miss, log_warn
+from ..engine.logs import log_add, log_miss, log_note, log_warn
 from ..engine.matching import spotify_track_keys, track_key, tracks_oldest_first
 from ..engine.runner import load_cache, save_cache
 from ..engine.targets import build_one, is_peer
-from ..engine.targets.base import MirrorTarget, TargetAuthError, _normalize, _split_add_results
+from ..engine.targets.base import (
+    MirrorTarget,
+    TargetAuthError,
+    _fit_chronology_writes,
+    _normalize,
+    _ordered_current_matches,
+    _split_add_results,
+)
+from .playlists import playlist_image
+from .playlist_links import (
+    PLAYLIST_LINK_HINT, PlaylistLinkError, external_url, parse_playlist_link, provider_label,
+)
 
 
 def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_progress=None, should_continue=None):
     """Copy `src_pl` (on `source`) into `dest_pl` (on `dest`). Returns
-    {added, deferred, unavailable, not_found: [{name, artist, key}], completed}.
+    {added, deferred, chronology_replayed, unavailable,
+    not_found: [{name, artist, key}], completed}.
     `not_found` are tracks that resolved to nothing on the destination — the
     conflict queue. `unavailable` counts hidden source relationships that have
     no metadata and are safely skipped by this adds-only workflow.
@@ -51,10 +63,24 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
         "playlist_tracks_for_transfer",
         dest.playlist_tracks,
     )
-    dst = [
-        _normalize(track, dest.source)
+    raw_destination = [
+        track
         for track in read_destination(dest_pl)
         if not track.get("unavailable")
+    ]
+    target_id_of = getattr(
+        dest,
+        "track_id",
+        lambda track: track.get("id") or track.get("catalog_id") or track.get("videoId"),
+    )
+    destination_ids = {
+        str(target_id)
+        for track in raw_destination
+        if (target_id := target_id_of(track)) is not None
+    }
+    dst = [
+        _normalize(track, dest.source)
+        for track in raw_destination
     ]
     seen = set().union(*(spotify_track_keys(n) for n in dst)) if dst else set()
 
@@ -74,8 +100,10 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
     # of re-searching for it (which resolve() does for the cross-provider case).
     same_provider = source.source == dest.source
     additions, not_found = [], []
+    resolved_existing = {}
     completed = True
-    for i, norm in enumerate(tracks_oldest_first(src), unavailable_count + 1):
+    ordered_source = tracks_oldest_first(src)
+    for i, norm in enumerate(ordered_source, unavailable_count + 1):
         if should_continue and should_continue() != "run":
             completed = False  # paused or stopped — leave the rest for a re-run
             break
@@ -91,9 +119,17 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
                 except Exception:
                     tid = None
             if tid:
-                additions.append((tid, norm))
+                already_present = str(tid) in destination_ids
+                if already_present:
+                    # Metadata drift can hide an already-present song from the
+                    # exact-key fast path. Keep the resolver's hard-id proof for
+                    # chronology construction and do not append a duplicate.
+                    resolved_existing[id(norm)] = {tid}
+                else:
+                    additions.append((tid, norm))
                 seen |= keys
-                log_add(f"{norm['name']} - {norm['artist']}", dry=not execute, tag="transfer")
+                if not already_present:
+                    log_add(f"{norm['name']} - {norm['artist']}", dry=not execute, tag="transfer")
             else:
                 not_found.append({"name": norm["name"], "artist": norm["artist"],
                                   "key": track_key(norm["name"], norm["artist"])})
@@ -101,10 +137,50 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
         if on_progress:
             on_progress(i, total, len(additions))
 
-    deferred = max(0, len(additions) - max_adds)
-    additions = additions[:max_adds]
+    current_by_source = _ordered_current_matches(
+        ordered_source,
+        raw_destination,
+        resolved_existing,
+        target_id_of,
+        source_identity=id,
+    )
+    can_replay = callable(getattr(dest, "replay_chronology", None))
+    replay_write_cost = getattr(dest, "chronology_replay_write_cost", len)
+    additions, chronology_replay, deferred, full_write_cost = _fit_chronology_writes(
+        [id(track) for track in ordered_source],
+        current_by_source,
+        additions,
+        lambda item: id(item[1]),
+        max_adds,
+        replay_write_cost=replay_write_cost,
+        can_replay=can_replay,
+    )
+    chronology_replayed = sum(1 for _target_id, original in chronology_replay
+                              if original is not None)
+    if deferred:
+        if full_write_cost > max_adds and can_replay:
+            log_warn(
+                f"preserving Recently Added order would require {full_write_cost} ordered writes; "
+                f"the limit is {max_adds}, so {deferred} addition(s) were deferred",
+                tag="transfer",
+            )
+        else:
+            log_warn(
+                f"{len(additions) + deferred} additions exceed the limit of {max_adds}; "
+                f"deferring {deferred}",
+                tag="transfer",
+            )
+    if chronology_replay:
+        log_note(
+            f"replaying {chronology_replayed} newer track(s) after {len(additions)} recovered "
+            "addition(s) to preserve Recently Added order",
+            tag="transfer",
+        )
     if execute and additions:
-        result = dest.add(dest_pl, [target_id for target_id, _norm in additions])
+        if chronology_replay:
+            result = dest.replay_chronology(dest_pl, chronology_replay)
+        else:
+            result = dest.add(dest_pl, [target_id for target_id, _norm in additions])
         additions, rejected = _split_add_results(additions, result, lambda item: item[0])
         for _target_id, norm in rejected:
             not_found.append({"name": norm["name"], "artist": norm["artist"],
@@ -117,6 +193,7 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
     return {
         "added": len(additions),
         "deferred": deferred,
+        "chronology_replayed": chronology_replayed,
         "unavailable": unavailable_count,
         "not_found": not_found,
         "completed": completed,
@@ -138,6 +215,11 @@ def _friendly_error(e):
     return repr(e)
 
 
+class TransferPreviewError(ValueError):
+    """A pasted link that cannot become a transfer source. Carries copy meant to
+    be shown to the user unchanged."""
+
+
 class TransferService:
     """One-off cross-service copies, serialized with syncs via SyncService. Jobs
     are in-memory and transient."""
@@ -147,6 +229,58 @@ class TransferService:
         self._bus = bus
         self._sync = sync
         self._jobs = {}
+
+    def preview(self, url):
+        """Resolve a pasted playlist link into a startable transfer source.
+
+        Returns {provider, playlist_id, name, description, count, image,
+        external_url}. Raises TransferPreviewError with user-facing copy when the
+        link, the account, or the provider cannot supply one.
+
+        The pasted text never becomes a request URL: it is parsed into a provider
+        and an id, and only the id reaches that provider's own configured client.
+        So this can only read a playlist from a service the user has connected.
+        """
+        try:
+            parsed = parse_playlist_link(url)
+        except PlaylistLinkError as exc:
+            raise TransferPreviewError(str(exc)) from exc
+        if parsed is None:
+            raise TransferPreviewError(PLAYLIST_LINK_HINT)
+        provider_id, playlist_id = parsed
+        label = provider_label(provider_id)
+        if not is_peer(provider_id):
+            raise TransferPreviewError(
+                f"{label} is browse-only and cannot be a transfer source.")
+
+        self._settings.apply_to_env()
+        target = self._build(provider_id, parse_args([]))
+        if target is None:
+            raise TransferPreviewError(
+                f"{label} is not connected. Connect it on the Accounts page, then paste the link again.")
+
+        try:
+            playlist = self._find(target, playlist_id)
+        except TargetAuthError as exc:
+            raise TransferPreviewError(str(exc)) from exc
+        except Exception as exc:
+            raise TransferPreviewError(
+                f"{label} could not open that playlist: {_friendly_error(exc)}") from exc
+        if playlist is None:
+            raise TransferPreviewError(
+                f"{label} could not open that link. The playlist may be private, or {label} "
+                "may only allow reading playlists you have saved. Save it to your library "
+                "and transfer it from there.")
+
+        return {
+            "provider": provider_id,
+            "playlist_id": str(playlist_id),
+            "name": target.playlist_name(playlist),
+            "description": target.playlist_description(playlist),
+            "count": target.playlist_count(playlist),
+            "image": playlist_image(playlist),
+            "external_url": external_url(provider_id, "playlist", playlist_id),
+        }
 
     def submit(self, spec):
         """spec: {source_provider, source_playlist_id, dest_provider,
@@ -158,7 +292,8 @@ class TransferService:
             "dest": {"provider": spec["dest_provider"],
                      "playlist_id": spec.get("dest_playlist_id"),
                      "playlist_name": spec.get("dest_name", "")},
-            "added": 0, "deferred": 0, "unavailable": 0, "conflicts": [], "error": None,
+            "added": 0, "deferred": 0, "chronology_replayed": 0,
+            "unavailable": 0, "conflicts": [], "error": None,
             "total": 0, "processed": 0,  # live progress: source tracks examined / total
             "_spec": spec,      # kept so resume can re-run the same copy
             "_control": "run",  # "run" | "pause" | "stop" — polled by the running loop
@@ -226,6 +361,9 @@ class TransferService:
         if cache_file:
             cache = load_cache(cache_file)
             cache["search"][key] = dest_id
+            # Recorded as hand-set so the resolve-mappings view can tell a choice
+            # the user made from one the matcher guessed.
+            cache["manual"].add(key)
             cache["dirty"] = True
             save_cache(cache_file, cache)
         for c in job["conflicts"]:
@@ -284,6 +422,7 @@ class TransferService:
             res = await self._sync.run_exclusive(work)
             job["added"] = base_added + res["added"]
             job["deferred"] = res["deferred"]
+            job["chronology_replayed"] = res.get("chronology_replayed", 0)
             job["unavailable"] = res["unavailable"]
             job["conflicts"] = [{**c, "resolved": False} for c in res["not_found"]]
             if res["completed"]:
@@ -317,7 +456,10 @@ class TransferService:
         # find_playlist scans the provider's full set — for Spotify that's the
         # un-deduped list, so a followed playlist is reachable by id even when a
         # same-named owned one exists (list_playlists() would have hidden it).
-        return provider.find_playlist(playlist_id)
+        # Library first: an id already in the library keeps its `_owned` and
+        # `_editable` flags, which a bare public read cannot supply. Only an id
+        # the library does not have falls through to the pasted-link read.
+        return provider.find_playlist(playlist_id) or provider.fetch_playlist(playlist_id)
 
     def _dest_playlist(self, dst, src, src_pl, spec):
         if spec.get("dest_playlist_id"):

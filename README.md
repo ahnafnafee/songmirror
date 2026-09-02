@@ -69,6 +69,7 @@ A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and Fre
 - [🖥️ Headless CLI](#️-headless-cli)
 - [🛡️ Safety rails](#️-safety-rails)
 - [🗃️ Caching &amp; song archive](#️-caching--song-archive)
+  - [Resolve mappings](#resolve-mappings)
 - [🧱 Project layout](#-project-layout)
 - [🩺 Troubleshooting](#-troubleshooting)
 - [📄 License](#-license)
@@ -90,11 +91,13 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 - 🎯 **ISRC-accurate matching** — exact recording identity where available, with Unicode-aware fuzzy title/artist/duration fallbacks (feat-credit drift, "- 2015 Remaster" suffixes, non-Latin scripts, video-only uploads — all handled).
 - 🎛️ **Multiple named syncs** — set up as many independent syncs as you like, each with its own services, playlists, schedule, and safety caps.
 - ↪️ **One-off transfers** — copy any playlist from one service to another with a live progress bar; **pause, resume, or stop** mid-copy, and manually resolve unmatched tracks.
+- 🔗 **Transfer from a link** — paste a public playlist URL from any connected service and copy it straight across. No need to save or follow it first.
 - 🌐 **Followed playlists** — sync and transfer playlists you follow but don't own, not just ones you created.
 - 📦 **Portable metadata backups** — download one playlist or a service's entire library as ordered, versioned JSON/XML; single playlists also export as import-ready Soundiiz JSON.
 - 💿 **Local download mirror** — keep offline audio, one folder per playlist in **Jellyfin's** `AlbumArtist/Album` layout, with covers and an auto-updated `.m3u8`.
 - 🛡️ **Safety rails** — dry-run by default, per-pass add/removal caps, net-loss protection, empty-snapshot guard, fail-closed on expired tokens.
 - 🗃️ **Ever-growing song archive** — every track ever seen is recorded in a local SQLite database (name, artist, album, ISRC, raw metadata, first/last seen).
+- 🧭 **Editable match history** — browse, correct, and delete every cached track match per service from the **Mappings** page, including the "no match" results that would otherwise stay unmatched forever.
 - 🐳 **Runs anywhere** — one `docker compose up -d` for the browser app, or plain CLI + cron / Task Scheduler.
 
 > [!IMPORTANT]
@@ -202,7 +205,7 @@ SongMirror will then advertise `https://music.example.com/oauth/spotify/callback
 | **Port** | The UI is published on host **8888** (the `8888:8080` mapping in `docker-compose.yml`; change the host side if it clashes). **LAN-only** — don't port-forward it to the internet; the UI has no login yet. |
 | **Persistence** | `./data` holds credentials, tokens, caches, and the song archive. Back it up to keep your setup across rebuilds. |
 | **Downloads** | Set `DOWNLOAD_DIR` (in `.env` or your shell) to your host music dir (e.g. `F:\Torrent\Music`); compose bind-mounts it to `/music`. From Docker, set `JELLYFIN_URL` to `http://host.docker.internal:8096`. |
-| **Expired sessions** | Renewable sessions recover on the next scheduled or manual pass. TIDAL web, Qobuz, and Apple Music tokens must be re-pasted on the Accounts page when rejected; no restart is needed. |
+| **Expired sessions** | Renewable sessions recover on the next scheduled or manual pass. TIDAL web-player sessions renew from the captured refresh token; Qobuz and Apple Music tokens must still be re-pasted when rejected. No restart is needed. |
 
 <div align="right">
 
@@ -268,7 +271,7 @@ On a sync's **Playlists** step, select the source service's built-in liked colle
 
 This works across Spotify **Liked Songs**, TIDAL/Qobuz/Deezer **Favorite Tracks**, Amazon Music **My Likes**, Apple Music **Favorite Songs**, and YouTube Music **Liked Music**. The same one-way, authoritative-group, and N-way reconciliation paths and safety caps apply. As with ordinary playlists, removal writes remain off by default until **Mirror removals** is enabled.
 
-TIDAL's pasted web-player Bearer handles both ordinary playlists and native **Favorite Tracks** when it carries the web player's user read/write grants (`r_usr` and `w_usr`). This path does not use a TIDAL developer app, client ID, or API key. If an older or read-only browser token lacks either grant, capture a fresh signed-in OpenAPI request in Accounts.
+TIDAL's signed-in web-player grant handles both ordinary playlists and native **Favorite Tracks** when it carries `r_usr` and `w_usr`. Capturing the complete sign-in token response gives SongMirror the refresh token as well as the short-lived Bearer, so the session can renew automatically.
 
 Some of these integrations use the providers' first-party web interfaces and can change without notice; the [feasibility assessment](docs/design/2026-09-01-liked-tracks-sync-feasibility.md) records the API and distribution constraints for each provider.
 
@@ -339,7 +342,7 @@ SongMirror refreshes credentials **just in time**, not with a separate token-ref
 | Service | Renewal behavior |
 | --- | --- |
 | **Spotify** | The default connection mints a web-player access token from the saved `sp_dc` cookie on demand and retries with a new token after a `401`; the underlying signed-in session can still be revoked. Legacy developer-app OAuth remains supported for existing installs. |
-| **TIDAL** | A pasted web-player Bearer cannot be renewed and must be captured again after expiry. It does not require a developer app, client ID, or API key. |
+| **TIDAL** | The imported web-player access token renews automatically through `auth.tidal.com` using the refresh token from the sign-in response. SongMirror keeps the existing refresh token when a response omits it and persists a rotated token when TIDAL returns one. Logout or revocation still requires a fresh capture. |
 | **Qobuz** | The pasted `X-User-Auth-Token` is used until Qobuz rejects it, then must be captured again. |
 | **Deezer** | The short-lived Pipe JWT renews automatically from the saved `refresh-token` before use and once after a `401/403`; rotated renewal state is persisted. |
 | **Amazon Music** | The web access token renews through `/pandaToken` using the captured browser user agent, referer, and allowlisted cookies. The current `POST config.json?skipToken=false` flow bootstraps device context when needed, and rotated cookies are persisted. Logout, security changes, or server-side revocation still require a fresh capture. |
@@ -357,9 +360,12 @@ That single signed-in web session handles library browsing, playlist reads and w
 
 ### TIDAL
 
-Sign in at <https://listen.tidal.com>, open DevTools → **Network**, open a playlist, and filter for `openapi.tidal.com/v2`. Copy a request's headers (or copy it as cURL) into the wizard. SongMirror keeps only the Bearer token and two-letter catalog country. That signed-in web session supports ordinary playlists and native Favorite Tracks reads, additions, and removals; no TIDAL developer app, client ID, or API key is used.
+1. Open [TIDAL's web player](https://listen.tidal.com), open DevTools → **Network**, and enable **Preserve log**.
+2. Sign out and sign back in, then filter the Network list for `oauth2/token`.
+3. Select the successful `auth.tidal.com/v1/oauth2/token` request, open **Response**, and copy its complete JSON.
+4. In SongMirror, open **Accounts → TIDAL** and paste that response. It should include both `access_token` and `refresh_token`.
 
-Only catalog metadata and the signed-in user's playlists are used; playback assets are outside this integration. Browser tokens are short-lived, so re-paste when the account reports **Expired**.
+SongMirror extracts only the access token, refresh token, client ID, scopes, expiry, and catalog country; unrelated response data is discarded. It renews just before expiry and once after an authentication rejection through `https://auth.tidal.com/v1/oauth2/token`, preserving refresh-token rotation. The older OpenAPI request-header paste remains compatible, but because it contains no refresh token it still needs to be re-pasted after expiry. Only catalog metadata and the signed-in user's playlists are used—playback assets stay outside this integration.
 
 ### Qobuz
 
@@ -445,7 +451,7 @@ Removals are destructive, so they're guarded:
 - **Dry run is the default** — nothing changes without `--execute` (or the UI's real-sync action).
 - If the source returns 0 tracks for a playlist the target shows as non-empty, removals are skipped that pass (a transient API failure can't empty a playlist).
 - **Removals are off by default** — `MAX_REMOVALS=0` holds every removal back (logged, never applied), so a licensing takedown on one platform can't cascade a deletion to the rest. Opt in per sync with the "Mirror removals" toggle (or set `MAX_REMOVALS`), and even then more pending removals than the cap in one pass → all skipped and logged.
-- More than `MAX_ADDS` pending additions → the rest continue next pass (giant one-burst backfills are what trip bot detection).
+- `MAX_ADDS` limits every timestamp-producing write, including chronology repair. If an older recovered match needs a larger suffix replay than the cap allows, SongMirror defers it rather than making it appear newest or causing a giant provider burst.
 - **Net-loss protection** — a target-side track resembling a source track that has no match on that service is held, not deleted.
 - Any provider authentication failure aborts that provider's pass immediately — no partial deletes on expired tokens.
 
@@ -465,6 +471,27 @@ Every pass also archives the metadata of every track it sees into `song_cache.db
 sqlite3 song_cache.db "SELECT name, artist, album, first_seen FROM songs ORDER BY first_seen DESC LIMIT 20"
 ```
 
+### Resolve mappings
+
+Each service keeps its own resolve cache, mapping a normalized `title|artist` key to the catalog id it matched on
+that service. A match is reused forever, and so is a **"no match"** result, which is what makes a track that failed
+to match once stay unmatched on every later pass.
+
+The **Mappings** page in the web UI exposes those caches directly, per service:
+
+- search the whole cache by title, artist, or resolved id
+- filter to entries **set by hand** (a match you chose in the transfer conflict editor) or to **no match** entries
+- correct a wrong id by pasting the right track's link, or delete a mapping so the next pass looks it up again
+- clear every "no match" entry for a service in one action, so a batch of failed lookups gets another try
+
+When a cleared miss resolves later, simply appending it would make the old song appear newest. For playlist
+destinations, SongMirror instead replays that song and the already-present newer suffix oldest-to-newest, then removes
+the older copies. Providers do not allow clients to restore the original timestamps, but this preserves their relative
+**Recently added** order. Native liked/favorite collections remain membership-only and are never replayed.
+
+Edits are refused with a clear message while a sync is running, because a pass holds the cache in memory for its
+whole duration and would overwrite them on completion.
+
 <div align="right">
 
 [![][back-to-top]](#readme-top)
@@ -483,7 +510,7 @@ songmirror/
 frontend/       # React + Vite SPA (built and served by the API in production)
 ```
 
-**Adding another service**: subclass `MirrorTarget`, implement ~8 methods, add its builder to `engine/targets`' `_REGISTRY`, and add a matching `Connector` under `services/accounts`. All reconciliation — diff, ordering, safety rails, logging, snapshot-skip — is inherited.
+**Adding another service**: subclass `MirrorTarget`, implement ~8 methods, add its builder to `engine/targets`' `_REGISTRY` and its class to `_CLASSES`, and add a matching `Connector` under `services/accounts`. All reconciliation — diff, ordering, safety rails, logging, snapshot-skip — is inherited.
 
 <div align="right">
 
@@ -494,8 +521,10 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 ## 🩺 Troubleshooting
 
 - **`Missing required environment variable`** — fill in `.env` (CLI) or connect the service in the UI.
-- **TIDAL, Qobuz, or Apple reports `Expired` / `401` / `403`** — these pasted sessions have no renewable secret; capture a fresh signed-in request or token in Accounts.
-- **TIDAL says the web-player token lacks liked-track access** — capture a fresh signed-in `openapi.tidal.com/v2` request in Accounts. Favorite Tracks needs the web session's `r_usr` and `w_usr` grants; it does not use a developer API key.
+- **TIDAL reports `Expired`** — sign out and back in at `listen.tidal.com`, then paste the complete `oauth2/token` Response JSON in Accounts. A copied OpenAPI request has only the short-lived Bearer and cannot renew.
+- **TIDAL reports HTTP 429** — this is a temporary rate limit, not an expired sign-in. SongMirror honors the provider retry delay and caches account health checks instead of repeatedly probing the API.
+- **Qobuz or Apple reports `Expired` / `401` / `403`** — these pasted sessions have no renewable secret; capture a fresh signed-in request or token in Accounts.
+- **TIDAL says the token lacks liked-track access** — capture a fresh signed-in web-player token response carrying `r_usr` and `w_usr`.
 - **Deezer renewal fails** — capture a fresh `auth.deezer.com/login/renew` request (or its `refresh-token` cookie). A current Pipe Bearer alone is only a temporary bootstrap.
 - **Amazon Music renewal fails** — capture a fresh signed-in `POST /config.json?skipToken=false` request with its complete `User-Agent`, `Referer`, and `Cookie` headers. The response JSON is optional.
 - **YouTube Music browser mode expires** — export fresh browser request headers. For the most durable unattended setup, use Data API OAuth with an in-production consent screen.

@@ -616,21 +616,21 @@ def test_track_total_reads_both_shapes():
 
 
 def test_pl_image_extraction():
-    from songmirror.services.playlists import _pl_image
+    from songmirror.services.playlists import playlist_image
 
-    assert _pl_image({"images": [{"url": "http://sp/cover.jpg"}]}) == "http://sp/cover.jpg"
-    assert _pl_image({"images": ["http://qb/cover.jpg"]}) == "http://qb/cover.jpg"
-    assert _pl_image({"image_rectangle": ["http://qb/playlist.jpg"]}) == "http://qb/playlist.jpg"
-    assert _pl_image({"picture": {"urls": ["http://dz/small.jpg", "http://dz/large.jpg"]}}) == (
+    assert playlist_image({"images": [{"url": "http://sp/cover.jpg"}]}) == "http://sp/cover.jpg"
+    assert playlist_image({"images": ["http://qb/cover.jpg"]}) == "http://qb/cover.jpg"
+    assert playlist_image({"image_rectangle": ["http://qb/playlist.jpg"]}) == "http://qb/playlist.jpg"
+    assert playlist_image({"picture": {"urls": ["http://dz/small.jpg", "http://dz/large.jpg"]}}) == (
         "http://dz/large.jpg"
     )
-    assert _pl_image({"picture_xl": "http://dz/xl.jpg"}) == "http://dz/xl.jpg"
-    assert _pl_image({"attributes": {"artwork": {"url": "http://ap/{w}x{h}bb.jpg"}}}) == "http://ap/300x300bb.jpg"
-    assert _pl_image({"thumbnails": [{"url": "a"}, {"url": "http://yt/big.jpg"}]}) == "http://yt/big.jpg"
-    assert _pl_image({"images": [None, {}, "", {"url": "http://mixed/cover.jpg"}]}) == (
+    assert playlist_image({"picture_xl": "http://dz/xl.jpg"}) == "http://dz/xl.jpg"
+    assert playlist_image({"attributes": {"artwork": {"url": "http://ap/{w}x{h}bb.jpg"}}}) == "http://ap/300x300bb.jpg"
+    assert playlist_image({"thumbnails": [{"url": "a"}, {"url": "http://yt/big.jpg"}]}) == "http://yt/big.jpg"
+    assert playlist_image({"images": [None, {}, "", {"url": "http://mixed/cover.jpg"}]}) == (
         "http://mixed/cover.jpg"
     )
-    assert _pl_image({"name": "no art"}) == ""
+    assert playlist_image({"name": "no art"}) == ""
 
 
 def test_linkstore_roundtrip(tmp_path):

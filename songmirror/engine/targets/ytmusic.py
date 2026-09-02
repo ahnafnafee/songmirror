@@ -223,12 +223,16 @@ class YTMusicTarget(MirrorTarget):
     stable_occurrence_ids = True
     favorite_tracks_name = "Liked Music"
 
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        return os.getenv("YTMUSIC_CACHE_FILE", "ytmusic_resolve_cache.json")
+
     def __init__(self, auth_file, creds):
         self._auth_file = auth_file
         self._creds = creds
         with open(auth_file) as f:
             self._tok = json.load(f)
-        self.cache_file = os.getenv("YTMUSIC_CACHE_FILE", "ytmusic_resolve_cache.json")
+        self.cache_file = self.resolve_cache_path()
         self._session = requests.Session()  # Data API (reads + writes)
         from ytmusicapi import YTMusic
         self._ytm = YTMusic()  # public, unauthenticated search for resolution (no Data API quota)
@@ -326,6 +330,30 @@ class YTMusicTarget(MirrorTarget):
         pid = self._request("POST", "playlists", params={"part": "snippet,status"}, json_body=body).json()["id"]
         polite_sleep(2.0)  # let the new playlist settle before writing to it
         return {"playlistId": pid, "title": name, "count": 0}
+
+    def fetch_playlist(self, playlist_id):
+        """A playlist by id, public ones included. `playlists?id=` reads any
+        playlist the id addresses, unlike the `mine=true` listing."""
+        try:
+            data = self._request(
+                "GET",
+                "playlists",
+                params={"part": "snippet,contentDetails", "id": str(playlist_id)},
+            ).json()
+        except Exception:
+            return None
+        rows = data.get("items") or []
+        if not rows:
+            return None
+        row = rows[0]
+        snippet = row.get("snippet") or {}
+        return {
+            "playlistId": row.get("id") or str(playlist_id),
+            "title": snippet.get("title") or "",
+            "description": snippet.get("description") or "",
+            "count": (row.get("contentDetails") or {}).get("itemCount"),
+            "thumbnails": snippet.get("thumbnails"),
+        }
 
     @staticmethod
     def playlist_page_reference(playlist_id, expected_count=None):
@@ -588,7 +616,7 @@ class YTMusicBrowserTarget(YTMusicTarget):
     accessors — only the reads/writes swap to the youtubei path."""
 
     def __init__(self, browser_auth_file):
-        self.cache_file = os.getenv("YTMUSIC_CACHE_FILE", "ytmusic_resolve_cache.json")
+        self.cache_file = self.resolve_cache_path()
         from ytmusicapi import YTMusic
         self._ytm = YTMusic()                   # public search (used by inherited resolve/_search)
         self._api = YTMusic(browser_auth_file)  # authenticated reads + writes, no Data API quota
@@ -625,6 +653,23 @@ class YTMusicBrowserTarget(YTMusicTarget):
             raise TargetAuthError(f"YouTube Music refused to create the playlist ({pid!r}).")
         polite_sleep(2.0)
         return {"playlistId": pid, "title": name, "count": 0}
+
+    def fetch_playlist(self, playlist_id):
+        """A playlist by id, public ones included. youtubei's get_playlist is not
+        limited to the signed-in library."""
+        try:
+            data = self._api.get_playlist(str(playlist_id), limit=1) or {}
+        except Exception:
+            return None
+        if not data.get("title"):
+            return None
+        return {
+            "playlistId": data.get("id") or str(playlist_id),
+            "title": data.get("title") or "",
+            "description": data.get("description") or "",
+            "count": data.get("trackCount"),
+            "thumbnails": data.get("thumbnails"),
+        }
 
     def playlist_tracks(self, playlist):
         data = _expired(lambda: self._api.get_playlist(playlist["playlistId"], limit=None),

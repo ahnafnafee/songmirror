@@ -88,19 +88,24 @@ const CONNECT_GUIDES: Record<string, ConnectGuideContent> = {
     link: { href: 'https://open.spotify.com', label: 'Open Spotify web player' },
   },
   tidal: {
-    intro: 'Use the short-lived OpenAPI token already issued to your signed-in TIDAL web player.',
+    intro: 'Import the renewable session already issued to your signed-in TIDAL web player—no developer app is needed.',
     steps: [
       <>
-        Open <GuideLink href="https://listen.tidal.com">listen.tidal.com</GuideLink>, sign in, and open dev tools{' '}
-        (<Code>F12</Code>) → <strong>Network</strong>.
+        Open <GuideLink href="https://listen.tidal.com">listen.tidal.com</GuideLink>, open dev tools (<Code>F12</Code>)
+        → <strong>Network</strong>, and enable <strong>Preserve log</strong>.
       </>,
-      <>Open one of your playlists, then filter for <Code>openapi.tidal.com/v2</Code>.</>,
       <>
-        Select a request and choose <strong>Copy → Copy request headers</strong> (or <strong>Copy as cURL</strong>).
+        Sign out of TIDAL and sign back in, then filter the Network list for <Code>oauth2/token</Code>.
       </>,
-      <>Paste the copied block below. SongMirror extracts only its Bearer token and catalog country.</>,
+      <>
+        Select the successful <Code>auth.tidal.com/v1/oauth2/token</Code> request and open its{' '}
+        <strong>Response</strong> tab.
+      </>,
+      <>Copy the complete JSON response and paste it below. It should contain both <Code>access_token</Code> and{' '}
+        <Code>refresh_token</Code>.</>,
     ],
-    note: 'No developer app or TIDAL password is stored. Re-paste a fresh request when the short-lived session expires.',
+    note: 'Treat this response like a password. SongMirror discards profile data, keeps only the access token, refresh token, client ID, scopes, and country, then automatically persists token rotation. Older OpenAPI request-header pastes still work but cannot renew.',
+    link: { href: 'https://listen.tidal.com', label: 'Open TIDAL web player' },
   },
   qobuz: {
     intro: 'Use the first-party API session from your signed-in Qobuz web player; no business API approval is needed.',
@@ -244,7 +249,7 @@ const HEADER_PASTE_SOURCES: Record<string, { headerName: string; clean?: (value:
 }
 
 const RAW_SESSION_PLACEHOLDERS: Record<string, string> = {
-  TIDAL_WEB_HEADERS: 'authorization: Bearer …\n—or paste Copy as cURL—',
+  TIDAL_WEB_HEADERS: '{\n  "access_token": "…",\n  "refresh_token": "…",\n  "expires_in": 86400,\n  "scope": "r_usr w_usr"\n}',
   QOBUZ_WEB_REQUEST: 'X-App-Id: …\nX-User-Auth-Token: …\n—or paste Copy as cURL—',
   DEEZER_WEB_HEADERS: 'authorization: Bearer …\n—or paste Copy as cURL—',
   DEEZER_REFRESH_TOKEN: 'Cookie: refresh-token=…\n—or paste the auth.deezer.com request as cURL—',

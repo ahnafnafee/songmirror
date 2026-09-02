@@ -6,10 +6,14 @@ and YouTube Music also adds/removes on Spotify. Cookie mode is complete and
 needs no developer app; OAuth remains a compatible fallback.
 """
 
+import os
+
 import spotipy
 
 from .. import archive, spotify, spotify_cookie
-from ..config import polite_sleep, spotify_write_backend
+from ..config import (
+    DEFAULT_SPOTIFY_CACHE_FILE, polite_sleep, spotify_write_backend,
+)
 from ..matching import normalize_text, romanized, score_candidate, track_key
 from .base import MirrorTarget, TargetAuthError, TargetDirectoryIncompleteError
 from .provider_utils import source_playlist_details
@@ -24,6 +28,11 @@ class SpotifyTarget(MirrorTarget):
     tag = "spotify"
     source = "spotify"
     favorite_tracks_name = "Liked Songs"
+
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        return getattr(opts, "spotify_cache_file", None) or os.getenv(
+            "SPOTIFY_CACHE_FILE", DEFAULT_SPOTIFY_CACHE_FILE)
 
     def __init__(self, sp, cache_file, sync_peer=False, songs=None):
         self._sp = sp
@@ -151,6 +160,17 @@ class SpotifyTarget(MirrorTarget):
             "remove liked track",
         )
         polite_sleep(0.3)
+
+    def fetch_playlist(self, playlist_id):
+        """A playlist by id even when the account neither owns nor follows it."""
+        if spotify_write_backend() == "cookie" or self._sp is None:
+            return spotify_cookie.playlist_metadata(str(playlist_id))
+        try:
+            playlist = spotify._retry(
+                lambda: self._sp.playlist(str(playlist_id)), "playlist")
+        except spotipy.SpotifyException:
+            return None
+        return playlist or None
 
     @staticmethod
     def playlist_page_reference(playlist_id, expected_count=None):

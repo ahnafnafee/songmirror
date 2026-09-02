@@ -87,6 +87,8 @@ export interface TargetSummary {
    * match. Unlike `held`, this excludes removals blocked for other reasons. */
   uncertain_matches?: number
   deferred: number
+  /** Existing newer tracks replayed to keep relative provider-added chronology. */
+  chronology_replayed?: number
   /** Removals held back this pass because they exceeded max_removals and the sync
    * hasn't opted into draining them — surfaced so the skip isn't silent. */
   removals_skipped: number
@@ -392,6 +394,8 @@ export interface TransferJob {
   dest: TransferEndpoint
   added: number
   deferred: number
+  /** Existing newer tracks replayed after a recovered earlier conflict. */
+  chronology_replayed?: number
   /** Hidden source relationships skipped because the provider exposes no metadata. */
   unavailable?: number
   /** Total source tracks to examine, or 0 before the source playlist has been
@@ -428,4 +432,51 @@ export interface ResolveConflictRequest {
  * running), rather than an HTTP error. */
 export interface TransferControlResponse {
   ok: boolean
+}
+
+/** POST /api/transfers/preview: what a pasted playlist link resolves to. */
+export interface TransferSourcePreview {
+  provider: string
+  playlist_id: string
+  name: string
+  description: string
+  count: number | null
+  image: string
+  external_url: string
+}
+
+/** GET /api/resolve-cache: one provider's cached-mapping counts. */
+export interface ResolveCacheProvider {
+  id: string
+  name: string
+  total: number
+  /** Mappings a person set by hand in the transfer conflict editor. */
+  manual: number
+  /** "Searched, found nothing" entries. Sticky until removed, so a track that
+   * missed once never gets searched again. */
+  unmatched: number
+}
+
+/** One cached `name|artist -> catalog id` mapping. */
+export interface ResolveCacheEntry {
+  key: string
+  name: string
+  artist: string
+  /** Empty for an unmatched entry. */
+  target_id: string
+  manual: boolean
+  /** Empty when there is no id to link to. */
+  url: string
+}
+
+export interface ResolveCachePage {
+  /** Rows matching the filter BEFORE paging, for the page counter. */
+  total: number
+  entries: ResolveCacheEntry[]
+}
+
+export type ResolveCacheKind = 'all' | 'manual' | 'unmatched'
+
+export interface ClearUnmatchedResponse {
+  removed: number
 }

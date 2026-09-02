@@ -21,7 +21,7 @@ from ..matching import (
     catalog_name, compute_diff, fuzzy_in, match_unresolved_removals,
     protect_removals, romanized,
     normalize_canonical_id, normalize_isrc, same_catalog_recording,
-    spotify_track_keys, track_addition_order_key, track_key,
+    spotify_track_keys, track_addition_order_key, track_key, tracks_oldest_first,
 )
 
 # A provider reading fewer than this fraction of the known baseline is treated
@@ -188,6 +188,27 @@ class MirrorTarget:
         return next((pl for pl in self.browse_playlists()
                      if str(self.playlist_id(pl)) == wanted), None)
 
+    def fetch_playlist(self, playlist_id):
+        """A playlist by id whether or not it is in this account's library.
+
+        The pasted-link transfer source. Returns the provider-native playlist
+        dict (the shape `playlist_page_reference` builds, carrying the real
+        name, description and count), or None when the provider cannot read a
+        playlist the account does not own. Callers try `find_playlist` first,
+        so this only ever runs for an id the library does not have.
+        """
+        return None
+
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        """Where this target's resolution cache lives, or None when it has none.
+
+        The single authority for the path: each target's own __init__ reads it
+        from here, so the resolve-mappings UI opens exactly the file the engine
+        writes instead of restating the environment lookup.
+        """
+        return None
+
     def browse_playlists(self):
         """All library playlists for the browse / transfer pickers, as a flat list
         (NOT name-deduped like list_playlists). Each dict may carry `_owned`
@@ -237,6 +258,110 @@ class MirrorTarget:
         return the requested ids that were actually written, in order.
         """
         raise NotImplementedError
+
+    def add_chronology_copies(self, playlist, target_ids):
+        """Append temporary duplicate-capable copies for a chronology repair.
+
+        Most playlist APIs allow duplicates by default. Providers whose normal
+        add path deliberately suppresses them override this small seam while the
+        reconciliation engine remains unaware of provider request details.
+        """
+        return self.add(playlist, target_ids)
+
+    def replay_chronology(self, playlist, ordered_entries):
+        """Repair relative date-added order for one recovered playlist suffix.
+
+        ``ordered_entries`` is oldest-first ``(target_id, original)`` data, where
+        ``original`` is ``(read_position, raw_track)`` for an already-present
+        entry and ``None`` for a newly resolved track. Duplicate copies are
+        staged before old entries are retired, so a failed add never removes the
+        playlist's only copy. The actual historical timestamps cannot be set by
+        provider APIs; replay preserves their relative order instead.
+        """
+        ordered_entries = list(ordered_entries)
+        before = list(self.playlist_tracks(playlist))
+        try:
+            result = self.add_chronology_copies(
+                playlist, [target_id for target_id, _original in ordered_entries]
+            )
+            _confirmed, rejected = _split_add_results(
+                ordered_entries, result, lambda item: item[0]
+            )
+            if rejected:
+                labels = ", ".join(str(target_id) for target_id, _original in rejected[:3])
+                raise RuntimeError(
+                    "provider rejected part of an ordered chronology replay"
+                    + (f" ({labels})" if labels else "")
+                )
+        except Exception:
+            # An adapter may have appended a prefix before surfacing a transient
+            # failure. Best-effort rollback keeps the next pass from mistaking
+            # that partial prefix for a completed repair.
+            try:
+                staged = self._chronology_entries_added_since(playlist, before)
+                if staged:
+                    rollback_playlist = dict(playlist)
+                    rollback_playlist.pop("snapshot_id", None)
+                    self.remove_occurrences(rollback_playlist, staged)
+            except Exception as rollback_error:
+                log_warn(
+                    f"{self.name}: couldn't roll back an incomplete chronology replay "
+                    f"({rollback_error!r}); the next sync will inspect the playlist again",
+                    tag=self.tag,
+                )
+            raise
+
+        originals = [original for _target_id, original in ordered_entries if original is not None]
+        if originals:
+            # Spotify positions remain valid after an append, but its pre-add
+            # snapshot token does not. Other adapters simply ignore this field.
+            removal_playlist = dict(playlist)
+            removal_playlist.pop("snapshot_id", None)
+            self.retire_chronology_originals(removal_playlist, originals)
+
+    def retire_chronology_originals(self, playlist, positioned):
+        """Retire old suffix entries after every staged copy was confirmed."""
+        self.remove_occurrences(playlist, positioned)
+
+    def chronology_replay_write_cost(self, ordered_entries):
+        """Timestamp-producing writes used by ``replay_chronology``.
+
+        Entry-addressable providers only append the staged suffix. A provider
+        whose remove call deletes every copy of a song overrides this because
+        its ``remove_occurrences`` implementation must append the keeper again.
+        """
+        return len(ordered_entries)
+
+    def _chronology_entries_added_since(self, playlist, before):
+        """Locate copies appended by a failed staging pass for rollback."""
+        after = list(self.playlist_tracks(playlist))
+        if self.stable_occurrence_ids:
+            old = Counter(
+                occurrence_id for track in before
+                if (occurrence_id := self.occurrence_id(track)) is not None
+            )
+            staged = []
+            for position, track in enumerate(after):
+                occurrence_id = self.occurrence_id(track)
+                if occurrence_id is not None and old[occurrence_id] > 0:
+                    old[occurrence_id] -= 1
+                else:
+                    staged.append((position, track))
+            return staged
+
+        old = Counter(
+            str(track_id) for track in before
+            if (track_id := self.track_id(track)) is not None
+        )
+        staged = []
+        for position, track in enumerate(after):
+            track_id = self.track_id(track)
+            key = str(track_id) if track_id is not None else None
+            if key is not None and old[key] > 0:
+                old[key] -= 1
+            else:
+                staged.append((position, track))
+        return staged
 
     def added_id(self, target_id):
         """Catalog id actually written for a resolved id.
@@ -299,6 +424,97 @@ def _split_add_results(additions, result, id_at):
         else:
             rejected.append(addition)
     return confirmed, rejected
+
+
+def _track_match_keys(track):
+    """Exact title/artist keys for source or destination-shaped track rows."""
+    artists = track.get("artists") or ([track["artist"]] if track.get("artist") else [""])
+    keys = {track_key(track.get("name", ""), artist) for artist in artists}
+    keys.add(track_key(track.get("name", ""), " ".join(artists)))
+    return keys
+
+
+def _ordered_current_matches(source_tracks, target_tracks, expected_by_source, target_id_of,
+                             *, source_identity=None):
+    """Match each ordered source row to the physical destination entry satisfying it.
+
+    This deliberately uses the same hard-id/exact-key evidence as ``compute_diff``.
+    The returned positions address the read-time destination snapshot and remain
+    valid while replacement copies are appended to its end.
+    """
+    by_id, by_key = {}, {}
+    for position, target_track in enumerate(target_tracks):
+        target_id = target_id_of(target_track)
+        if target_id is not None:
+            by_id.setdefault(str(target_id), []).append(position)
+        for key in _track_match_keys(target_track):
+            by_key.setdefault(key, []).append(position)
+
+    unused = set(range(len(target_tracks)))
+    matches = {}
+    for source_track in source_tracks:
+        candidates = []
+        identity = (
+            source_identity(source_track)
+            if source_identity is not None
+            else source_track.get("id")
+        )
+        for expected_id in expected_by_source.get(identity, set()):
+            candidates.extend(by_id.get(str(expected_id), ()))
+        for key in _track_match_keys(source_track):
+            candidates.extend(by_key.get(key, ()))
+        position = next((candidate for candidate in sorted(set(candidates)) if candidate in unused), None)
+        if position is None:
+            continue
+        unused.remove(position)
+        raw = target_tracks[position]
+        matches[id(source_track)] = (target_id_of(raw), (position, raw))
+    return matches
+
+
+def _chronology_replay_tail(ordered_keys, current_by_key, additions_by_key):
+    """Oldest-first suffix to replay when a new row predates a current row."""
+    rows = []
+    for key in ordered_keys:
+        if key in additions_by_key:
+            rows.append((additions_by_key[key], None))
+        elif key in current_by_key:
+            rows.append(current_by_key[key])
+
+    first_new = next((index for index, (_target_id, original) in enumerate(rows)
+                      if original is None), None)
+    if first_new is None or not any(original is not None for _target_id, original in rows[first_new + 1:]):
+        return []
+    return rows[first_new:]
+
+
+def _fit_chronology_writes(ordered_keys, current_by_key, additions, addition_key,
+                           max_writes, *, addition_target_id=lambda item: item[0],
+                           replay_write_cost=len, can_replay=True):
+    """Fit new membership plus any required chronology suffix under one write cap."""
+    additions = list(additions)
+    if not can_replay:
+        selected = additions[:max(0, max_writes)]
+        return selected, [], len(additions) - len(selected), len(additions)
+
+    full_by_key = {addition_key(item): addition_target_id(item) for item in additions}
+    full_replay = _chronology_replay_tail(ordered_keys, current_by_key, full_by_key)
+    full_cost = replay_write_cost(full_replay) if full_replay else len(additions)
+
+    selected = additions[:max(0, max_writes)]
+    replay = []
+    while selected:
+        selected_by_key = {
+            addition_key(item): addition_target_id(item) for item in selected
+        }
+        replay = _chronology_replay_tail(ordered_keys, current_by_key, selected_by_key)
+        cost = replay_write_cost(replay) if replay else len(selected)
+        if cost <= max_writes and all(target_id is not None for target_id, _original in replay):
+            break
+        selected.pop()
+    if not selected:
+        replay = []
+    return selected, replay, len(additions) - len(selected), full_cost
 
 
 def held_removals(target_name, playlist, tracks, max_removals, reason=None, *,
@@ -413,14 +629,22 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
         songs, source_key, target, sp_tracks, links)
     links = {**links, **recovered_links}  # fresh conservative archive evidence repairs stale links
     target.prefetch(sp_tracks, cache)
+    expected_by_source = {
+        source_id: set(target_ids)
+        for source_id, target_ids in target.expected_ids(sp_tracks, links, cache).items()
+    }
     to_add, to_remove = compute_diff(
-        sp_tracks, tgt_tracks, target.expected_ids(sp_tracks, links, cache), target.track_id
+        sp_tracks, tgt_tracks, expected_by_source, target.track_id
     )
     if to_add:
         log_note(f"resolving {len(to_add)} new track(s) on {target.name}...", tag=tag)
 
     # Resolve additions to target ids, preserving the oldest-first order.
-    present = {target.track_id(t) for t in tgt_tracks if target.track_id(t)}
+    present = {
+        str(target_id)
+        for track in tgt_tracks
+        if (target_id := target.track_id(track)) is not None
+    }
     additions, not_found, new_links, methods = [], [], {}, {}
     rejected_link_ids = set()
     stopped_early = False
@@ -464,21 +688,75 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
             continue
         if track.get("id"):
             new_links[track["id"]] = tid
-        if tid not in present:
+            # A resolver can prove that a source row is already present under a
+            # destination id even when their displayed metadata differs. Carry
+            # that same-pass evidence into both removal protection and the
+            # chronology snapshot; otherwise the present row is omitted from a
+            # recovered suffix and can wind up older than the repaired gap.
+            expected_by_source.setdefault(track["id"], set()).add(tid)
+        if str(tid) not in present:
             method = method or "search"
             additions.append((tid, label, method, track))
-            present.add(tid)
+            present.add(str(tid))
             methods[method] = methods.get(method, 0) + 1
     # A provider miss can be provisional (catalog throttling, regional indexing,
     # or a temporarily stale search result). Do not mark the source snapshot
     # complete while anything is unresolved; a later scheduled pass must get a
     # chance to fill it even when Spotify itself has not changed.
     guard = stopped_early or bool(not_found)
-    if len(additions) > max_adds:
-        cap_deferred = len(additions) - max_adds
+    # Re-evaluate the destructive side with ids learned while resolving. The
+    # original diff intentionally knew only durable/cache evidence, so without
+    # this pass an existing metadata-drifted row could still be removed after
+    # its identity had just been proven above.
+    _unused_additions, to_remove = compute_diff(
+        sp_tracks, tgt_tracks, expected_by_source, target.track_id
+    )
+    ordered_source = tracks_oldest_first(sp_tracks)
+    current_by_source = _ordered_current_matches(
+        ordered_source, tgt_tracks, expected_by_source, target.track_id
+    )
+    favorite_check = getattr(target, "is_favorite_tracks_resource", None)
+    is_favorite_resource = (
+        favorite_check(tgt_playlist) if favorite_check is not None
+        else tgt_playlist.get("_kind") == "liked_tracks"
+    )
+    can_replay = callable(getattr(target, "replay_chronology", None)) and not is_favorite_resource
+    replay_write_cost = getattr(target, "chronology_replay_write_cost", len)
+    additions, chronology_replay, cap_deferred, full_write_cost = _fit_chronology_writes(
+        [id(track) for track in ordered_source],
+        current_by_source,
+        additions,
+        lambda item: id(item[3]),
+        max_adds,
+        replay_write_cost=replay_write_cost,
+        can_replay=can_replay,
+    )
+    chronology_replayed = sum(1 for _target_id, original in chronology_replay
+                              if original is not None)
+    if cap_deferred:
         deferred += cap_deferred
-        log_warn(f"{len(additions)} additions exceed --max-adds={max_adds}; deferring {cap_deferred} to next pass", tag=tag)
-        additions, guard = additions[:max_adds], True
+        guard = True
+        if full_write_cost > max_adds and can_replay:
+            log_warn(
+                f"preserving Recently Added order would require {full_write_cost} ordered writes; "
+                f"--max-adds={max_adds}, deferring {cap_deferred} addition(s)",
+                tag=tag,
+            )
+        else:
+            log_warn(
+                f"{len(additions) + cap_deferred} additions exceed --max-adds={max_adds}; "
+                f"deferring {cap_deferred} to next pass",
+                tag=tag,
+            )
+    if chronology_replay:
+        log_note(
+            f"replaying {chronology_replayed} newer track(s) after {len(additions)} recovered "
+            "addition(s) to preserve Recently Added order",
+            tag=tag,
+        )
+    methods = {}
+    for _tid, _label, method, _track in additions:
+        methods[method] = methods.get(method, 0) + 1
 
     removals, uncertain_matches = match_unresolved_removals(to_remove, not_found)
     held = [existing for existing, _unresolved in uncertain_matches]
@@ -512,13 +790,16 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
                     songs, target.source, playlist_id
                 )
         if additions:
-            result = _resource_call(
-                target,
-                "resource_add",
-                "add",
-                tgt_playlist,
-                [tid for tid, _, _, _ in additions],
-            )
+            if chronology_replay:
+                result = target.replay_chronology(tgt_playlist, chronology_replay)
+            else:
+                result = _resource_call(
+                    target,
+                    "resource_add",
+                    "add",
+                    tgt_playlist,
+                    [tid for tid, _, _, _ in additions],
+                )
             additions, rejected = _split_add_results(additions, result, lambda item: item[0])
             if rejected:
                 rejected_tracks = [track for _tid, _label, _method, track in rejected]
@@ -600,6 +881,7 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
         "clean": execute and not guard, "added": len(additions), "removed": len(removals),
         "missing": len(not_found), "held": len(held), "deferred": deferred,
         "uncertain_matches": len(uncertain_matches),
+        "chronology_replayed": chronology_replayed,
         "removals_skipped": removals_skipped, "held_removals": held_back,
         "change_diagnostics": change_diagnostics,
         "target_count": len(tgt_tracks) + len(additions) - len(removals),
@@ -1174,7 +1456,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     authority_bootstrap = authorities is not None and bool(authorities - initialized)
     stats = {"clean": execute and not collapsed and not awaiting_confirmation and not authority_bootstrap,
              "added": 0, "removed": 0, "missing": 0,
-             "held": 0, "uncertain_matches": 0,
+             "held": 0, "uncertain_matches": 0, "chronology_replayed": 0,
              "deferred": 0, "removals_skipped": 0, "held_removals": [],
              "identity_changes": identity_changes,
              "unconfirmed_absences": awaiting_confirmation,
@@ -1251,6 +1533,8 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
         cache = caches[p.source]
         originally_present = set(present[p.source])
         queued_by_tid, queued_by_key = {}, {}
+        current_candidates_by_cid = {}
+        chronology_collision = False
         protected_remove_ids = set()   # current entries that explicitly satisfy a desired add
         add_blockers = set()
 
@@ -1291,6 +1575,17 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             )) if norm_keys else set()
             if current_key_matches:
                 protected_remove_ids |= current_key_matches
+                current_candidates_by_cid[cid] = [
+                    (
+                        p.track_id(current_norm["_raw"]),
+                        (
+                            current_norm.get("_playlist_position", 0),
+                            current_norm["_raw"],
+                        ),
+                    )
+                    for current_cid, current_norm in per_entry[p.source]
+                    if alias.get(current_cid, current_cid) in current_key_matches
+                ]
                 continue  # song already on the provider under a different id — no dupe, and no wasted search
             queued_key_matches = [item for match_key in norm_keys
                                   for item in queued_by_key.get(match_key, [])]
@@ -1302,6 +1597,16 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                        if same_catalog_recording(norm, candidate)]
             if matches:
                 protected_remove_ids |= {current_cid for current_cid, _ in matches if current_cid}
+                current_candidates_by_cid[cid] = [
+                    (
+                        p.track_id(candidate["_raw"]),
+                        (
+                            candidate.get("_playlist_position", 0),
+                            candidate["_raw"],
+                        ),
+                    )
+                    for _current_cid, candidate in matches
+                ]
                 continue  # same audio under a remaster/clean/release-decorated catalog entry
             try:
                 tid, method = p.resolve(norm, cache)
@@ -1330,9 +1635,26 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 protected_remove_ids |= current_cids
                 current_norms = [canon[p.source][current_cid] for current_cid in current_cids
                                  if current_cid in canon[p.source]]
-                if not any(current_cid == cid for current_cid in current_cids) and not any(
-                        same_catalog_recording(norm, current_norm) for current_norm in current_norms):
+                equivalent = any(current_cid == cid for current_cid in current_cids) or any(
+                    same_catalog_recording(norm, current_norm) for current_norm in current_norms
+                )
+                if not equivalent:
                     add_blockers.add("a resolved addition collided with a different current track")
+                    chronology_collision = True
+                else:
+                    current_candidates_by_cid[cid] = [
+                        (
+                            tid,
+                            (
+                                current_norm.get("_playlist_position", 0),
+                                current_norm["_raw"],
+                            ),
+                        )
+                        for _current_cid, current_norm in per_entry[p.source]
+                        if p.track_id(current_norm["_raw"]) == tid
+                    ]
+                    if norm["_source"] == "spotify" and norm["_raw"].get("id"):
+                        new_links[p.source][norm["_raw"]["id"]] = tid
                 continue  # resolved to a track already present (belt-and-suspenders with the key guard)
             if tid in queued_by_tid:
                 queued_cid, queued_norm = queued_by_tid[tid]
@@ -1345,21 +1667,114 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             present_recordings[p.source].setdefault(catalog_name(norm["name"]), []).append((None, norm))
             additions.append((cid, tid, method or "search", norm))
 
-        if len(additions) > max_adds:
-            cap_deferred = len(additions) - max_adds
-            deferred += cap_deferred
-            log_warn(f"{p.name}/{name}: {len(additions)} additions exceed --max-adds={max_adds}; "
-                     f"deferring {cap_deferred}", tag=p.tag)
-            additions = additions[:max_adds]
-            add_blockers.add("replacement additions exceeded the add cap")
-        if execute and additions:
-            result = _resource_call(
-                p,
-                "resource_add",
-                "add",
-                playlists[p.source],
-                [target_id for _cid, target_id, _method, _norm in additions],
+        ordered_desired = sorted(
+            desired,
+            key=lambda cid: (
+                addition_order.get(
+                    cid,
+                    track_addition_order_key(
+                        repr_.get(cid, {}),
+                        source_rank=len(peers),
+                        playlist_position=repr_.get(cid, {}).get("_playlist_position", 0),
+                    ),
+                ),
+                cid,
+            ),
+        )
+        current_by_cid = {}
+        for current_cid, current_norm in per_entry[p.source]:
+            current_cid = alias.get(current_cid, current_cid)
+            if current_cid not in desired or current_cid in current_by_cid:
+                continue
+            current_by_cid[current_cid] = (
+                p.track_id(current_norm["_raw"]),
+                (current_norm.get("_playlist_position", 0), current_norm["_raw"]),
             )
+        claimed_positions = {
+            original[0]
+            for _target_id, original in current_by_cid.values()
+        }
+        for cid, candidates in current_candidates_by_cid.items():
+            if cid in current_by_cid:
+                continue
+            candidate = next(
+                (item for item in candidates if item[1][0] not in claimed_positions),
+                None,
+            )
+            if candidate is not None:
+                current_by_cid[cid] = candidate
+                claimed_positions.add(candidate[1][0])
+            else:
+                chronology_collision = True
+                add_blockers.add("one current occurrence matched multiple desired tracks")
+        favorite_check = getattr(p, "is_favorite_tracks_resource", None)
+        resource = playlists[p.source]
+        is_favorite_resource = (
+            favorite_check(resource) if favorite_check is not None
+            else resource.get("_kind") == "liked_tracks"
+        )
+        can_replay = callable(getattr(p, "replay_chronology", None)) and not is_favorite_resource
+        replay_write_cost = getattr(p, "chronology_replay_write_cost", len)
+        if chronology_collision and additions:
+            # A provider returned an id belonging to a demonstrably different
+            # current row. Its place in the desired chronology is ambiguous, so
+            # appending around it would recreate the ordering bug this repair is
+            # designed to prevent. Hold the batch for manual/cache correction.
+            cap_deferred = len(additions)
+            deferred += cap_deferred
+            full_write_cost = len(additions)
+            additions, chronology_replay = [], []
+            log_warn(
+                f"{p.name}/{name}: deferring {cap_deferred} addition(s) because a resolved "
+                "catalog id collides with a different current track",
+                tag=p.tag,
+            )
+        else:
+            additions, chronology_replay, cap_deferred, full_write_cost = _fit_chronology_writes(
+                ordered_desired,
+                current_by_cid,
+                additions,
+                lambda item: item[0],
+                max_adds,
+                addition_target_id=lambda item: item[1],
+                replay_write_cost=replay_write_cost,
+                can_replay=can_replay,
+            )
+        chronology_replayed = sum(1 for _target_id, original in chronology_replay
+                                  if original is not None)
+        if cap_deferred and not chronology_collision:
+            deferred += cap_deferred
+            if full_write_cost > max_adds and can_replay:
+                log_warn(
+                    f"{p.name}/{name}: preserving Recently Added order would require "
+                    f"{full_write_cost} ordered writes; --max-adds={max_adds}, "
+                    f"deferring {cap_deferred} addition(s)",
+                    tag=p.tag,
+                )
+            else:
+                log_warn(
+                    f"{p.name}/{name}: {len(additions) + cap_deferred} additions exceed "
+                    f"--max-adds={max_adds}; deferring {cap_deferred}",
+                    tag=p.tag,
+                )
+            add_blockers.add("replacement additions exceeded the ordered write cap")
+        if chronology_replay:
+            log_note(
+                f"{p.name}/{name}: replaying {chronology_replayed} newer track(s) after "
+                f"{len(additions)} recovered addition(s) to preserve Recently Added order",
+                tag=p.tag,
+            )
+        if execute and additions:
+            if chronology_replay:
+                result = p.replay_chronology(playlists[p.source], chronology_replay)
+            else:
+                result = _resource_call(
+                    p,
+                    "resource_add",
+                    "add",
+                    playlists[p.source],
+                    [target_id for _cid, target_id, _method, _norm in additions],
+                )
             additions, rejected = _split_add_results(additions, result, lambda item: item[1])
             if rejected:
                 rejected_norms = [norm for _cid, _tid, _method, norm in rejected]
@@ -1529,6 +1944,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
         new_state[p.source] = cur[p.source] - removed_cids
 
         stats["added"] += len(additions)
+        stats["chronology_replayed"] += chronology_replayed
         stats["removed"] += len(safe)
         stats["missing"] += len(not_found) + unrepresented
         stats["held"] += len(held)
