@@ -14,7 +14,7 @@ import { ConnectWizardModal } from './ConnectWizardModal'
 
 const SERVICE_BLURBS: Record<string, string> = {
   spotify: 'Syncs playlists through Spotify OAuth as either a source or destination.',
-  tidal: 'Syncs playlists using the OpenAPI session from your signed-in TIDAL web player.',
+  tidal: 'Syncs playlists using an auto-renewing session from your signed-in TIDAL web player.',
   qobuz: 'Syncs playlists using the minimized API context from your signed-in Qobuz web player.',
   deezer: 'Syncs playlists using an auto-renewing session from your signed-in Deezer web player.',
   amazon: 'Syncs playlists using an auto-renewing session from your signed-in Amazon Music web player.',

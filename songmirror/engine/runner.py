@@ -85,7 +85,7 @@ def save_cache(cache_file, cache):
 
 
 _SUMMARY_KEYS = ("added", "removed", "missing", "held", "uncertain_matches",
-                 "deferred", "removals_skipped",
+                 "deferred", "removals_skipped", "chronology_replayed",
                  "created", "skipped", "failed", "isrc_fallback", "identity_changes",
                  "unconfirmed_absences", "confirmed_absences", "read_anomalies")
 
@@ -170,7 +170,7 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
     src_key = source.source
     agg = {"name": target.name, "pairs": 0, "added": 0, "removed": 0, "missing": 0,
            "held": 0, "uncertain_matches": 0, "deferred": 0, "removals_skipped": 0,
-           "skipped": 0, "created": 0, "failed": 0,
+           "chronology_replayed": 0, "skipped": 0, "created": 0, "failed": 0,
            "held_removals": [], "change_diagnostics": [], "failures": []}
     cache = load_cache(target.cache_file)
     try:
@@ -250,8 +250,9 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
                     source_key=src_key, source_name=source.name, name=name,
                 )
                 agg["pairs"] += 1
-                for k in ("added", "removed", "missing", "held", "deferred", "removals_skipped"):
-                    agg[k] += res[k]
+                for k in ("added", "removed", "missing", "held", "deferred",
+                          "removals_skipped", "chronology_replayed"):
+                    agg[k] += res.get(k, 0)
                 agg["uncertain_matches"] += res.get("uncertain_matches", 0)
                 _collect_held(agg["held_removals"], res.get("held_removals", []))
                 _collect_diagnostics(
@@ -341,9 +342,9 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
                         agg["pairs"] += 1
                         for key in (
                             "added", "removed", "missing", "held", "deferred",
-                            "removals_skipped",
+                            "removals_skipped", "chronology_replayed",
                         ):
-                            agg[key] += result[key]
+                            agg[key] += result.get(key, 0)
                         agg["uncertain_matches"] += result.get("uncertain_matches", 0)
                         _collect_held(agg["held_removals"], result.get("held_removals", []))
                         _collect_diagnostics(
@@ -733,7 +734,8 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
     caches = {p.source: load_cache(p.cache_file) for p in peers}
     total = {"added": 0, "removed": 0, "missing": 0, "held": 0,
              "uncertain_matches": 0, "deferred": 0,
-             "removals_skipped": 0, "failed": 0, "identity_changes": 0,
+             "removals_skipped": 0, "chronology_replayed": 0,
+             "failed": 0, "identity_changes": 0,
              "unconfirmed_absences": 0, "confirmed_absences": 0, "read_anomalies": 0}
     # Both lists stay out of `total` so the scalar accumulate loop stays scalar.
     held_detail = []

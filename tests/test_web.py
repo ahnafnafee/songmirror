@@ -88,10 +88,19 @@ def test_accounts_list_all_unconfigured(tmp_path):
 
 def test_settings_roundtrip_masks_secrets(tmp_path):
     with TestClient(_app(tmp_path)) as client:
-        client.put("/api/settings", json={"SYNC_INTERVAL": "30m", "SPOTIFY_CLIENT_SECRET": "shh"})
+        client.put("/api/settings", json={
+            "SYNC_INTERVAL": "30m",
+            "SPOTIFY_CLIENT_SECRET": "shh",
+            # Removed connector fields remain sensitive for users upgrading
+            # from the old captured TIDAL web-session flow.
+            "TIDAL_WEB_HEADERS": "old-bearer",
+            "TIDAL_RENEWAL_REQUEST": "old-refresh",
+        })
         got = client.get("/api/settings").json()
         assert got["SYNC_INTERVAL"] == "30m"
         assert "SPOTIFY_CLIENT_SECRET" not in got  # secret never echoed back
+        assert "TIDAL_WEB_HEADERS" not in got
+        assert "TIDAL_RENEWAL_REQUEST" not in got
 
 
 def test_settings_falls_back_to_env(tmp_path, monkeypatch):
@@ -621,6 +630,28 @@ def test_sse_payload_format():
     import json
     payload = json.loads(line[len("data: "):].strip())
     assert payload["kind"] == "add" and payload["tag"] == "apple"
+
+
+def test_oauth_callback_access_log_redacts_credentials():
+    import logging
+
+    from songmirror.web.access_log import OAuthCallbackAccessFilter
+
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        __file__,
+        1,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:1234", "GET", "/oauth/tidal/callback?code=secret-code&state=secret-state", "1.1", 200),
+        None,
+    )
+
+    assert OAuthCallbackAccessFilter().filter(record) is True
+    rendered = record.getMessage()
+    assert "/oauth/tidal/callback?[redacted]" in rendered
+    assert "secret-code" not in rendered
+    assert "secret-state" not in rendered
 
 
 def test_transfer_preview_returns_the_pasted_links_playlist(tmp_path):

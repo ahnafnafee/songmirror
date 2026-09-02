@@ -356,14 +356,24 @@ class QobuzTarget(MirrorTarget):
         polite_sleep(0.2)
         return best, "search"
 
-    def add(self, playlist, target_ids):
+    def _add(self, playlist, target_ids, *, allow_duplicates):
         for target_id in target_ids:
             self._request(
                 "POST",
                 "playlist/addTracks",
-                params={"playlist_id": playlist["id"], "track_ids": str(target_id), "no_duplicate": "true"},
+                params={
+                    "playlist_id": playlist["id"],
+                    "track_ids": str(target_id),
+                    "no_duplicate": "false" if allow_duplicates else "true",
+                },
             )
             polite_sleep(0.3)
+
+    def add(self, playlist, target_ids):
+        return self._add(playlist, target_ids, allow_duplicates=False)
+
+    def add_chronology_copies(self, playlist, target_ids):
+        return self._add(playlist, target_ids, allow_duplicates=True)
 
     def remove(self, playlist, track):
         entry_id = track.get("relationship_id")

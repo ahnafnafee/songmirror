@@ -278,6 +278,108 @@ def test_transfer_orders_mixed_timestamp_formats_chronologically():
     assert added == ["dest-old", "dest-new"]
 
 
+def test_resumed_transfer_replays_newer_tracks_after_a_resolved_conflict():
+    class Source:
+        source = "spotify"
+
+        def playlist_tracks(self, playlist):
+            return [
+                {"id": value.lower(), "name": value, "artists": ["Artist"],
+                 "duration_ms": 1, "added_at": f"202{index}-01-01T00:00:00Z"}
+                for index, value in enumerate(("A", "B", "C", "D"))
+            ]
+
+    class Destination:
+        source = "apple"
+
+        def __init__(self):
+            self.replayed = []
+
+        def playlist_tracks(self, playlist):
+            return [
+                {"id": value.lower(), "name": value, "artist": "Artist", "duration_ms": 1}
+                for value in ("A", "C", "D")
+            ]
+
+        def resolve(self, track, cache):
+            return ("b", "manual") if track["name"] == "B" else (None, None)
+
+        def track_id(self, track):
+            return track["id"]
+
+        def replay_chronology(self, playlist, ordered_entries):
+            self.replayed.append([
+                (target_id, None if original is None else original[0])
+                for target_id, original in ordered_entries
+            ])
+
+        def add(self, playlist, ids):
+            raise AssertionError("the resumed gap must use chronology repair")
+
+    destination = Destination()
+    result = transfer(
+        Source(), destination, {"id": "source"}, {"id": "destination"},
+        {"search": {}, "isrc": {}, "dirty": False},
+        execute=True, max_adds=200,
+    )
+
+    assert destination.replayed == [[("b", None), ("c", 1), ("d", 2)]]
+    assert result["added"] == 1
+    assert result["chronology_replayed"] == 2
+
+
+def test_transfer_replay_uses_a_resolved_existing_id_despite_metadata_drift():
+    class Source:
+        source = "spotify"
+
+        def playlist_tracks(self, playlist):
+            return [
+                {"id": key, "name": name, "artists": ["Artist"],
+                 "duration_ms": 1, "added_at": f"202{index}-01-01T00:00:00Z"}
+                for index, (key, name) in enumerate((
+                    ("a", "A"), ("b", "B"), ("c", "The Middle"), ("d", "D")
+                ))
+            ]
+
+    class Destination:
+        source = "apple"
+
+        def __init__(self):
+            self.replayed = []
+
+        def playlist_tracks(self, playlist):
+            return [
+                {"id": key, "name": name, "artist": "Artist", "duration_ms": 1}
+                for key, name in (("a", "A"), ("c", "Middle"), ("d", "D"))
+            ]
+
+        def resolve(self, track, cache):
+            return {"B": "b", "The Middle": "c"}.get(track["name"]), "search"
+
+        def track_id(self, track):
+            return track["id"]
+
+        def replay_chronology(self, playlist, ordered_entries):
+            self.replayed.append([
+                (target_id, None if original is None else original[0])
+                for target_id, original in ordered_entries
+            ])
+
+        def add(self, playlist, ids):
+            raise AssertionError("the resolved existing id must not be added as a duplicate")
+
+    destination = Destination()
+    result = transfer(
+        Source(), destination, {"id": "source"}, {"id": "destination"},
+        {"search": {}, "isrc": {}, "dirty": False},
+        execute=True, max_adds=200,
+    )
+
+    assert destination.replayed == [[("b", None), ("c", 1), ("d", 2)]]
+    assert result["added"] == 1
+    assert result["chronology_replayed"] == 2
+
+
 def test_transfer_dry_run_adds_nothing():
     added = []
     res = transfer(_Src(), _dst_factory(added), {"id": "s"}, {"id": "d"},

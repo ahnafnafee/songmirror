@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LuExternalLink } from 'react-icons/lu'
+import { LuCircleHelp, LuExternalLink } from 'react-icons/lu'
 
 import { api, errorMessage } from '@/api'
 import { cn } from '@/lib/cn'
@@ -7,6 +7,7 @@ import type { ResolveCacheEntry } from '@/types'
 
 import { Button } from '../ui/Button'
 import { TextField } from '../ui/TextField'
+import { Tooltip } from '../ui/Tooltip'
 
 interface MappingRowProps {
   provider: string
@@ -42,21 +43,38 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
 
   return (
     <li className={cn('flex flex-col gap-3 p-4 sm:px-6', !entry.target_id && 'bg-surface-2')}>
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Full width on its own line below `sm`, where sharing the row with the
-            badges leaves the title only a few characters. */}
-        <div className="min-w-0 flex-1 basis-full sm:basis-0">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        {/* Phone rows have three deliberate rails: identity, mapping state,
+            and touch actions. Wider rows collapse those rails back together. */}
+        <div className="w-full min-w-0 sm:w-auto sm:flex-1 sm:basis-0">
           <p className="truncate text-sm font-semibold text-text">{entry.name || '(no title)'}</p>
           <p className="truncate text-xs text-text-3">{entry.artist || '(no artist)'}</p>
         </div>
 
         {/* Fixed-width status column so every row's id chip starts on the same
             line, whatever the id's length or whether the row is unmatched. */}
-        <div className="flex shrink-0 items-center justify-end gap-1.5 sm:min-w-[184px]">
+        <div className="flex shrink-0 items-center justify-start gap-1.5 sm:min-w-[184px] sm:justify-end">
           {entry.manual && (
-            <span className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-full bg-accent-soft px-2.5 text-xs font-semibold text-accent">
-              set by hand
-            </span>
+            <Tooltip
+              content={
+                <>
+                  <span className="font-semibold text-text">Set by hand.</span>{' '}
+                  You supplied this mapping, so SongMirror uses this exact track instead of searching
+                  until you edit or delete it.
+                </>
+              }
+            >
+              <button
+                type="button"
+                aria-label="About hand-set mappings"
+                className="inline-flex h-11 shrink-0 cursor-help items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:h-6"
+              >
+                <span className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full bg-accent-soft px-2.5 text-xs font-semibold text-accent">
+                  set by hand
+                  <LuCircleHelp className="size-3" aria-hidden="true" />
+                </span>
+              </button>
+            </Tooltip>
           )}
           {entry.target_id ? (
             <>
@@ -83,15 +101,32 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
               </span>
             </>
           ) : (
-            <span className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-full bg-warning-soft px-2.5 text-xs font-semibold text-warning">
-              no match
-            </span>
+            <Tooltip
+              content={
+                <>
+                  <span className="font-semibold text-text">No match.</span>{' '}
+                  SongMirror searched this service but could not confidently identify a track. Select
+                  Edit to supply it, or Delete so the next sync or transfer searches again.
+                </>
+              }
+            >
+              <button
+                type="button"
+                aria-label="About no-match mappings"
+                className="inline-flex h-11 shrink-0 cursor-help items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning sm:h-6"
+              >
+                <span className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full bg-warning-soft px-2.5 text-xs font-semibold text-warning">
+                  no match
+                  <LuCircleHelp className="size-3" aria-hidden="true" />
+                </span>
+              </button>
+            </Tooltip>
           )}
         </div>
 
         {/* Equal columns, so Edit and Cancel occupy the same box and the action
             pair does not shift when a row opens for editing. */}
-        <div className="grid shrink-0 grid-cols-2 gap-1.5 sm:w-[148px]">
+        <div className="grid w-full shrink-0 grid-cols-2 gap-1.5 sm:w-[148px]">
           <Button size="sm" variant="secondary" onClick={() => setEditing((open) => !open)} disabled={busy}>
             {editing ? 'Cancel' : 'Edit'}
           </Button>
@@ -111,8 +146,8 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
           {/* The hint sits below the whole row, not inside the field: as the
               field's own help it would extend the field's box past the input,
               and items-end would then hang Save below the input it belongs to. */}
-          <div className="flex flex-wrap items-end gap-2.5">
-            <div className="min-w-[240px] flex-1">
+          <div className="flex flex-col items-stretch gap-2.5 sm:flex-row sm:items-end">
+            <div className="w-full min-w-0 flex-1 sm:min-w-[240px]">
               <TextField
                 label="Track link or id"
                 value={draft}
@@ -126,6 +161,7 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
               />
             </div>
             <Button
+              className="w-full sm:w-auto"
               disabled={busy || !draft.trim()}
               onClick={() => void run(() => api.setResolveCacheEntry(provider, entry.key, draft))}
             >

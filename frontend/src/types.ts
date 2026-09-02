@@ -87,6 +87,8 @@ export interface TargetSummary {
    * match. Unlike `held`, this excludes removals blocked for other reasons. */
   uncertain_matches?: number
   deferred: number
+  /** Existing newer tracks replayed to keep relative provider-added chronology. */
+  chronology_replayed?: number
   /** Removals held back this pass because they exceeded max_removals and the sync
    * hasn't opted into draining them — surfaced so the skip isn't silent. */
   removals_skipped: number
@@ -392,6 +394,8 @@ export interface TransferJob {
   dest: TransferEndpoint
   added: number
   deferred: number
+  /** Existing newer tracks replayed after a recovered earlier conflict. */
+  chronology_replayed?: number
   /** Hidden source relationships skipped because the provider exposes no metadata. */
   unavailable?: number
   /** Total source tracks to examine, or 0 before the source playlist has been

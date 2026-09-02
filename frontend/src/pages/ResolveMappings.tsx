@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LuCircleHelp } from 'react-icons/lu'
 
 import { api, errorMessage } from '@/api'
 import { MappingRow } from '@/components/mappings/MappingRow'
@@ -76,11 +77,37 @@ export default function ResolveMappings() {
       <div>
         <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Mappings</h1>
         <p className="mt-1 max-w-2xl text-sm text-text-3">
-          Every track match SongMirror has cached per service. A match here is reused forever, and so
-          is a "no match" result, so this is where you correct a wrong link or let a failed search run
-          again.
+          Review how SongMirror pairs tracks with each service. Use this page when a track is missing
+          or linked to the wrong result.
         </p>
       </div>
+
+      <section aria-labelledby="mapping-guide-heading">
+        <Card className="overflow-hidden">
+          <div className="flex gap-3 border-b border-border bg-surface-2 px-4 py-3.5 sm:px-5">
+            <LuCircleHelp className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
+            <div>
+              <h2 id="mapping-guide-heading" className="text-sm font-bold text-text">
+                How to use mappings
+              </h2>
+              <p className="mt-0.5 text-xs leading-relaxed text-text-3">
+                A saved mapping lets SongMirror reuse the same provider track without guessing again.
+              </p>
+            </div>
+          </div>
+          <ol className="grid gap-px bg-border sm:grid-cols-3">
+            <GuideStep number="1" title="Choose a service">
+              Use the tabs below, then search by title, artist, or provider ID.
+            </GuideStep>
+            <GuideStep number="2" title="Review the result">
+              “No match” means SongMirror could not confidently identify a track on that service.
+            </GuideStep>
+            <GuideStep number="3" title="Correct or retry">
+              Select Edit and paste the correct track link or ID. Delete a result to search again.
+            </GuideStep>
+          </ol>
+        </Card>
+      </section>
 
       {providersError && (
         <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -208,6 +235,23 @@ export default function ResolveMappings() {
         onCancel={() => setConfirmingClear(false)}
       />
     </div>
+  )
+}
+
+function GuideStep({ number, title, children }: { number: string; title: string; children: string }) {
+  return (
+    <li className="flex gap-3 bg-surface px-4 py-3.5 sm:px-5">
+      <span
+        aria-hidden="true"
+        className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-accent-soft font-mono text-[10px] font-bold text-accent"
+      >
+        {number}
+      </span>
+      <p className="text-xs leading-relaxed text-text-3">
+        <span className="block font-semibold text-text-2">{title}</span>
+        {children}
+      </p>
+    </li>
   )
 }
 

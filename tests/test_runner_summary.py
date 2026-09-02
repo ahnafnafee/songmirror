@@ -1130,6 +1130,244 @@ def test_one_way_mirror_defers_the_ordered_suffix_after_a_transient_resolve(tmp_
     songs.close()
 
 
+def test_one_way_mirror_replays_newer_tracks_after_a_recovered_gap(tmp_path):
+    from songmirror.engine.targets.base import MirrorTarget, mirror_pair
+
+    songs = archive.connect(str(tmp_path / "recovered-gap.db"))
+    catalog = {
+        name.casefold(): {
+            "catalog_id": name.casefold(),
+            "name": name,
+            "artist": "Artist",
+            "artists": ["Artist"],
+            "duration_ms": 1,
+        }
+        for name in ("Oldest", "Recovered", "Newer", "Newest")
+    }
+
+    class Target(MirrorTarget):
+        name, tag, source = "Apple Music", "apple", "apple"
+
+        def __init__(self):
+            self.rows = [catalog["oldest"], catalog["newer"], catalog["newest"]]
+            self.add_calls = []
+            self.retired = []
+
+        def playlist_tracks(self, playlist):
+            return list(self.rows)
+
+        def track_id(self, track):
+            return track.get("catalog_id")
+
+        def expected_ids(self, tracks, links, cache):
+            return {}
+
+        def prefetch(self, tracks, cache):
+            pass
+
+        def resolve(self, track, cache):
+            return track["name"].casefold(), "search"
+
+        def add(self, playlist, ids):
+            self.add_calls.append(list(ids))
+            self.rows.extend(dict(catalog[target_id]) for target_id in ids)
+
+        def remove_occurrences(self, playlist, positioned):
+            self.retired.append([(position, row["catalog_id"]) for position, row in positioned])
+            for position, _row in sorted(positioned, reverse=True):
+                self.rows.pop(position)
+
+    target = Target()
+    source_tracks = [
+        {"id": "a", "name": "Oldest", "artists": ["Artist"], "duration_ms": 1,
+         "added_at": "2020-01-01T00:00:00Z"},
+        {"id": "b", "name": "Recovered", "artists": ["Artist"], "duration_ms": 1,
+         "added_at": "2021-01-01T00:00:00Z"},
+        {"id": "c", "name": "Newer", "artists": ["Artist"], "duration_ms": 1,
+         "added_at": "2022-01-01T00:00:00Z"},
+        {"id": "d", "name": "Newest", "artists": ["Artist"], "duration_ms": 1,
+         "added_at": "2023-01-01T00:00:00Z"},
+    ]
+
+    stats = mirror_pair(
+        target, source_tracks, {"name": "Chronology"}, {"id": "apple-chronology"},
+        {"isrc": {}, "search": {}, "dirty": False}, songs,
+        execute=True, max_removals=200, max_adds=200,
+    )
+
+    assert target.add_calls == [["recovered", "newer", "newest"]]
+    assert target.retired == [[(1, "newer"), (2, "newest")]]
+    assert [row["catalog_id"] for row in target.rows] == [
+        "oldest", "recovered", "newer", "newest"
+    ]
+    assert stats["added"] == 1
+    assert stats["chronology_replayed"] == 2
+    songs.close()
+
+
+def test_one_way_replay_keeps_a_newly_resolved_existing_row_in_the_suffix(tmp_path):
+    from songmirror.engine.targets.base import MirrorTarget, mirror_pair
+
+    songs = archive.connect(str(tmp_path / "resolved-existing-gap.db"))
+    catalog = {
+        "a": {"catalog_id": "a", "name": "A", "artist": "Artist", "duration_ms": 1},
+        "b": {"catalog_id": "b", "name": "B", "artist": "Artist", "duration_ms": 1},
+        "c": {"catalog_id": "c", "name": "Middle", "artist": "Artist", "duration_ms": 1},
+        "d": {"catalog_id": "d", "name": "D", "artist": "Artist", "duration_ms": 1},
+    }
+
+    class Target(MirrorTarget):
+        name, tag, source = "Apple Music", "apple", "apple"
+
+        def __init__(self):
+            self.rows = [dict(catalog[key]) for key in ("a", "c", "d")]
+            self.add_calls = []
+            self.retired = []
+
+        def playlist_tracks(self, playlist):
+            return list(self.rows)
+
+        def track_id(self, track):
+            return track.get("catalog_id")
+
+        def expected_ids(self, tracks, links, cache):
+            return {}
+
+        def prefetch(self, tracks, cache):
+            pass
+
+        def resolve(self, track, cache):
+            return {"B": "b", "The Middle": "c"}.get(track["name"]), "search"
+
+        def add(self, playlist, ids):
+            self.add_calls.append(list(ids))
+            self.rows.extend(dict(catalog[target_id]) for target_id in ids)
+
+        def remove_occurrences(self, playlist, positioned):
+            self.retired.append([(position, row["catalog_id"]) for position, row in positioned])
+            for position, _row in sorted(positioned, reverse=True):
+                self.rows.pop(position)
+
+    target = Target()
+    source_tracks = [
+        {"id": key, "name": name, "artists": ["Artist"], "duration_ms": 1,
+         "added_at": f"202{index}-01-01T00:00:00Z"}
+        for index, (key, name) in enumerate((
+            ("a", "A"), ("b", "B"), ("c", "The Middle"), ("d", "D")
+        ))
+    ]
+
+    stats = mirror_pair(
+        target, source_tracks, {"name": "Chronology"}, {"id": "apple-chronology"},
+        {"isrc": {}, "search": {}, "dirty": False}, songs,
+        execute=True, max_removals=200, max_adds=200,
+    )
+
+    assert target.add_calls == [["b", "c", "d"]]
+    assert target.retired == [[(1, "c"), (2, "d")]]
+    assert [row["catalog_id"] for row in target.rows] == ["a", "b", "c", "d"]
+    assert stats["added"] == 1
+    assert stats["removed"] == 0
+    assert stats["chronology_replayed"] == 2
+    songs.close()
+
+
+def test_one_way_mirror_defers_a_chronology_repair_over_the_add_cap(tmp_path):
+    from songmirror.engine.targets.base import MirrorTarget, mirror_pair
+
+    songs = archive.connect(str(tmp_path / "recovered-gap-cap.db"))
+
+    class Target(MirrorTarget):
+        name, tag, source = "Apple Music", "apple", "apple"
+
+        def playlist_tracks(self, playlist):
+            return [
+                {"catalog_id": "a", "name": "A", "artist": "Artist", "duration_ms": 1},
+                {"catalog_id": "c", "name": "C", "artist": "Artist", "duration_ms": 1},
+                {"catalog_id": "d", "name": "D", "artist": "Artist", "duration_ms": 1},
+            ]
+
+        def track_id(self, track):
+            return track.get("catalog_id")
+
+        def expected_ids(self, tracks, links, cache):
+            return {}
+
+        def prefetch(self, tracks, cache):
+            pass
+
+        def resolve(self, track, cache):
+            return track["name"].casefold(), "search"
+
+        def add(self, playlist, ids):
+            raise AssertionError("an over-cap chronology repair must not write")
+
+        def remove(self, playlist, track):
+            raise AssertionError("an over-cap chronology repair must not remove")
+
+    stats = mirror_pair(
+        Target(),
+        [
+            {"id": value.lower(), "name": value, "artists": ["Artist"],
+             "duration_ms": 1, "added_at": f"202{index}-01-01T00:00:00Z"}
+            for index, value in enumerate(("A", "B", "C", "D"))
+        ],
+        {"name": "Chronology"}, {"id": "apple-chronology"},
+        {"isrc": {}, "search": {}, "dirty": False}, songs,
+        execute=True, max_removals=200, max_adds=2,
+    )
+
+    assert stats["added"] == 0
+    assert stats["deferred"] == 1
+    assert stats["clean"] is False
+    songs.close()
+
+
+def test_chronology_replay_rolls_back_a_partially_staged_suffix():
+    from songmirror.engine.targets.base import MirrorTarget
+
+    class Target(MirrorTarget):
+        name, tag, source = "Test Music", "test", "test"
+        stable_occurrence_ids = True
+
+        def __init__(self):
+            self.rows = [
+                {"id": "a", "relationship_id": "old-a"},
+                {"id": "c", "relationship_id": "old-c"},
+            ]
+            self.removed = []
+
+        def playlist_tracks(self, playlist):
+            return list(self.rows)
+
+        def track_id(self, track):
+            return track["id"]
+
+        def add_chronology_copies(self, playlist, ids):
+            self.rows.extend([
+                {"id": "b", "relationship_id": "new-b"},
+                {"id": "c", "relationship_id": "new-c"},
+            ])
+            return ["b"]
+
+        def remove_occurrences(self, playlist, positioned):
+            self.removed.append([
+                (position, row["relationship_id"]) for position, row in positioned
+            ])
+            removed = {row["relationship_id"] for _position, row in positioned}
+            self.rows = [row for row in self.rows if row["relationship_id"] not in removed]
+
+    target = Target()
+    with pytest.raises(RuntimeError, match="rejected part"):
+        target.replay_chronology(
+            {"id": "playlist"},
+            [("b", None), ("c", (1, target.rows[1]))],
+        )
+
+    assert target.removed == [[(2, "new-b"), (3, "new-c")]]
+    assert [row["relationship_id"] for row in target.rows] == ["old-a", "old-c"]
+
+
 def test_one_way_mirror_counts_only_provider_confirmed_adds(tmp_path):
     from songmirror.engine.targets.base import mirror_pair
 

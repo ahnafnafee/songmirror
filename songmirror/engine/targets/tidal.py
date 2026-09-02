@@ -6,26 +6,28 @@ playback/download endpoints are intentionally outside this adapter.
 
 import os
 import random
-import re
 import time
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
 import requests
 
-from ...browser_session import jwt_expiry, jwt_scopes
-from ...oauth import merge_refresh, read_token, token_is_live, token_path, write_token
-from ...tidal_web import parse_web_headers
+from ...browser_session import jwt_scopes
+from ...oauth import token_path
+from ...tidal_web import (
+    DEFAULT_TOKEN_FILE,
+    TidalWebRejected,
+    TidalWebUnavailable,
+    ensure_web_access_token,
+)
 from .. import archive
-from ..config import REQUEST_TIMEOUT, polite_sleep, required_env
+from ..config import REQUEST_TIMEOUT, polite_sleep
 from ..logs import log_note, log_warn
 from ..matching import normalize_text, romanized, track_key
 from .base import MirrorTarget, TargetAuthError
 from .provider_utils import best_candidate, chunks, iso_duration_ms, source_playlist_details
 
 API = "https://openapi.tidal.com/v2"
-TOKEN_URL = "https://auth.tidal.com/v1/oauth2/token"
-DEFAULT_TOKEN_FILE = "data/tidal_oauth.json"
 MAX_ISRC_FILTER_VALUES = 20
 PLAYLIST_ITEM_INCLUDE = ["items", "items.artists", "items.albums", "items.albums.coverArt"]
 
@@ -53,31 +55,18 @@ class TidalTarget(MirrorTarget):
         # The songs archive (sqlite conn) supplies last-known metadata for
         # catalog entries TIDAL has since delisted (see playlist_tracks).
         self._songs = songs
-        web_headers = (os.getenv("TIDAL_WEB_HEADERS") or "").strip()
-        self._browser_mode = bool(web_headers)
+        self._web_headers = (os.getenv("TIDAL_WEB_HEADERS") or "").strip()
+        if not self._web_headers:
+            raise RuntimeError("Missing TIDAL web-player session; connect TIDAL in Accounts")
         self._token_file = token_path("TIDAL_TOKEN_FILE", DEFAULT_TOKEN_FILE)
-        if web_headers:
-            try:
-                context = parse_web_headers(web_headers)
-            except ValueError as exc:
-                raise RuntimeError(f"Invalid TIDAL_WEB_HEADERS: {exc}") from exc
-            access_token = context["authorization"].split(None, 1)[1]
-            self.country = context["country_code"]
-            self._client_id = None
-            self._tok = {"access_token": access_token}
-            self._token_scopes = _scopes_from_token(self._tok)
-            expiry = jwt_expiry(access_token)
-            if expiry is not None:
-                self._tok["expires_at"] = expiry
-        else:
-            configured_country = (os.getenv("TIDAL_COUNTRY_CODE") or "US").strip().upper()
-            # Older wizard versions displayed country immediately below the
-            # client id, so a client secret could be pasted there by mistake.
-            # Never send arbitrary token-like data as a URL query parameter.
-            self.country = configured_country if re.fullmatch(r"[A-Z]{2}", configured_country) else "US"
-            self._client_id = required_env("TIDAL_CLIENT_ID")
-            self._tok = read_token(self._token_file)
-            self._token_scopes = _scopes_from_token(self._tok)
+        try:
+            self._tok = ensure_web_access_token(self._web_headers, self._token_file)
+        except TidalWebRejected as exc:
+            raise TargetAuthError(str(exc)) from exc
+        except TidalWebUnavailable as exc:
+            raise RuntimeError(str(exc)) from exc
+        self.country = str(self._tok.get("country_code") or "US")
+        self._token_scopes = _scopes_from_token(self._tok)
         if not self._tok.get("access_token") and not self._tok.get("refresh_token"):
             raise RuntimeError("Missing TIDAL OAuth token; connect TIDAL in Accounts")
         self._session = requests.Session()
@@ -87,30 +76,13 @@ class TidalTarget(MirrorTarget):
 
     # -- auth / HTTP ---------------------------------------------------------
     def _access(self, force=False):
-        if not force and token_is_live(self._tok):
-            return self._tok["access_token"]
-        refresh = self._tok.get("refresh_token")
-        if not refresh:
-            raise TargetAuthError(
-                "TIDAL web-player authorization expired; paste a fresh OpenAPI request in Accounts."
-                if self._browser_mode
-                else "TIDAL authorization expired; reconnect TIDAL in Accounts."
-            )
         try:
-            response = requests.post(
-                TOKEN_URL,
-                data={"grant_type": "refresh_token", "refresh_token": refresh, "client_id": self._client_id},
-                timeout=REQUEST_TIMEOUT,
-            )
-        except requests.RequestException as exc:
-            raise TargetAuthError(f"TIDAL token refresh failed ({exc!r}).") from exc
-        if not response.ok:
-            raise TargetAuthError(
-                f"TIDAL authorization expired (refresh returned HTTP {response.status_code}); reconnect in Accounts."
-            )
-        self._tok = merge_refresh(self._tok, response.json())
+            self._tok = ensure_web_access_token(self._web_headers, self._token_file, force=force)
+        except TidalWebRejected as exc:
+            raise TargetAuthError(str(exc)) from exc
+        except TidalWebUnavailable as exc:
+            raise RuntimeError(str(exc)) from exc
         self._token_scopes = _scopes_from_token(self._tok)
-        write_token(self._token_file, self._tok)
         return self._tok["access_token"]
 
     def _request(self, method, path, *, params=None, json_body=None):
@@ -142,11 +114,7 @@ class TidalTarget(MirrorTarget):
             if response.status_code in (401, 403):
                 raise TargetAuthError(
                     f"TIDAL refused {method} {url.removeprefix(API + '/')} ({response.status_code}); "
-                    + (
-                        "paste a fresh signed-in OpenAPI request in Accounts."
-                        if self._browser_mode
-                        else "reconnect and make sure playlists.read/playlists.write are enabled for the app."
-                    )
+                    "capture a fresh web-player oauth2/token response in Accounts."
                 )
             if response.status_code == 429 and attempt < attempts - 1:
                 wait = float(response.headers.get("Retry-After") or min(2**attempt, 15)) + random.uniform(0.5, 2)
@@ -443,27 +411,15 @@ class TidalTarget(MirrorTarget):
     def validate_favorite_tracks(self, *, write=False, remove=False):
         if self._token_scopes is None:
             return
-        if self._browser_mode:
-            required = ["r_usr"]
-            if write:
-                required.append("w_usr")
-        else:
-            required = ["collection.read"]
-            if write:
-                required.append("collection.write")
+        required = ["r_usr"]
+        if write:
+            required.append("w_usr")
         missing = [scope for scope in required if scope not in self._token_scopes]
         if missing:
-            if self._browser_mode:
-                raise TargetAuthError(
-                    "TIDAL web-player token lacks native liked-track access "
-                    f"({', '.join(missing)}); paste a fresh signed-in OpenAPI request "
-                    "in Accounts. This connection can still sync ordinary playlists."
-                )
             raise TargetAuthError(
-                "TIDAL token lacks native liked-track scopes "
-                f"{', '.join(missing)}; reconnect with a developer OAuth token granting "
-                "collection.read and collection.write. This connection can still sync "
-                "ordinary playlists."
+                "TIDAL web-player token lacks native Favorite Tracks access "
+                f"({', '.join(missing)}); capture a fresh TIDAL web-player token response "
+                "in Accounts. This connection can still sync ordinary playlists."
             )
 
     def add_favorite_tracks(self, target_ids):

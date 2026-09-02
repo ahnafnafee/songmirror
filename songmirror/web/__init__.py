@@ -22,6 +22,7 @@ from ..services.settings import SettingsStore
 from ..services.sync_service import SyncService
 from ..services.syncs import SyncStore
 from ..services.transfers import TransferService
+from .access_log import install_oauth_access_log_filter
 from .routers import (
     accounts, events, playlists, resolve_cache as resolve_cache_router,
     settings as settings_router, sync, syncs as syncs_router,
@@ -35,6 +36,7 @@ _DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 def create_app(settings=None, bus=None, sync_service=None, links=None, transfers=None,
                syncs=None, resolve_cache=None) -> FastAPI:
+    install_oauth_access_log_filter()
     settings = settings or SettingsStore()
     bus = bus or EventBus()
     syncs = syncs or SyncStore(dir=Path(settings.env_path).parent)

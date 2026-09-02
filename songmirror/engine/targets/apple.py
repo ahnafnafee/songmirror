@@ -909,7 +909,7 @@ class AppleMusicTarget(MirrorTarget):
                      params={"ids[library-songs]": track["relationship_id"], "mode": "all"})
         polite_sleep(0.4)
 
-    def remove_occurrences(self, playlist, positioned):
+    def _remove_occurrences(self, playlist, positioned, *, strict):
         """Apple's tracks-DELETE addresses the library SONG, not one entry —
         duplicate copies share one library id, so deleting a flagged copy would
         take its keeper with it. Delete each flagged song once, then re-append
@@ -935,5 +935,22 @@ class AppleMusicTarget(MirrorTarget):
                 try:
                     self.add(playlist, [catalog[rid]] * keep)
                 except Exception as e:
+                    if strict:
+                        raise
                     log_warn(f"couldn't re-append the kept copy of {catalog[rid]} ({e!r}); "
                              "the next sync pass restores it via search", tag=self.tag)
+
+    def remove_occurrences(self, playlist, positioned):
+        self._remove_occurrences(playlist, positioned, strict=False)
+
+    def retire_chronology_originals(self, playlist, positioned):
+        # A chronology repair must keep the pass retryable if Apple cannot
+        # restore one of the keepers after its catalog-scoped delete.
+        self._remove_occurrences(playlist, positioned, strict=True)
+
+    def chronology_replay_write_cost(self, ordered_entries):
+        # Retiring each old library-song relationship deletes its staged copy as
+        # well, so remove_occurrences appends one keeper after the staged suffix.
+        return len(ordered_entries) + sum(
+            1 for _target_id, original in ordered_entries if original is not None
+        )

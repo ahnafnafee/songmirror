@@ -502,3 +502,10 @@ class DeezerTarget(MirrorTarget):
             keep = max(0, totals.get(tid, count) - count)
             if keep:
                 self.add(playlist, [tid] * keep)
+
+    def chronology_replay_write_cost(self, ordered_entries):
+        # Deezer's delete is catalog-id scoped, so every retired old entry also
+        # needs one keeper append after the duplicate-capable staging pass.
+        return len(ordered_entries) + sum(
+            1 for _target_id, original in ordered_entries if original is not None
+        )

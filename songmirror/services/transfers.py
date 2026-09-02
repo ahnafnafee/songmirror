@@ -12,11 +12,18 @@ import uuid
 
 from ..engine import logs, spotify, spotify_cookie
 from ..engine.config import parse_args, spotify_write_backend
-from ..engine.logs import log_add, log_miss, log_warn
+from ..engine.logs import log_add, log_miss, log_note, log_warn
 from ..engine.matching import spotify_track_keys, track_key, tracks_oldest_first
 from ..engine.runner import load_cache, save_cache
 from ..engine.targets import build_one, is_peer
-from ..engine.targets.base import MirrorTarget, TargetAuthError, _normalize, _split_add_results
+from ..engine.targets.base import (
+    MirrorTarget,
+    TargetAuthError,
+    _fit_chronology_writes,
+    _normalize,
+    _ordered_current_matches,
+    _split_add_results,
+)
 from .playlists import playlist_image
 from .playlist_links import (
     PLAYLIST_LINK_HINT, PlaylistLinkError, external_url, parse_playlist_link, provider_label,
@@ -25,7 +32,8 @@ from .playlist_links import (
 
 def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_progress=None, should_continue=None):
     """Copy `src_pl` (on `source`) into `dest_pl` (on `dest`). Returns
-    {added, deferred, unavailable, not_found: [{name, artist, key}], completed}.
+    {added, deferred, chronology_replayed, unavailable,
+    not_found: [{name, artist, key}], completed}.
     `not_found` are tracks that resolved to nothing on the destination — the
     conflict queue. `unavailable` counts hidden source relationships that have
     no metadata and are safely skipped by this adds-only workflow.
@@ -55,10 +63,24 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
         "playlist_tracks_for_transfer",
         dest.playlist_tracks,
     )
-    dst = [
-        _normalize(track, dest.source)
+    raw_destination = [
+        track
         for track in read_destination(dest_pl)
         if not track.get("unavailable")
+    ]
+    target_id_of = getattr(
+        dest,
+        "track_id",
+        lambda track: track.get("id") or track.get("catalog_id") or track.get("videoId"),
+    )
+    destination_ids = {
+        str(target_id)
+        for track in raw_destination
+        if (target_id := target_id_of(track)) is not None
+    }
+    dst = [
+        _normalize(track, dest.source)
+        for track in raw_destination
     ]
     seen = set().union(*(spotify_track_keys(n) for n in dst)) if dst else set()
 
@@ -78,8 +100,10 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
     # of re-searching for it (which resolve() does for the cross-provider case).
     same_provider = source.source == dest.source
     additions, not_found = [], []
+    resolved_existing = {}
     completed = True
-    for i, norm in enumerate(tracks_oldest_first(src), unavailable_count + 1):
+    ordered_source = tracks_oldest_first(src)
+    for i, norm in enumerate(ordered_source, unavailable_count + 1):
         if should_continue and should_continue() != "run":
             completed = False  # paused or stopped — leave the rest for a re-run
             break
@@ -95,9 +119,17 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
                 except Exception:
                     tid = None
             if tid:
-                additions.append((tid, norm))
+                already_present = str(tid) in destination_ids
+                if already_present:
+                    # Metadata drift can hide an already-present song from the
+                    # exact-key fast path. Keep the resolver's hard-id proof for
+                    # chronology construction and do not append a duplicate.
+                    resolved_existing[id(norm)] = {tid}
+                else:
+                    additions.append((tid, norm))
                 seen |= keys
-                log_add(f"{norm['name']} - {norm['artist']}", dry=not execute, tag="transfer")
+                if not already_present:
+                    log_add(f"{norm['name']} - {norm['artist']}", dry=not execute, tag="transfer")
             else:
                 not_found.append({"name": norm["name"], "artist": norm["artist"],
                                   "key": track_key(norm["name"], norm["artist"])})
@@ -105,10 +137,50 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
         if on_progress:
             on_progress(i, total, len(additions))
 
-    deferred = max(0, len(additions) - max_adds)
-    additions = additions[:max_adds]
+    current_by_source = _ordered_current_matches(
+        ordered_source,
+        raw_destination,
+        resolved_existing,
+        target_id_of,
+        source_identity=id,
+    )
+    can_replay = callable(getattr(dest, "replay_chronology", None))
+    replay_write_cost = getattr(dest, "chronology_replay_write_cost", len)
+    additions, chronology_replay, deferred, full_write_cost = _fit_chronology_writes(
+        [id(track) for track in ordered_source],
+        current_by_source,
+        additions,
+        lambda item: id(item[1]),
+        max_adds,
+        replay_write_cost=replay_write_cost,
+        can_replay=can_replay,
+    )
+    chronology_replayed = sum(1 for _target_id, original in chronology_replay
+                              if original is not None)
+    if deferred:
+        if full_write_cost > max_adds and can_replay:
+            log_warn(
+                f"preserving Recently Added order would require {full_write_cost} ordered writes; "
+                f"the limit is {max_adds}, so {deferred} addition(s) were deferred",
+                tag="transfer",
+            )
+        else:
+            log_warn(
+                f"{len(additions) + deferred} additions exceed the limit of {max_adds}; "
+                f"deferring {deferred}",
+                tag="transfer",
+            )
+    if chronology_replay:
+        log_note(
+            f"replaying {chronology_replayed} newer track(s) after {len(additions)} recovered "
+            "addition(s) to preserve Recently Added order",
+            tag="transfer",
+        )
     if execute and additions:
-        result = dest.add(dest_pl, [target_id for target_id, _norm in additions])
+        if chronology_replay:
+            result = dest.replay_chronology(dest_pl, chronology_replay)
+        else:
+            result = dest.add(dest_pl, [target_id for target_id, _norm in additions])
         additions, rejected = _split_add_results(additions, result, lambda item: item[0])
         for _target_id, norm in rejected:
             not_found.append({"name": norm["name"], "artist": norm["artist"],
@@ -121,6 +193,7 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
     return {
         "added": len(additions),
         "deferred": deferred,
+        "chronology_replayed": chronology_replayed,
         "unavailable": unavailable_count,
         "not_found": not_found,
         "completed": completed,
@@ -219,7 +292,8 @@ class TransferService:
             "dest": {"provider": spec["dest_provider"],
                      "playlist_id": spec.get("dest_playlist_id"),
                      "playlist_name": spec.get("dest_name", "")},
-            "added": 0, "deferred": 0, "unavailable": 0, "conflicts": [], "error": None,
+            "added": 0, "deferred": 0, "chronology_replayed": 0,
+            "unavailable": 0, "conflicts": [], "error": None,
             "total": 0, "processed": 0,  # live progress: source tracks examined / total
             "_spec": spec,      # kept so resume can re-run the same copy
             "_control": "run",  # "run" | "pause" | "stop" — polled by the running loop
@@ -348,6 +422,7 @@ class TransferService:
             res = await self._sync.run_exclusive(work)
             job["added"] = base_added + res["added"]
             job["deferred"] = res["deferred"]
+            job["chronology_replayed"] = res.get("chronology_replayed", 0)
             job["unavailable"] = res["unavailable"]
             job["conflicts"] = [{**c, "resolved": False} for c in res["not_found"]]
             if res["completed"]:

@@ -808,6 +808,99 @@ def test_reconcile_adds_in_origin_playlist_order_even_if_plan_set_is_scrambled(t
     conn.close()
 
 
+def test_reconcile_replays_newer_tracks_after_a_recovered_gap(tmp_path):
+    class ChronologyPeer(_P):
+        def __init__(self, source, isrcs):
+            super().__init__(source, isrcs)
+            self.replayed = []
+
+        def replay_chronology(self, playlist, ordered_entries):
+            self.replayed.append([
+                (target_id, None if original is None else original[0])
+                for target_id, original in ordered_entries
+            ])
+            for target_id, original in ordered_entries:
+                if original is None:
+                    isrc = target_id.split("-", 1)[1]
+                    self._isrcs.append(isrc)
+
+    conn = archive.connect(str(tmp_path / "recovered-gap-nway.db"))
+    baseline = {"i:A", "i:C", "i:D"}
+    for source in ("spotify", "apple"):
+        archive.set_playlist_state(conn, "mix", source, baseline)
+    spotify = _P("spotify", ["A", "B", "C", "D"])
+    apple = ChronologyPeer("apple", ["A", "C", "D"])
+
+    stats = reconcile(
+        [spotify, apple],
+        "Mix",
+        {"spotify": {"id": "s"}, "apple": {"id": "a"}},
+        _caches("spotify", "apple"),
+        conn,
+        execute=True,
+        max_removals=0,
+        max_adds=200,
+    )
+
+    assert apple.replayed == [[("apple-B", None), ("apple-C", 1), ("apple-D", 2)]]
+    assert apple.added == []
+    assert stats["added"] == 1
+    assert stats["chronology_replayed"] == 2
+    conn.close()
+
+
+def test_reconcile_replay_maps_an_equivalent_current_row_to_the_desired_identity(tmp_path):
+    class AuthorityPeer(_P):
+        pass
+
+    class ChronologyMirror(_P):
+        def __init__(self):
+            super().__init__("apple", ["A", "X", "D"])
+            self.replayed = []
+
+        def playlist_tracks(self, playlist):
+            return [
+                {"id": "apple-A", "name": "Song A", "artists": ["A"], "artist": "A",
+                 "duration_ms": 1000, "isrc": "A", "added_at": "2020"},
+                # Same catalog metadata as authority C, but this provider row
+                # currently carries a different hard identity.
+                {"id": "apple-X", "name": "Song C", "artists": ["A"], "artist": "A",
+                 "duration_ms": 1000, "isrc": "X", "added_at": "2022"},
+                {"id": "apple-D", "name": "Song D", "artists": ["A"], "artist": "A",
+                 "duration_ms": 1000, "isrc": "D", "added_at": "2023"},
+            ]
+
+        def replay_chronology(self, playlist, ordered_entries):
+            self.replayed.append([
+                (target_id, None if original is None else original[0])
+                for target_id, original in ordered_entries
+            ])
+
+    conn = archive.connect(str(tmp_path / "resolved-existing-gap-nway.db"))
+    spotify = AuthorityPeer("spotify", ["A", "B", "C", "D"])
+    tidal = AuthorityPeer("tidal", ["A", "B", "C", "D"])
+    apple = ChronologyMirror()
+    peers = [spotify, tidal, apple]
+
+    stats = reconcile(
+        peers,
+        "Mix",
+        {peer.source: {"id": peer.source} for peer in peers},
+        _caches(*(peer.source for peer in peers)),
+        conn,
+        execute=True,
+        max_removals=25,
+        max_adds=200,
+        authority_sources={"spotify", "tidal"},
+    )
+
+    assert apple.replayed == [[("apple-B", None), ("apple-X", 1), ("apple-D", 2)]]
+    assert apple.added == []
+    assert stats["added"] == 1
+    assert stats["chronology_replayed"] == 2
+    conn.close()
+
+
 def test_reconcile_stops_ordered_adds_at_a_transient_resolution_error(tmp_path):
     """A later song must not leapfrog a rate-limited earlier source entry."""
 

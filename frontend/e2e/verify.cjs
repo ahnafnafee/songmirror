@@ -44,7 +44,7 @@ const ACCOUNTS = [
     id: 'tidal',
     name: 'TIDAL',
     auth_kind: 'token_paste',
-    fields: [{ key: 'TIDAL_WEB_HEADERS', label: 'OpenAPI request headers', secret: true, help: '', required: true }],
+    fields: [{ key: 'TIDAL_WEB_HEADERS', label: 'Web-player token response', secret: true, help: 'Copy the oauth2/token Response JSON', required: true }],
     state: 'unconfigured',
     detail: null,
     transferable: true,
@@ -499,6 +499,7 @@ async function installMocks(page, opts = {}) {
     if (/^\/api\/accounts\/[^/]+\/connect$/.test(p) && method === 'POST') {
       const id = p.split('/')[3]
       if (id === 'spotify') return json({ kind: 'token_paste', state: 'connected', detail: 'signed-in web session · no developer API' })
+      if (id === 'tidal') return json({ kind: 'token_paste', state: 'connected', detail: 'signed-in web-player session with automatic token renewal' })
       if (id === 'ytmusic') return json({ kind: 'device', user_code: 'ABCD-WXYZ', verification_url: 'https://google.com/device', device_code: 'devcode123', interval: 30 })
       if (id === 'apple') return json({ kind: 'token_paste', state: 'connected', detail: null })
       return json({ kind: 'api_key', state: 'unconfigured', detail: 'Could not reach the Jellyfin server at that URL.' })
@@ -748,6 +749,79 @@ async function shot(page, name) {
   await page.screenshot({ path: path.join(SHOT_DIR, `${name}.png`), fullPage: true })
 }
 
+async function checkMobileMappingLayout(page, results) {
+  await page.setViewportSize({ width: 320, height: 844 })
+  await page.waitForTimeout(150)
+
+  const geometry = await page.getByRole('listitem').filter({ hasText: 'silver springs live' }).evaluate((row) => {
+    const summary = row.children[0]
+    const title = summary?.children[0]
+    const status = summary?.children[1]
+    const actions = summary?.children[2]
+    const input = row.querySelector('input')
+    const save = [...row.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Save')
+    if (!title || !status || !actions || !input || !save) return null
+
+    const rowBox = row.getBoundingClientRect()
+    const styles = getComputedStyle(row)
+    const contentWidth = rowBox.width - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight)
+    const titleBox = title.getBoundingClientRect()
+    const statusBox = status.getBoundingClientRect()
+    const actionsBox = actions.getBoundingClientRect()
+    const inputBox = input.getBoundingClientRect()
+    const saveBox = save.getBoundingClientRect()
+    return {
+      contentWidth: Math.round(contentWidth),
+      actionsWidth: Math.round(actionsBox.width),
+      saveWidth: Math.round(saveBox.width),
+      inputWidth: Math.round(inputBox.width),
+      sectionsStacked: titleBox.bottom <= statusBox.top && statusBox.bottom <= actionsBox.top,
+      editorStacked: inputBox.bottom <= saveBox.top,
+      actionHeight: Math.round(actionsBox.height),
+      saveHeight: Math.round(saveBox.height),
+    }
+  })
+
+  const ok = geometry !== null
+    && geometry.sectionsStacked
+    && geometry.editorStacked
+    && Math.abs(geometry.actionsWidth - geometry.contentWidth) <= 1
+    && Math.abs(geometry.saveWidth - geometry.contentWidth) <= 1
+    && Math.abs(geometry.inputWidth - geometry.contentWidth) <= 1
+    && geometry.actionHeight >= 44
+    && geometry.saveHeight >= 44
+  console.log((ok ? 'ok        ' : 'FAIL      ') + ' mapping rows use full-width stacked touch controls @ 320 ' + JSON.stringify(geometry))
+  if (!ok) results.push({ label: 'mapping mobile touch layout', overflow: true, geometry })
+}
+
+async function checkMappingGuidance(page, results) {
+  const guidance = page.getByRole('region', { name: 'How to use mappings' })
+  const guidanceText = await guidance.innerText()
+  const guidanceOk = guidanceText.includes('Choose a service')
+    && guidanceText.includes('paste the correct track link')
+    && guidanceText.includes('search again')
+  console.log((guidanceOk ? 'ok        ' : 'FAIL      ') + ' mappings explains the review-and-correct workflow')
+  if (!guidanceOk) results.push({ label: 'mapping workflow guidance', overflow: true })
+
+  const noMatchHelp = page.getByRole('button', { name: 'About no-match mappings' }).first()
+  await noMatchHelp.focus()
+  const noMatchTooltip = page.getByRole('tooltip')
+  const noMatchHelpOk = await noMatchTooltip.isVisible()
+    && (await noMatchTooltip.innerText()).includes('next sync or transfer searches again')
+  console.log((noMatchHelpOk ? 'ok        ' : 'FAIL      ') + ' no-match status explains its meaning and next actions')
+  if (!noMatchHelpOk) results.push({ label: 'no-match mapping help', overflow: true })
+  await noMatchHelp.press('Escape')
+
+  const manualHelp = page.getByRole('button', { name: 'About hand-set mappings' }).first()
+  await manualHelp.focus()
+  const manualTooltip = page.getByRole('tooltip')
+  const manualHelpOk = await manualTooltip.isVisible()
+    && (await manualTooltip.innerText()).includes('uses this exact track')
+  console.log((manualHelpOk ? 'ok        ' : 'FAIL      ') + ' hand-set status explains that it overrides search')
+  if (!manualHelpOk) results.push({ label: 'hand-set mapping help', overflow: true })
+  await manualHelp.press('Escape')
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -813,6 +887,45 @@ async function main() {
         }
         return context
       }
+    }
+
+    if (process.env.E2E_ONLY === 'mappings-mobile') {
+      const context = await browser.newContext()
+      const page = await context.newPage()
+      await installMocks(page)
+      await page.goto(BASE_URL + '/mappings', { waitUntil: 'commit', timeout: 10000 })
+      await page.waitForSelector('text=silver springs live', { timeout: 5000 })
+      await page.getByRole('listitem').filter({ hasText: 'silver springs live' })
+        .getByRole('button', { name: 'Edit', exact: true }).click()
+      await checkMobileMappingLayout(page, results)
+      await checkOverflow(page, 'Mappings @ 320', results)
+      await shot(page, 'mappings-mobile')
+      await context.close()
+      if (results.some((result) => result.overflow)) {
+        throw new Error(`mobile mapping verification failed: ${JSON.stringify(results)}`)
+      }
+      return
+    }
+
+    if (process.env.E2E_ONLY === 'mappings-ux') {
+      const context = await browser.newContext({ viewport: { width: 320, height: 844 } })
+      const page = await context.newPage()
+      await installMocks(page)
+      await page.goto(BASE_URL + '/mappings', { waitUntil: 'commit', timeout: 10000 })
+      await page.waitForSelector('text=silver springs live', { timeout: 5000 })
+      await checkMappingGuidance(page, results)
+      await checkOverflow(page, 'Mappings guidance @ 320', results)
+      await page.evaluate(() => window.scrollTo(0, 0))
+      await page.waitForTimeout(100)
+      await shot(page, 'mappings-ux-mobile')
+      if (TAKE_SCREENSHOTS) {
+        await page.screenshot({ path: path.join(SHOT_DIR, 'mappings-ux-mobile-viewport.png') })
+      }
+      await context.close()
+      if (results.some((result) => result.overflow)) {
+        throw new Error(`mapping guidance verification failed: ${JSON.stringify(results)}`)
+      }
+      return
     }
 
     const widths = [320, 375, 1280]
@@ -1219,6 +1332,8 @@ async function main() {
       await page.waitForSelector('h1:has-text("Mappings")', { timeout: 10000 })
       await page.waitForSelector('text=silver springs live', { timeout: 5000 })
 
+      await checkMappingGuidance(page, results)
+
       const handSet = await page.getByText('set by hand', { exact: true }).count()
       const noMatch = await page.getByText('no match', { exact: true }).count()
       const badgesOk = handSet === 1 && noMatch === 1
@@ -1324,9 +1439,8 @@ async function main() {
 
       await shot(page, 'mappings-tablet')
 
-      await page.setViewportSize({ width: 390, height: 844 })
-      await page.waitForTimeout(200)
-      await checkOverflow(page, 'Mappings @ 390', results)
+      await checkMobileMappingLayout(page, results)
+      await checkOverflow(page, 'Mappings @ 320', results)
       await shot(page, 'mappings-mobile')
       await context.close()
     }
@@ -1912,6 +2026,33 @@ async function main() {
       await checkOverflow(page, `ConnectWizard device step @ ${width}`, results)
       await shot(page, `connect-wizard-device-${width}`)
       await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+
+      // TIDAL imports the web player's complete token response so the refresh
+      // token—not just the short-lived bearer—is available for renewal.
+      await page
+        .locator('h3', { hasText: 'TIDAL' })
+        .locator('xpath=ancestor::div[contains(@class,"rounded-card")][1]')
+        .getByRole('button', { name: 'Connect', exact: true })
+        .click()
+      const tidalDialog = page.getByRole('dialog')
+      const tidalSession = tidalDialog.locator('#browser-session-TIDAL_WEB_HEADERS')
+      const tidalRequirementsOk =
+        (await tidalSession.evaluate((node) => node.required)) &&
+        (await tidalDialog.getByText('oauth2/token', { exact: false }).count()) > 0 &&
+        (await tidalDialog.getByText('refresh_token', { exact: false }).count()) > 0 &&
+        (await tidalDialog.locator('textarea').count()) === 1
+      console.log(
+        `${tidalRequirementsOk ? 'ok        ' : 'FAIL      '} TIDAL requests a renewable web-player token response`,
+      )
+      if (!tidalRequirementsOk) results.push({ label: 'TIDAL field requirements', overflow: true })
+      await tidalSession.fill('{"access_token":"token","refresh_token":"refresh"}')
+      await tidalDialog.getByRole('button', { name: 'Connect', exact: true }).click()
+      const tidalSuccess = tidalDialog.getByRole('status')
+      await tidalSuccess.waitFor({ state: 'visible' })
+      const tidalConnectedOk = (await tidalSuccess.innerText()).includes('TIDAL is connected.')
+      console.log(`${tidalConnectedOk ? 'ok        ' : 'FAIL      '} TIDAL web session completes directly`)
+      if (!tidalConnectedOk) results.push({ label: 'TIDAL web session connection', overflow: true })
+      await tidalDialog.getByRole('button', { name: 'Close', exact: true }).click()
 
       // Deezer's durable renewal request is required, but its current Pipe
       // Bearer is only an optional bootstrap.  Browser-session textareas used

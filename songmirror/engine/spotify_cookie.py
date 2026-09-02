@@ -399,11 +399,12 @@ def library_directory() -> LibraryDirectory:
     old rootlist plus one metadata request per playlist, and its capability data
     identifies followed playlists that are readable but not editable.
 
-    Known folder rows are ignored. Any other unresolved row, or a playlist with
-    no usable id, makes the result partial. A row with an id but no name gets a
-    targeted lookup; a failed lookup falls back to a placeholder and also makes
-    the result partial. `library_playlists()` tolerates that state for browsing,
-    but a sync consumer must not treat an absence as authoritative when it is set.
+    Known folder rows and typed NotFound tombstones are ignored. Any other
+    unresolved row, or a playlist with no usable id, makes the result partial.
+    A row with an id but no name gets a targeted lookup; a failed lookup falls
+    back to a placeholder and also makes the result partial. `library_playlists()`
+    tolerates that state for browsing, but a sync consumer must not treat an
+    absence as authoritative when it is set.
     """
     out, offset, limit = [], 0, 100
     partial = False
@@ -427,6 +428,11 @@ def library_directory() -> LibraryDirectory:
             data = item.get("data") or {}
             row_type = data.get("__typename")
             if row_type != "Playlist":
+                if row_type == "NotFound":
+                    # Spotify keeps tombstones for deleted or inaccessible
+                    # playlists in an otherwise complete library page. The
+                    # typed absence is not an unresolved live playlist.
+                    continue
                 if row_type != "Folder":
                     log_warn(
                         f"skipping unresolved Spotify library row ({row_type or 'unknown type'})",

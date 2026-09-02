@@ -109,8 +109,8 @@ query SongMirrorAmazonSearchTracks($field: String!, $query: String!) {
 """
 
 WEB_APPEND_MUTATION = """
-mutation SongMirrorAmazonAppendTracks($playlistId: String!, $trackIds: [String!]!) {
-  appendTracks(playlistId: $playlistId, trackIds: $trackIds, rejectDuplicateTracks: true) {
+mutation SongMirrorAmazonAppendTracks($playlistId: String!, $trackIds: [String!]!, $rejectDuplicates: Boolean!) {
+  appendTracks(playlistId: $playlistId, trackIds: $trackIds, rejectDuplicateTracks: $rejectDuplicates) {
     id
   }
 }
@@ -709,13 +709,17 @@ class AmazonMusicTarget(MirrorTarget):
         polite_sleep(0.25)
         return best, "search"
 
-    def add(self, playlist, target_ids):
+    def _add(self, playlist, target_ids, *, allow_duplicates):
         if getattr(self, "_web", None) is not None:
             for target_id in target_ids:
                 self._graphql(
                     "SongMirrorAmazonAppendTracks",
                     WEB_APPEND_MUTATION,
-                    {"playlistId": str(playlist["id"]), "trackIds": [str(target_id)]},
+                    {
+                        "playlistId": str(playlist["id"]),
+                        "trackIds": [str(target_id)],
+                        "rejectDuplicates": not allow_duplicates,
+                    },
                     mutation=True,
                 )
                 polite_sleep(0.3)
@@ -725,9 +729,18 @@ class AmazonMusicTarget(MirrorTarget):
             self._request(
                 "PUT",
                 f"playlists/{playlist['id']}/tracks",
-                json_body={"trackIds": [str(target_id)], "addDuplicateTracks": False},
+                json_body={
+                    "trackIds": [str(target_id)],
+                    "addDuplicateTracks": allow_duplicates,
+                },
             )
             polite_sleep(0.3)
+
+    def add(self, playlist, target_ids):
+        return self._add(playlist, target_ids, allow_duplicates=False)
+
+    def add_chronology_copies(self, playlist, target_ids):
+        return self._add(playlist, target_ids, allow_duplicates=True)
 
     def remove(self, playlist, track):
         entry_id = track.get("relationship_id")
