@@ -115,6 +115,96 @@ def test_cookie_library_playlists_are_read_in_one_filtered_request(monkeypatch):
     })]
 
 
+def _library_page(rows, total):
+    return {"me": {"libraryV3": {"totalCount": total, "items": rows}}}
+
+
+def _row(uri, name=None, revision="r"):
+    row = {"item": {"data": {
+        "__typename": "Playlist", "uri": uri, "description": "",
+        "revisionId": revision, "currentUserCapabilities": {"canEditItems": True},
+        "ownerV2": {"data": {"username": "me"}}, "images": {"items": []},
+    }}}
+    if name is not None:
+        row["item"]["data"]["name"] = name
+    return row
+
+
+def test_library_directory_valid_row_survives_a_sibling_with_an_unusable_uri(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+
+    rows = [_row("spotify:playlist:good", name="Good"), _row("", name="Bad Uri")]
+    monkeypatch.setattr(sc, "_pf", lambda op, variables: _library_page(rows, 2))
+
+    playlists, partial = sc.library_directory()
+
+    assert [p["id"] for p in playlists] == ["good"]
+    assert partial is True
+
+
+def test_library_directory_hydrates_a_missing_name_from_a_targeted_lookup(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+
+    rows = [_row("spotify:playlist:blank")]  # no "name" key at all -> falsy .get("name")
+    calls = []
+
+    def fake_pf(op, variables):
+        calls.append((op, variables))
+        if op == "libraryV3":
+            return _library_page(rows, 1)
+        assert op == "fetchPlaylist"
+        assert variables == {
+            "uri": "spotify:playlist:blank", "offset": 0, "limit": 0,
+            "enableWatchFeedEntrypoint": False,
+        }
+        return {"playlistV2": {"name": "Recovered Name"}}
+
+    monkeypatch.setattr(sc, "_pf", fake_pf)
+    playlists, partial = sc.library_directory()
+
+    assert playlists[0]["name"] == "Recovered Name"
+    assert partial is False  # a successful hydration is not a partial read
+    assert [op for op, _ in calls] == ["libraryV3", "fetchPlaylist"]
+
+
+def test_library_directory_falls_back_to_a_placeholder_when_hydration_also_comes_up_blank(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+
+    rows = [_row("spotify:playlist:blank")]
+
+    def fake_pf(op, variables):
+        if op == "libraryV3":
+            return _library_page(rows, 1)
+        assert op == "fetchPlaylist"
+        return {"playlistV2": {"name": ""}}  # genuinely nameless even at the source
+
+    monkeypatch.setattr(sc, "_pf", fake_pf)
+    playlists, partial = sc.library_directory()
+
+    assert playlists[0]["name"] == "Untitled playlist (blank)"
+    assert partial is True  # a guessed label must not look like an authoritative name
+
+
+def test_library_directory_advances_pagination_by_raw_rows_not_accepted_rows(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+
+    page1 = [_row("spotify:playlist:good", name="Good"), _row("", name="Bad Uri")]
+    page2 = [_row("spotify:playlist:last", name="Last")]
+    seen_offsets = []
+
+    def fake_pf(op, variables):
+        seen_offsets.append(variables["offset"])
+        return _library_page(page1, 3) if variables["offset"] == 0 else _library_page(page2, 3)
+
+    monkeypatch.setattr(sc, "_pf", fake_pf)
+    playlists, partial = sc.library_directory()
+
+    # 2 raw rows on page 1 (only 1 accepted) -> next offset is 2, not 1.
+    assert seen_offsets == [0, 2]
+    assert [p["id"] for p in playlists] == ["good", "last"]
+    assert partial is True
+
+
 def test_pathfinder_read_retries_transient_connection_failure(monkeypatch):
     from songmirror.engine import spotify_cookie as sc
 
@@ -201,10 +291,12 @@ def test_cookie_browse_hydrates_track_counts_and_caches_by_revision(monkeypatch)
 
 def test_cookie_target_lists_and_searches_without_spotipy(monkeypatch):
     monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
-    monkeypatch.setattr(st.spotify_cookie, "library_playlists", lambda: [
+    rows = [
         {"id": "p1", "name": "Mix", "_owned": True},
         {"id": "p2", "name": "Mix", "_owned": False},
-    ])
+    ]
+    monkeypatch.setattr(st.spotify_cookie, "library_directory", lambda: (rows, False))
+    monkeypatch.setattr(st.spotify_cookie, "library_playlists", lambda: rows)
     monkeypatch.setattr(st.spotify_cookie, "search_tracks", lambda query, limit=8: [
         {"id": "hit", "name": "Song", "artists": [{"name": "Artist"}], "duration_ms": 180000},
     ])
@@ -213,6 +305,29 @@ def test_cookie_target_lists_and_searches_without_spotipy(monkeypatch):
     assert target.list_playlists()["mix"]["id"] == "p1"  # editable copy wins
     assert target.browse_playlists()[1]["_owned"] is False
     assert target._query("Song Artist")[0]["id"] == "hit"
+
+
+def test_sync_fails_closed_on_a_partial_spotify_directory(monkeypatch):
+    # A partial read must not read as "doesn't exist yet" and trigger a create.
+    monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
+    monkeypatch.setattr(st.spotify_cookie, "library_directory", lambda: (
+        [{"id": "p1", "name": "Mix", "_owned": True}], True,
+    ))
+
+    target = SpotifyTarget(None, "cache.json", sync_peer=True)
+    with pytest.raises(TargetAuthError, match="incomplete"):
+        target.list_playlists()
+
+
+def test_browse_stays_tolerant_of_the_same_partial_directory(monkeypatch):
+    # browse_playlists() reads the tolerant library_playlists(), never raises.
+    monkeypatch.setattr(st.spotify_cookie, "library_playlists", lambda: [
+        {"id": "p1", "name": "Mix", "_owned": True},
+        {"id": "p2", "name": "Untitled playlist (p2)", "_owned": False},
+    ])
+
+    target = SpotifyTarget(None, "cache.json")
+    assert [p["id"] for p in target.browse_playlists()] == ["p1", "p2"]
 
 
 def test_reset_session_discards_every_cookie_derived_client():

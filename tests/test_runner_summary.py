@@ -1739,6 +1739,40 @@ def test_nway_counts_and_names_a_playlist_it_could_not_sync(monkeypatch):
     assert entry["added"] == 0 and entry["removed"] == 0
 
 
+def test_spotify_target_partial_directory_never_reaches_create(monkeypatch, tmp_path):
+    """A partial library_directory() read must abort before create() is ever
+    reached, so it can't be mistaken for "this playlist doesn't exist"."""
+    from songmirror.engine.targets.base import TargetAuthError
+    from songmirror.engine.targets.spotify_target import SpotifyTarget
+
+    monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
+
+    def boom_create(*a, **k):
+        raise AssertionError("a partial directory must never reach target.create()")
+
+    target = SpotifyTarget(None, str(tmp_path / "c.json"), sync_peer=True)
+    monkeypatch.setattr(target, "create", boom_create)
+    monkeypatch.setattr(
+        "songmirror.engine.spotify_cookie.library_directory",
+        lambda: ([{"id": "p1", "name": "Mix", "_owned": True, "_editable": True}], True),
+    )
+
+    songs = archive.connect(str(tmp_path / "songs.db"))
+    try:
+        with pytest.raises(TargetAuthError, match="incomplete"):
+            runner.run_target(
+                target,
+                [{"id": "sp1", "name": "Mix"}],  # same name as the one real row we do have
+                lambda pl: [],
+                songs,
+                _opts(execute=True),
+                links=[],
+                source=_FakeSource(),
+            )
+    finally:
+        songs.close()
+
+
 def test_failure_detail_is_bounded_but_the_count_is_not():
     counts, dest = {"failed": 0}, []
     for i in range(runner.FAILURE_DETAIL + 5):
