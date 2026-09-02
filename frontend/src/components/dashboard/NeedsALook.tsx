@@ -100,6 +100,17 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     })
   }
 
+  for (const target of status?.last?.per_target ?? []) {
+    if (!target.directory_incomplete || !target.error) continue
+    items.push({
+      key: `target-directory-${target.name}`,
+      icon: LuCircleAlert,
+      title: `${target.name} library was incomplete`,
+      description: target.error,
+      details: [`No ${target.name} playlists were changed. SongMirror will retry on the next pass.`],
+    })
+  }
+
   // Account status normally reports the same expired session. Keep the
   // per-target result as a fallback for the interval before that independent
   // snapshot refreshes, without rendering two cards for one provider.

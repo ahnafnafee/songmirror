@@ -774,6 +774,58 @@ def test_oneway_isolates_a_target_auth_error_and_keeps_sibling_results(monkeypat
     assert post_sync_calls == [True]
 
 
+def test_oneway_reports_an_incomplete_target_directory_without_an_auth_error(monkeypatch, tmp_path):
+    from songmirror.engine.targets.base import TargetDirectoryIncompleteError
+
+    class Source:
+        source, name = "apple", "Apple Music"
+
+        @staticmethod
+        def list_playlists():
+            return {"drive": {"id": "source-drive", "name": "Drive"}}
+
+        @staticmethod
+        def playlist_name(playlist):
+            return playlist["name"]
+
+        @staticmethod
+        def playlist_id(playlist):
+            return playlist["id"]
+
+    class Target:
+        source = tag = "spotify"
+        name = "Spotify"
+        cache_file = str(tmp_path / "spotify.json")
+
+        @staticmethod
+        def list_playlists():
+            raise TargetDirectoryIncompleteError(
+                "Spotify library read is incomplete - refusing to sync."
+            )
+
+    post_sync_calls = []
+    monkeypatch.setattr(runner.spotify, "client", lambda writable=False: object())
+    monkeypatch.setattr(runner, "build_one", lambda *args, **kwargs: Source())
+    monkeypatch.setattr(runner, "build_targets", lambda *args, **kwargs: [Target()])
+    monkeypatch.setattr(runner.archive, "connect", lambda path: _FakeSongs())
+    monkeypatch.setattr(runner, "_load_links", lambda: [])
+    monkeypatch.setattr(runner, "_post_sync", lambda *args, **kwargs: post_sync_calls.append(True))
+
+    summary = runner.run_pass(_opts(
+        execute=True,
+        sync_source="apple",
+        providers="apple,spotify",
+        playlists="Drive",
+    ))
+
+    assert summary["ok"] is True
+    target = summary["per_target"][0]
+    assert target["directory_incomplete"] is True
+    assert "auth_error" not in target
+    assert target["error"] == "Spotify library read is incomplete - refusing to sync."
+    assert post_sync_calls == [True]
+
+
 def test_oneway_source_auth_error_remains_fatal(monkeypatch, tmp_path):
     from songmirror.engine.targets.base import TargetAuthError
 
@@ -1742,8 +1794,9 @@ def test_nway_counts_and_names_a_playlist_it_could_not_sync(monkeypatch):
 def test_spotify_target_partial_directory_never_reaches_create(monkeypatch, tmp_path):
     """A partial library_directory() read must abort before create() is ever
     reached, so it can't be mistaken for "this playlist doesn't exist"."""
-    from songmirror.engine.targets.base import TargetAuthError
+    from songmirror.engine.targets.base import TargetDirectoryIncompleteError
     from songmirror.engine.targets.spotify_target import SpotifyTarget
+    from songmirror.engine.spotify_cookie import LibraryDirectory
 
     monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
 
@@ -1754,12 +1807,14 @@ def test_spotify_target_partial_directory_never_reaches_create(monkeypatch, tmp_
     monkeypatch.setattr(target, "create", boom_create)
     monkeypatch.setattr(
         "songmirror.engine.spotify_cookie.library_directory",
-        lambda: ([{"id": "p1", "name": "Mix", "_owned": True, "_editable": True}], True),
+        lambda: LibraryDirectory(
+            [{"id": "p1", "name": "Mix", "_owned": True, "_editable": True}], True,
+        ),
     )
 
     songs = archive.connect(str(tmp_path / "songs.db"))
     try:
-        with pytest.raises(TargetAuthError, match="incomplete"):
+        with pytest.raises(TargetDirectoryIncompleteError, match="incomplete"):
             runner.run_target(
                 target,
                 [{"id": "sp1", "name": "Mix"}],  # same name as the one real row we do have

@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from .engine.config import parse_args
 from .engine.logs import fmt_secs, log_note, log_warn
 from .engine.runner import run_pass
-from .engine.targets import TargetAuthError
+from .engine.targets import TargetAuthError, TargetDirectoryIncompleteError
 
 
 def main(argv=None):
@@ -20,7 +20,7 @@ def main(argv=None):
         except KeyboardInterrupt:
             log_note("interrupted - stopping")
             sys.exit(130)
-        except TargetAuthError as e:
+        except (TargetAuthError, TargetDirectoryIncompleteError) as e:
             log_warn(str(e))
             if not opts.loop:
                 sys.exit(2)

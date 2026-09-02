@@ -24,6 +24,7 @@ import json
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
+from typing import NamedTuple
 
 import requests
 
@@ -74,6 +75,11 @@ _PATHFINDER_TRANSIENT = (
 )
 _PATHFINDER_READ_ATTEMPTS = 5
 _PATHFINDER_MUTATION_DOCS = {"playlist_mut", "library_mut"}
+
+
+class LibraryDirectory(NamedTuple):
+    playlists: list[dict]
+    partial: bool
 
 
 def configured():
@@ -348,7 +354,7 @@ def _hydrate_playlist_name(uri):
     return ((data.get("playlistV2") or {}).get("name") or "").strip() or None
 
 
-def library_directory():
+def library_directory() -> LibraryDirectory:
     """Every playlist in the signed-in account's library, plus whether the
     read had to skip or guess at any row (`partial`).
 
@@ -356,11 +362,11 @@ def library_directory():
     old rootlist plus one metadata request per playlist, and its capability data
     identifies followed playlists that are readable but not editable.
 
-    A row with no resolvable id is dropped; a row with an id but no name gets a
-    targeted lookup, falling back to a placeholder if that also comes back
-    nameless. Either way `partial` is set: `library_playlists()` ignores it for
-    browsing, but a sync consumer must not treat an absence as authoritative
-    when it's set.
+    Known folder rows are ignored. Any other unresolved row, or a playlist with
+    no usable id, makes the result partial. A row with an id but no name gets a
+    targeted lookup; a failed lookup falls back to a placeholder and also makes
+    the result partial. `library_playlists()` tolerates that state for browsing,
+    but a sync consumer must not treat an absence as authoritative when it is set.
     """
     out, offset, limit = [], 0, 100
     partial = False
@@ -382,18 +388,26 @@ def library_directory():
         for row in rows:
             item = row.get("item") or {}
             data = item.get("data") or {}
-            if data.get("__typename") != "Playlist":
+            row_type = data.get("__typename")
+            if row_type != "Playlist":
+                if row_type != "Folder":
+                    log_warn(
+                        f"skipping unresolved Spotify library row ({row_type or 'unknown type'})",
+                        tag="spotify",
+                    )
+                    partial = True
                 continue
-            uri = data.get("uri") or item.get("_uri") or ""
-            if not str(uri).startswith("spotify:playlist:"):
+            uri = str(data.get("uri") or item.get("_uri") or "").strip()
+            prefix = "spotify:playlist:"
+            pid = uri[len(prefix):] if uri.startswith(prefix) else ""
+            if not pid or ":" in pid:
                 log_warn("skipping library row with no resolvable playlist id", tag="spotify")
                 partial = True
                 continue
             name = data.get("name") or ""
-            if not name:
+            if not str(name).strip():
                 name = _hydrate_playlist_name(uri) or ""
                 if not name:
-                    pid = str(uri).rsplit(":", 1)[-1]
                     name = f"Untitled playlist ({pid})"
                     partial = True
                     log_warn(
@@ -402,7 +416,7 @@ def library_directory():
             owner = (data.get("ownerV2") or {}).get("data") or {}
             editable = bool((data.get("currentUserCapabilities") or {}).get("canEditItems"))
             out.append({
-                "id": str(uri).rsplit(":", 1)[-1],
+                "id": pid,
                 "uri": uri,
                 "name": name,
                 "description": data.get("description") or "",
@@ -414,13 +428,13 @@ def library_directory():
             })
         offset += len(rows)
         if offset >= int(total):
-            return out, partial
+            return LibraryDirectory(out, partial)
 
 
 def library_playlists():
     """Tolerant, browse-facing view of `library_directory()`. A sync consumer
     should call `library_directory()` directly and check `partial` instead."""
-    return library_directory()[0]
+    return library_directory().playlists
 
 
 def _playlist_track_total(playlist):

@@ -35,6 +35,10 @@ class TargetAuthError(RuntimeError):
     """Auth expired / rejected. Fatal for the pass — never a partial write."""
 
 
+class TargetDirectoryIncompleteError(RuntimeError):
+    """A playlist directory was incomplete and cannot safely drive writes."""
+
+
 class TargetTransientError(RuntimeError):
     """A retryable provider failure that must not let later writes overtake it."""
 

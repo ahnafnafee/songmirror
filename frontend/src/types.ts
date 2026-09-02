@@ -72,6 +72,9 @@ export type Settings = Record<string, string>
 
 export interface TargetSummary {
   name: string
+  /** A one-way destination returned an incomplete playlist directory. Writes
+   * were skipped for data safety; reconnecting credentials is not the remedy. */
+  directory_incomplete?: boolean
   /** A one-way destination whose credentials failed is reported here without
    * discarding successful sibling destinations or failing the whole pass. */
   auth_error?: boolean

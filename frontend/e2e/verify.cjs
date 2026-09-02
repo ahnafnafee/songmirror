@@ -1302,6 +1302,45 @@ async function main() {
     }
 
     // -----------------------------------------------------------------
+    // An incomplete destination directory is a data-integrity stop, not an
+    // authentication failure. Surface the reason without a reconnect action.
+    // -----------------------------------------------------------------
+    {
+      const context = await browser.newContext()
+      await context.addInitScript(() => window.localStorage.setItem('songmirror-theme', 'light'))
+      const page = await context.newPage()
+      await installMocks(page)
+      await page.route('**/api/accounts', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(ACCOUNTS.map((account) => ({ ...account, state: 'connected', detail: null }))),
+        })
+      })
+      await page.route('**/api/sync/status', async (route) => {
+        const partial = syncStatusFixture(initialSyncs())
+        partial.last.per_target = [{
+          name: 'Spotify', added: 0, removed: 0, missing: 0, held: 0, deferred: 0, created: 0, skipped: 0,
+          directory_incomplete: true,
+          error: 'Spotify library read is incomplete - refusing to sync so an existing playlist is not duplicated.',
+        }]
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(partial) })
+      })
+      await page.setViewportSize({ width: 1280, height: 900 })
+      await page.goto(BASE_URL + '/', { waitUntil: 'networkidle' })
+      await page.waitForTimeout(200)
+
+      const text = await page.locator('body').innerText()
+      const directoryStopReported = text.includes('Spotify library was incomplete')
+        && text.includes('refusing to sync so an existing playlist is not duplicated')
+        && text.includes('No Spotify playlists were changed. SongMirror will retry on the next pass.')
+        && await page.getByRole('link', { name: 'Reconnect', exact: true }).count() === 0
+      console.log(`${directoryStopReported ? 'ok        ' : 'FAIL      '} incomplete directory is reported without auth remediation`)
+      if (!directoryStopReported) results.push({ label: 'incomplete directory reporting', overflow: true })
+      await context.close()
+    }
+
+    // -----------------------------------------------------------------
     // "Needs a look" alerts are dismissable: one X per card, the count chip
     // follows, dismissals survive a reload, and a dismissal is FORGOTTEN once
     // that exact situation changes (a different held-count is a new problem,

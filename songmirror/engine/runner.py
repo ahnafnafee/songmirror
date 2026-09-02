@@ -15,8 +15,16 @@ from dotenv import load_dotenv
 from . import archive, spotify, spotify_cookie
 from .config import spotify_write_backend
 from .logs import fmt_counts, fmt_secs, log, log_note, log_section, log_summary, log_warn, paint
-from .targets import (TargetAuthError, build_one, build_peers, build_targets, mirror_pair,
-                      nway_order_candidates, reconcile)
+from .targets import (
+    TargetAuthError,
+    TargetDirectoryIncompleteError,
+    build_one,
+    build_peers,
+    build_targets,
+    mirror_pair,
+    nway_order_candidates,
+    reconcile,
+)
 from .targets.base import _normalize, reconcile_state_key
 
 
@@ -107,6 +115,8 @@ def _summary_entry(name, agg):
         entry["error"] = agg["error"]
     if "auth_error" in agg:
         entry["auth_error"] = bool(agg["auth_error"])
+    if "directory_incomplete" in agg:
+        entry["directory_incomplete"] = bool(agg["directory_incomplete"])
     return entry
 
 
@@ -133,7 +143,7 @@ def _load_links():
 
 def run_target(target, selected, get_source_tracks, songs, opts, links=None, source=None, should_continue=None):
     """Mirror every selected source playlist to one target. Returns an aggregate
-    dict. Raises TargetAuthError to abort the whole target (fail closed).
+    dict. Fatal target errors abort the whole target before unsafe writes.
 
     `source` is the source-of-truth MirrorTarget (Spotify by default, or any
     provider in one-way mode). An explicit PlaylistLink (via `links`) overrides
@@ -522,6 +532,12 @@ def run_pass(opts, should_continue=None):
             # A one-way source is shared by every destination. Its failure
             # invalidates the pass and must also suppress post-sync work.
             errors.append((target, e))
+        except TargetDirectoryIncompleteError as e:
+            results[target.tag] = {
+                "name": target.name,
+                "error": str(e) or repr(e),
+                "directory_incomplete": True,
+            }
         except TargetAuthError as e:
             # One-way targets are independent. Preserve a provider-scoped
             # failure in the summary instead of discarding successful siblings
@@ -572,6 +588,9 @@ def run_pass(opts, should_continue=None):
         if not agg:
             continue
         if agg.get("auth_error"):
+            log_warn(f"{target.name} skipped: {agg['error']}", tag=target.tag)
+            continue
+        if agg.get("directory_incomplete"):
             log_warn(f"{target.name} skipped: {agg['error']}", tag=target.tag)
             continue
         notes = []

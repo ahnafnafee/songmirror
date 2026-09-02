@@ -11,7 +11,7 @@ import spotipy
 from .. import archive, spotify, spotify_cookie
 from ..config import polite_sleep, spotify_write_backend
 from ..matching import normalize_text, romanized, score_candidate, track_key
-from .base import MirrorTarget, TargetAuthError
+from .base import MirrorTarget, TargetAuthError, TargetDirectoryIncompleteError
 from .provider_utils import source_playlist_details
 
 
@@ -62,15 +62,15 @@ class SpotifyTarget(MirrorTarget):
     # -- MirrorTarget ----------------------------------------------------------
     def list_playlists(self):
         if spotify_write_backend() == "cookie" or self._sp is None:
-            playlists, partial = spotify_cookie.library_directory()
-            if partial:
+            directory = spotify_cookie.library_directory()
+            if directory.partial:
                 # An incomplete listing must not read as "doesn't exist" and create a duplicate.
-                raise TargetAuthError(
+                raise TargetDirectoryIncompleteError(
                     "Spotify library read is incomplete - refusing to sync so an "
                     "existing playlist isn't duplicated. Check the warnings above."
                 )
             best = {}
-            for playlist in playlists:
+            for playlist in directory.playlists:
                 key = self.playlist_name(playlist).strip().casefold()
                 if not key:
                     continue
