@@ -17,6 +17,10 @@ from ..engine.matching import spotify_track_keys, track_key, tracks_oldest_first
 from ..engine.runner import load_cache, save_cache
 from ..engine.targets import build_one, is_peer
 from ..engine.targets.base import MirrorTarget, TargetAuthError, _normalize, _split_add_results
+from .playlists import playlist_image
+from .playlist_links import (
+    PLAYLIST_LINK_HINT, PlaylistLinkError, external_url, parse_playlist_link, provider_label,
+)
 
 
 def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_progress=None, should_continue=None):
@@ -138,6 +142,11 @@ def _friendly_error(e):
     return repr(e)
 
 
+class TransferPreviewError(ValueError):
+    """A pasted link that cannot become a transfer source. Carries copy meant to
+    be shown to the user unchanged."""
+
+
 class TransferService:
     """One-off cross-service copies, serialized with syncs via SyncService. Jobs
     are in-memory and transient."""
@@ -147,6 +156,58 @@ class TransferService:
         self._bus = bus
         self._sync = sync
         self._jobs = {}
+
+    def preview(self, url):
+        """Resolve a pasted playlist link into a startable transfer source.
+
+        Returns {provider, playlist_id, name, description, count, image,
+        external_url}. Raises TransferPreviewError with user-facing copy when the
+        link, the account, or the provider cannot supply one.
+
+        The pasted text never becomes a request URL: it is parsed into a provider
+        and an id, and only the id reaches that provider's own configured client.
+        So this can only read a playlist from a service the user has connected.
+        """
+        try:
+            parsed = parse_playlist_link(url)
+        except PlaylistLinkError as exc:
+            raise TransferPreviewError(str(exc)) from exc
+        if parsed is None:
+            raise TransferPreviewError(PLAYLIST_LINK_HINT)
+        provider_id, playlist_id = parsed
+        label = provider_label(provider_id)
+        if not is_peer(provider_id):
+            raise TransferPreviewError(
+                f"{label} is browse-only and cannot be a transfer source.")
+
+        self._settings.apply_to_env()
+        target = self._build(provider_id, parse_args([]))
+        if target is None:
+            raise TransferPreviewError(
+                f"{label} is not connected. Connect it on the Accounts page, then paste the link again.")
+
+        try:
+            playlist = self._find(target, playlist_id)
+        except TargetAuthError as exc:
+            raise TransferPreviewError(str(exc)) from exc
+        except Exception as exc:
+            raise TransferPreviewError(
+                f"{label} could not open that playlist: {_friendly_error(exc)}") from exc
+        if playlist is None:
+            raise TransferPreviewError(
+                f"{label} could not open that link. The playlist may be private, or {label} "
+                "may only allow reading playlists you have saved. Save it to your library "
+                "and transfer it from there.")
+
+        return {
+            "provider": provider_id,
+            "playlist_id": str(playlist_id),
+            "name": target.playlist_name(playlist),
+            "description": target.playlist_description(playlist),
+            "count": target.playlist_count(playlist),
+            "image": playlist_image(playlist),
+            "external_url": external_url(provider_id, "playlist", playlist_id),
+        }
 
     def submit(self, spec):
         """spec: {source_provider, source_playlist_id, dest_provider,
@@ -226,6 +287,9 @@ class TransferService:
         if cache_file:
             cache = load_cache(cache_file)
             cache["search"][key] = dest_id
+            # Recorded as hand-set so the resolve-mappings view can tell a choice
+            # the user made from one the matcher guessed.
+            cache["manual"].add(key)
             cache["dirty"] = True
             save_cache(cache_file, cache)
         for c in job["conflicts"]:
@@ -317,7 +381,10 @@ class TransferService:
         # find_playlist scans the provider's full set — for Spotify that's the
         # un-deduped list, so a followed playlist is reachable by id even when a
         # same-named owned one exists (list_playlists() would have hidden it).
-        return provider.find_playlist(playlist_id)
+        # Library first: an id already in the library keeps its `_owned` and
+        # `_editable` flags, which a bare public read cannot supply. Only an id
+        # the library does not have falls through to the pasted-link read.
+        return provider.find_playlist(playlist_id) or provider.fetch_playlist(playlist_id)
 
     def _dest_playlist(self, dst, src, src_pl, spec):
         if spec.get("dest_playlist_id"):

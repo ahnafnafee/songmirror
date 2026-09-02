@@ -60,8 +60,12 @@ class QobuzTarget(MirrorTarget):
     stable_occurrence_ids = True
     favorite_tracks_name = "Favorite Tracks"
 
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        return os.getenv("QOBUZ_CACHE_FILE", "qobuz_resolve_cache.json")
+
     def __init__(self):
-        self.cache_file = os.getenv("QOBUZ_CACHE_FILE", "qobuz_resolve_cache.json")
+        self.cache_file = self.resolve_cache_path()
         web_request = (os.getenv("QOBUZ_WEB_REQUEST") or "").strip()
         self._browser_mode = bool(web_request)
         if web_request:
@@ -159,6 +163,16 @@ class QobuzTarget(MirrorTarget):
         )
         polite_sleep(0.4)
         return playlist
+
+    def fetch_playlist(self, playlist_id):
+        """A playlist by id, public ones included. `playlist/get` is not scoped
+        to the caller's own playlists."""
+        try:
+            playlist = self._request(
+                "GET", "playlist/get", params={"playlist_id": str(playlist_id)})
+        except Exception:
+            return None
+        return playlist if isinstance(playlist, dict) and playlist.get("id") is not None else None
 
     @staticmethod
     def playlist_page_reference(playlist_id, expected_count=None):

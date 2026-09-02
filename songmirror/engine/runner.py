@@ -52,19 +52,36 @@ def _save_json(path, data):
 
 
 def load_cache(cache_file):
+    """The provider's resolution cache: ISRC candidates, search results, and
+    which search keys were set by hand.
+
+    `manual` is a set of `search` keys a person chose in the conflict editor
+    rather than the matcher finding. A cache written before that existed loads
+    with an empty set, and a cache written with it stays readable by anything
+    that only knows the other two keys.
+    """
     try:
         with open(cache_file) as f:
             data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         data = {}
-    return {"isrc": data.get("isrc", {}), "search": data.get("search", {}), "dirty": False}
+    return {
+        "isrc": data.get("isrc", {}),
+        "search": data.get("search", {}),
+        "manual": set(data.get("manual") or []),
+        "dirty": False,
+    }
 
 
 def save_cache(cache_file, cache):
     if not cache.pop("dirty", False):
         return
     with open(cache_file, "w") as f:
-        json.dump({"isrc": cache["isrc"], "search": cache["search"]}, f, indent=1)
+        json.dump({
+            "isrc": cache["isrc"],
+            "search": cache["search"],
+            "manual": sorted(cache.get("manual") or ()),
+        }, f, indent=1)
 
 
 _SUMMARY_KEYS = ("added", "removed", "missing", "held", "uncertain_matches",

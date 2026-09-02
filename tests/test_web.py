@@ -621,3 +621,33 @@ def test_sse_payload_format():
     import json
     payload = json.loads(line[len("data: "):].strip())
     assert payload["kind"] == "add" and payload["tag"] == "apple"
+
+
+def test_transfer_preview_returns_the_pasted_links_playlist(tmp_path):
+    app = _app(tmp_path)
+    app.state.transfers.preview = lambda url: {
+        "provider": "spotify", "playlist_id": "PID", "name": "Public mix",
+        "description": "", "count": 12, "image": "", "external_url": "https://x/y",
+    }
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/transfers/preview",
+            json={"url": "https://open.spotify.com/playlist/PID"},
+        )
+    assert response.status_code == 200
+    assert response.json()["name"] == "Public mix"
+
+
+def test_transfer_preview_returns_the_services_own_message_on_failure(tmp_path):
+    from songmirror.services.transfers import TransferPreviewError
+
+    app = _app(tmp_path)
+
+    def refuse(url):
+        raise TransferPreviewError("Spotify is not connected.")
+
+    app.state.transfers.preview = refuse
+    with TestClient(app) as client:
+        response = client.post("/api/transfers/preview", json={"url": "https://x"})
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Spotify is not connected."}

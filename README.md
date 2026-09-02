@@ -69,6 +69,7 @@ A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and Fre
 - [🖥️ Headless CLI](#️-headless-cli)
 - [🛡️ Safety rails](#️-safety-rails)
 - [🗃️ Caching &amp; song archive](#️-caching--song-archive)
+  - [Resolve mappings](#resolve-mappings)
 - [🧱 Project layout](#-project-layout)
 - [🩺 Troubleshooting](#-troubleshooting)
 - [📄 License](#-license)
@@ -90,11 +91,13 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 - 🎯 **ISRC-accurate matching** — exact recording identity where available, with Unicode-aware fuzzy title/artist/duration fallbacks (feat-credit drift, "- 2015 Remaster" suffixes, non-Latin scripts, video-only uploads — all handled).
 - 🎛️ **Multiple named syncs** — set up as many independent syncs as you like, each with its own services, playlists, schedule, and safety caps.
 - ↪️ **One-off transfers** — copy any playlist from one service to another with a live progress bar; **pause, resume, or stop** mid-copy, and manually resolve unmatched tracks.
+- 🔗 **Transfer from a link** — paste a public playlist URL from any connected service and copy it straight across. No need to save or follow it first.
 - 🌐 **Followed playlists** — sync and transfer playlists you follow but don't own, not just ones you created.
 - 📦 **Portable metadata backups** — download one playlist or a service's entire library as ordered, versioned JSON/XML; single playlists also export as import-ready Soundiiz JSON.
 - 💿 **Local download mirror** — keep offline audio, one folder per playlist in **Jellyfin's** `AlbumArtist/Album` layout, with covers and an auto-updated `.m3u8`.
 - 🛡️ **Safety rails** — dry-run by default, per-pass add/removal caps, net-loss protection, empty-snapshot guard, fail-closed on expired tokens.
 - 🗃️ **Ever-growing song archive** — every track ever seen is recorded in a local SQLite database (name, artist, album, ISRC, raw metadata, first/last seen).
+- 🧭 **Editable match history** — browse, correct, and delete every cached track match per service from the **Mappings** page, including the "no match" results that would otherwise stay unmatched forever.
 - 🐳 **Runs anywhere** — one `docker compose up -d` for the browser app, or plain CLI + cron / Task Scheduler.
 
 > [!IMPORTANT]
@@ -465,6 +468,22 @@ Every pass also archives the metadata of every track it sees into `song_cache.db
 sqlite3 song_cache.db "SELECT name, artist, album, first_seen FROM songs ORDER BY first_seen DESC LIMIT 20"
 ```
 
+### Resolve mappings
+
+Each service keeps its own resolve cache, mapping a normalized `title|artist` key to the catalog id it matched on
+that service. A match is reused forever, and so is a **"no match"** result, which is what makes a track that failed
+to match once stay unmatched on every later pass.
+
+The **Mappings** page in the web UI exposes those caches directly, per service:
+
+- search the whole cache by title, artist, or resolved id
+- filter to entries **set by hand** (a match you chose in the transfer conflict editor) or to **no match** entries
+- correct a wrong id by pasting the right track's link, or delete a mapping so the next pass looks it up again
+- clear every "no match" entry for a service in one action, so a batch of failed lookups gets another try
+
+Edits are refused with a clear message while a sync is running, because a pass holds the cache in memory for its
+whole duration and would overwrite them on completion.
+
 <div align="right">
 
 [![][back-to-top]](#readme-top)
@@ -483,7 +502,7 @@ songmirror/
 frontend/       # React + Vite SPA (built and served by the API in production)
 ```
 
-**Adding another service**: subclass `MirrorTarget`, implement ~8 methods, add its builder to `engine/targets`' `_REGISTRY`, and add a matching `Connector` under `services/accounts`. All reconciliation — diff, ordering, safety rails, logging, snapshot-skip — is inherited.
+**Adding another service**: subclass `MirrorTarget`, implement ~8 methods, add its builder to `engine/targets`' `_REGISTRY` and its class to `_CLASSES`, and add a matching `Connector` under `services/accounts`. All reconciliation — diff, ordering, safety rails, logging, snapshot-skip — is inherited.
 
 <div align="right">
 

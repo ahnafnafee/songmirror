@@ -19,7 +19,7 @@ from ...amazon_music_web import (
 )
 from ...oauth import merge_refresh, read_token, token_is_live, token_path, write_token
 from ..config import REQUEST_TIMEOUT, polite_sleep, required_env
-from ..matching import normalize_text, romanized, track_key
+from ..matching import normalize_isrc, normalize_text, romanized, track_key
 from .base import MirrorTarget, TargetAuthError
 from .provider_utils import best_candidate, chunks, source_playlist_details
 
@@ -56,6 +56,15 @@ mutation SongMirrorAmazonCreatePlaylist(
 }
 """
 
+WEB_PLAYLIST_META_QUERY = """
+query SongMirrorAmazonPlaylistMeta($id: String!) {
+  playlist(id: $id) {
+    id title description visibility trackCount
+    images { url width height imageType aspectRatio }
+  }
+}
+"""
+
 WEB_PLAYLIST_TRACKS_QUERY = """
 query SongMirrorAmazonPlaylistTracks($id: String!, $cursor: String, $limit: Float!) {
   playlist(id: $id) {
@@ -81,8 +90,8 @@ query SongMirrorAmazonPlaylistTracks($id: String!, $cursor: String, $limit: Floa
 """
 
 WEB_SEARCH_QUERY = """
-query SongMirrorAmazonSearchTracks($query: String!) {
-  searchTracks(searchOptions: { searchFilters: [{ query: $query }] }) {
+query SongMirrorAmazonSearchTracks($field: String!, $query: String!) {
+  searchTracks(searchOptions: { searchFilters: [{ field: $field, query: $query }] }) {
     edges {
       node {
         id
@@ -197,8 +206,12 @@ class AmazonMusicTarget(MirrorTarget):
     stable_occurrence_ids = True
     favorite_tracks_name = "My Likes"
 
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        return os.getenv("AMAZON_MUSIC_CACHE_FILE", "amazon_music_resolve_cache.json")
+
     def __init__(self):
-        self.cache_file = os.getenv("AMAZON_MUSIC_CACHE_FILE", "amazon_music_resolve_cache.json")
+        self.cache_file = self.resolve_cache_path()
         self._web = None
         web_headers = (os.getenv("AMAZON_MUSIC_WEB_HEADERS") or "").strip()
         renewal_request = (os.getenv("AMAZON_MUSIC_RENEWAL_REQUEST") or "").strip()
@@ -384,6 +397,24 @@ class AmazonMusicTarget(MirrorTarget):
                 if track.get("id") is not None:
                     details[str(track["id"])] = track
         return details
+
+    def fetch_playlist(self, playlist_id):
+        """A playlist by id, shared ones included. The playlist node is addressed
+        by id rather than filtered by owner the way the library listing is."""
+        try:
+            if getattr(self, "_web", None) is not None:
+                data = self._graphql(
+                    "SongMirrorAmazonPlaylistMeta",
+                    WEB_PLAYLIST_META_QUERY,
+                    {"id": str(playlist_id)},
+                )
+                playlist = data.get("playlist") or {}
+            else:
+                body = self._request("GET", f"playlists/{playlist_id}")
+                playlist = self._connection(body, "data", "playlist")
+        except Exception:
+            return None
+        return playlist if playlist.get("id") is not None else None
 
     @staticmethod
     def playlist_page_reference(playlist_id, expected_count=None):
@@ -588,10 +619,14 @@ class AmazonMusicTarget(MirrorTarget):
 
     def _search(self, field, query, limit=20):
         if getattr(self, "_web", None) is not None:
+            # The field must travel with the query. Amazon treats it as free
+            # text for a title search, but honors it for an identifier search,
+            # so dropping it turns an ISRC lookup into a free-text search for
+            # the ISRC string, which never matches anything.
             data = self._graphql(
                 "SongMirrorAmazonSearchTracks",
                 WEB_SEARCH_QUERY,
-                {"query": query},
+                {"field": field, "query": query},
             )
             connection = data.get("searchTracks") or {}
             return [
@@ -618,7 +653,13 @@ class AmazonMusicTarget(MirrorTarget):
         for isrc in sorted({t.get("isrc") for t in source_tracks if t.get("isrc")}):
             if isrc in cache["isrc"]:
                 continue
-            candidates = [candidate for candidate in self._search("isrc", isrc) if candidate.get("isrc") == isrc]
+            # Compared through normalize_isrc: Amazon returns ISRCs in mixed
+            # case, so an exact string comparison drops real matches.
+            wanted = normalize_isrc(isrc)
+            candidates = [
+                candidate for candidate in self._search("isrc", isrc)
+                if normalize_isrc(candidate.get("isrc")) == wanted
+            ]
             cache["isrc"][isrc] = candidates
             cache["dirty"] = True
             polite_sleep(0.2)

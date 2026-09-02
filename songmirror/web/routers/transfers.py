@@ -3,7 +3,22 @@
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from ...services.transfers import TransferPreviewError
+
 router = APIRouter()
+
+
+@router.post("/api/transfers/preview")
+def preview_transfer_source(request: Request, body: dict = Body(...)):
+    """Turn a pasted playlist link into a source the transfer form can start.
+
+    Declared above the /api/transfers/{job_id}/... routes so a literal path can
+    never be shadowed by a job-id pattern (FastAPI matches in declaration order).
+    """
+    try:
+        return request.app.state.transfers.preview(body.get("url", ""))
+    except TransferPreviewError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/api/transfers")

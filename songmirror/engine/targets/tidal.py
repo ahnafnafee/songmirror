@@ -44,8 +44,12 @@ class TidalTarget(MirrorTarget):
     stable_occurrence_ids = True
     favorite_tracks_name = "Favorite Tracks"
 
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        return os.getenv("TIDAL_CACHE_FILE", "tidal_resolve_cache.json")
+
     def __init__(self, songs=None):
-        self.cache_file = os.getenv("TIDAL_CACHE_FILE", "tidal_resolve_cache.json")
+        self.cache_file = self.resolve_cache_path()
         # The songs archive (sqlite conn) supplies last-known metadata for
         # catalog entries TIDAL has since delisted (see playlist_tracks).
         self._songs = songs
@@ -291,6 +295,20 @@ class TidalTarget(MirrorTarget):
         if cursor:
             params["page[cursor]"] = cursor
         return params
+
+    def fetch_playlist(self, playlist_id):
+        """A playlist by id, public ones included. The JSON:API resource route
+        is not filtered by owner the way the collection listing is."""
+        try:
+            body = self._request(
+                "GET",
+                f"playlists/{playlist_id}",
+                params={"countryCode": self.country},
+            ).json()
+        except Exception:
+            return None
+        playlist = body.get("data") if isinstance(body, dict) else None
+        return playlist if isinstance(playlist, dict) and playlist.get("id") is not None else None
 
     @staticmethod
     def playlist_page_reference(playlist_id, expected_count=None):

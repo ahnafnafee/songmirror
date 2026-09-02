@@ -2,12 +2,15 @@
 Apple Developer account). Writes go to the same endpoints music.apple.com uses.
 """
 
+import os
 import random
 import time
 
 import requests
 
-from ..config import AMP, REQUEST_TIMEOUT, polite_sleep, required_env
+from ..config import (
+    AMP, DEFAULT_CACHE_FILE, REQUEST_TIMEOUT, polite_sleep, required_env,
+)
 from ..logs import log, log_warn
 from ..matching import normalize_text, romanized, score_candidate
 from .base import MirrorTarget, TargetAuthError, TargetTransientError
@@ -42,6 +45,13 @@ def _headers():
     }
 
 
+def is_catalog_playlist_id(playlist_id):
+    """Whether an Apple playlist id addresses the public catalog rather than the
+    signed-in library. Apple prefixes catalog playlists (editorial and shared)
+    with `pl.` and library playlists with `p.`, and each has its own endpoint."""
+    return str(playlist_id or "").startswith("pl.")
+
+
 def _normalized_playlist_track(track):
     attrs = track.get("attributes", {})
     play_params = attrs.get("playParams", {})
@@ -66,6 +76,11 @@ class AppleMusicTarget(MirrorTarget):
     tag = "apple"
     source = "apple"
     favorite_tracks_name = "Favorite Songs"
+
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        return getattr(opts, "cache_file", None) or os.getenv(
+            "APPLE_CACHE_FILE", DEFAULT_CACHE_FILE)
 
     def __init__(self, storefront, cache_file):
         self.storefront = storefront or "us"  # empty -> a broken /catalog//search URL (400)
@@ -196,8 +211,38 @@ class AppleMusicTarget(MirrorTarget):
                 "description": {},
                 "canEdit": True,
             },
+            "_catalog": is_catalog_playlist_id(playlist_id),
             "_page_count": expected_count,
         }
+
+    def _tracks_url(self, playlist):
+        """Where this playlist's tracks live. A shared or editorial playlist is a
+        CATALOG resource addressed by a `pl.` id; only a `p.` id is in the
+        signed-in library, and the two endpoints are not interchangeable."""
+        if playlist.get("_catalog"):
+            return f"{AMP}/catalog/{self.storefront}/playlists/{playlist['id']}/tracks"
+        return f"{AMP}/me/library/playlists/{playlist['id']}/tracks"
+
+    def fetch_playlist(self, playlist_id):
+        """A playlist by id, whichever side of the catalog/library split it is on.
+
+        A pasted Apple Music link always carries a catalog id, so this is the
+        only read path that reaches a playlist the account has not saved.
+        """
+        pid = str(playlist_id)
+        if not is_catalog_playlist_id(pid):
+            return None
+        try:
+            response = self._request(
+                "GET", f"{AMP}/catalog/{self.storefront}/playlists/{pid}", ok404=True)
+        except Exception:
+            return None
+        if response is None:
+            return None
+        rows = response.json().get("data") or []
+        if not rows:
+            return None
+        return {**rows[0], "_catalog": True}
 
     def playlist_tracks_page(self, playlist, cursor=None):
         try:
@@ -209,7 +254,7 @@ class AppleMusicTarget(MirrorTarget):
 
         response = self._request(
             "GET",
-            f"{AMP}/me/library/playlists/{playlist['id']}/tracks",
+            self._tracks_url(playlist),
             params={"limit": 20, "offset": offset},
             ok404=True,
         )
@@ -232,8 +277,9 @@ class AppleMusicTarget(MirrorTarget):
 
     def playlist_tracks(self, playlist):
         tracks, offset = [], 0
+        url = self._tracks_url(playlist)
         while True:
-            r = self._request("GET", f"{AMP}/me/library/playlists/{playlist['id']}/tracks",
+            r = self._request("GET", url,
                               params={"limit": 100, "offset": offset}, ok404=True)
             if r is None:  # empty playlists 404 this endpoint
                 if offset:
@@ -301,13 +347,24 @@ class AppleMusicTarget(MirrorTarget):
         # the playlist's lastModifiedDate so it's recomputed only when it changes.
         if playlist.get("_page_count") is not None:
             return int(playlist["_page_count"])
+        if playlist.get("_catalog"):
+            # A catalog playlist advertises no count at all: no trackCount
+            # attribute and no meta.total on either route. Its embedded first
+            # page is the whole playlist exactly when Apple offers no next
+            # page; otherwise the count is unknown rather than the page size.
+            tracks = (playlist.get("relationships") or {}).get("tracks") or {}
+            rows = tracks.get("data")
+            return None if tracks.get("next") or rows is None else len(rows)
         pid = playlist.get("id")
         mod = playlist.get("attributes", {}).get("lastModifiedDate")
         hit = _COUNT_CACHE.get(pid)
         if hit and hit[0] == mod:
             return hit[1]
         try:
-            data = self._request("GET", f"{AMP}/me/library/playlists/{pid}/tracks",
+            # Same endpoint the tracks themselves come from, so a catalog
+            # playlist is counted through the catalog route rather than the
+            # library one, which cannot see it.
+            data = self._request("GET", self._tracks_url(playlist),
                                   params={"limit": 1}).json()
             count = data.get("meta", {}).get("total")
         except Exception:

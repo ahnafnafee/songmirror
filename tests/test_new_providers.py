@@ -1897,3 +1897,252 @@ def test_amazon_web_playlist_contract_has_art_and_omits_empty_optional_create_va
     assert "images { url width height imageType aspectRatio }" in query
     assert variables == {"title": "Argonaut", "visibility": "PRIVATE"}
     assert mutation is True
+
+
+# -- reading a playlist by id, outside the library ----------------------------
+class _JsonResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+def _apple_target(request, storefront="us"):
+    from songmirror.engine.targets.apple import AppleMusicTarget
+
+    target = AppleMusicTarget.__new__(AppleMusicTarget)
+    target.storefront = storefront
+    target._request = request
+    return target
+
+
+def test_apple_reads_a_shared_playlist_from_the_catalog_not_the_library():
+    # A pasted Apple link always carries a `pl.` catalog id. The library endpoint
+    # cannot open one, so fetch_playlist has to take the other route.
+    calls = []
+
+    def request(method, url, params=None, json_body=None, ok404=False):
+        calls.append(url)
+        # The real catalog shape: no trackCount, and the first page of tracks
+        # embedded on the relationship.
+        return _JsonResponse({"data": [{
+            "id": "pl.u-abc",
+            "attributes": {"name": "Shared mix", "description": {"standard": "Hi"}},
+            "relationships": {"tracks": {"data": [{"id": "a"}, {"id": "b"}]}},
+        }]})
+
+    target = _apple_target(request, storefront="gb")
+    playlist = target.fetch_playlist("pl.u-abc")
+
+    assert calls == ["https://amp-api.music.apple.com/v1/catalog/gb/playlists/pl.u-abc"]
+    assert playlist["_catalog"] is True
+    assert target.playlist_name(playlist) == "Shared mix"
+    assert target.playlist_description(playlist) == "Hi"
+    assert target.playlist_count(playlist) == 2
+
+
+def test_apple_reads_catalog_playlist_tracks_from_the_catalog_route():
+    calls = []
+
+    def request(method, url, params=None, json_body=None, ok404=False):
+        calls.append((url, params))
+        return _JsonResponse({"data": [{
+            "id": "catalog-1",
+            "attributes": {"name": "One", "artistName": "A", "playParams": {"id": "catalog-1"}},
+        }]})
+
+    target = _apple_target(request)
+    tracks = target.playlist_tracks({"id": "pl.u-abc", "_catalog": True, "attributes": {}})
+
+    assert [track["catalog_id"] for track in tracks] == ["catalog-1"]
+    assert calls[0][0] == "https://amp-api.music.apple.com/v1/catalog/us/playlists/pl.u-abc/tracks"
+
+
+def test_apple_library_playlist_reads_are_unchanged():
+    calls = []
+
+    def request(method, url, params=None, json_body=None, ok404=False):
+        calls.append(url)
+        return _JsonResponse({"data": []})
+
+    target = _apple_target(request)
+    target.playlist_tracks({"id": "p.library", "attributes": {}})
+
+    assert calls == ["https://amp-api.music.apple.com/v1/me/library/playlists/p.library/tracks"]
+
+
+def test_apple_will_not_try_the_catalog_for_a_library_id():
+    # `p.` ids are private to one account; there is no catalog resource to ask for.
+    def request(*args, **kwargs):
+        raise AssertionError("a library id must not reach the catalog endpoint")
+
+    assert _apple_target(request).fetch_playlist("p.library") is None
+
+
+def test_deezer_fetches_a_public_playlist_by_id():
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+    calls = []
+    target._request = lambda method, path, params=None: (
+        calls.append((method, path)) or {"id": 42, "title": "Public", "nb_tracks": 3})
+
+    playlist = target.fetch_playlist("42")
+
+    assert calls == [("GET", "playlist/42")]
+    assert target.playlist_name(playlist) == "Public"
+    assert target.playlist_count(playlist) == 3
+
+
+def test_a_provider_that_cannot_read_a_public_playlist_returns_none():
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+
+    def refuse(method, path, params=None):
+        raise RuntimeError("HTTP 403")
+
+    target._request = refuse
+    # None, never an exception: the caller turns it into "save it to your library
+    # first" rather than a failed transfer.
+    assert target.fetch_playlist("42") is None
+
+
+def test_youtube_fetches_a_public_playlist_by_id():
+    from songmirror.engine.targets.ytmusic import YTMusicTarget
+
+    target = YTMusicTarget.__new__(YTMusicTarget)
+    calls = []
+
+    def request(method, path, params=None):
+        calls.append((method, path, params))
+        return _JsonResponse({"items": [{
+            "id": "PLpublic",
+            "snippet": {"title": "Public", "description": "d"},
+            "contentDetails": {"itemCount": 9},
+        }]})
+
+    target._request = request
+    playlist = target.fetch_playlist("PLpublic")
+
+    assert calls[0][2]["id"] == "PLpublic"     # by id, not `mine=true`
+    assert target.playlist_id(playlist) == "PLpublic"
+    assert target.playlist_name(playlist) == "Public"
+    assert target.playlist_count(playlist) == 9
+
+
+def test_every_provider_answers_the_public_read_contract():
+    # A new provider inherits the base "cannot do this" answer rather than
+    # breaking the transfer form with an AttributeError.
+    from songmirror.engine.targets import provider_ids, target_class
+
+    for provider_id in provider_ids():
+        assert callable(target_class(provider_id).fetch_playlist)
+
+
+def test_apple_catalog_playlist_count_comes_from_the_embedded_page():
+    # Apple gives a catalog playlist no count anywhere: no trackCount attribute
+    # and no meta.total on either route. The embedded first page is the whole
+    # playlist exactly when Apple advertises no next page.
+    def request(*args, **kwargs):
+        raise AssertionError("the count must not cost a request")
+
+    target = _apple_target(request)
+    playlist = {
+        "id": "pl.u-abc",
+        "_catalog": True,
+        "attributes": {"name": "Shared mix"},
+        "relationships": {"tracks": {"data": [{"id": "a"}, {"id": "b"}, {"id": "c"}]}},
+    }
+    assert target.playlist_count(playlist) == 3
+
+
+def test_apple_catalog_playlist_count_is_unknown_when_the_page_is_truncated():
+    def request(*args, **kwargs):
+        raise AssertionError("the count must not cost a request")
+
+    target = _apple_target(request)
+    playlist = {
+        "id": "pl.u-abc",
+        "_catalog": True,
+        "attributes": {"name": "Long mix"},
+        # A next link means the embedded rows are a page, not the total, so the
+        # page size must never be reported as the count.
+        "relationships": {"tracks": {"data": [{"id": "a"}, {"id": "b"}], "next": "/more"}},
+    }
+    assert target.playlist_count(playlist) is None
+
+
+def test_apple_library_playlist_count_still_reads_meta_total():
+    calls = []
+
+    def request(method, url, params=None, json_body=None, ok404=False):
+        calls.append(url)
+        return _JsonResponse({"meta": {"total": 41}})
+
+    target = _apple_target(request)
+    count = target.playlist_count({"id": "p.library", "attributes": {"lastModifiedDate": "x"}})
+
+    assert count == 41
+    assert calls == ["https://amp-api.music.apple.com/v1/me/library/playlists/p.library/tracks"]
+
+
+def _amazon_web_target(execute):
+    """An Amazon target on its web (GraphQL) backend, with a stub transport."""
+    from songmirror.engine.targets.amazon_music import AmazonMusicTarget
+
+    class _Web:
+        def execute(self, operation_name, query, variables=None, *, mutation=False):
+            return execute(operation_name, query, variables or {})
+
+    target = AmazonMusicTarget.__new__(AmazonMusicTarget)
+    target._web = _Web()
+    return target
+
+
+def test_amazon_web_search_sends_the_field_with_the_query():
+    # Dropping the field turns an ISRC lookup into a free-text search for the
+    # ISRC string, which matches nothing and leaves the ISRC cache empty.
+    seen = {}
+
+    def execute(operation_name, query, variables):
+        seen.update(variables)
+        seen["query_text"] = query
+        return {"searchTracks": {"edges": []}}
+
+    _amazon_web_target(execute)._search("isrc", "AULYA1500053")
+
+    assert seen["field"] == "isrc"
+    assert seen["query"] == "AULYA1500053"
+    assert "$field: String!" in seen["query_text"]
+
+
+def test_amazon_prefetch_caches_the_isrc_match_regardless_of_case():
+    # Amazon returns ISRCs in mixed case, so an exact string comparison drops
+    # real matches and caches an empty candidate list forever.
+    def execute(operation_name, query, variables):
+        return {"searchTracks": {"edges": [
+            {"node": {"id": "B00LPG7FHY", "title": "To The Stars",
+                      "isrc": "ushr11435801",          # lower case, same recording
+                      "contributingArtists": {"edges": []}}},
+            {"node": {"id": "B0OTHER", "title": "Other",
+                      "isrc": "GBAAA0000001",
+                      "contributingArtists": {"edges": []}}},
+        ]}}
+
+    target = _amazon_web_target(execute)
+    cache = {"isrc": {}, "search": {}, "manual": set(), "dirty": False}
+    target.prefetch([{"isrc": "USHR11435801"}], cache)
+
+    candidates = cache["isrc"]["USHR11435801"]
+    assert [c["id"] for c in candidates] == ["B00LPG7FHY"]   # the other ISRC is not a match
+
+
+def test_amazon_prefetch_records_a_genuine_miss_as_empty():
+    def execute(operation_name, query, variables):
+        return {"searchTracks": {"edges": []}}
+
+    cache = {"isrc": {}, "search": {}, "manual": set(), "dirty": False}
+    _amazon_web_target(execute).prefetch([{"isrc": "GBAAA0000001"}], cache)
+    assert cache["isrc"]["GBAAA0000001"] == []

@@ -188,6 +188,27 @@ class MirrorTarget:
         return next((pl for pl in self.browse_playlists()
                      if str(self.playlist_id(pl)) == wanted), None)
 
+    def fetch_playlist(self, playlist_id):
+        """A playlist by id whether or not it is in this account's library.
+
+        The pasted-link transfer source. Returns the provider-native playlist
+        dict (the shape `playlist_page_reference` builds, carrying the real
+        name, description and count), or None when the provider cannot read a
+        playlist the account does not own. Callers try `find_playlist` first,
+        so this only ever runs for an id the library does not have.
+        """
+        return None
+
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        """Where this target's resolution cache lives, or None when it has none.
+
+        The single authority for the path: each target's own __init__ reads it
+        from here, so the resolve-mappings UI opens exactly the file the engine
+        writes instead of restating the environment lookup.
+        """
+        return None
+
     def browse_playlists(self):
         """All library playlists for the browse / transfer pickers, as a flat list
         (NOT name-deduped like list_playlists). Each dict may carry `_owned`

@@ -429,3 +429,50 @@ export interface ResolveConflictRequest {
 export interface TransferControlResponse {
   ok: boolean
 }
+
+/** POST /api/transfers/preview: what a pasted playlist link resolves to. */
+export interface TransferSourcePreview {
+  provider: string
+  playlist_id: string
+  name: string
+  description: string
+  count: number | null
+  image: string
+  external_url: string
+}
+
+/** GET /api/resolve-cache: one provider's cached-mapping counts. */
+export interface ResolveCacheProvider {
+  id: string
+  name: string
+  total: number
+  /** Mappings a person set by hand in the transfer conflict editor. */
+  manual: number
+  /** "Searched, found nothing" entries. Sticky until removed, so a track that
+   * missed once never gets searched again. */
+  unmatched: number
+}
+
+/** One cached `name|artist -> catalog id` mapping. */
+export interface ResolveCacheEntry {
+  key: string
+  name: string
+  artist: string
+  /** Empty for an unmatched entry. */
+  target_id: string
+  manual: boolean
+  /** Empty when there is no id to link to. */
+  url: string
+}
+
+export interface ResolveCachePage {
+  /** Rows matching the filter BEFORE paging, for the page counter. */
+  total: number
+  entries: ResolveCacheEntry[]
+}
+
+export type ResolveCacheKind = 'all' | 'manual' | 'unmatched'
+
+export interface ClearUnmatchedResponse {
+  removed: number
+}

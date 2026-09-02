@@ -23,7 +23,7 @@ from .provider_utils import best_candidate, source_playlist_details
 API = "https://api.deezer.com"
 DEFAULT_TOKEN_FILE = "data/deezer_oauth.json"
 _TRACK_PATH_RE = re.compile(r"(?:^|/)track/(\d+)(?=$|[/?#])", re.IGNORECASE)
-_SHARE_LINK_HOSTS = {"link.deezer.com"}
+SHARE_LINK_HOSTS = {"link.deezer.com"}
 
 
 def _track_id_from_reference(value):
@@ -69,8 +69,12 @@ class DeezerTarget(MirrorTarget):
     source = "deezer"
     favorite_tracks_name = "Favorite Tracks"
 
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        return os.getenv("DEEZER_CACHE_FILE", "deezer_resolve_cache.json")
+
     def __init__(self):
-        self.cache_file = os.getenv("DEEZER_CACHE_FILE", "deezer_resolve_cache.json")
+        self.cache_file = self.resolve_cache_path()
         self._web = None
         web_headers = (os.getenv("DEEZER_WEB_HEADERS") or "").strip()
         refresh_token = (os.getenv("DEEZER_REFRESH_TOKEN") or "").strip()
@@ -213,6 +217,15 @@ class DeezerTarget(MirrorTarget):
         polite_sleep(0.4)
         return self._request("GET", f"playlist/{playlist_id}")
 
+    def fetch_playlist(self, playlist_id):
+        """A playlist by id, public ones included. Deezer's playlist endpoint is
+        not scoped to the caller's library, so one GET covers both."""
+        try:
+            playlist = self._request("GET", f"playlist/{playlist_id}")
+        except Exception:
+            return None
+        return playlist if isinstance(playlist, dict) and playlist.get("id") is not None else None
+
     @staticmethod
     def playlist_page_reference(playlist_id, expected_count=None):
         return {
@@ -342,7 +355,7 @@ class DeezerTarget(MirrorTarget):
         is_share_link = (
             parts
             and parts.scheme == "https"
-            and (parts.hostname or "").lower() in _SHARE_LINK_HOSTS
+            and (parts.hostname or "").lower() in SHARE_LINK_HOSTS
         )
         if is_share_link:
             try:

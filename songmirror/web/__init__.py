@@ -17,13 +17,15 @@ from fastapi.staticfiles import StaticFiles
 
 from ..services.events import EventBus
 from ..services.playlists import LinkStore
+from ..services.resolve_cache import ResolveCacheStore
 from ..services.settings import SettingsStore
 from ..services.sync_service import SyncService
 from ..services.syncs import SyncStore
 from ..services.transfers import TransferService
 from .routers import (
-    accounts, events, playlists, settings as settings_router, sync,
-    syncs as syncs_router, transfers as transfers_router,
+    accounts, events, playlists, resolve_cache as resolve_cache_router,
+    settings as settings_router, sync, syncs as syncs_router,
+    transfers as transfers_router,
 )
 
 # Built React SPA (Vite output), served in production; in dev the vite server
@@ -31,13 +33,15 @@ from .routers import (
 _DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
-def create_app(settings=None, bus=None, sync_service=None, links=None, transfers=None, syncs=None) -> FastAPI:
+def create_app(settings=None, bus=None, sync_service=None, links=None, transfers=None,
+               syncs=None, resolve_cache=None) -> FastAPI:
     settings = settings or SettingsStore()
     bus = bus or EventBus()
     syncs = syncs or SyncStore(dir=Path(settings.env_path).parent)
     sync_service = sync_service or SyncService(settings, bus, syncs)
     links = links or LinkStore(dir=Path(settings.env_path).parent)
     transfers = transfers or TransferService(settings, bus, sync_service)
+    resolve_cache = resolve_cache or ResolveCacheStore(settings, sync_service)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -62,6 +66,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
     app.state.syncs = syncs
     app.state.links = links
     app.state.transfers = transfers
+    app.state.resolve_cache = resolve_cache
 
     app.include_router(accounts.router)
     app.include_router(settings_router.router)
@@ -70,6 +75,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
     app.include_router(events.router)
     app.include_router(playlists.router)
     app.include_router(transfers_router.router)
+    app.include_router(resolve_cache_router.router)
 
     @app.get("/health")
     def health():
