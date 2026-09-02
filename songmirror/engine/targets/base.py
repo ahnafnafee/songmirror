@@ -54,6 +54,8 @@ class MirrorTarget:
     # durable id. The manual editor can then delete that exact occurrence
     # without rereading a thousand-track playlist to revalidate its position.
     stable_occurrence_ids = False
+    favorite_tracks_name = "Liked Tracks"
+    favorite_tracks_id = "liked-tracks"
 
     def list_playlists(self):
         """{casefolded name: playlist} of editable-or-not library playlists."""
@@ -69,6 +71,66 @@ class MirrorTarget:
     def playlist_tracks(self, playlist):
         """Existing tracks as dicts with name/artist/duration_ms + an id."""
         raise NotImplementedError
+
+    @staticmethod
+    def is_favorite_tracks_resource(resource):
+        return resource.get("_kind") == "liked_tracks"
+
+    def favorite_tracks_resource(self):
+        """Provider-owned, non-creatable liked/favorite track collection."""
+        return {
+            "id": self.favorite_tracks_id,
+            "name": self.favorite_tracks_name,
+            "description": "",
+            "_kind": "liked_tracks",
+        }
+
+    def validate_favorite_tracks(self, *, write=False, remove=False):
+        """Fail fast when auth cannot read or mutate the native collection."""
+
+    def favorite_tracks(self):
+        raise NotImplementedError
+
+    def add_favorite_tracks(self, target_ids):
+        raise NotImplementedError
+
+    def remove_favorite_track(self, track):
+        raise NotImplementedError
+
+    def resource_tracks(self, resource):
+        if self.is_favorite_tracks_resource(resource):
+            return self.favorite_tracks()
+        return self.playlist_tracks(resource)
+
+    def resource_add(self, resource, target_ids):
+        if self.is_favorite_tracks_resource(resource):
+            return self.add_favorite_tracks(target_ids)
+        return self.add(resource, target_ids)
+
+    def resource_remove(self, resource, track):
+        if self.is_favorite_tracks_resource(resource):
+            return self.remove_favorite_track(track)
+        return self.remove(resource, track)
+
+    def resource_id(self, resource):
+        if self.is_favorite_tracks_resource(resource):
+            return self.favorite_tracks_id
+        return self.playlist_id(resource)
+
+    def resource_name(self, resource):
+        if self.is_favorite_tracks_resource(resource):
+            return self.favorite_tracks_name
+        return self.playlist_name(resource)
+
+    def resource_count(self, resource):
+        if self.is_favorite_tracks_resource(resource):
+            return resource.get("count")
+        return self.playlist_count(resource)
+
+    def resource_is_editable(self, resource):
+        if self.is_favorite_tracks_resource(resource):
+            return True
+        return self.is_editable(resource)
 
     def track_id(self, track):
         """Stable id of an existing target track (for diffing / linking)."""
@@ -198,6 +260,22 @@ class MirrorTarget:
             self.remove(playlist, raw)
 
 
+def _resource_call(target, method_name, playlist_method_name, resource, *args):
+    """Use the collection-aware boundary while retaining lightweight test/providers."""
+    method = getattr(target, method_name, None)
+    if method is None:
+        method = getattr(target, playlist_method_name)
+    return method(resource, *args)
+
+
+def _resource_id(target, resource):
+    method = getattr(target, "resource_id", None)
+    if method is not None:
+        return method(resource)
+    method = getattr(target, "playlist_id", None)
+    return method(resource) if method is not None else resource.get("id")
+
+
 def _split_add_results(additions, result, id_at):
     """Partition queued rows using an optional provider add-result sequence.
 
@@ -315,7 +393,9 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
     name = name or sp_playlist.get("name", "?")
     started = time.monotonic()
     sp_tracks = _enrich_hard_isrcs(songs, source_key, sp_tracks)
-    tgt_tracks = target.playlist_tracks(tgt_playlist)
+    tgt_tracks = _resource_call(
+        target, "resource_tracks", "playlist_tracks", tgt_playlist
+    )
     log_section(name, f"{source_name} {len(sp_tracks)} tracks - {target.name} {len(tgt_tracks)} tracks", tag=tag)
 
     archive.upsert_many(songs, source_key, sp_tracks)
@@ -422,15 +502,19 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
             # Invalidate before the first provider write: a batched/ordered add
             # can partially land before a transient exception. A cached ledger
             # must never survive with the pre-write contents in that case.
-            playlist_id = getattr(
-                target, "playlist_id", lambda playlist: playlist.get("id")
-            )(tgt_playlist)
+            playlist_id = _resource_id(target, tgt_playlist)
             if playlist_id is not None:
                 archive.invalidate_playlist_detail_cache(
                     songs, target.source, playlist_id
                 )
         if additions:
-            result = target.add(tgt_playlist, [tid for tid, _, _, _ in additions])
+            result = _resource_call(
+                target,
+                "resource_add",
+                "add",
+                tgt_playlist,
+                [tid for tid, _, _, _ in additions],
+            )
             additions, rejected = _split_add_results(additions, result, lambda item: item[0])
             if rejected:
                 rejected_tracks = [track for _tid, _label, _method, track in rejected]
@@ -479,7 +563,7 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
                  for source_id, target_id in new_links.items()},
             )
         for track in removals:
-            target.remove(tgt_playlist, track)
+            _resource_call(target, "resource_remove", "remove", tgt_playlist, track)
     elif source_key == "spotify":
         # A dry run may still warm proven cross-provider mappings, but there is
         # no write-time provider repair to account for.
@@ -811,8 +895,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     physical_playlist_ids = {}
     replaced_sources = set()
     for p in peers:
-        playlist_id_getter = getattr(p, "playlist_id", lambda playlist: playlist.get("id"))
-        physical_id = playlist_id_getter(playlists[p.source])
+        physical_id = _resource_id(p, playlists[p.source])
         if physical_id is None:
             continue
         physical_id = str(physical_id)
@@ -850,7 +933,9 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     unreadable = {}
     for p in peers:
         try:
-            provider_rows = p.playlist_tracks(playlists[p.source])
+            provider_rows = _resource_call(
+                p, "resource_tracks", "playlist_tracks", playlists[p.source]
+            )
         except TargetAuthError:
             raise
         except Exception as e:
@@ -1264,7 +1349,10 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             additions = additions[:max_adds]
             add_blockers.add("replacement additions exceeded the add cap")
         if execute and additions:
-            result = p.add(
+            result = _resource_call(
+                p,
+                "resource_add",
+                "add",
                 playlists[p.source],
                 [target_id for _cid, target_id, _method, _norm in additions],
             )
@@ -1420,7 +1508,13 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
 
         if execute:
             for norm in safe:
-                p.remove(playlists[p.source], norm["_raw"])
+                _resource_call(
+                    p,
+                    "resource_remove",
+                    "remove",
+                    playlists[p.source],
+                    norm["_raw"],
+                )
             if removed_cids:
                 applied_removals[p.source] = removed_cids
 

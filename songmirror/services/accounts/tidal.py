@@ -4,6 +4,7 @@ import os
 
 import requests
 
+from ...browser_session import jwt_scopes
 from ...engine.config import REQUEST_TIMEOUT
 from ...oauth import read_token
 from ...tidal_web import parse_web_headers, serialize_web_headers
@@ -11,6 +12,32 @@ from .base import ConnStatus, Connector, Field
 
 API = "https://openapi.tidal.com/v2"
 DEFAULT_TOKEN_FILE = "data/tidal_oauth.json"
+_BROWSER_COLLECTION_SCOPES = ("r_usr", "w_usr")
+_DEVELOPER_COLLECTION_SCOPES = ("collection.read", "collection.write")
+
+
+def _scopes_from_token(token):
+    configured = token.get("scope")
+    if isinstance(configured, str) and configured.strip():
+        return {scope for scope in configured.split() if scope}
+    if isinstance(configured, list):
+        return {str(scope) for scope in configured if str(scope)}
+    return jwt_scopes(str(token.get("access_token") or ""))
+
+
+def _scope_detail(label, scopes, *, browser=False):
+    required = _BROWSER_COLLECTION_SCOPES if browser else _DEVELOPER_COLLECTION_SCOPES
+    if scopes is not None and not set(required) <= scopes:
+        guidance = (
+            "in a fresh pasted web-player session"
+            if browser
+            else "via developer OAuth"
+        )
+        return (
+            f"{label} (ordinary playlists only; native liked-track sync requires "
+            f"{' and '.join(required)} {guidance})"
+        )
+    return label
 
 
 class TidalConnector(Connector):
@@ -47,7 +74,11 @@ class TidalConnector(Connector):
                 timeout=REQUEST_TIMEOUT,
             )
             if response.ok:
-                return True, "signed-in web-player session"
+                token = context["authorization"].split(None, 1)[1]
+                scopes = jwt_scopes(token)
+                if scopes is None:
+                    return True, "signed-in web-player session"
+                return True, _scope_detail("signed-in web-player session", scopes, browser=True)
             if response.status_code in (401, 403):
                 return False, "TIDAL rejected or expired the pasted web-player session"
             return False, f"TIDAL returned HTTP {response.status_code}"
@@ -61,7 +92,11 @@ class TidalConnector(Connector):
             ok, detail = self._validate()
             return ConnStatus("connected" if ok else "expired", detail)
         if self._official_connected():
-            return ConnStatus("connected", "developer OAuth fallback")
+            token = read_token(self._official_token_file())
+            return ConnStatus(
+                "connected",
+                _scope_detail("developer OAuth fallback", _scopes_from_token(token)),
+            )
         return ConnStatus("unconfigured", "paste a signed-in TIDAL OpenAPI request")
 
     def submit(self, values):
@@ -79,3 +114,7 @@ class TidalConnector(Connector):
 
     def disconnect(self):
         self._store.save({"TIDAL_WEB_HEADERS": ""})
+        try:
+            os.remove(self._official_token_file())
+        except FileNotFoundError:
+            pass

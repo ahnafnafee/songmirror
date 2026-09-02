@@ -24,6 +24,12 @@ class _SourceAuthError(TargetAuthError):
     """Auth failure raised while reading the one-way source, not a destination."""
 
 
+def _validate_favorite_tracks(target, *, write, remove=False):
+    validator = getattr(target, "validate_favorite_tracks", None)
+    if validator is not None:
+        validator(write=write, remove=remove)
+
+
 def _load_json(path):
     try:
         with open(path) as f:
@@ -141,7 +147,15 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
            "held_removals": [], "change_diagnostics": [], "failures": []}
     cache = load_cache(target.cache_file)
     try:
-        tgt_by_name = target.list_playlists()
+        liked_route = (
+            (getattr(opts, "liked_routes", None) or {}).get(target.source)
+            if getattr(opts, "liked_tracks", False)
+            else None
+        )
+        needs_playlist_directory = bool(selected) or (
+            liked_route and liked_route.get("kind") == "playlist"
+        )
+        tgt_by_name = target.list_playlists() if needs_playlist_directory else {}
         by_id = {target.playlist_id(pl): pl for pl in tgt_by_name.values() if target.playlist_id(pl)}
         link_by_src = {link.members[src_key]: link for link in (links or [])
                        if link.members.get(src_key) and target.source in link.members}
@@ -223,6 +237,96 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
             except Exception as e:
                 _collect_failure(agg, agg["failures"], name, e)
                 log_warn(f"'{name}' failed, continuing: {e!r}", tag=target.tag)
+
+        if getattr(opts, "liked_tracks", False):
+            route = liked_route
+            try:
+                _validate_favorite_tracks(source, write=False)
+                source_resource = source.favorite_tracks_resource()
+            except TargetAuthError as exc:
+                raise _SourceAuthError(str(exc)) from exc
+            source_name = source_resource.get("name") or f"{source.name} liked tracks"
+            target_resource = None
+            if route and route.get("kind") == "native":
+                _validate_favorite_tracks(
+                    target,
+                    write=opts.execute,
+                    remove=bool(opts.execute and opts.max_removals > 0),
+                )
+                target_resource = target.favorite_tracks_resource()
+            elif route and route.get("kind") == "playlist":
+                destination_name = str(route.get("name") or "").strip()
+                target_resource = tgt_by_name.get(destination_name.casefold())
+                if target_resource is None:
+                    if not opts.execute:
+                        log_note(
+                            f"{source_name}: no {target.name} playlist '{destination_name}' yet - "
+                            "would create on --execute",
+                            tag=target.tag,
+                        )
+                    else:
+                        try:
+                            target_resource = target.create({
+                                "name": destination_name,
+                                "description": f"Liked tracks synced from {source.name} by SongMirror.",
+                            })
+                            agg["created"] += 1
+                        except TargetAuthError:
+                            raise
+                        except Exception as exc:
+                            _collect_failure(agg, agg["failures"], source_name, exc)
+                            log_warn(
+                                f"create {target.name} '{destination_name}' failed: {exc!r}",
+                                tag=target.tag,
+                            )
+            if target_resource is not None:
+                editable_fn = getattr(target, "resource_is_editable", None)
+                if editable_fn is None:
+                    editable_fn = target.is_editable
+                editable = editable_fn(target_resource)
+                if not editable:
+                    log_warn(
+                        f"{source_name}: {target.name} destination is not editable - skipped",
+                        tag=target.tag,
+                    )
+                else:
+                    try:
+                        source_tracks = get_source_tracks(source_resource)
+                    except TargetAuthError as exc:
+                        raise _SourceAuthError(str(exc)) from exc
+                    try:
+                        result = mirror_pair(
+                            target,
+                            source_tracks,
+                            source_resource,
+                            target_resource,
+                            cache,
+                            songs,
+                            execute=opts.execute,
+                            max_removals=opts.max_removals,
+                            max_adds=opts.max_adds,
+                            drain_removals=opts.apply_large_removals,
+                            should_continue=should_continue,
+                            source_key=src_key,
+                            source_name=source.name,
+                            name=source_name,
+                        )
+                        agg["pairs"] += 1
+                        for key in (
+                            "added", "removed", "missing", "held", "deferred",
+                            "removals_skipped",
+                        ):
+                            agg[key] += result[key]
+                        agg["uncertain_matches"] += result.get("uncertain_matches", 0)
+                        _collect_held(agg["held_removals"], result.get("held_removals", []))
+                        _collect_diagnostics(
+                            agg["change_diagnostics"], result.get("change_diagnostics", [])
+                        )
+                    except TargetAuthError:
+                        raise
+                    except Exception as exc:
+                        _collect_failure(agg, agg["failures"], source_name, exc)
+                        log_warn(f"'{source_name}' failed, continuing: {exc!r}", tag=target.tag)
     finally:
         save_cache(target.cache_file, cache)
     return agg
@@ -289,9 +393,14 @@ def run_pass(opts, should_continue=None):
         else:
             log_warn(f"sync source '{source_provider}' is not connected", indent="  ")
         return _summary(opts, [], pass_started)
-    src_by_name = source.list_playlists()
+    sync_playlists = getattr(opts, "sync_playlists", True)
+    src_by_name = source.list_playlists() if sync_playlists else {}
 
-    wanted = {n.strip().casefold() for n in opts.playlists.split(",") if n.strip()} if opts.playlists else None
+    wanted = (
+        {n.strip().casefold() for n in opts.playlists.split(",") if n.strip()}
+        if sync_playlists and opts.playlists
+        else None
+    )
     selected = [src_by_name[n] for n in sorted(src_by_name) if wanted is None or n in wanted]
 
     mode = paint("EXECUTE", "green", "bold") if opts.execute else paint("DRY RUN", "yellow", "bold")
@@ -353,11 +462,32 @@ def run_pass(opts, should_continue=None):
     tracks_state = {"dirty": False}
 
     def get_source_tracks(playlist):
+        is_liked = bool(playlist.get("_kind") == "liked_tracks")
+        if is_liked:
+            # Every destination worker shares the same source collection. Read
+            # it once under the source-client lock so six destinations cannot
+            # race the same session or observe six subtly different snapshots.
+            memo_key = "collection:liked-tracks"
+            with sp_lock:
+                if memo_key in sp_memo:
+                    return sp_memo[memo_key]
+                raw_tracks = source.resource_tracks(playlist)
+                if src_is_spotify:
+                    tracks = raw_tracks
+                else:
+                    tracks = []
+                    for track in raw_tracks:
+                        normalized = _normalize(track, source.source)
+                        normalized["id"] = source.track_id(track)
+                        tracks.append(normalized)
+                sp_memo[memo_key] = tracks
+                return tracks
         if not src_is_spotify:
             # No snapshot id to key a disk cache on; read + normalize each pass.
             # Injecting the source's stable track id keeps mirror_pair's shape.
             out = []
-            for t in source.playlist_tracks(playlist):
+            reader = source.resource_tracks if is_liked else source.playlist_tracks
+            for t in reader(playlist):
                 norm = _normalize(t, source.source)
                 norm["id"] = source.track_id(t)
                 out.append(norm)
@@ -550,7 +680,20 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
         + (paint(f"   local downloads -> {opts.download_dir}", "grey") if opts.download_dir and opts.execute else ""))
 
     spotify_cookie.take_singles_used()   # drop any residue from a pass that died mid-read
-    dirs = {p.source: p.list_playlists() for p in peers}
+    liked_routes = getattr(opts, "liked_routes", None) or {}
+    dirs = {}
+    for peer in peers:
+        liked_route = (
+            {"kind": "native"}
+            if peer.source == order_source
+            else liked_routes.get(peer.source)
+        )
+        needs_playlist_directory = bool(selected) or (
+            getattr(opts, "liked_tracks", False)
+            and liked_route
+            and liked_route.get("kind") == "playlist"
+        )
+        dirs[peer.source] = peer.list_playlists() if needs_playlist_directory else {}
     caches = {p.source: load_cache(p.cache_file) for p in peers}
     total = {"added": 0, "removed": 0, "missing": 0, "held": 0,
              "uncertain_matches": 0, "deferred": 0,
@@ -633,6 +776,109 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
             except Exception as e:
                 _collect_failure(total, failures, name, e)
                 log_warn(f"'{name}' reconcile failed, continuing: {e!r}", tag="sync")
+
+        if getattr(opts, "liked_tracks", False):
+            order_resource = order_peer.favorite_tracks_resource()
+            name = order_resource.get("name") or f"{order_peer.name} liked tracks"
+            state_key = reconcile_state_key(
+                name,
+                link_key="collection:liked-tracks",
+                authority_sources=authority_sources,
+            )
+            resources = {}
+            authority_failure_recorded = False
+            for peer in peers:
+                route = (
+                    {"kind": "native"}
+                    if peer.source == order_source
+                    else liked_routes.get(peer.source)
+                )
+                resource = None
+                try:
+                    if route and route.get("kind") == "native":
+                        _validate_favorite_tracks(
+                            peer,
+                            write=opts.execute,
+                            remove=bool(opts.execute and opts.max_removals > 0),
+                        )
+                        resource = peer.favorite_tracks_resource()
+                    elif route and route.get("kind") == "playlist":
+                        destination_name = str(route.get("name") or "").strip()
+                        resource = dirs[peer.source].get(destination_name.casefold())
+                        if resource is None and opts.execute:
+                            resource = peer.create({
+                                "name": destination_name,
+                                "description": (
+                                    f"Liked tracks synced from {order_peer.name} by SongMirror."
+                                ),
+                            })
+                            archive.reset_playlist_peer_state(
+                                songs, state_key, peer.source
+                            )
+                        elif resource is None:
+                            log_note(
+                                f"{name}: no {peer.name} playlist '{destination_name}' yet - "
+                                "would create on --execute",
+                                tag=peer.tag,
+                            )
+                    if resource is None:
+                        continue
+                    editable_fn = getattr(peer, "resource_is_editable", None)
+                    if editable_fn is None:
+                        editable_fn = peer.is_editable
+                    if not editable_fn(resource):
+                        raise RuntimeError(f"{peer.name} liked-track destination is not editable")
+                    resources[peer.source] = resource
+                except TargetAuthError:
+                    raise
+                except Exception as exc:
+                    _collect_failure(total, failures, name, exc)
+                    if authority_sources is None or peer.source in authority_sources:
+                        authority_failure_recorded = True
+                    log_warn(f"{peer.name}/{name}: destination unavailable ({exc!r})", tag=peer.tag)
+
+            active = [peer for peer in peers if peer.source in resources]
+            required = peer_sources if authority_sources is None else authority_sources
+            if not required <= set(resources):
+                missing = ", ".join(sorted(required - set(resources)))
+                log_warn(f"{name}: liked-track destination unavailable on {missing} - skipped", tag="sync")
+                if opts.execute and not authority_failure_recorded:
+                    _collect_failure(
+                        total,
+                        failures,
+                        name,
+                        RuntimeError(f"liked-track destination unavailable on {missing}"),
+                    )
+            elif len(active) >= 2:
+                try:
+                    stats = reconcile(
+                        active,
+                        name,
+                        resources,
+                        caches,
+                        songs,
+                        execute=opts.execute,
+                        max_removals=opts.max_removals,
+                        max_adds=opts.max_adds,
+                        drain_removals=opts.apply_large_removals,
+                        should_continue=should_continue,
+                        link_key="collection:liked-tracks",
+                        authority_sources=authority_sources,
+                    )
+                    for key in total:
+                        total[key] += stats.get(key, 0)
+                    _collect_held(held_detail, stats.get("held_removals", []))
+                    _collect_diagnostics(
+                        change_diagnostics, stats.get("change_diagnostics", [])
+                    )
+                    failures.extend(
+                        stats.get("failures", [])[:max(0, FAILURE_DETAIL - len(failures))]
+                    )
+                except TargetAuthError:
+                    raise
+                except Exception as exc:
+                    _collect_failure(total, failures, name, exc)
+                    log_warn(f"'{name}' reconcile failed, continuing: {exc!r}", tag="sync")
     finally:
         for p in peers:
             save_cache(p.cache_file, caches[p.source])

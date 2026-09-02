@@ -210,6 +210,12 @@ export interface SyncStatus {
 
 export type SyncMode = 'oneway' | 'group' | 'nway'
 
+export type LikedTrackRoute =
+  | { kind: 'native' }
+  | { kind: 'playlist'; name: string }
+
+export type LikedTrackRoutes = Record<string, LikedTrackRoute>
+
 /** GET/POST/PUT /api/syncs — one independent, named sync configuration
  * (multiple jobs can run side by side, Soundiiz-style). `providers` and
  * `playlists` are comma-separated strings — the same convention as the
@@ -229,6 +235,12 @@ export interface SyncJob {
   authorities: string
   providers: string
   playlists: string
+  /** Whether ordinary playlists participate; false represents a liked-only job. */
+  sync_playlists: boolean
+  /** Include one provider's built-in liked/favorite track collection. */
+  liked_tracks: boolean
+  /** Destination provider -> built-in liked collection or a named playlist. */
+  liked_routes: LikedTrackRoutes
   interval: string
   max_adds: number
   max_removals: number

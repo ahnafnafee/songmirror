@@ -19,6 +19,56 @@ def test_playlist_id_per_provider_shape():
     assert YTMusicTarget.playlist_id(None, {"playlistId": "y1"}) == "y1"  # youtube
 
 
+def test_resource_boundary_dispatches_native_liked_tracks_without_changing_playlists():
+    calls = []
+
+    class T(MirrorTarget):
+        favorite_tracks_name = "Favorite Tracks"
+
+        def playlist_tracks(self, playlist):
+            calls.append(("playlist-read", playlist["id"]))
+            return [{"id": "playlist-track"}]
+
+        def add(self, playlist, target_ids):
+            calls.append(("playlist-add", playlist["id"], tuple(target_ids)))
+
+        def remove(self, playlist, track):
+            calls.append(("playlist-remove", playlist["id"], track["id"]))
+
+        def favorite_tracks(self):
+            calls.append(("liked-read",))
+            return [{"id": "liked-track"}]
+
+        def add_favorite_tracks(self, target_ids):
+            calls.append(("liked-add", tuple(target_ids)))
+
+        def remove_favorite_track(self, track):
+            calls.append(("liked-remove", track["id"]))
+
+    target = T()
+    liked = target.favorite_tracks_resource()
+    playlist = {"id": "playlist-1", "name": "Mix"}
+
+    assert liked == {
+        "id": "liked-tracks", "name": "Favorite Tracks", "description": "",
+        "_kind": "liked_tracks",
+    }
+    assert target.resource_tracks(liked) == [{"id": "liked-track"}]
+    target.resource_add(liked, ["catalog-1"])
+    target.resource_remove(liked, {"id": "catalog-2"})
+    assert target.resource_tracks(playlist) == [{"id": "playlist-track"}]
+    target.resource_add(playlist, ["catalog-3"])
+    target.resource_remove(playlist, {"id": "catalog-4"})
+    assert calls == [
+        ("liked-read",),
+        ("liked-add", ("catalog-1",)),
+        ("liked-remove", "catalog-2"),
+        ("playlist-read", "playlist-1"),
+        ("playlist-add", "playlist-1", ("catalog-3",)),
+        ("playlist-remove", "playlist-1", "catalog-4"),
+    ]
+
+
 def test_find_playlist_default_and_spotify_override(monkeypatch):
     # Default scans the name-keyed list_playlists()...
     class T(MirrorTarget):

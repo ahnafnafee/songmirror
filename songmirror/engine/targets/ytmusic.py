@@ -221,6 +221,7 @@ class YTMusicTarget(MirrorTarget):
     tag = "yt"
     source = "ytmusic"
     stable_occurrence_ids = True
+    favorite_tracks_name = "Liked Music"
 
     def __init__(self, auth_file, creds):
         self._auth_file = auth_file
@@ -367,6 +368,48 @@ class YTMusicTarget(MirrorTarget):
             })
             if (track := _normalized_data_api_playlist_item(item)) is not None
         ]
+
+    def _liked_playlist_id(self):
+        data = self._request(
+            "GET",
+            "channels",
+            params={"part": "contentDetails", "mine": "true", "maxResults": 1},
+        ).json()
+        channels = data.get("items") or []
+        playlist_id = (
+            (((channels[0].get("contentDetails") or {}).get("relatedPlaylists") or {}).get("likes"))
+            if channels
+            else None
+        )
+        if not playlist_id:
+            raise RuntimeError("YouTube did not return the account's liked-videos collection")
+        return str(playlist_id)
+
+    def favorite_tracks(self):
+        return self.playlist_tracks({
+            "playlistId": self._liked_playlist_id(),
+            "title": self.favorite_tracks_name,
+        })
+
+    def add_favorite_tracks(self, target_ids):
+        for target_id in target_ids:
+            self._request(
+                "POST",
+                "videos/rate",
+                params={"id": str(target_id), "rating": "like"},
+            )
+            polite_sleep(1.0)
+
+    def remove_favorite_track(self, track):
+        target_id = self.track_id(track)
+        if not target_id:
+            return
+        self._request(
+            "POST",
+            "videos/rate",
+            params={"id": target_id, "rating": "none"},
+        )
+        polite_sleep(1.0)
 
     def track_id(self, track):
         return track.get("videoId")
@@ -591,6 +634,28 @@ class YTMusicBrowserTarget(YTMusicTarget):
             for raw in data.get("tracks") or []
             if (track := _normalized_youtubei_playlist_track(raw)) is not None
         ]
+
+    def favorite_tracks(self):
+        data = _expired(
+            lambda: self._api.get_liked_songs(limit=None),
+            self.favorite_tracks_name,
+        ) or {}
+        return [
+            track
+            for raw in data.get("tracks") or []
+            if (track := _normalized_youtubei_playlist_track(raw)) is not None
+        ]
+
+    def add_favorite_tracks(self, target_ids):
+        for target_id in target_ids:
+            self._api.rate_song(str(target_id), "LIKE")
+            polite_sleep(1.0)
+
+    def remove_favorite_track(self, track):
+        target_id = self.track_id(track)
+        if target_id:
+            self._api.rate_song(target_id, "INDIFFERENT")
+            polite_sleep(1.0)
 
     def playlist_tracks_page(self, playlist, cursor=None):
         rows, next_cursor = _expired(

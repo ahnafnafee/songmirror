@@ -1,3 +1,4 @@
+import { providerLikedTracksLabel } from '@/lib/likedTracks'
 import type { Account, SyncJob } from '@/types'
 
 export function parseCsv(value: string | null | undefined): string[] {
@@ -91,10 +92,30 @@ export function buildSyncSummaryRows(job: SyncJob, peers: Account[], downloadDir
 
   const playlistNames = parseCsv(job.playlists)
   let playlistsValue: string
-  if (playlistNames.length === 0) playlistsValue = 'All playlists'
+  if (job.sync_playlists === false) playlistsValue = 'No regular playlists'
+  else if (playlistNames.length === 0) playlistsValue = 'All playlists'
   else if (playlistNames.length <= 3) playlistsValue = playlistNames.join(', ')
   else playlistsValue = `${playlistNames.slice(0, 3).join(', ')} +${playlistNames.length - 3} more`
   rows.push({ label: 'Playlists', value: playlistsValue })
+
+  if (job.liked_tracks) {
+    const sourceId = job.source || 'spotify'
+    const sourceName = peers.find((peer) => peer.id === sourceId)?.name ?? sourceId
+    const sourceLabel = providerLikedTracksLabel(sourceId, sourceName)
+    const destinations = peers
+      .filter((peer) => enabled.has(peer.id) && peer.id !== sourceId)
+      .map((peer) => {
+        const route = job.liked_routes?.[peer.id]
+        return route?.kind === 'playlist'
+          ? `${peer.name} “${route.name}”`
+          : providerLikedTracksLabel(peer.id, peer.name)
+      })
+    const arrow = job.mode === 'oneway' ? '→' : '⇄'
+    rows.push({
+      label: 'Liked tracks',
+      value: destinations.length > 0 ? `${sourceLabel} ${arrow} ${destinations.join(', ')}` : sourceLabel,
+    })
+  }
 
   const removalNote = job.apply_large_removals ? ' (large removals drained in batches)' : ''
   rows.push({

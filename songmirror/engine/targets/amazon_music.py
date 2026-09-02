@@ -113,6 +113,34 @@ mutation SongMirrorAmazonRemoveTracks($playlistId: String!, $entryIds: [String])
 }
 """
 
+WEB_LIKED_TRACKS_QUERY = """
+query SongMirrorAmazonLikedTracks($cursor: String, $limit: Float!) {
+  user {
+    tracks(limit: $limit, cursor: $cursor) {
+      edges {
+        likeState
+        node {
+          id
+          title
+          isrc
+          duration
+          images { url width height imageType aspectRatio }
+          album { id title }
+          contributingArtists { edges { role node { id name } } }
+        }
+      }
+      pageInfo { hasNextPage token }
+    }
+  }
+}
+"""
+
+WEB_SET_TRACK_LIKE_STATE_MUTATION = """
+mutation SongMirrorAmazonSetTrackLikeState($trackId: String!, $likeState: String!) {
+  setTrackLikeState(trackId: $trackId, likeState: $likeState) { __typename }
+}
+"""
+
 
 def _next_cursor(page, current, context):
     """Return the next cursor, failing closed on contradictory page metadata."""
@@ -167,6 +195,7 @@ class AmazonMusicTarget(MirrorTarget):
     tag = "amazon"
     source = "amazon"
     stable_occurrence_ids = True
+    favorite_tracks_name = "My Likes"
 
     def __init__(self):
         self.cache_file = os.getenv("AMAZON_MUSIC_CACHE_FILE", "amazon_music_resolve_cache.json")
@@ -474,6 +503,76 @@ class AmazonMusicTarget(MirrorTarget):
             entry_id = cursor_value.split(":", 1)[1] if ":" in cursor_value else cursor_value or None
             tracks.append(_normalized_track({**node, **details.get(tid, {})}, entry_id))
         return tracks
+
+    @staticmethod
+    def _liked_tracks_from_edges(edges):
+        return [
+            _normalized_track(edge.get("node") or {})
+            for edge in edges
+            if (edge.get("node") or {}).get("id") is not None
+            and str(edge.get("likeState") or "LIKE").upper() == "LIKE"
+        ]
+
+    def favorite_tracks(self):
+        tracks, cursor = [], None
+        while True:
+            if getattr(self, "_web", None) is not None:
+                data = self._graphql(
+                    "SongMirrorAmazonLikedTracks",
+                    WEB_LIKED_TRACKS_QUERY,
+                    {"cursor": cursor, "limit": 100},
+                )
+                connection = ((data.get("user") or {}).get("tracks")) or {}
+            else:
+                params = {"limit": 100}
+                if cursor:
+                    params["cursor"] = cursor
+                body = self._request("GET", "me/tracks", params=params)
+                connection = self._connection(body, "data", "user", "tracks")
+            edges = connection.get("edges") or []
+            tracks.extend(self._liked_tracks_from_edges(edges))
+            cursor = _next_cursor(connection.get("pageInfo") or {}, cursor, "liked track")
+            if cursor is None:
+                return tracks
+
+    def validate_favorite_tracks(self, *, write=False, remove=False):
+        if remove and getattr(self, "_web", None) is None:
+            raise TargetAuthError(
+                "Amazon Music exact unlike requires the web-player connection; "
+                "the approved API can only set LIKE or DISLIKE"
+            )
+
+    def _set_track_like_state(self, target_id, state):
+        if getattr(self, "_web", None) is not None:
+            data = self._graphql(
+                "SongMirrorAmazonSetTrackLikeState",
+                WEB_SET_TRACK_LIKE_STATE_MUTATION,
+                {"trackId": str(target_id), "likeState": state},
+                mutation=True,
+            )
+            if not data.get("setTrackLikeState"):
+                raise RuntimeError("Amazon Music liked-track mutation returned no result")
+        else:
+            if state == "NEUTRAL":
+                raise TargetAuthError(
+                    "Amazon Music exact unlike requires the web-player connection; "
+                    "the approved API can only set LIKE or DISLIKE"
+                )
+            self._request(
+                "PUT",
+                f"me/tracks/{target_id}",
+                json_body={"likeState": state},
+            )
+        polite_sleep(0.3)
+
+    def add_favorite_tracks(self, target_ids):
+        for target_id in target_ids:
+            self._set_track_like_state(target_id, "LIKE")
+
+    def remove_favorite_track(self, track):
+        target_id = self.track_id(track)
+        if target_id:
+            self._set_track_like_state(target_id, "NEUTRAL")
 
     def track_id(self, track):
         return str(track.get("id")) if track.get("id") is not None else None

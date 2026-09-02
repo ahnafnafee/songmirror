@@ -14,7 +14,8 @@ from ...services.syncs import SyncJob, validate_sync_job
 
 router = APIRouter()
 
-_FIELDS = {"name", "enabled", "mode", "source", "authorities", "providers", "playlists",
+_FIELDS = {"name", "enabled", "mode", "source", "authorities", "providers", "playlists", "sync_playlists",
+           "liked_tracks", "liked_routes",
            "interval", "max_adds", "max_removals", "apply_large_removals", "download", "id"}
 
 
@@ -24,7 +25,7 @@ def _job_from(values):
     for k in ("max_adds", "max_removals"):
         if k in data:
             data[k] = int(data[k])
-    for k in ("enabled", "download", "apply_large_removals"):
+    for k in ("enabled", "download", "apply_large_removals", "sync_playlists", "liked_tracks"):
         if k in data:
             data[k] = bool(data[k])
     try:

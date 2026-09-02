@@ -67,6 +67,7 @@ class DeezerTarget(MirrorTarget):
     name = "Deezer"
     tag = "deezer"
     source = "deezer"
+    favorite_tracks_name = "Favorite Tracks"
 
     def __init__(self):
         self.cache_file = os.getenv("DEEZER_CACHE_FILE", "deezer_resolve_cache.json")
@@ -282,6 +283,46 @@ class DeezerTarget(MirrorTarget):
         for body in self._pages(f"playlist/{playlist['id']}/tracks", {"limit": 100}):
             tracks.extend(_normalized_track(track) for track in body.get("data") or [] if track.get("id"))
         return tracks
+
+    def favorite_tracks(self):
+        if self._web is not None:
+            try:
+                return [_normalized_track(track) for track in self._web.favorite_tracks()]
+            except DeezerWebAuthError as exc:
+                raise TargetAuthError(str(exc)) from exc
+        tracks = []
+        for body in self._pages("user/me/tracks", {"limit": 100}):
+            tracks.extend(
+                _normalized_track(track)
+                for track in body.get("data") or []
+                if track.get("id") is not None
+            )
+        return tracks
+
+    def add_favorite_tracks(self, target_ids):
+        for target_id in target_ids:
+            normalized = self.normalize_manual_track_id(target_id)
+            try:
+                if self._web is not None:
+                    self._web.add_favorite_track(normalized)
+                else:
+                    self._request("POST", "user/me/tracks", params={"songs": normalized})
+            except DeezerWebAuthError as exc:
+                raise TargetAuthError(str(exc)) from exc
+            polite_sleep(0.25)
+
+    def remove_favorite_track(self, track):
+        target_id = self.track_id(track)
+        if not target_id:
+            return
+        try:
+            if self._web is not None:
+                self._web.remove_favorite_track(target_id)
+            else:
+                self._request("DELETE", "user/me/tracks", params={"songs": target_id})
+        except DeezerWebAuthError as exc:
+            raise TargetAuthError(str(exc)) from exc
+        polite_sleep(0.25)
 
     def track_id(self, track):
         return str(track.get("id")) if track.get("id") is not None else None

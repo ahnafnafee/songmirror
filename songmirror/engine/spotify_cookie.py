@@ -33,7 +33,7 @@ from .targets.base import TargetAuthError
 
 _PATHFINDER = "https://api-partner.spotify.com/pathfinder/v2/query"
 _SPCLIENT = "https://spclient.wg.spotify.com"   # web-player backend — no api.spotify.com rate limit / dev-mode gate
-_API = "https://api.spotify.com/v1"             # official REST — the batch /tracks?ids ISRC lookup (client-credentials app token; see _track_isrcs)
+_API = "https://api.spotify.com/v1"             # official REST with either the web-player user token or an ISRC app token
 _WEB = "https://open.spotify.com/"
 # Sent as spotify-app-version; loosely paired with the persisted-query hashes and
 # refreshed alongside them. A slightly stale value still resolves in practice.
@@ -50,12 +50,16 @@ _HASHES = {
     "playlist_read": "a65e12194ed5fc443a1cdebed5fabe33ca5b07b987185d63c72483867ad13cb4",
     "profile": "b197b5adb4b761690f76ad9d9fb278c14c14e7331f357c04a56e7001af7106e0",
     "library": "390c78e5b951029bad359785e69b07b536a509c581cbcd0aded5e5067f187455",
+    "library_tracks": "087278b20b743578a6262c2b0b4bcd20d879c503cc359a2285baf083ef944240",
+    "library_mut": "1ad0d40b3c09660d818b9e770eb1e84745dfbe941df159a64f8772b6fa2bfc3a",
 }
 # Which operation name maps to which hashed document — also drives the re-scrape.
 _OP_DOC = {
     "addToPlaylist": "playlist_mut", "removeFromPlaylist": "playlist_mut",
     "fetchPlaylistContents": "playlist_read", "fetchPlaylist": "playlist_read",
     "profileAttributes": "profile", "libraryV3": "library",
+    "fetchLibraryTracks": "library_tracks",
+    "addToLibrary": "library_mut", "removeFromLibrary": "library_mut",
 }
 
 _provider = None   # cached spotify_scraper CookieTokenProvider (lazy)
@@ -63,6 +67,13 @@ _catalog = None    # cached spotify_scraper SpotifyClient (lazy)
 _uid = None        # cached cookie-account user id (for rootlist filing)
 _isrc_cache = {}   # track_id -> isrc|None, backfilled from /tracks (see _track_isrcs)
 _playlist_count_cache = {}  # playlist_id -> (revision_id, total); libraryV3 omits totals
+_PATHFINDER_TRANSIENT = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+    requests.exceptions.ReadTimeout,
+)
+_PATHFINDER_READ_ATTEMPTS = 5
+_PATHFINDER_MUTATION_DOCS = {"playlist_mut", "library_mut"}
 
 
 def configured():
@@ -160,6 +171,34 @@ def _persisted_missing(body):
     return False
 
 
+def _post_pathfinder(body, op, *, retry):
+    """Send one Pathfinder document, retrying only semantically safe reads.
+
+    Pathfinder carries both queries and mutations over HTTP POST. A connection
+    failure is safe to replay for a query, but a mutation may already have
+    reached Spotify before the response disappeared, so mutations deliberately
+    remain single-attempt.
+    """
+    attempts = _PATHFINDER_READ_ATTEMPTS if retry else 1
+    for attempt in range(attempts):
+        try:
+            return requests.post(
+                _PATHFINDER,
+                headers=_headers(),
+                data=json.dumps(body),
+                timeout=REQUEST_TIMEOUT,
+            )
+        except _PATHFINDER_TRANSIENT:
+            if attempt == attempts - 1:
+                raise
+            wait = min(2**attempt, 8)
+            log(
+                f"pathfinder connection issue ({op}); retrying in about {wait}s",
+                tag="spotify",
+            )
+            polite_sleep(wait)
+
+
 def _pf(op, variables):
     """Run a pathfinder operation, self-healing a stale hash and a stale token.
 
@@ -172,7 +211,7 @@ def _pf(op, variables):
     for _ in range(3):
         body = {"variables": variables, "operationName": op,
                 "extensions": {"persistedQuery": {"version": 1, "sha256Hash": _HASHES[doc]}}}
-        r = requests.post(_PATHFINDER, headers=_headers(), data=json.dumps(body), timeout=REQUEST_TIMEOUT)
+        r = _post_pathfinder(body, op, retry=doc not in _PATHFINDER_MUTATION_DOCS)
         if r.status_code == 401:
             _prov().invalidate()
             continue
@@ -538,6 +577,22 @@ def _normalized_content_tracks(items):
     return out
 
 
+def _normalized_library_tracks(items):
+    """Normalize ``fetchLibraryTracks`` rows through the playlist track shape."""
+    playlist_items = []
+    for item in items:
+        item = item or {}
+        track = item.get("track") or {}
+        data = dict(track.get("data") or {})
+        data["uri"] = data.get("uri") or track.get("_uri") or ""
+        data["trackDuration"] = data.get("trackDuration") or data.get("duration") or {}
+        playlist_items.append({
+            "itemV2": {"data": data},
+            "addedAt": item.get("addedAt") or {},
+        })
+    return _normalized_content_tracks(playlist_items)
+
+
 def _apply_playlist_isrcs(out, *, require_isrc=False, known_isrc=None):
     # Persisted ISRCs remain valuable in cookie-only mode, but a cache miss is
     # deliberately left blank for reconcile to infer from its ISRC-bearing peers.
@@ -583,6 +638,41 @@ def playlist_tracks(playlist, require_isrc=False, known_isrc=None):
         require_isrc=require_isrc,
         known_isrc=known_isrc,
     )
+
+
+def favorite_tracks():
+    """Read Liked Songs through the web player's library query.
+
+    The first-party bearer is heavily throttled on ``api.spotify.com/me/tracks``;
+    pathfinder is the web player's native surface and avoids that REST bucket.
+    """
+    tracks, offset, limit = [], 0, 50
+    while True:
+        data = _pf("fetchLibraryTracks", {"offset": offset, "limit": limit})
+        page = (((data.get("me") or {}).get("library") or {}).get("tracks") or {})
+        items = page.get("items") or []
+        total = page.get("totalCount")
+        if total is None:
+            raise RuntimeError("Spotify Liked Songs read incomplete: page did not include totalCount")
+        if not items and offset < int(total):
+            raise RuntimeError(
+                f"Spotify Liked Songs read incomplete: stopped at {offset} of {total} tracks"
+            )
+        tracks.extend(_normalized_library_tracks(items))
+        offset += len(items)
+        if offset >= int(total):
+            return tracks
+
+
+def add_favorite_tracks(track_ids):
+    for track_id in track_ids:
+        _pf("addToLibrary", {"libraryItemUris": [_turi(track_id)]})
+        polite_sleep(0.3)
+
+
+def remove_favorite_track(track_id):
+    _pf("removeFromLibrary", {"libraryItemUris": [_turi(track_id)]})
+    polite_sleep(0.3)
 
 
 def remove(playlist, track_ids):

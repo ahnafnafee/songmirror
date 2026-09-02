@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import requests
 
-from ...browser_session import jwt_expiry
+from ...browser_session import jwt_expiry, jwt_scopes
 from ...oauth import merge_refresh, read_token, token_is_live, token_path, write_token
 from ...tidal_web import parse_web_headers
 from .. import archive
@@ -30,11 +30,19 @@ MAX_ISRC_FILTER_VALUES = 20
 PLAYLIST_ITEM_INCLUDE = ["items", "items.artists", "items.albums", "items.albums.coverArt"]
 
 
+def _scopes_from_token(token):
+    configured = token.get("scope")
+    if configured:
+        return {scope for scope in str(configured).split() if scope}
+    return jwt_scopes(str(token.get("access_token") or ""))
+
+
 class TidalTarget(MirrorTarget):
     name = "TIDAL"
     tag = "tidal"
     source = "tidal"
     stable_occurrence_ids = True
+    favorite_tracks_name = "Favorite Tracks"
 
     def __init__(self, songs=None):
         self.cache_file = os.getenv("TIDAL_CACHE_FILE", "tidal_resolve_cache.json")
@@ -53,6 +61,7 @@ class TidalTarget(MirrorTarget):
             self.country = context["country_code"]
             self._client_id = None
             self._tok = {"access_token": access_token}
+            self._token_scopes = _scopes_from_token(self._tok)
             expiry = jwt_expiry(access_token)
             if expiry is not None:
                 self._tok["expires_at"] = expiry
@@ -64,6 +73,7 @@ class TidalTarget(MirrorTarget):
             self.country = configured_country if re.fullmatch(r"[A-Z]{2}", configured_country) else "US"
             self._client_id = required_env("TIDAL_CLIENT_ID")
             self._tok = read_token(self._token_file)
+            self._token_scopes = _scopes_from_token(self._tok)
         if not self._tok.get("access_token") and not self._tok.get("refresh_token"):
             raise RuntimeError("Missing TIDAL OAuth token; connect TIDAL in Accounts")
         self._session = requests.Session()
@@ -95,6 +105,7 @@ class TidalTarget(MirrorTarget):
                 f"TIDAL authorization expired (refresh returned HTTP {response.status_code}); reconnect in Accounts."
             )
         self._tok = merge_refresh(self._tok, response.json())
+        self._token_scopes = _scopes_from_token(self._tok)
         write_token(self._token_file, self._tok)
         return self._tok["access_token"]
 
@@ -399,6 +410,63 @@ class TidalTarget(MirrorTarget):
     def playlist_tracks(self, playlist):
         """Strict sync read: incomplete metadata must abort reconciliation."""
         return self._all_playlist_tracks(playlist)
+
+    def favorite_tracks(self):
+        tracks = []
+        params = {
+            "countryCode": self.country,
+            "sort": "-addedAt",
+            "include": PLAYLIST_ITEM_INCLUDE,
+        }
+        for body in self._pages("userCollectionTracks/me/relationships/items", params):
+            tracks.extend(self._tracks_from_body(body))
+        return tracks
+
+    def validate_favorite_tracks(self, *, write=False, remove=False):
+        if self._token_scopes is None:
+            return
+        if self._browser_mode:
+            required = ["r_usr"]
+            if write:
+                required.append("w_usr")
+        else:
+            required = ["collection.read"]
+            if write:
+                required.append("collection.write")
+        missing = [scope for scope in required if scope not in self._token_scopes]
+        if missing:
+            if self._browser_mode:
+                raise TargetAuthError(
+                    "TIDAL web-player token lacks native liked-track access "
+                    f"({', '.join(missing)}); paste a fresh signed-in OpenAPI request "
+                    "in Accounts. This connection can still sync ordinary playlists."
+                )
+            raise TargetAuthError(
+                "TIDAL token lacks native liked-track scopes "
+                f"{', '.join(missing)}; reconnect with a developer OAuth token granting "
+                "collection.read and collection.write. This connection can still sync "
+                "ordinary playlists."
+            )
+
+    def add_favorite_tracks(self, target_ids):
+        for group in chunks([str(target_id) for target_id in target_ids], 50):
+            self._request(
+                "POST",
+                "userCollectionTracks/me/relationships/items",
+                json_body={"data": [{"type": "tracks", "id": target_id} for target_id in group]},
+            )
+            polite_sleep(0.3)
+
+    def remove_favorite_track(self, track):
+        target_id = self.track_id(track)
+        if not target_id:
+            return
+        self._request(
+            "DELETE",
+            "userCollectionTracks/me/relationships/items",
+            json_body={"data": [{"type": "tracks", "id": target_id}]},
+        )
+        polite_sleep(0.3)
 
     def playlist_tracks_for_browse(self, playlist):
         """Keep hidden entries visible and removable in the playlist inspector."""

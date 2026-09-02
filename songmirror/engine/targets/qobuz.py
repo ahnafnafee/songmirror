@@ -48,7 +48,7 @@ def _normalized_track(track):
         "album_position": track.get("track_number"),
         "duration_ms": int(duration * 1000) if isinstance(duration, (int, float)) else None,
         "isrc": track.get("isrc"),
-        "added_at": str(track.get("created_at") or ""),
+        "added_at": str(track.get("favorited_at") or track.get("created_at") or ""),
         "image": image,
     }
 
@@ -58,6 +58,7 @@ class QobuzTarget(MirrorTarget):
     tag = "qobuz"
     source = "qobuz"
     stable_occurrence_ids = True
+    favorite_tracks_name = "Favorite Tracks"
 
     def __init__(self):
         self.cache_file = os.getenv("QOBUZ_CACHE_FILE", "qobuz_resolve_cache.json")
@@ -232,6 +233,49 @@ class QobuzTarget(MirrorTarget):
                     )
             elif not items or len(items) < 100:
                 return tracks
+
+    def favorite_tracks(self):
+        tracks, offset = [], 0
+        while True:
+            body = self._request(
+                "GET",
+                "favorite/getUserFavorites",
+                params={"type": "tracks", "limit": 100, "offset": offset},
+            )
+            container = body.get("tracks") or {}
+            items = container.get("items") or []
+            tracks.extend(_normalized_track(track) for track in items if track.get("id") is not None)
+            offset += len(items)
+            total = container.get("total")
+            if total is not None:
+                if offset >= int(total):
+                    return tracks
+                if not items:
+                    raise RuntimeError(
+                        f"Qobuz favorites read incomplete: stopped at {offset} of {int(total)} tracks"
+                    )
+            elif not items or len(items) < 100:
+                return tracks
+
+    def add_favorite_tracks(self, target_ids):
+        for target_id in target_ids:
+            self._request(
+                "POST",
+                "favorite/create",
+                params={"track_ids": str(target_id)},
+            )
+            polite_sleep(0.3)
+
+    def remove_favorite_track(self, track):
+        target_id = self.track_id(track)
+        if not target_id:
+            return
+        self._request(
+            "POST",
+            "favorite/delete",
+            params={"track_ids": target_id},
+        )
+        polite_sleep(0.3)
 
     def track_id(self, track):
         return str(track.get("id")) if track.get("id") is not None else None

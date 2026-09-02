@@ -63,6 +63,9 @@ class SyncService:
         opts.authorities = job.authorities
         opts.providers = job.providers
         opts.playlists = job.playlists
+        opts.sync_playlists = job.sync_playlists
+        opts.liked_tracks = job.liked_tracks
+        opts.liked_routes = job.liked_routes
         opts.max_adds = job.max_adds
         opts.max_removals = job.max_removals
         opts.apply_large_removals = job.apply_large_removals

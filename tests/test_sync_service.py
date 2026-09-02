@@ -31,6 +31,23 @@ def test_group_authorities_reach_engine_options(tmp_path):
     assert opts.authorities == "spotify,apple"
 
 
+def test_liked_track_routes_reach_engine_options(tmp_path):
+    from songmirror.services.sync_service import SyncService
+
+    service = SyncService(SettingsStore(dir=tmp_path), EventBus(), SyncStore(dir=tmp_path))
+    job = SyncJob(
+        name="Liked", source="spotify", providers="spotify,tidal",
+        sync_playlists=False, liked_tracks=True,
+        liked_routes={"tidal": {"kind": "native"}},
+    )
+
+    opts = service._opts_for(job, execute=False)
+
+    assert opts.liked_tracks is True
+    assert opts.sync_playlists is False
+    assert opts.liked_routes == {"tidal": {"kind": "native"}}
+
+
 def test_run_job_coalesces(monkeypatch, tmp_path):
     calls = []
 

@@ -1,3 +1,5 @@
+import { useId } from 'react'
+
 import { cn } from '@/lib/cn'
 
 interface RadioCardProps {
@@ -14,6 +16,9 @@ interface RadioCardProps {
 /** Selected = accent border + soft wash, radio filled (a 5px ring trick, no
  * extra markup); for the two or three choices that deserve a sentence. */
 export function RadioCard({ name, value, checked, onChange, title, description, disabled, className }: RadioCardProps) {
+  const id = useId()
+  const titleId = `${id}-title`
+  const descriptionId = `${id}-description`
   return (
     <label
       className={cn(
@@ -37,11 +42,13 @@ export function RadioCard({ name, value, checked, onChange, title, description, 
         checked={checked}
         onChange={onChange}
         disabled={disabled}
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
         className="sr-only"
       />
       <span className="flex flex-col gap-0.5">
-        <span className="text-[13.5px] font-bold text-text">{title}</span>
-        <span className="text-xs leading-relaxed text-text-2">{description}</span>
+        <span id={titleId} className="text-[13.5px] font-bold text-text">{title}</span>
+        <span id={descriptionId} className="text-xs leading-relaxed text-text-2">{description}</span>
       </span>
     </label>
   )

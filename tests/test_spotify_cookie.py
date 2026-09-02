@@ -5,7 +5,7 @@ import pytest
 import requests
 
 import songmirror.engine.targets.spotify_target as st
-from songmirror.engine.targets.base import TargetAuthError
+from songmirror.engine.targets.base import TargetAuthError, TargetTransientError
 from songmirror.engine.targets.spotify_target import SpotifyTarget
 
 
@@ -115,6 +115,60 @@ def test_cookie_library_playlists_are_read_in_one_filtered_request(monkeypatch):
     })]
 
 
+def test_pathfinder_read_retries_transient_connection_failure(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+
+    calls = []
+    sleeps = []
+
+    class Response:
+        status_code = 200
+        content = b"{}"
+
+        def json(self):
+            return {"data": {"me": {"libraryV3": {"items": []}}}}
+
+        def raise_for_status(self):
+            return None
+
+    def post(*args, **kwargs):
+        calls.append((args, kwargs))
+        if len(calls) == 1:
+            raise requests.ConnectionError("temporary name resolution failure")
+        return Response()
+
+    monkeypatch.setattr(sc, "_headers", lambda: {})
+    monkeypatch.setattr(sc.requests, "post", post)
+    monkeypatch.setattr(sc, "polite_sleep", sleeps.append)
+
+    result = sc._pf("libraryV3", {"limit": 100})
+
+    assert result == {"me": {"libraryV3": {"items": []}}}
+    assert len(calls) == 2
+    assert sleeps == [1]
+
+
+def test_pathfinder_mutation_does_not_retry_connection_failure(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+
+    calls = []
+    sleeps = []
+
+    def post(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise requests.ConnectionError("ambiguous mutation connection failure")
+
+    monkeypatch.setattr(sc, "_headers", lambda: {})
+    monkeypatch.setattr(sc.requests, "post", post)
+    monkeypatch.setattr(sc, "polite_sleep", sleeps.append)
+
+    with pytest.raises(requests.ConnectionError, match="ambiguous mutation"):
+        sc._pf("addToLibrary", {"uris": ["spotify:track:one"]})
+
+    assert len(calls) == 1
+    assert sleeps == []
+
+
 def test_cookie_browse_hydrates_track_counts_and_caches_by_revision(monkeypatch):
     from songmirror.engine import spotify_cookie as sc
 
@@ -216,6 +270,85 @@ def test_reads_route_to_cookie_when_enabled(monkeypatch):
                         lambda pid, require_isrc=False, known_isrc=None: [{"id": "x", "_via": pid}])
     t = SpotifyTarget(_BoomSp(), "cache.json")  # spotipy read must not be used
     assert t.playlist_tracks({"id": "pl9"}) == [{"id": "x", "_via": "pl9"}]
+
+
+def test_favorite_tracks_uses_web_library_when_rest_is_rate_limited(monkeypatch):
+    def library_item(track_id, name, added_at):
+        return {
+            "addedAt": {"isoString": added_at},
+            "track": {
+                "_uri": f"spotify:track:{track_id}",
+                "data": {
+                    "__typename": "Track",
+                    "name": name,
+                    "artists": {"items": [{"profile": {"name": "Artist"}}]},
+                    "albumOfTrack": {
+                        "name": "Album",
+                        "coverArt": {"sources": [
+                            {"url": "https://img/large", "width": 640},
+                            {"url": "https://img/small", "width": 64},
+                        ]},
+                    },
+                    "duration": {"totalMilliseconds": 123_000},
+                    "trackNumber": 4,
+                },
+            },
+        }
+
+    pages = {
+        0: {"items": [library_item("t1", "One", "2026-09-01T00:00:00Z")], "totalCount": 2},
+        1: {"items": [library_item("t2", "Two", "2026-09-02T00:00:00Z")], "totalCount": 2},
+    }
+    calls = []
+
+    def pathfinder(op, variables):
+        calls.append((op, variables))
+        if op == "fetchLibraryTracks":
+            return {"me": {"library": {"tracks": pages[variables["offset"]]}}}
+        return {}
+
+    def rate_limited_rest(*_args, **_kwargs):
+        raise TargetTransientError("Spotify kept rate-limiting GET me/tracks after 5 attempts")
+
+    monkeypatch.setattr(st.spotify_cookie, "_pf", pathfinder)
+    monkeypatch.setattr(st.spotify_cookie, "_spc_headers", lambda: {"Authorization": "Bearer test"})
+    monkeypatch.setattr(st.spotify_cookie.requests, "request", rate_limited_rest)
+    monkeypatch.setattr(st.spotify_cookie, "polite_sleep", lambda _seconds: None)
+
+    tracks = st.spotify_cookie.favorite_tracks()
+    st.spotify_cookie.add_favorite_tracks(["new"])
+    st.spotify_cookie.remove_favorite_track("t1")
+
+    assert tracks == [
+        {
+            "id": "t1",
+            "isrc": None,
+            "name": "One",
+            "artists": ["Artist"],
+            "album": "Album",
+            "album_position": 4,
+            "duration_ms": 123_000,
+            "added_at": "2026-09-01T00:00:00Z",
+            "image": "https://img/small",
+        },
+        {
+            "id": "t2",
+            "isrc": None,
+            "name": "Two",
+            "artists": ["Artist"],
+            "album": "Album",
+            "album_position": 4,
+            "duration_ms": 123_000,
+            "added_at": "2026-09-02T00:00:00Z",
+            "image": "https://img/small",
+        },
+    ]
+    assert calls == [
+        ("fetchLibraryTracks", {"offset": 0, "limit": 50}),
+        ("fetchLibraryTracks", {"offset": 1, "limit": 50}),
+        ("addToLibrary", {"libraryItemUris": ["spotify:track:new"]}),
+        ("removeFromLibrary", {"libraryItemUris": ["spotify:track:t1"]}),
+    ]
 
 
 class _Resp:

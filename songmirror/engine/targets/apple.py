@@ -18,6 +18,7 @@ from .provider_utils import source_playlist_details
 # playlists carry no trackCount attribute, so each count is a live lookup).
 _COUNT_CACHE = {}
 _PUBLIC_SEARCH_URL = "https://itunes.apple.com/search"
+_FAVORITES_URL = "https://api.music.apple.com/v1/me/favorites"
 # Apple's documented public Search API is limited to roughly 20 calls/minute.
 # It is only a fallback after amp-api throttles, so pace it independently.
 _PUBLIC_SEARCH_INTERVAL_S = 3.1
@@ -64,6 +65,7 @@ class AppleMusicTarget(MirrorTarget):
     name = "Apple Music"
     tag = "apple"
     source = "apple"
+    favorite_tracks_name = "Favorite Songs"
 
     def __init__(self, storefront, cache_file):
         self.storefront = storefront or "us"  # empty -> a broken /catalog//search URL (400)
@@ -155,7 +157,11 @@ class AppleMusicTarget(MirrorTarget):
     def list_playlists(self):
         out, offset = {}, 0
         while True:
-            r = self._request("GET", f"{AMP}/me/library/playlists", params={"limit": 100, "offset": offset})
+            r = self._request(
+                "GET",
+                f"{AMP}/me/library/playlists",
+                params={"limit": 100, "offset": offset, "extend": "tags"},
+            )
             data = r.json()
             rows = data.get("data") or []
             for pl in rows:
@@ -245,6 +251,46 @@ class AppleMusicTarget(MirrorTarget):
                     "Apple Music playlist read incomplete: next page was advertised but no rows were returned"
                 )
             offset += len(rows)
+
+    @staticmethod
+    def _has_favorited_tag(playlist):
+        tags = (playlist.get("attributes") or {}).get("tags") or []
+        values = [tag.get("name") if isinstance(tag, dict) else tag for tag in tags]
+        return any(str(value or "").casefold() == "favorited" for value in values)
+
+    def _favorite_playlist(self):
+        playlist = next(
+            (item for item in self.list_playlists().values() if self._has_favorited_tag(item)),
+            None,
+        )
+        if playlist is None:
+            raise RuntimeError(
+                "Apple Music did not return its tagged Favorite Songs system playlist"
+            )
+        return playlist
+
+    def favorite_tracks(self):
+        return self.playlist_tracks(self._favorite_playlist())
+
+    def add_favorite_tracks(self, target_ids):
+        for target_id in target_ids:
+            self._request(
+                "POST",
+                _FAVORITES_URL,
+                params={"ids[songs]": str(target_id)},
+            )
+            polite_sleep(0.4)
+
+    def remove_favorite_track(self, track):
+        target_id = self.track_id(track)
+        if not target_id:
+            return
+        self._request(
+            "DELETE",
+            _FAVORITES_URL,
+            params={"ids[songs]": str(target_id)},
+        )
+        polite_sleep(0.4)
 
     def track_id(self, track):
         return track.get("catalog_id")

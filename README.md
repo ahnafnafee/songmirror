@@ -86,6 +86,7 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 - 🔁 **True mirroring, not append-only** — adds _and_ removals. Choose a source of truth (Spotify by default) and the others follow it.
 - ⇆ **Authoritative groups** — trust two or more services (for example Spotify + Apple Music) while every other selected service remains a destination-only mirror.
 - ⇄ **Bidirectional N-way sync** — an add or removal on _any_ connected service propagates to all the others, echo-free, behind removal guards.
+- ♥ **Liked and favorite tracks** — sync each service's built-in liked collection across all seven music providers, either into the destination's own favorites or a new named playlist.
 - 🎯 **ISRC-accurate matching** — exact recording identity where available, with Unicode-aware fuzzy title/artist/duration fallbacks (feat-credit drift, "- 2015 Remaster" suffixes, non-Latin scripts, video-only uploads — all handled).
 - 🎛️ **Multiple named syncs** — set up as many independent syncs as you like, each with its own services, playlists, schedule, and safety caps.
 - ↪️ **One-off transfers** — copy any playlist from one service to another with a live progress bar; **pause, resume, or stop** mid-copy, and manually resolve unmatched tracks.
@@ -261,6 +262,16 @@ Bidirectional sync is impossible statelessly, so each logical playlist's canonic
 
 > **Always dry-run first.** Run without `--execute` (or use **Preview** in the UI) and read the plan — it prints every proposed add/remove on every provider before anything is written.
 
+### Liked and favorite tracks
+
+On a sync's **Playlists** step, select the source service's built-in liked collection. SongMirror then asks where it should go on every selected destination: directly into that service's own liked/favorite collection, or into a new playlist whose suggested name you can edit. A new selection is liked-only; turn on **Also sync every regular playlist** or pick individual playlists to include both.
+
+This works across Spotify **Liked Songs**, TIDAL/Qobuz/Deezer **Favorite Tracks**, Amazon Music **My Likes**, Apple Music **Favorite Songs**, and YouTube Music **Liked Music**. The same one-way, authoritative-group, and N-way reconciliation paths and safety caps apply. As with ordinary playlists, removal writes remain off by default until **Mirror removals** is enabled.
+
+TIDAL's pasted web-player Bearer handles both ordinary playlists and native **Favorite Tracks** when it carries the web player's user read/write grants (`r_usr` and `w_usr`). This path does not use a TIDAL developer app, client ID, or API key. If an older or read-only browser token lacks either grant, capture a fresh signed-in OpenAPI request in Accounts.
+
+Some of these integrations use the providers' first-party web interfaces and can change without notice; the [feasibility assessment](docs/design/2026-09-01-liked-tracks-sync-feasibility.md) records the API and distribution constraints for each provider.
+
 <div align="right">
 
 [![][back-to-top]](#readme-top)
@@ -328,7 +339,7 @@ SongMirror refreshes credentials **just in time**, not with a separate token-ref
 | Service | Renewal behavior |
 | --- | --- |
 | **Spotify** | The default connection mints a web-player access token from the saved `sp_dc` cookie on demand and retries with a new token after a `401`; the underlying signed-in session can still be revoked. Legacy developer-app OAuth remains supported for existing installs. |
-| **TIDAL** | A pasted web-player Bearer cannot be renewed and must be captured again after expiry. The optional developer OAuth fallback refreshes automatically when a refresh token is available. |
+| **TIDAL** | A pasted web-player Bearer cannot be renewed and must be captured again after expiry. It does not require a developer app, client ID, or API key. |
 | **Qobuz** | The pasted `X-User-Auth-Token` is used until Qobuz rejects it, then must be captured again. |
 | **Deezer** | The short-lived Pipe JWT renews automatically from the saved `refresh-token` before use and once after a `401/403`; rotated renewal state is persisted. |
 | **Amazon Music** | The web access token renews through `/pandaToken` using the captured browser user agent, referer, and allowlisted cookies. The current `POST config.json?skipToken=false` flow bootstraps device context when needed, and rotated cookies are persisted. Logout, security changes, or server-side revocation still require a fresh capture. |
@@ -346,7 +357,7 @@ That single signed-in web session handles library browsing, playlist reads and w
 
 ### TIDAL
 
-Sign in at <https://listen.tidal.com>, open DevTools → **Network**, open a playlist, and filter for `openapi.tidal.com/v2`. Copy a request's headers (or copy it as cURL) into the wizard. SongMirror keeps only the Bearer token and two-letter catalog country. An existing developer OAuth token remains supported as an environment fallback.
+Sign in at <https://listen.tidal.com>, open DevTools → **Network**, open a playlist, and filter for `openapi.tidal.com/v2`. Copy a request's headers (or copy it as cURL) into the wizard. SongMirror keeps only the Bearer token and two-letter catalog country. That signed-in web session supports ordinary playlists and native Favorite Tracks reads, additions, and removals; no TIDAL developer app, client ID, or API key is used.
 
 Only catalog metadata and the signed-in user's playlists are used; playback assets are outside this integration. Browser tokens are short-lived, so re-paste when the account reports **Expired**.
 
@@ -484,6 +495,7 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 
 - **`Missing required environment variable`** — fill in `.env` (CLI) or connect the service in the UI.
 - **TIDAL, Qobuz, or Apple reports `Expired` / `401` / `403`** — these pasted sessions have no renewable secret; capture a fresh signed-in request or token in Accounts.
+- **TIDAL says the web-player token lacks liked-track access** — capture a fresh signed-in `openapi.tidal.com/v2` request in Accounts. Favorite Tracks needs the web session's `r_usr` and `w_usr` grants; it does not use a developer API key.
 - **Deezer renewal fails** — capture a fresh `auth.deezer.com/login/renew` request (or its `refresh-token` cookie). A current Pipe Bearer alone is only a temporary bootstrap.
 - **Amazon Music renewal fails** — capture a fresh signed-in `POST /config.json?skipToken=false` request with its complete `User-Agent`, `Referer`, and `Cookie` headers. The response JSON is optional.
 - **YouTube Music browser mode expires** — export fresh browser request headers. For the most durable unattended setup, use Data API OAuth with an in-production consent screen.
