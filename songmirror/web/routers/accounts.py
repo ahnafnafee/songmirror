@@ -9,7 +9,7 @@ from urllib.parse import urlsplit, urlunsplit
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from ...engine.targets import is_peer
+from ...engine.targets import is_peer, target_class
 from ...services.accounts import CONNECTORS
 from ...services.accounts.base import ConnStatus, DeviceCode
 
@@ -18,6 +18,17 @@ router = APIRouter()
 
 def _conn(request: Request, cid: str):
     return CONNECTORS[cid](request.app.state.settings)
+
+
+def _preserves_order(cid):
+    """Whether a provider can repair date-added order in an existing playlist.
+
+    A target opts out by setting ``replay_chronology = None`` (Deezer, whose
+    writes cannot express the repair safely), so this asks the class rather than
+    keeping a second list the two could drift apart on.
+    """
+    cls = target_class(cid)
+    return cls is not None and callable(getattr(cls, "replay_chronology", None))
 
 
 def _redirect_uri(request: Request, cid: str) -> str:
@@ -91,6 +102,10 @@ def list_accounts(request: Request):
             # Browse-only services (Jellyfin) can't be a sync/transfer peer — the
             # UI filters its source/destination pickers on this.
             "transferable": is_peer(cid),
+            # Whether this service can replay date-added order into an existing
+            # playlist. Read off the target class (no credentials needed), so a
+            # provider that opts out stays opted out in the UI by construction.
+            "preserves_order": _preserves_order(cid),
         })
     return out
 

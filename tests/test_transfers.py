@@ -320,7 +320,7 @@ def test_resumed_transfer_replays_newer_tracks_after_a_resolved_conflict():
     result = transfer(
         Source(), destination, {"id": "source"}, {"id": "destination"},
         {"search": {}, "isrc": {}, "dirty": False},
-        execute=True, max_adds=200,
+        execute=True, max_adds=200, preserve_order=True,
     )
 
     assert destination.replayed == [[("b", None), ("c", 1), ("d", 2)]]
@@ -372,12 +372,121 @@ def test_transfer_replay_uses_a_resolved_existing_id_despite_metadata_drift():
     result = transfer(
         Source(), destination, {"id": "source"}, {"id": "destination"},
         {"search": {}, "isrc": {}, "dirty": False},
-        execute=True, max_adds=200,
+        execute=True, max_adds=200, preserve_order=True,
     )
 
     assert destination.replayed == [[("b", None), ("c", 1), ("d", 2)]]
     assert result["added"] == 1
     assert result["chronology_replayed"] == 2
+
+
+class _OrderedSource:
+    source = "spotify"
+
+    def playlist_tracks(self, playlist):
+        return [
+            {"id": f"s{index}", "name": f"T{index}", "artists": ["Artist"],
+             "duration_ms": 1, "added_at": f"2020-01-01T00:00:{index:02d}Z"}
+            for index in range(6)
+        ]
+
+
+class _OrderedDestination:
+    """Holds the two NEWEST source tracks, so filling the gap below them needs a
+    replay of the whole tail — more ordered writes than a small cap allows."""
+    source = "apple"
+
+    def __init__(self):
+        self.added, self.replayed = [], []
+
+    def playlist_tracks(self, playlist):
+        return [
+            {"id": f"s{index}", "name": f"T{index}", "artist": "Artist", "duration_ms": 1}
+            for index in (4, 5)
+        ]
+
+    def resolve(self, track, cache):
+        return f"s{track['name'][1:]}", "search"
+
+    def track_id(self, track):
+        return track["id"]
+
+    def replay_chronology(self, playlist, ordered_entries):
+        self.replayed.append([target_id for target_id, _original in ordered_entries])
+
+    def add(self, playlist, ids):
+        self.added.extend(ids)
+
+
+def test_transfer_appends_in_source_order_unless_asked_to_preserve_it():
+    """The ordered repair is opt-in: it rewrites tracks already on the
+    destination, so a plain copy appends even where the service could replay."""
+    destination = _OrderedDestination()
+    result = transfer(
+        _OrderedSource(), destination, {"id": "source"}, {"id": "destination"},
+        {"search": {}, "isrc": {}, "dirty": False},
+        execute=True, max_adds=2,
+    )
+
+    assert destination.replayed == []
+    assert destination.added == ["s0", "s1", "s2", "s3"]     # oldest-first, all of them
+    assert result["added"] == 4 and result["deferred"] == 0
+    assert result["chronology_replayed"] == 0
+
+
+def test_transfer_preserving_order_spends_past_the_write_budget():
+    """A one-off copy has no next pass to drain a deferral. Asked to preserve
+    order, it pays the repair's real cost instead of writing nothing."""
+    destination = _OrderedDestination()
+    result = transfer(
+        _OrderedSource(), destination, {"id": "source"}, {"id": "destination"},
+        {"search": {}, "isrc": {}, "dirty": False},
+        execute=True, max_adds=2, preserve_order=True,
+    )
+
+    assert destination.added == []
+    assert destination.replayed == [["s0", "s1", "s2", "s3", "s4", "s5"]]
+    assert result["added"] == 4 and result["deferred"] == 0
+    assert result["chronology_replayed"] == 2               # s4 and s5 were already there
+
+
+def test_transfer_does_not_truncate_a_copy_at_the_write_cap():
+    added = []
+    source_tracks = [
+        {"id": f"s{index}", "name": f"T{index}", "artists": ["Artist"],
+         "duration_ms": 1, "added_at": f"2020-01-01T00:00:{index:02d}Z"}
+        for index in range(5)
+    ]
+
+    class Source:
+        source = "spotify"
+
+        def playlist_tracks(self, playlist):
+            return source_tracks
+
+    class Destination:
+        source = "apple"
+
+        def playlist_tracks(self, playlist):
+            return []
+
+        def resolve(self, track, cache):
+            return f"s{track['name'][1:]}", "search"
+
+        def track_id(self, track):
+            return track["id"]
+
+        def add(self, playlist, ids):
+            added.extend(ids)
+
+    result = transfer(
+        Source(), Destination(), {"id": "source"}, {"id": "destination"},
+        {"search": {}, "isrc": {}, "dirty": False},
+        execute=True, max_adds=2,
+    )
+
+    assert added == ["s0", "s1", "s2", "s3", "s4"]
+    assert result["added"] == 5 and result["deferred"] == 0
 
 
 def test_transfer_dry_run_adds_nothing():

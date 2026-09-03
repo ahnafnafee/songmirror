@@ -29,6 +29,10 @@ export interface Account {
    * False for browse-only services like Jellyfin, which the download mirror
    * feeds — the sync and transfer pickers filter on this. */
   transferable: boolean
+  /** Whether this service can replay date-added order into an existing playlist.
+   * False where the provider's writes can't express the repair safely (Deezer),
+   * which greys out the transfer form's "preserve order" switch. */
+  preserves_order: boolean
 }
 
 /** Shared shape for the plain `{ok: true}` acks (config save, settings save,
@@ -394,6 +398,8 @@ export interface TransferJob {
   dest: TransferEndpoint
   added: number
   deferred: number
+  /** Whether this copy was asked to repair the destination's date-added order. */
+  preserve_order?: boolean
   /** Existing newer tracks replayed after a recovered earlier conflict. */
   chronology_replayed?: number
   /** Hidden source relationships skipped because the provider exposes no metadata. */
@@ -416,6 +422,9 @@ export interface StartTransferRequest {
   dest_provider: string
   dest_playlist_id: string | null
   dest_name: string
+  /** Repair the destination's date-added order when a copied track is older
+   * than tracks already there. Costs many extra writes; off by default. */
+  preserve_order: boolean
 }
 
 export interface StartTransferResponse {

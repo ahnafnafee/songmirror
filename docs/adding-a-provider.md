@@ -32,6 +32,9 @@ The base class also supplies `replay_chronology()`. It stages duplicate copies o
 entry before retiring the old copies, so every replacement write succeeds before the original suffix is touched.
 If the provider's ordinary `add()` suppresses duplicates, override `add_chronology_copies()` with the same ordered,
 one-request-per-track behavior but with duplicate insertion enabled. Amazon Music and Qobuz are the reference adapters.
+Set `replay_chronology = None` on the class if the provider cannot perform the repair safely (no positional insert,
+a catalog-id-scoped delete, and reads that trail its own writes); the engine then appends in source order. `deezer.py`
+is the reference for that.
 
 **Override only if your dict shape differs from Spotify's** (`{"id", "name", "images", ...}`):
 `playlist_id`, `playlist_name`, `playlist_description`, `playlist_count`. See `apple.py`

@@ -14,6 +14,7 @@ import { Segmented } from '../ui/Segmented'
 import { SelectField } from '../ui/SelectField'
 import { ServiceLogo } from '../ui/ServiceLogo'
 import { TextField } from '../ui/TextField'
+import { Toggle } from '../ui/Toggle'
 
 interface Props {
   /** Connected accounts only — a transfer can't read from or write to a
@@ -52,6 +53,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   const [destMode, setDestMode] = useState<'existing' | 'create'>('existing')
   const [destPlaylistId, setDestPlaylistId] = useState('')
   const [destName, setDestName] = useState('')
+  const [preserveOrder, setPreserveOrder] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -86,6 +88,19 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   // A transfer writes tracks, so an existing destination must be a playlist you
   // OWN — followed (read-only) playlists are excluded from the destination picker.
   const destPlaylists = (entries[destProvider]?.playlists ?? []).filter((p) => p.owned !== false)
+
+  // Order only needs repairing when tracks are copied into a playlist that
+  // already has newer ones, so "Create new" has nothing to preserve. Some
+  // services can't replay order at all (their writes can't express it).
+  const destSupportsOrder = accounts.find((a) => a.id === destProvider)?.preserves_order ?? false
+  const canPreserveOrder = destMode === 'existing' && destSupportsOrder
+  const preserveOrderHelp = !destProvider
+    ? 'Pick a destination service first.'
+    : destMode === 'create'
+      ? 'A new playlist has nothing to reorder — copies land in source order.'
+      : !destSupportsOrder
+        ? `${tagLabel(destProvider)} can't replay order safely, so copies land at the end of the playlist.`
+        : 'Slower, and writes every track after the oldest new one again. Off: copies land at the end.'
 
   // Copying a playlist into itself is a no-op — block only the exact same-provider,
   // same-id case; same-provider "Create new" (or a different existing list) is fine.
@@ -149,6 +164,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
         dest_provider: destProvider,
         dest_playlist_id: destMode === 'create' ? null : destPlaylistId,
         dest_name: destMode === 'create' ? destName.trim() : (destPlaylist?.name ?? ''),
+        preserve_order: canPreserveOrder && preserveOrder,
       }
       const res = await api.startTransfer(body)
       setConfirming(false)
@@ -341,6 +357,15 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                     onChange={(e) => setDestName(e.target.value)}
                   />
                 )}
+
+                <Toggle
+                  label="Preserve Recently Added order"
+                  description={preserveOrderHelp}
+                  checked={canPreserveOrder && preserveOrder}
+                  disabled={!canPreserveOrder}
+                  onChange={setPreserveOrder}
+                  className="border-t border-border pt-3"
+                />
               </div>
               <div className="flex items-center gap-2 border-t border-border px-4 py-2.5">
                 <span
@@ -348,7 +373,11 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                   aria-hidden="true"
                 />
                 <span className="font-mono text-[9px] tracking-[0.1em] text-text-3">
-                  {destMode === 'create' ? 'WRITE MODE · CREATE NEW · NAME FROM DECK A' : 'WRITE MODE · ADD TO EXISTING'}
+                  {destMode === 'create'
+                    ? 'WRITE MODE · CREATE NEW · NAME FROM DECK A'
+                    : canPreserveOrder && preserveOrder
+                      ? 'WRITE MODE · ADD TO EXISTING · REPLAY ORDER'
+                      : 'WRITE MODE · ADD TO EXISTING · APPEND'}
                 </span>
               </div>
             </div>
@@ -378,7 +407,11 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                 destMode === 'create'
                   ? `a new playlist named "${destName.trim()}"`
                   : `"${destPlaylist?.name ?? ''}"`
-              } on ${tagLabel(destProvider)}. Existing tracks on the destination are kept, this only adds.`
+              } on ${tagLabel(destProvider)}. Existing tracks on the destination are kept, this only adds.${
+                canPreserveOrder && preserveOrder
+                  ? ' Tracks already there will be rewritten to keep Recently Added order, which takes longer.'
+                  : ''
+              }`
             : 'This will start copying the selected playlist.'
         }
         confirmLabel="Copy playlist"
