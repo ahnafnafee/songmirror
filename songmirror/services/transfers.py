@@ -30,7 +30,8 @@ from .playlist_links import (
 )
 
 
-def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_progress=None, should_continue=None):
+def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserve_order=False,
+             on_progress=None, should_continue=None):
     """Copy `src_pl` (on `source`) into `dest_pl` (on `dest`). Returns
     {added, deferred, chronology_replayed, unavailable,
     not_found: [{name, artist, key}], completed}.
@@ -45,6 +46,15 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
     before each track and, on anything but "run", ends the copy early with
     `completed=False`. Adds gathered before the break are still written, so a
     later re-run skips them (its dedup rebuilds from the destination) and resumes.
+
+    `preserve_order` opts into repairing the destination's date-added order when
+    a copied track is older than tracks already there. It costs many extra writes
+    and only some services can do it safely, so it is off by default: the copy
+    then appends in source order.
+
+    A one-off copy has no following pass to drain a deferral, so it never defers.
+    `max_adds` therefore budgets a sync pass, not this: an opted-in repair spends
+    what it actually costs, and everything else is appended in full.
     """
     read_source = getattr(
         source,
@@ -144,32 +154,41 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, on_prog
         target_id_of,
         source_identity=id,
     )
-    can_replay = callable(getattr(dest, "replay_chronology", None))
+    can_replay = preserve_order and callable(getattr(dest, "replay_chronology", None))
     replay_write_cost = getattr(dest, "chronology_replay_write_cost", len)
-    additions, chronology_replay, deferred, full_write_cost = _fit_chronology_writes(
-        [id(track) for track in ordered_source],
-        current_by_source,
-        additions,
-        lambda item: id(item[1]),
-        max_adds,
-        replay_write_cost=replay_write_cost,
-        can_replay=can_replay,
-    )
+    ordered_keys = [id(track) for track in ordered_source]
+    requested = additions
+
+    def fit(budget, ordered):
+        return _fit_chronology_writes(
+            ordered_keys, current_by_source, requested, lambda item: id(item[1]),
+            budget, replay_write_cost=replay_write_cost, can_replay=ordered)
+
+    if can_replay:
+        additions, chronology_replay, deferred, ordered_cost = fit(max_adds, True)
+        if deferred:
+            # The write cap paces a sync pass, which has a next pass to finish
+            # the job. This copy has none, and it was asked to preserve order,
+            # so it spends what the repair costs instead of dropping additions.
+            log_note(
+                f"preserving Recently Added order needs {ordered_cost} ordered writes, past the "
+                f"{max_adds}-write budget; this copy asked to preserve order, so it will make them",
+                tag="transfer",
+            )
+            additions, chronology_replay, deferred, _cost = fit(ordered_cost, True)
+        if deferred:
+            # A destination entry the provider reports without an id cannot be
+            # replayed at any budget. Append rather than drop the additions.
+            log_warn(
+                f"the destination's order could not be replayed, so all {len(requested)} "
+                "addition(s) are being copied in source order instead",
+                tag="transfer",
+            )
+            additions, chronology_replay, deferred, _cost = fit(len(requested), False)
+    else:
+        additions, chronology_replay, deferred, _cost = fit(len(requested), False)
     chronology_replayed = sum(1 for _target_id, original in chronology_replay
                               if original is not None)
-    if deferred:
-        if full_write_cost > max_adds and can_replay:
-            log_warn(
-                f"preserving Recently Added order would require {full_write_cost} ordered writes; "
-                f"the limit is {max_adds}, so {deferred} addition(s) were deferred",
-                tag="transfer",
-            )
-        else:
-            log_warn(
-                f"{len(additions) + deferred} additions exceed the limit of {max_adds}; "
-                f"deferring {deferred}",
-                tag="transfer",
-            )
     if chronology_replay:
         log_note(
             f"replaying {chronology_replayed} newer track(s) after {len(additions)} recovered "
@@ -284,7 +303,8 @@ class TransferService:
 
     def submit(self, spec):
         """spec: {source_provider, source_playlist_id, dest_provider,
-        dest_playlist_id | None, dest_name}. Returns the job dict (with id)."""
+        dest_playlist_id | None, dest_name, preserve_order}. Returns the job
+        dict (with id)."""
         job = {
             "id": uuid.uuid4().hex[:8], "status": "queued",
             "source": {"provider": spec["source_provider"],
@@ -292,6 +312,7 @@ class TransferService:
             "dest": {"provider": spec["dest_provider"],
                      "playlist_id": spec.get("dest_playlist_id"),
                      "playlist_name": spec.get("dest_name", "")},
+            "preserve_order": bool(spec.get("preserve_order")),
             "added": 0, "deferred": 0, "chronology_replayed": 0,
             "unavailable": 0, "conflicts": [], "error": None,
             "total": 0, "processed": 0,  # live progress: source tracks examined / total
@@ -414,6 +435,7 @@ class TransferService:
                 job["processed"], job["total"], job["added"] = processed, total, base_added + added
 
             res = transfer(src, dst, src_pl, dest_pl, cache, execute=True, max_adds=opts.max_adds,
+                           preserve_order=job["preserve_order"],
                            on_progress=on_progress, should_continue=lambda: job.get("_control", "run"))
             save_cache(dst.cache_file, cache)
             return res

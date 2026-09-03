@@ -84,6 +84,12 @@ def test_accounts_list_all_unconfigured(tmp_path):
             "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic", "jellyfin"
         }
         assert all(a["state"] == "unconfigured" for a in accounts)
+        # The transfer form greys out its "preserve order" switch on a service
+        # whose writes can't replay date-added order.
+        by_id = {a["id"]: a for a in accounts}
+        assert by_id["apple"]["preserves_order"] is True
+        assert by_id["deezer"]["preserves_order"] is False
+        assert by_id["jellyfin"]["preserves_order"] is False   # browse-only, no target
 
 
 def test_settings_roundtrip_masks_secrets(tmp_path):
@@ -618,7 +624,20 @@ def test_transfers_start_and_status(tmp_path, monkeypatch):
         assert jid
         g = client.get(f"/api/transfers/{jid}").json()
         assert g["id"] == jid and "status" in g
+        assert g["preserve_order"] is False   # the ordered repair is opt-in
         assert "_dest_cache_file" not in g  # internal field hidden from the API
+
+
+def test_transfer_carries_the_preserve_order_choice(tmp_path, monkeypatch):
+    from songmirror.services.transfers import TransferService
+
+    monkeypatch.setattr(TransferService, "_build", lambda self, pid, opts: None)
+    with TestClient(_app(tmp_path)) as client:
+        r = client.post("/api/transfers", json={"source_provider": "apple", "source_playlist_id": "p1",
+                                                "dest_provider": "ytmusic", "dest_playlist_id": "p2",
+                                                "preserve_order": True})
+        job = client.get(f"/api/transfers/{r.json()['job_id']}").json()
+        assert job["preserve_order"] is True
 
 
 def test_sse_payload_format():

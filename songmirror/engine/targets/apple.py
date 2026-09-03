@@ -909,6 +909,37 @@ class AppleMusicTarget(MirrorTarget):
                      params={"ids[library-songs]": track["relationship_id"], "mode": "all"})
         polite_sleep(0.4)
 
+    def _relationship_totals(self, playlist):
+        """{library song id: copies currently read in the playlist}."""
+        totals = {}
+        for t in self.playlist_tracks(playlist):
+            rid = t.get("relationship_id")
+            totals[rid] = totals.get(rid, 0) + 1
+        return totals
+
+    def _totals_covering_staged_copies(self, playlist, flagged):
+        """Re-read until the playlist accounts for a retire's staged copies.
+
+        A chronology retire stages one duplicate per entry it is about to retire,
+        so every flagged library song must read at least twice its flagged count.
+        A shorter read is Apple's write lag, not a shorter playlist, and trusting
+        it computes no keeper: the DELETE takes every copy of the song, so the
+        song would be dropped from the playlist instead of reordered. Refusing
+        before the first delete leaves the staged copies for a later pass.
+        """
+        totals = self._relationship_totals(playlist)
+        for attempt in range(3):
+            short = [rid for rid, n in flagged.items() if totals.get(rid, 0) < 2 * n]
+            if not short:
+                return totals
+            if attempt < 2:
+                time.sleep(1 + attempt)
+                totals = self._relationship_totals(playlist)
+        raise RuntimeError(
+            f"Apple has not indexed {len(short)} staged chronology copy(ies) yet; leaving the "
+            "playlist untouched so a later pass can repair its order"
+        )
+
     def _remove_occurrences(self, playlist, positioned, *, strict):
         """Apple's tracks-DELETE addresses the library SONG, not one entry —
         duplicate copies share one library id, so deleting a flagged copy would
@@ -917,10 +948,6 @@ class AppleMusicTarget(MirrorTarget):
         keeper lands at the playlist's end (Apple has no positional insert); if
         its catalog id is no longer addable (delisted release), the next sync
         pass restores the song via search."""
-        totals = {}
-        for t in self.playlist_tracks(playlist):
-            rid = t.get("relationship_id")
-            totals[rid] = totals.get(rid, 0) + 1
         flagged, catalog = {}, {}
         for _, raw in positioned:
             rid = raw.get("relationship_id")
@@ -928,6 +955,11 @@ class AppleMusicTarget(MirrorTarget):
                 continue
             flagged[rid] = flagged.get(rid, 0) + 1
             catalog.setdefault(rid, raw.get("catalog_id"))
+        # A chronology retire knows a keeper was staged for every flagged entry,
+        # so it can tell a lagging read from a real one. The lenient path cannot:
+        # removing every copy of a song is a legitimate playlist edit there.
+        totals = (self._totals_covering_staged_copies(playlist, flagged) if strict
+                  else self._relationship_totals(playlist))
         for rid, n in flagged.items():
             self.remove(playlist, {"relationship_id": rid})
             keep = totals.get(rid, n) - n

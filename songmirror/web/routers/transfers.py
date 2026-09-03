@@ -31,6 +31,9 @@ async def start_transfer(request: Request, body: dict = Body(...)):
         "dest_provider": body["dest_provider"],
         "dest_playlist_id": body.get("dest_playlist_id"),
         "dest_name": body.get("dest_name", ""),
+        # Off unless asked for: the repair costs many extra writes and only
+        # applies when a copied track predates tracks already on the destination.
+        "preserve_order": bool(body.get("preserve_order")),
     })
     return JSONResponse({"job_id": job["id"]}, status_code=202)
 

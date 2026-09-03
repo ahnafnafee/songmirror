@@ -637,7 +637,6 @@ def test_qobuz_only_allows_duplicate_adds_for_chronology_staging(monkeypatch):
 
 @pytest.mark.parametrize("module_name,class_name", [
     ("songmirror.engine.targets.apple", "AppleMusicTarget"),
-    ("songmirror.engine.targets.deezer", "DeezerTarget"),
 ])
 def test_catalog_scoped_removal_counts_keeper_readds_in_chronology_cap(module_name, class_name):
     import importlib
@@ -647,6 +646,14 @@ def test_catalog_scoped_removal_counts_keeper_readds_in_chronology_cap(module_na
     entries = [("b", None), ("c", (1, {})), ("d", (2, {}))]
 
     assert target.chronology_replay_write_cost(entries) == 5
+
+
+def test_deezer_never_replays_chronology():
+    """Deezer's delete is catalog-id scoped and its reads trail its own writes,
+    so a staged-copy replay can retire the only copy of a song. It appends."""
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    assert not callable(getattr(DeezerTarget, "replay_chronology", None))
 
 
 def test_apple_chronology_retirement_surfaces_a_failed_keeper_readd():
@@ -664,6 +671,61 @@ def test_apple_chronology_retirement_surfaces_a_failed_keeper_readd():
 
     with pytest.raises(RuntimeError, match="add failed"):
         target.retire_chronology_originals({"id": "playlist"}, [(0, row)])
+
+
+def test_apple_chronology_retirement_refuses_a_read_missing_its_staged_copies(monkeypatch):
+    """Apple's DELETE takes every copy of a library song. A read that has not
+    indexed the staged copy yet computes no keeper, so retiring against it would
+    drop the song instead of reordering it: delete nothing and let a pass retry."""
+    from songmirror.engine.targets.apple import AppleMusicTarget
+
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    target = AppleMusicTarget.__new__(AppleMusicTarget)
+    row = {"relationship_id": "library-song", "catalog_id": "catalog-song"}
+    removed = []
+    target.playlist_tracks = lambda _playlist: [row]      # the staged copy is not visible yet
+    target.remove = lambda _playlist, track: removed.append(track)
+    target.add = lambda _playlist, _ids: None
+
+    with pytest.raises(RuntimeError, match="has not indexed"):
+        target.retire_chronology_originals({"id": "playlist"}, [(0, row)])
+    assert removed == []
+
+
+def test_apple_chronology_retirement_waits_out_a_lagging_read(monkeypatch):
+    from songmirror.engine.targets.apple import AppleMusicTarget
+
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    target = AppleMusicTarget.__new__(AppleMusicTarget)
+    row = {"relationship_id": "library-song", "catalog_id": "catalog-song"}
+    reads, removed, added = [], [], []
+    # The first read trails the staging append; the second has caught up.
+    target.playlist_tracks = lambda _playlist: (
+        reads.append(1), [row] if len(reads) == 1 else [row, dict(row)])[1]
+    target.remove = lambda _playlist, track: removed.append(track)
+    target.add = lambda _playlist, ids: added.extend(ids)
+
+    target.retire_chronology_originals({"id": "playlist"}, [(0, row)])
+
+    assert removed == [{"relationship_id": "library-song"}]
+    assert added == ["catalog-song"]                      # the staged copy is put back
+
+
+def test_apple_remove_occurrences_still_allows_removing_every_copy():
+    """The lenient path serves playlist edits, where deleting every copy of a
+    song is what the user asked for. Only the chronology retire may refuse."""
+    from songmirror.engine.targets.apple import AppleMusicTarget
+
+    target = AppleMusicTarget.__new__(AppleMusicTarget)
+    row = {"relationship_id": "library-song", "catalog_id": "catalog-song"}
+    removed, added = [], []
+    target.playlist_tracks = lambda _playlist: [row, dict(row)]
+    target.remove = lambda _playlist, track: removed.append(track)
+    target.add = lambda _playlist, ids: added.extend(ids)
+
+    target.remove_occurrences({"id": "playlist"}, [(0, row), (1, dict(row))])
+
+    assert removed == [{"relationship_id": "library-song"}] and added == []
 
 
 def test_qobuz_playlist_read_follows_total_across_short_pages(monkeypatch):

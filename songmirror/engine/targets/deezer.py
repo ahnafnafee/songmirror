@@ -503,9 +503,10 @@ class DeezerTarget(MirrorTarget):
             if keep:
                 self.add(playlist, [tid] * keep)
 
-    def chronology_replay_write_cost(self, ordered_entries):
-        # Deezer's delete is catalog-id scoped, so every retired old entry also
-        # needs one keeper append after the duplicate-capable staging pass.
-        return len(ordered_entries) + sum(
-            1 for _target_id, original in ordered_entries if original is not None
-        )
+    # Deezer has no positional insert, and its delete addresses the catalog
+    # track id, so an ordered repair would have to delete every copy of a song
+    # and re-append a keeper. Its playlist reads also trail its own writes, so
+    # that keeper count can be taken from a snapshot which has not indexed the
+    # staged copies yet, retiring the song outright instead of reordering it.
+    # Appending in source order is the only ordering write Deezer can survive.
+    replay_chronology = None

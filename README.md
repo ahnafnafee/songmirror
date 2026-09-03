@@ -91,6 +91,7 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 - 🎯 **ISRC-accurate matching** — exact recording identity where available, with Unicode-aware fuzzy title/artist/duration fallbacks (feat-credit drift, "- 2015 Remaster" suffixes, non-Latin scripts, video-only uploads — all handled).
 - 🎛️ **Multiple named syncs** — set up as many independent syncs as you like, each with its own services, playlists, schedule, and safety caps.
 - ↪️ **One-off transfers** — copy any playlist from one service to another with a live progress bar; **pause, resume, or stop** mid-copy, and manually resolve unmatched tracks.
+- 🕒 **Append or preserve order** — copies land at the end of the destination by default, fast and additive. Switch on **Preserve Recently Added order** to rewrite the tracks after the oldest new one so date-added order matches the source.
 - 🔗 **Transfer from a link** — paste a public playlist URL from any connected service and copy it straight across. No need to save or follow it first.
 - 🌐 **Followed playlists** — sync and transfer playlists you follow but don't own, not just ones you created.
 - 📦 **Portable metadata backups** — download one playlist or a service's entire library as ordered, versioned JSON/XML; single playlists also export as import-ready Soundiiz JSON.
@@ -451,7 +452,8 @@ Removals are destructive, so they're guarded:
 - **Dry run is the default** — nothing changes without `--execute` (or the UI's real-sync action).
 - If the source returns 0 tracks for a playlist the target shows as non-empty, removals are skipped that pass (a transient API failure can't empty a playlist).
 - **Removals are off by default** — `MAX_REMOVALS=0` holds every removal back (logged, never applied), so a licensing takedown on one platform can't cascade a deletion to the rest. Opt in per sync with the "Mirror removals" toggle (or set `MAX_REMOVALS`), and even then more pending removals than the cap in one pass → all skipped and logged.
-- `MAX_ADDS` limits every timestamp-producing write, including chronology repair. If an older recovered match needs a larger suffix replay than the cap allows, SongMirror defers it rather than making it appear newest or causing a giant provider burst.
+- `MAX_ADDS` limits every timestamp-producing write in a **sync** pass, including chronology repair. If an older recovered match needs a larger suffix replay than the cap allows, SongMirror defers it to the next pass rather than making it appear newest or causing a giant provider burst. A **one-off transfer** has no next pass, so it never defers: it copies every requested track, appending in source order unless you switch on "Preserve Recently Added order" for that transfer, which spends whatever the repair costs.
+- A chronology repair stages a duplicate copy before retiring the original. On a service whose delete takes every copy of a song, that keeper count has to be right, so Apple Music re-reads until the staged copies are visible and refuses to retire anything against a read that still trails its own writes. Deezer skips the repair entirely and always appends: it has no positional insert either, so replaying an order it cannot express is not worth the risk to the destination. The transfer form greys its order switch out there and says why.
 - **Net-loss protection** — a target-side track resembling a source track that has no match on that service is held, not deleted.
 - Any provider authentication failure aborts that provider's pass immediately — no partial deletes on expired tokens.
 
