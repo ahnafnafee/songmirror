@@ -3,6 +3,8 @@
 import os
 import tempfile
 
+import pytest
+
 from songmirror.engine import archive
 from songmirror.engine.config import parse_interval
 from songmirror.engine.matching import (
@@ -45,6 +47,31 @@ def cid_of(t):
 
 def accepts(*a):
     return score_candidate(*a)[1]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("Emir Can İğrek", "emir can iğrek"),
+        ("İki Şeye Pişmanım", "iki şeye pişmanım"),
+        ("I\u0307ki", "iki"),
+        ("İ\u0301lhan", "ílhan"),
+    ],
+)
+def test_normalize_text_does_not_split_turkish_dotted_i(value, expected):
+    assert normalize_text(value) == expected
+
+
+def test_normalize_text_preserves_canonical_accents_and_non_latin_letters():
+    assert normalize_text("Cafe\u0301") == normalize_text("CAFÉ") == "café"
+    assert normalize_text("mañana") != normalize_text("manana")
+    assert normalize_text("嘘") == "嘘"
+
+
+def test_turkish_case_variants_produce_the_same_track_key():
+    assert track_key("İki Şeye Pişmanım", "Emir Can İğrek") == track_key(
+        "iki şeye pişmanım", "emir can iğrek"
+    )
 
 
 def test_compute_diff_orders_mixed_timestamp_formats_chronologically():

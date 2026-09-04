@@ -37,6 +37,55 @@ DEFAULT_AUTH_FILE = "ytmusic_oauth.json"
 API = "https://www.googleapis.com/youtube/v3"
 
 _TOPIC_RE = re.compile(r"\s*-\s*Topic$")
+_CHANNEL_DECORATION_RE = re.compile(
+    r"(?:\s*vevo|\s+official(?:\s+channel)?)$",
+    re.IGNORECASE,
+)
+_TITLE_SEPARATOR = r"(?:\s+-\s+|\s*[–—]\s*|\s+\|\s+|:\s+)"
+_TITLE_PREFIX_RE = re.compile(
+    rf"^(?P<prefix>.+?){_TITLE_SEPARATOR}(?P<title>.+)$"
+)
+_TRAILING_BRACKET_RE = re.compile(
+    r"\s*(?:\((?P<paren>[^()]*)\)|\[(?P<bracket>[^\[\]]*)\]|\{(?P<brace>[^{}]*)\})\s*$"
+)
+_TRAILING_SEPARATOR_RE = re.compile(
+    rf"^(?P<title>.+){_TITLE_SEPARATOR}(?P<tag>.+)$"
+)
+_VIDEO_PRODUCTION_TAGS = {
+    "audio",
+    "audio video",
+    "clip",
+    "lyrics",
+    "lyric video",
+    "lyrics video",
+    "m v",
+    "music clip",
+    "music video",
+    "mv",
+    "official audio",
+    "official audio video",
+    "official clip",
+    "official lyrics",
+    "official lyric video",
+    "official lyrics video",
+    "official m v",
+    "official music clip",
+    "official music video",
+    "official music video clip",
+    "official mv",
+    "official video",
+    "official video clip",
+    "official visualiser",
+    "official visualizer",
+    "video",
+    "video clip",
+    "visualiser",
+    "visualizer",
+}
+_VIDEO_QUALITY_TAGS = {
+    "4k", "8k", "720p", "1080p", "1440p", "2160p", "hd", "hq", "uhd",
+}
+_PRODUCER_CREDIT_RE = re.compile(r"prod(?:uced)?\s+by\s+.+")
 
 
 ROTATE_URL = "https://accounts.youtube.com/RotateCookies"
@@ -133,6 +182,87 @@ def _artist_from_channel(channel):
     return _TOPIC_RE.sub("", channel or "").strip()
 
 
+def _channel_name_keys(channel):
+    """Comparable channel spellings used only for a video-title prefix.
+
+    YouTube appends branding such as ``VEVO`` and ``Official Channel`` to many
+    owner names while the video's leading credit remains the plain artist.
+    Keep the stored artist convention unchanged, but accept each progressively
+    undecorated spelling when deciding whether a prefix is safe to remove.
+    """
+    variants = set()
+    current = str(channel or "").strip()
+    while current:
+        key = normalize_text(current)
+        if key:
+            variants.add(key)
+        undecorated = _CHANNEL_DECORATION_RE.sub("", current).strip()
+        if undecorated == current:
+            break
+        current = undecorated
+    return variants
+
+
+def _is_video_production_tag(value):
+    normalized = normalize_text(value)
+    if _PRODUCER_CREDIT_RE.fullmatch(normalized):
+        return True
+    words = normalized.split()
+    without_quality = [word for word in words if word not in _VIDEO_QUALITY_TAGS]
+    return bool(words) and (
+        not without_quality or " ".join(without_quality) in _VIDEO_PRODUCTION_TAGS
+    )
+
+
+def _clean_data_api_video_title(title, channel):
+    """Turn an unstructured Data API video title into a search-safe track name.
+
+    Prefix removal is gated on the owner channel, so a legitimate title such as
+    ``Love - Hate`` is never split just because it contains a dash. Production
+    labels are removed only when they occupy a complete trailing bracket or a
+    separator-delimited suffix. Creative recording qualifiers (live, acoustic,
+    remix, remaster, featured artists) deliberately remain for match safety.
+    """
+    raw = str(title or "").strip()
+    if not raw:
+        return ""
+
+    cleaned = raw
+    prefix = _TITLE_PREFIX_RE.match(cleaned)
+    if prefix and normalize_text(prefix.group("prefix")) in _channel_name_keys(channel):
+        candidate = prefix.group("title").strip()
+        if candidate:
+            cleaned = candidate
+
+    while cleaned:
+        bracket = _TRAILING_BRACKET_RE.search(cleaned)
+        if bracket:
+            tag = next(
+                value
+                for value in (
+                    bracket.group("paren"),
+                    bracket.group("bracket"),
+                    bracket.group("brace"),
+                )
+                if value is not None
+            )
+            if _is_video_production_tag(tag):
+                candidate = cleaned[:bracket.start()].rstrip(" -–—|:")
+                if candidate:
+                    cleaned = candidate
+                    continue
+
+        suffix = _TRAILING_SEPARATOR_RE.match(cleaned)
+        if suffix and _is_video_production_tag(suffix.group("tag")):
+            candidate = suffix.group("title").rstrip(" -–—|:")
+            if candidate:
+                cleaned = candidate
+                continue
+        break
+
+    return cleaned or raw
+
+
 def _normalized_data_api_playlist_item(item):
     video_id = item.get("contentDetails", {}).get("videoId")
     if not video_id:
@@ -149,7 +279,7 @@ def _normalized_data_api_playlist_item(item):
         "id": video_id,
         "videoId": video_id,
         "playlistItemId": item.get("id"),
-        "name": snippet.get("title", ""),
+        "name": _clean_data_api_video_title(snippet.get("title", ""), artist),
         "artist": artist,
         "artists": [artist] if artist else [""],
         "album": None,
