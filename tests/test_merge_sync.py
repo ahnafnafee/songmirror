@@ -44,6 +44,7 @@ class _Provider(MirrorTarget):
         self.public = {}
         self.rows = {}
         self.fail = set()
+        self.find_fail = set()
         self.fetches = []
         self.catalog = {}
 
@@ -59,6 +60,8 @@ class _Provider(MirrorTarget):
         return playlist
 
     def find_playlist(self, playlist_id):
+        if str(playlist_id) in self.find_fail:
+            raise RuntimeError("library directory unavailable")
         return self.library.get(str(playlist_id))
 
     def fetch_playlist(self, playlist_id):
@@ -249,6 +252,7 @@ def test_mixed_library_and_public_sources_reconcile_one_union(monkeypatch, tmp_p
     deezer = _Provider("deezer", tmp_path)
     spotify.add_playlist("library", [_track("One"), _track("Shared", isrc="S1")])
     apple.add_playlist("public", [_track("Shared", isrc="S1"), _track("Two")], public=True)
+    apple.find_fail.add("public")
     destination = deezer.add_playlist("destination", [], name="Mashup")
     _install_providers(monkeypatch, {p.source: p for p in (spotify, apple, deezer)})
 
@@ -262,6 +266,8 @@ def test_mixed_library_and_public_sources_reconcile_one_union(monkeypatch, tmp_p
     ), None)
 
     assert ok is True and error is None
+    # Public descriptors bypass the connected-library lookup entirely. The
+    # test provider would raise if `_run_merge` attempted it.
     assert apple.fetches == ["public"]
     assert aggregate == {
         "sources": 2, "sources_read": 2, "sources_failed": 0,

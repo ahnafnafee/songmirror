@@ -238,9 +238,18 @@ def _run_merge(opts, sp, should_continue=None):
             continue
         playlist = None
         try:
-            playlist = source.find_playlist(descriptor.get("playlist_id"))
-            if playlist is None:
+            if descriptor.get("kind") == "public":
+                # A resolved public source must not depend on the signed-in
+                # user's library scan. This is required for catalog-only URLs
+                # (notably Apple) and avoids turning an unrelated library read
+                # failure into a failed public snapshot.
                 playlist = source.fetch_playlist(descriptor.get("playlist_id"))
+            else:
+                playlist = source.find_playlist(descriptor.get("playlist_id"))
+                if playlist is None:
+                    # A formerly followed/library playlist can remain publicly
+                    # readable after it leaves the library.
+                    playlist = source.fetch_playlist(descriptor.get("playlist_id"))
             if playlist is None:
                 raise RuntimeError(
                     "playlist could not be opened; it may be private or no longer available"
