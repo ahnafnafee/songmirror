@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { LuExternalLink, LuListMusic } from 'react-icons/lu'
 
 import type { ProviderPlaylistsEntry } from '@/hooks/useProviderPlaylists'
+import { capabilitiesOf } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { serviceHomeUrl, serviceLogoId, tagText } from '@/lib/constants'
 import { formatTrackCount } from '@/lib/format'
@@ -31,6 +32,7 @@ export function ProviderPlaylistsCard({
   onRetry: () => void
 }) {
   const connected = account.state === 'connected'
+  const libraryReadable = capabilitiesOf(account).library_read
   const logoId = serviceLogoId(account.provider)
   const homeUrl = serviceHomeUrl(account.provider)
 
@@ -83,6 +85,12 @@ export function ProviderPlaylistsCard({
               Connect
             </Link>
           }
+        />
+      ) : !libraryReadable ? (
+        <EmptyState
+          className="py-6"
+          title="Catalog access only"
+          description={account.detail || 'Paste a public playlist link on Transfers. Library browsing and writes are unavailable.'}
         />
       ) : !entry || (entry.loading && entry.playlists.length === 0) ? (
         <LoadingStatus label={`Loading ${account.name} playlists…`}>
@@ -141,7 +149,7 @@ export function ProviderPlaylistsCard({
         />
       )}
 
-      {connected && account.transferable && entry && entry.playlists.length > 0 ? (
+      {connected && libraryReadable && account.transferable && entry && entry.playlists.length > 0 ? (
         <div className="border-t border-border pt-3">
           <p className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-text-3">
             Local backup

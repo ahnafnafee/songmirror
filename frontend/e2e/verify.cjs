@@ -3882,6 +3882,73 @@ async function main() {
     }
 
     // -----------------------------------------------------------------
+    // Catalog-only Apple credentials remain valid public-link sources, but
+    // never appear in CloudLibrary-backed source or destination controls.
+    // -----------------------------------------------------------------
+    {
+      const context = await browser.newContext()
+      await context.addInitScript(() => window.localStorage.setItem('songmirror-theme', 'light'))
+      const page = await context.newPage()
+      await installMocks(page)
+      const applePlaylistRequests = []
+      page.on('request', (request) => {
+        if (request.url().includes('/api/playlists?provider=apple')) applePlaylistRequests.push(request.url())
+      })
+      const fullCapabilities = {
+        library_read: true,
+        library_write: true,
+        public_playlist_read: true,
+      }
+      await page.route('**/api/accounts', async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback()
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(ACCOUNTS.map((account) => {
+            if (account.id === 'apple') {
+              return {
+                ...account,
+                detail: 'Catalog-only access. Public Apple Music playlist links can be transferred out; library browsing, syncing, and destination writes require an active Apple Music subscription.',
+                capabilities: {
+                  library_read: false,
+                  library_write: false,
+                  public_playlist_read: true,
+                },
+              }
+            }
+            if (account.id === 'deezer') {
+              return { ...account, state: 'connected', capabilities: fullCapabilities }
+            }
+            return account
+          })),
+        })
+      })
+
+      await page.setViewportSize({ width: 1280, height: 900 })
+      await page.goto(BASE_URL + '/transfers', { waitUntil: 'networkidle' })
+      const sourceSelect = page.getByLabel('Service', { exact: true }).first()
+      const sourceOptions = await sourceSelect.locator('option').allTextContents()
+      await sourceSelect.selectOption('spotify')
+      const destinationOptions = await page.getByLabel('Service', { exact: true }).nth(1).locator('option').allTextContents()
+      const capabilityOptionsOk =
+        !sourceOptions.some((text) => /apple music/i.test(text)) &&
+        !destinationOptions.some((text) => /apple music/i.test(text)) &&
+        destinationOptions.some((text) => /deezer/i.test(text))
+      console.log(`${capabilityOptionsOk ? 'ok        ' : 'FAIL      '} catalog-only Apple is link-source only in Transfers`)
+      if (!capabilityOptionsOk) results.push({ label: 'catalog-only apple transfer capabilities', overflow: true })
+
+      const skippedLibraryOk = applePlaylistRequests.length === 0
+      console.log(`${skippedLibraryOk ? 'ok        ' : 'FAIL      '} catalog-only Apple skips CloudLibrary browse requests`)
+      if (!skippedLibraryOk) results.push({ label: 'catalog-only apple skips library browse', overflow: true })
+
+      await page.goto(BASE_URL + '/accounts', { waitUntil: 'networkidle' })
+      const catalogDetailVisible = await page.getByText(/Catalog-only access\. Public Apple Music playlist links/).isVisible()
+      console.log(`${catalogDetailVisible ? 'ok        ' : 'FAIL      '} Accounts explains Apple catalog-only access`)
+      if (!catalogDetailVisible) results.push({ label: 'catalog-only apple account detail', overflow: true })
+      await context.close()
+    }
+
+    // -----------------------------------------------------------------
     // Transfer pickers exclude browse-only (non-transferable) services:
     // Jellyfin is a connected account, but transferable:false, so it must
     // never appear as a source or destination option - previously it was

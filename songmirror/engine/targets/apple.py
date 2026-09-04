@@ -8,12 +8,18 @@ import time
 
 import requests
 
+from ..apple_access import is_cloud_library_denial
 from ..config import (
     AMP, DEFAULT_CACHE_FILE, REQUEST_TIMEOUT, polite_sleep, required_env,
 )
 from ..logs import log, log_warn
 from ..matching import normalize_text, romanized, score_candidate
-from .base import MirrorTarget, TargetAuthError, TargetTransientError
+from .base import (
+    MirrorTarget,
+    TargetAuthError,
+    TargetCapabilityError,
+    TargetTransientError,
+)
 from .provider_utils import source_playlist_details
 
 # playlist_id -> (lastModifiedDate, track_count): in-process cache so the browse
@@ -135,6 +141,11 @@ class AppleMusicTarget(MirrorTarget):
                     f"Apple rejected {method} {url.split('/v1/')[-1]} ({r.status_code}). "
                     "Re-capture APPLE_BEARER_TOKEN / APPLE_USER_TOKEN from music.apple.com DevTools."
                 )
+            if is_cloud_library_denial(r):
+                raise TargetCapabilityError(
+                    "Apple Music library access requires an active Apple Music subscription. "
+                    "This account can still transfer public Apple Music playlist links out."
+                )
             if r.status_code == 404 and ok404:
                 return None
             if r.status_code == 429:
@@ -232,17 +243,26 @@ class AppleMusicTarget(MirrorTarget):
         pid = str(playlist_id)
         if not is_catalog_playlist_id(pid):
             return None
-        try:
-            response = self._request(
-                "GET", f"{AMP}/catalog/{self.storefront}/playlists/{pid}", ok404=True)
-        except Exception:
-            return None
+        response = self._request(
+            "GET", f"{AMP}/catalog/{self.storefront}/playlists/{pid}", ok404=True)
         if response is None:
             return None
         rows = response.json().get("data") or []
         if not rows:
             return None
         return {**rows[0], "_catalog": True}
+
+    def find_playlist(self, playlist_id):
+        """Open catalog ids without probing the signed-in CloudLibrary.
+
+        Public Apple links always carry a ``pl.`` catalog id. Going through the
+        base library scan first is both unnecessary and unavailable to a valid
+        catalog-only account, while ``p.`` library ids retain the normal lookup.
+        """
+
+        if is_catalog_playlist_id(playlist_id):
+            return self.fetch_playlist(playlist_id)
+        return super().find_playlist(playlist_id)
 
     def playlist_tracks_page(self, playlist, cursor=None):
         try:

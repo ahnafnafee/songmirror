@@ -153,6 +153,26 @@ def test_browse_failure_is_not_reported_as_an_empty_library(monkeypatch, tmp_pat
         PlaylistService(SettingsStore(dir=tmp_path)).browse("spotify")
 
 
+def test_browse_surfaces_a_missing_library_capability_as_read_only(monkeypatch, tmp_path):
+    from songmirror.engine.targets.base import TargetCapabilityError
+    from songmirror.services.playlists import PlaylistReadOnlyError, PlaylistService
+    from songmirror.services.settings import SettingsStore
+
+    class CatalogOnlyTarget:
+        def browse_playlists(self):
+            raise TargetCapabilityError(
+                "Apple Music library access requires an active Apple Music subscription."
+            )
+
+    monkeypatch.setattr(
+        "songmirror.services.playlists.build_one",
+        lambda provider, opts, sp=None: CatalogOnlyTarget(),
+    )
+
+    with pytest.raises(PlaylistReadOnlyError, match="active Apple Music subscription"):
+        PlaylistService(SettingsStore(dir=tmp_path)).browse("apple")
+
+
 def test_playlist_detail_normalizes_tracks_and_external_links(monkeypatch, tmp_path):
     from songmirror.services.playlists import PlaylistService
     from songmirror.services.settings import SettingsStore

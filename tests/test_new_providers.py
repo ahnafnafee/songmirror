@@ -2312,6 +2312,67 @@ def test_apple_reads_a_shared_playlist_from_the_catalog_not_the_library():
     assert target.playlist_count(playlist) == 2
 
 
+def test_apple_catalog_id_lookup_never_reads_the_cloud_library():
+    target = _apple_target(lambda *_args, **_kwargs: None)
+    target.list_playlists = lambda: (_ for _ in ()).throw(
+        AssertionError("catalog lookup must not read the CloudLibrary")
+    )
+    target.fetch_playlist = lambda playlist_id: {
+        "id": playlist_id,
+        "_catalog": True,
+        "attributes": {"name": "Public mix"},
+    }
+
+    found = target.find_playlist("pl.u-public")
+
+    assert found["id"] == "pl.u-public"
+    assert found["_catalog"] is True
+
+
+def test_apple_cloud_library_operations_fail_as_a_capability_error():
+    import requests
+
+    from songmirror.engine.targets.apple import AppleMusicTarget
+    from songmirror.engine.targets.base import TargetCapabilityError
+
+    class Response:
+        status_code = 400
+        headers = {}
+
+        @staticmethod
+        def json():
+            return {"errors": [{"code": "40015"}]}
+
+        def raise_for_status(self):
+            raise requests.HTTPError("400 Client Error", response=self)
+
+    class Session:
+        @staticmethod
+        def request(*_args, **_kwargs):
+            return Response()
+
+    target = AppleMusicTarget.__new__(AppleMusicTarget)
+    target._session = Session()
+
+    with pytest.raises(TargetCapabilityError, match="active Apple Music subscription"):
+        target._request(
+            "GET",
+            "https://amp-api.music.apple.com/v1/me/library/playlists",
+        )
+
+
+def test_apple_catalog_fetch_does_not_swallow_authentication_errors():
+    from songmirror.engine.targets.base import TargetAuthError
+
+    def reject(*_args, **_kwargs):
+        raise TargetAuthError("Apple rejected the catalog request")
+
+    target = _apple_target(reject)
+
+    with pytest.raises(TargetAuthError, match="rejected the catalog"):
+        target.fetch_playlist("pl.u-public")
+
+
 def test_apple_reads_catalog_playlist_tracks_from_the_catalog_route():
     calls = []
 

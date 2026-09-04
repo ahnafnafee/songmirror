@@ -17,7 +17,7 @@ from urllib.parse import quote
 from ..engine import archive, spotify, spotify_cookie
 from ..engine.config import parse_args, spotify_write_backend
 from ..engine.logs import log_warn
-from ..engine.targets import build_one, target_provider
+from ..engine.targets import TargetCapabilityError, build_one, target_provider
 from .playlist_exports import render_backup
 from .playlist_links import external_url, provider_label
 from .settings import _open_private
@@ -168,6 +168,8 @@ class PlaylistService:
     def _failure(self, provider_id, action, exc):
         label = self._label(provider_id)
         log_warn(f"{action} failed: {exc!r}", tag=provider_id)
+        if isinstance(exc, TargetCapabilityError):
+            raise PlaylistReadOnlyError(str(exc)) from exc
         raise PlaylistBrowseError(
             f"{label} could not {action} right now. Retry; if it continues, reconnect the account."
         ) from exc

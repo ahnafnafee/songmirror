@@ -1,5 +1,7 @@
 """Account connectors: status + the connect entry point per auth kind."""
 
+import pytest
+
 from songmirror.services.accounts import CONNECTORS
 from songmirror.services.accounts.base import DeviceCode
 from songmirror.services.settings import SettingsStore
@@ -18,10 +20,166 @@ def test_registry_has_all_supported_services():
 def test_apple_unconfigured_then_submit_stores(tmp_path, monkeypatch):
     c = _conn("apple", tmp_path)
     assert c.status().state == "unconfigured"
-    monkeypatch.setattr(c, "_validate", lambda: (True, "ok"))
+    monkeypatch.setattr(c, "_validate", lambda: (True, "ok", None, ""))
     st = c.submit({"APPLE_BEARER_TOKEN": "b", "APPLE_USER_TOKEN": "u"})
     assert st.state == "connected"
     assert c._store.get("APPLE_USER_TOKEN") == "u"
+
+
+def test_apple_cloud_library_denial_falls_back_to_catalog_access(tmp_path, monkeypatch):
+    class Response:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+
+        @property
+        def ok(self):
+            return 200 <= self.status_code < 300
+
+        def json(self):
+            return self._payload
+
+    calls = []
+
+    def get(url, **kwargs):
+        calls.append((url, kwargs))
+        if url.endswith("/me/library/playlists?limit=1"):
+            return Response(400, {"errors": [{
+                "status": "400",
+                "code": "40015",
+                "title": "Insufficient Privileges",
+                "detail": "User's subscription tier does not have access to privilege: CloudLibrary",
+            }]})
+        if url.endswith("/me/storefront"):
+            return Response(200, {"data": [{"id": "tr", "type": "storefronts"}]})
+        raise AssertionError(f"unexpected Apple validation URL: {url}")
+
+    monkeypatch.setattr("songmirror.services.accounts.apple.requests.get", get)
+    c = _conn("apple", tmp_path)
+
+    status = c.submit({"APPLE_BEARER_TOKEN": "developer-token", "APPLE_USER_TOKEN": "user-token"})
+
+    assert status.state == "connected"
+    assert status.capabilities == frozenset({"public_playlist_read"})
+    assert "catalog-only" in status.detail.casefold()
+    assert c._store.get("APPLE_STOREFRONT") == "tr"
+    assert [url.rsplit("/v1/", 1)[-1] for url, _kwargs in calls] == [
+        "me/library/playlists?limit=1",
+        "me/storefront",
+    ]
+
+
+def test_apple_paid_library_validation_keeps_full_access(tmp_path, monkeypatch):
+    class Response:
+        status_code = 200
+        ok = True
+
+        @staticmethod
+        def json():
+            return {"data": [{"id": "us", "type": "storefronts"}]}
+
+    monkeypatch.setattr(
+        "songmirror.services.accounts.apple.requests.get",
+        lambda *_args, **_kwargs: Response(),
+    )
+    status = _conn("apple", tmp_path).submit({
+        "APPLE_BEARER_TOKEN": "developer-token",
+        "APPLE_USER_TOKEN": "user-token",
+    })
+
+    assert status.state == "connected"
+    assert status.detail == ""
+    assert status.capabilities == frozenset({
+        "library_read",
+        "library_write",
+        "public_playlist_read",
+    })
+
+
+def test_apple_catalog_fallback_must_validate_the_storefront(tmp_path, monkeypatch):
+    class Response:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self._payload = payload or {}
+
+        @property
+        def ok(self):
+            return 200 <= self.status_code < 300
+
+        def json(self):
+            return self._payload
+
+    responses = iter([
+        Response(400, {"errors": [{"code": "40015"}]}),
+        Response(401),
+    ])
+    monkeypatch.setattr(
+        "songmirror.services.accounts.apple.requests.get",
+        lambda *_args, **_kwargs: next(responses),
+    )
+
+    status = _conn("apple", tmp_path).submit({
+        "APPLE_BEARER_TOKEN": "developer-token",
+        "APPLE_USER_TOKEN": "user-token",
+    })
+
+    assert status.state == "error"
+    assert status.detail == "catalog validation failed (HTTP 401)"
+    assert status.capabilities is None
+
+
+@pytest.mark.parametrize(
+    ("status_code", "payload"),
+    [
+        (400, {"errors": [{"code": "40016", "title": "Another error"}]}),
+        (401, {"errors": [{"code": "AUTHENTICATION_ERROR"}]}),
+    ],
+)
+def test_apple_validation_does_not_swallow_unrelated_errors(
+    tmp_path, monkeypatch, status_code, payload,
+):
+    calls = []
+
+    class Response:
+        ok = False
+
+        def json(self):
+            return payload
+
+    response = Response()
+    response.status_code = status_code
+
+    def get(*args, **kwargs):
+        calls.append((args, kwargs))
+        return response
+
+    monkeypatch.setattr("songmirror.services.accounts.apple.requests.get", get)
+    status = _conn("apple", tmp_path).submit({
+        "APPLE_BEARER_TOKEN": "developer-token",
+        "APPLE_USER_TOKEN": "user-token",
+    })
+
+    assert status.state == "error"
+    assert status.detail == f"HTTP {status_code}"
+    assert len(calls) == 1
+
+
+def test_apple_validation_failure_never_echoes_tokens(tmp_path, monkeypatch):
+    import requests
+
+    def fail(*_args, **_kwargs):
+        raise requests.ConnectionError("request carrying developer-token failed")
+
+    monkeypatch.setattr("songmirror.services.accounts.apple.requests.get", fail)
+    status = _conn("apple", tmp_path).submit({
+        "APPLE_BEARER_TOKEN": "developer-token",
+        "APPLE_USER_TOKEN": "user-token",
+    })
+
+    assert status.state == "error"
+    assert status.detail == "could not reach Apple Music (ConnectionError)"
+    assert "developer-token" not in status.detail
+    assert "user-token" not in status.detail
 
 
 def test_jellyfin_unconfigured_then_submit(tmp_path, monkeypatch):
