@@ -79,7 +79,7 @@ def _epoch_seconds(value, *, milliseconds=False) -> int | None:
     return int(number) if number > 0 else None
 
 
-def parse_web_headers(raw: str) -> dict:
+def parse_web_headers(raw: str, *, client_id: str = "") -> dict:
     """Minimize a web token response or a legacy OpenAPI request.
 
     Current captures should be the JSON response from the web player's
@@ -107,15 +107,19 @@ def parse_web_headers(raw: str) -> dict:
     claims = _jwt_claims(access_token)
     refresh_token = str(direct.get("refresh_token") or direct.get("refreshToken") or "").strip()
     client_id = str(
-        direct.get("client_id")
+        client_id
+        or direct.get("client_id")
         or direct.get("clientId")
         or nested.get("clientId")
-        or claims.get("cid")
-        or claims.get("client_id")
         or ""
     ).strip()
     if any(char in refresh_token + client_id for char in "\r\n"):
         raise ValueError("TIDAL renewal credentials are malformed")
+    if refresh_token and re.fullmatch(r"\d+", client_id):
+        raise ValueError(
+            f"TIDAL client ID {client_id} is the access token's internal cid, not the "
+            "OAuth client_id; copy client_id from the oauth2/token request's Payload tab"
+        )
 
     headers = selected_headers(raw, {"x-tidal-country-code", "tidal-country-code"})
     query = query_values(raw)
@@ -154,8 +158,8 @@ def parse_web_headers(raw: str) -> dict:
         )
     if refresh_token and not client_id:
         raise ValueError(
-            "the TIDAL token response did not expose its client id; paste the complete "
-            "oauth2/token Response JSON"
+            "the TIDAL token response does not contain its OAuth client ID; copy client_id "
+            "from the same oauth2/token request's Payload tab"
         )
 
     result = {
@@ -173,16 +177,23 @@ def parse_web_headers(raw: str) -> dict:
     return result
 
 
-def serialize_web_headers(raw: str) -> str:
+def serialize_web_headers(raw: str, *, client_id: str = "") -> str:
     """Return the allowlisted, durable subset of a browser capture."""
 
-    return json.dumps(parse_web_headers(raw), separators=(",", ":"), sort_keys=True)
+    return json.dumps(
+        parse_web_headers(raw, client_id=client_id),
+        separators=(",", ":"),
+        sort_keys=True,
+    )
 
 
 def _session_from_context(context: dict) -> dict:
     access_token = context["authorization"].split(None, 1)[1]
     fingerprint = hashlib.sha256(
-        f"{access_token}\0{context.get('refresh_token', '')}".encode()
+        (
+            f"{access_token}\0{context.get('refresh_token', '')}"
+            f"\0{context.get('client_id', '')}"
+        ).encode()
     ).hexdigest()
     token = {
         "auth_mode": AUTH_MODE,
@@ -196,10 +207,10 @@ def _session_from_context(context: dict) -> dict:
     return token
 
 
-def seed_web_session(raw: str, token_file: str) -> dict:
+def seed_web_session(raw: str, token_file: str, *, client_id: str = "") -> dict:
     """Replace the on-disk session with an explicitly pasted browser grant."""
 
-    token = _session_from_context(parse_web_headers(raw))
+    token = _session_from_context(parse_web_headers(raw, client_id=client_id))
     write_token(token_file, token)
     return token
 
@@ -214,11 +225,17 @@ def _refresh_error(response) -> str:
     return str(payload.get("error_description") or payload.get("error") or f"HTTP {response.status_code}")
 
 
-def ensure_web_access_token(raw: str, token_file: str, *, force: bool = False) -> dict:
+def ensure_web_access_token(
+    raw: str,
+    token_file: str,
+    *,
+    force: bool = False,
+    client_id: str = "",
+) -> dict:
     """Return a live web-player token, refreshing and persisting when needed."""
 
     with _TOKEN_LOCK:
-        bootstrap = _session_from_context(parse_web_headers(raw))
+        bootstrap = _session_from_context(parse_web_headers(raw, client_id=client_id))
         token = read_token(token_file)
         if (
             token.get("auth_mode") != AUTH_MODE

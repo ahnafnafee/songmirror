@@ -61,6 +61,15 @@ class TidalConnector(Connector):
     auth_kind = "token_paste"
     config_fields = [
         Field(
+            "TIDAL_WEB_CLIENT_ID",
+            "Web-player client ID",
+            help=(
+                "From the same oauth2/token request: Payload (or Form Data) → client_id; "
+                "this is not the numeric cid inside the access token"
+            ),
+            required=False,
+        ),
+        Field(
             "TIDAL_WEB_HEADERS",
             "Web-player token response",
             secret=True,
@@ -80,6 +89,13 @@ class TidalConnector(Connector):
     def _raw(self):
         return self._store.get("TIDAL_WEB_HEADERS") or os.getenv("TIDAL_WEB_HEADERS") or ""
 
+    def _client_id(self):
+        return (
+            self._store.get("TIDAL_WEB_CLIENT_ID")
+            or os.getenv("TIDAL_WEB_CLIENT_ID")
+            or ""
+        )
+
     def _token_file(self):
         return os.getenv("TIDAL_TOKEN_FILE") or self._store.get("TIDAL_TOKEN_FILE") or DEFAULT_TOKEN_FILE
 
@@ -95,15 +111,25 @@ class TidalConnector(Connector):
             timeout=REQUEST_TIMEOUT,
         )
 
-    def _validate(self, raw=None):
+    def _validate(self, raw=None, *, client_id=None):
         source = raw if raw is not None else self._raw()
         if not str(source).strip():
             return ConnStatus("unconfigured", "capture a signed-in TIDAL web-player token response")
         try:
-            token = ensure_web_access_token(source, self._token_file())
+            client_id = self._client_id() if client_id is None else client_id
+            token = ensure_web_access_token(
+                source,
+                self._token_file(),
+                client_id=client_id,
+            )
             response = self._check(token["access_token"], token.get("country_code") or "US")
             if response.status_code in (401, 403):
-                token = ensure_web_access_token(source, self._token_file(), force=True)
+                token = ensure_web_access_token(
+                    source,
+                    self._token_file(),
+                    force=True,
+                    client_id=client_id,
+                )
                 response = self._check(token["access_token"], token.get("country_code") or "US")
             if response.ok:
                 return ConnStatus("connected", _scope_detail(token))
@@ -160,9 +186,12 @@ class TidalConnector(Connector):
         return status
 
     def submit(self, values):
-        raw = str(values.get("TIDAL_WEB_HEADERS") or "").strip()
+        # Reconnect forms never echo a stored secret back to the browser. Let a
+        # user repair an older capture by supplying only the missing client ID.
+        raw = str(values.get("TIDAL_WEB_HEADERS") or self._raw()).strip()
+        client_id = str(values.get("TIDAL_WEB_CLIENT_ID") or self._client_id()).strip()
         try:
-            minimized = serialize_web_headers(raw)
+            minimized = serialize_web_headers(raw, client_id=client_id)
             context = parse_web_headers(minimized)
         except ValueError as exc:
             return ConnStatus("error", str(exc))
@@ -171,7 +200,21 @@ class TidalConnector(Connector):
         previous = read_token(token_file)
         try:
             seed_web_session(minimized, token_file)
-            status = self._validate(minimized)
+            # A live access token only proves that the paste works right now.
+            # Exercise the refresh grant before claiming automatic renewal, so
+            # an internal JWT cid can never produce a false "connected" state.
+            if context.get("refresh_token"):
+                ensure_web_access_token(minimized, token_file, force=True)
+            status = self._validate(minimized, client_id=context.get("client_id", ""))
+        except (TidalWebError, ValueError) as exc:
+            if previous:
+                write_token(token_file, previous)
+            else:
+                try:
+                    os.remove(token_file)
+                except FileNotFoundError:
+                    pass
+            return ConnStatus("error", str(exc))
         except Exception:
             if previous:
                 write_token(token_file, previous)
@@ -193,6 +236,7 @@ class TidalConnector(Connector):
 
         self._store.save({
             "TIDAL_WEB_HEADERS": minimized,
+            "TIDAL_WEB_CLIENT_ID": context.get("client_id", ""),
             "TIDAL_COUNTRY_CODE": context["country_code"],
             # The web player is now authoritative. Retire the development-app
             # config and incomplete callback state so no fallback can silently
@@ -212,6 +256,7 @@ class TidalConnector(Connector):
     def disconnect(self):
         self._store.save({
             "TIDAL_WEB_HEADERS": "",
+            "TIDAL_WEB_CLIENT_ID": "",
             "TIDAL_CLIENT_ID": "",
             "TIDAL_OAUTH_STATE": "",
             "TIDAL_OAUTH_VERIFIER": "",

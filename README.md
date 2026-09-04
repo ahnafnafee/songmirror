@@ -363,10 +363,11 @@ That single signed-in web session handles library browsing, playlist reads and w
 
 1. Open [TIDAL's web player](https://listen.tidal.com), open DevTools → **Network**, and enable **Preserve log**.
 2. Sign out and sign back in, then filter the Network list for `oauth2/token`.
-3. Select the successful `auth.tidal.com/v1/oauth2/token` request, open **Response**, and copy its complete JSON.
-4. In SongMirror, open **Accounts → TIDAL** and paste that response. It should include both `access_token` and `refresh_token`.
+3. Select the successful `auth.tidal.com/v1/oauth2/token` request. In **Payload** (Chrome/Edge) or **Request** (Firefox), copy the `client_id` form value into SongMirror's **Web-player client ID** field.
+4. Open the request's **Response** tab and copy its complete JSON into **Web-player token response**. It should include both `access_token` and `refresh_token`.
+5. Connect. SongMirror immediately exercises the refresh grant and refuses to report success if that client ID cannot renew it.
 
-SongMirror extracts only the access token, refresh token, client ID, scopes, expiry, and catalog country; unrelated response data is discarded. It renews just before expiry and once after an authentication rejection through `https://auth.tidal.com/v1/oauth2/token`, preserving refresh-token rotation. The older OpenAPI request-header paste remains compatible, but because it contains no refresh token it still needs to be re-pasted after expiry. Only catalog metadata and the signed-in user's playlists are used—playback assets stay outside this integration.
+The OAuth client ID is request metadata and is not the numeric `cid` claim inside TIDAL's access token. SongMirror extracts only the access token, refresh token, client ID, scopes, expiry, and catalog country; unrelated response data is discarded. It renews just before expiry and once after an authentication rejection through `https://auth.tidal.com/v1/oauth2/token`, preserving refresh-token rotation. The older OpenAPI request-header paste remains compatible, but because it contains no refresh token it still needs to be re-pasted after expiry. Only catalog metadata and the signed-in user's playlists are used—playback assets stay outside this integration.
 
 ### Qobuz
 
@@ -523,7 +524,7 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 ## 🩺 Troubleshooting
 
 - **`Missing required environment variable`** — fill in `.env` (CLI) or connect the service in the UI.
-- **TIDAL reports `Expired`** — sign out and back in at `listen.tidal.com`, then paste the complete `oauth2/token` Response JSON in Accounts. A copied OpenAPI request has only the short-lived Bearer and cannot renew.
+- **TIDAL reports `Expired`** — sign out and back in at `listen.tidal.com`, then paste both the `client_id` from the `oauth2/token` request payload and its complete Response JSON in Accounts. A copied OpenAPI request has only the short-lived Bearer and cannot renew.
 - **TIDAL reports HTTP 429** — this is a temporary rate limit, not an expired sign-in. SongMirror honors the provider retry delay and caches account health checks instead of repeatedly probing the API.
 - **Qobuz or Apple reports `Expired` / `401` / `403`** — these pasted sessions have no renewable secret; capture a fresh signed-in request or token in Accounts.
 - **TIDAL says the token lacks liked-track access** — capture a fresh signed-in web-player token response carrying `r_usr` and `w_usr`.

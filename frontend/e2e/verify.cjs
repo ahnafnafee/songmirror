@@ -44,7 +44,10 @@ const ACCOUNTS = [
     id: 'tidal',
     name: 'TIDAL',
     auth_kind: 'token_paste',
-    fields: [{ key: 'TIDAL_WEB_HEADERS', label: 'Web-player token response', secret: true, help: 'Copy the oauth2/token Response JSON', required: true }],
+    fields: [
+      { key: 'TIDAL_WEB_CLIENT_ID', label: 'Web-player client ID', secret: false, help: 'Copy client_id from the oauth2/token request payload', required: false },
+      { key: 'TIDAL_WEB_HEADERS', label: 'Web-player token response', secret: true, help: 'Copy the oauth2/token Response JSON', required: true },
+    ],
     state: 'unconfigured',
     detail: null,
     transferable: true,
@@ -2027,17 +2030,20 @@ async function main() {
       await shot(page, `connect-wizard-device-${width}`)
       await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
 
-      // TIDAL imports the web player's complete token response so the refresh
-      // token—not just the short-lived bearer—is available for renewal.
+      // TIDAL imports both halves needed for renewal: client_id comes from the
+      // request payload, while the refresh token comes from the response.
       await page
         .locator('h3', { hasText: 'TIDAL' })
         .locator('xpath=ancestor::div[contains(@class,"rounded-card")][1]')
         .getByRole('button', { name: 'Connect', exact: true })
         .click()
       const tidalDialog = page.getByRole('dialog')
+      const tidalClientId = tidalDialog.getByLabel('Web-player client ID')
       const tidalSession = tidalDialog.locator('#browser-session-TIDAL_WEB_HEADERS')
       const tidalRequirementsOk =
         (await tidalSession.evaluate((node) => node.required)) &&
+        (await tidalClientId.count()) === 1 &&
+        (await tidalDialog.getByText('client_id', { exact: false }).count()) > 0 &&
         (await tidalDialog.getByText('oauth2/token', { exact: false }).count()) > 0 &&
         (await tidalDialog.getByText('refresh_token', { exact: false }).count()) > 0 &&
         (await tidalDialog.locator('textarea').count()) === 1
@@ -2045,6 +2051,7 @@ async function main() {
         `${tidalRequirementsOk ? 'ok        ' : 'FAIL      '} TIDAL requests a renewable web-player token response`,
       )
       if (!tidalRequirementsOk) results.push({ label: 'TIDAL field requirements', overflow: true })
+      await tidalClientId.fill('public-web-client')
       await tidalSession.fill('{"access_token":"token","refresh_token":"refresh"}')
       await tidalDialog.getByRole('button', { name: 'Connect', exact: true }).click()
       const tidalSuccess = tidalDialog.getByRole('status')

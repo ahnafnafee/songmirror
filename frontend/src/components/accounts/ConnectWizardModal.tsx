@@ -98,13 +98,15 @@ const CONNECT_GUIDES: Record<string, ConnectGuideContent> = {
         Sign out of TIDAL and sign back in, then filter the Network list for <Code>oauth2/token</Code>.
       </>,
       <>
-        Select the successful <Code>auth.tidal.com/v1/oauth2/token</Code> request and open its{' '}
-        <strong>Response</strong> tab.
+        Select the successful <Code>auth.tidal.com/v1/oauth2/token</Code> request. Open <strong>Payload</strong>{' '}
+        (Chrome/Edge) or <strong>Request</strong> (Firefox), then copy its <Code>client_id</Code> form value.
       </>,
-      <>Copy the complete JSON response and paste it below. It should contain both <Code>access_token</Code> and{' '}
-        <Code>refresh_token</Code>.</>,
+      <>
+        Open <strong>Response</strong>, then copy the complete JSON into the token-response field. It should contain
+        both <Code>access_token</Code> and <Code>refresh_token</Code>.
+      </>,
     ],
-    note: 'Treat this response like a password. SongMirror discards profile data, keeps only the access token, refresh token, client ID, scopes, and country, then automatically persists token rotation. Older OpenAPI request-header pastes still work but cannot renew.',
+    note: 'Treat the response like a password. The request client_id is public metadata; it is not the numeric cid inside the access token. SongMirror proves renewal before reporting success, discards profile data, and automatically persists token rotation. Older OpenAPI request-header pastes still work but cannot renew.',
     link: { href: 'https://listen.tidal.com', label: 'Open TIDAL web player' },
   },
   qobuz: {

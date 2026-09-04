@@ -285,23 +285,116 @@ def _tidal_web_token(*, exp=4_102_444_800, scopes="r_usr w_usr", country="US", c
     return f"header.{payload}.signature"
 
 
+def test_tidal_refresh_response_does_not_use_internal_jwt_cid_as_oauth_client_id():
+    from songmirror.tidal_web import parse_web_headers
+
+    raw = json.dumps({
+        "access_token": _tidal_web_token(client="8049"),
+        "refresh_token": "web-refresh",
+        "scope": "r_usr w_usr",
+    })
+
+    with pytest.raises(ValueError, match="Payload tab"):
+        parse_web_headers(raw)
+
+
+def test_tidal_refresh_response_rejects_an_explicit_numeric_internal_cid():
+    from songmirror.tidal_web import parse_web_headers
+
+    raw = json.dumps({
+        "access_token": _tidal_web_token(client="8049"),
+        "refresh_token": "web-refresh",
+        "client_id": "8049",
+        "scope": "r_usr w_usr",
+    })
+
+    with pytest.raises(ValueError, match="internal cid"):
+        parse_web_headers(raw)
+
+
+def test_tidal_client_id_change_reseeds_the_saved_browser_grant(tmp_path, monkeypatch):
+    from songmirror.oauth import read_token
+    from songmirror.tidal_web import ensure_web_access_token, seed_web_session
+
+    token_file = tmp_path / "tidal-web-session.json"
+    raw = json.dumps({
+        "access_token": _tidal_web_token(client="8049"),
+        "refresh_token": "web-refresh",
+        "scope": "r_usr w_usr",
+    })
+    seed_web_session(raw, str(token_file), client_id="stale-client")
+
+    class RefreshResponse:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return {
+                "access_token": _tidal_web_token(client="8049"),
+                "refresh_token": "rotated-refresh",
+                "expires_in": 86_400,
+                "scope": "r_usr w_usr",
+            }
+
+    requests = []
+    monkeypatch.setattr(
+        "songmirror.tidal_web.requests.post",
+        lambda *args, **kwargs: requests.append(kwargs["data"]) or RefreshResponse(),
+    )
+
+    ensure_web_access_token(
+        raw,
+        str(token_file),
+        force=True,
+        client_id="public-web-client",
+    )
+
+    assert requests[0]["client_id"] == "public-web-client"
+    assert read_token(str(token_file))["client_id"] == "public-web-client"
+
+
 def test_tidal_connector_accepts_renewable_web_player_token_response(tmp_path, monkeypatch):
     from songmirror.services.accounts.tidal import TidalConnector
+    from songmirror.tidal_web import TOKEN_URL
 
     token_file = tmp_path / "tidal-web-session.json"
     monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
     monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
+    monkeypatch.setenv("TIDAL_WEB_CLIENT_ID", "")
+    refresh_calls = []
 
-    class Response:
+    class CheckResponse:
         ok = True
         status_code = 200
 
-    monkeypatch.setattr("songmirror.services.accounts.tidal.requests.get", lambda *a, **k: Response())
+    class RefreshResponse:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return {
+                "access_token": _tidal_web_token(client="8049"),
+                "refresh_token": "rotated-refresh",
+                "expires_in": 86_400,
+                "scope": "r_usr w_usr",
+            }
+
+    monkeypatch.setattr(
+        "songmirror.services.accounts.tidal.requests.get",
+        lambda *a, **k: CheckResponse(),
+    )
+    monkeypatch.setattr(
+        "songmirror.tidal_web.requests.post",
+        lambda url, **kwargs: refresh_calls.append((url, kwargs)) or RefreshResponse(),
+    )
     store = SettingsStore(dir=tmp_path / "settings")
     connector = TidalConnector(store)
     status = connector.submit({
+        "TIDAL_WEB_CLIENT_ID": "public-web-client",
         "TIDAL_WEB_HEADERS": json.dumps({
-            "access_token": _tidal_web_token(),
+            # The JWT's numeric cid is an internal database id, not the OAuth
+            # client_id from the token request.
+            "access_token": _tidal_web_token(client="8049"),
             "refresh_token": "web-refresh",
             "expires_in": 86_400,
             "scope": "r_usr w_usr",
@@ -310,18 +403,33 @@ def test_tidal_connector_accepts_renewable_web_player_token_response(tmp_path, m
     })
 
     assert connector.auth_kind == "token_paste"
-    assert [field.key for field in connector.config_fields] == ["TIDAL_WEB_HEADERS"]
+    assert [field.key for field in connector.config_fields] == [
+        "TIDAL_WEB_CLIENT_ID",
+        "TIDAL_WEB_HEADERS",
+    ]
     assert status.state == "connected"
     assert "automatic token renewal" in status.detail
+    assert refresh_calls == [(
+        TOKEN_URL,
+        {
+            "data": {
+                "client_id": "public-web-client",
+                "grant_type": "refresh_token",
+                "refresh_token": "web-refresh",
+                "scope": "r_usr w_usr",
+            },
+            "timeout": 30,
+        },
+    )]
     stored = json.loads(store.get("TIDAL_WEB_HEADERS"))
     assert stored["authorization"].startswith("Bearer ")
     assert stored["refresh_token"] == "web-refresh"
-    assert stored["client_id"] == "web-client"
+    assert stored["client_id"] == "public-web-client"
     assert stored["country_code"] == "US"
     assert "email" not in stored
     persisted = json.loads(token_file.read_text(encoding="utf-8"))
     assert persisted["auth_mode"] == "tidal_web"
-    assert persisted["refresh_token"] == "web-refresh"
+    assert persisted["refresh_token"] == "rotated-refresh"
 
 
 def test_tidal_connector_still_accepts_legacy_openapi_headers(tmp_path, monkeypatch):
@@ -353,11 +461,12 @@ def test_tidal_target_renews_web_token_and_keeps_rotated_refresh(tmp_path, monke
 
     token_file = tmp_path / "tidal-web-session.json"
     raw = json.dumps({
-        "access_token": _tidal_web_token(exp=1),
+        "access_token": _tidal_web_token(exp=1, client="8049"),
         "refresh_token": "initial-refresh",
         "scope": "r_usr w_usr",
     })
     monkeypatch.setenv("TIDAL_WEB_HEADERS", raw)
+    monkeypatch.setenv("TIDAL_WEB_CLIENT_ID", "public-web-client")
     monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
     calls = []
 
@@ -387,7 +496,7 @@ def test_tidal_target_renews_web_token_and_keeps_rotated_refresh(tmp_path, monke
         TOKEN_URL,
         {
             "data": {
-                "client_id": "web-client",
+                "client_id": "public-web-client",
                 "grant_type": "refresh_token",
                 "refresh_token": "initial-refresh",
                 "scope": "r_usr w_usr",
@@ -409,6 +518,7 @@ def test_tidal_connector_reports_rate_limit_as_temporary_error_and_caches_it(tmp
         "scope": "r_usr w_usr",
     })
     monkeypatch.setenv("TIDAL_WEB_HEADERS", raw)
+    monkeypatch.setenv("TIDAL_WEB_CLIENT_ID", "public-web-client")
     monkeypatch.setenv("TIDAL_TOKEN_FILE", str(tmp_path / "tidal-web-session.json"))
     calls = []
 
@@ -432,6 +542,85 @@ def test_tidal_connector_reports_rate_limit_as_temporary_error_and_caches_it(tmp
     assert len(calls) == 1
 
 
+def test_tidal_connector_repairs_a_saved_response_with_client_id_only(tmp_path, monkeypatch):
+    from songmirror.services.accounts.tidal import TidalConnector
+
+    token_file = tmp_path / "tidal-web-session.json"
+    monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
+    monkeypatch.setenv("TIDAL_WEB_CLIENT_ID", "")
+    store = SettingsStore(dir=tmp_path / "settings")
+    store.save({
+        "TIDAL_WEB_HEADERS": json.dumps({
+            "access_token": _tidal_web_token(client="8049"),
+            "refresh_token": "web-refresh",
+            "client_id": "8049",
+            "scope": "r_usr w_usr",
+        }),
+    })
+
+    class RefreshResponse:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return {
+                "access_token": _tidal_web_token(client="8049"),
+                "expires_in": 86_400,
+                "scope": "r_usr w_usr",
+            }
+
+    class CheckResponse:
+        ok = True
+        status_code = 200
+
+    monkeypatch.setattr("songmirror.tidal_web.requests.post", lambda *a, **k: RefreshResponse())
+    monkeypatch.setattr("songmirror.services.accounts.tidal.requests.get", lambda *a, **k: CheckResponse())
+
+    status = TidalConnector(store).submit({"TIDAL_WEB_CLIENT_ID": "public-web-client"})
+
+    assert status.state == "connected"
+    assert json.loads(store.get("TIDAL_WEB_HEADERS"))["client_id"] == "public-web-client"
+    assert store.get("TIDAL_WEB_CLIENT_ID") == "public-web-client"
+
+
+def test_tidal_connector_rejects_a_live_token_when_renewal_proof_fails(tmp_path, monkeypatch):
+    from songmirror.oauth import read_token, write_token
+    from songmirror.services.accounts.tidal import TidalConnector
+
+    token_file = tmp_path / "tidal-web-session.json"
+    previous = {"access_token": "previous-access", "refresh_token": "previous-refresh"}
+    write_token(str(token_file), previous)
+    monkeypatch.setenv("TIDAL_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
+    monkeypatch.setenv("TIDAL_WEB_CLIENT_ID", "")
+
+    class RejectedRefresh:
+        ok = False
+        status_code = 401
+
+        def json(self):
+            return {"error_description": "Client with token 8049 not found"}
+
+    monkeypatch.setattr("songmirror.tidal_web.requests.post", lambda *a, **k: RejectedRefresh())
+    connector = TidalConnector(SettingsStore(dir=tmp_path / "settings"))
+
+    status = connector.submit({
+        "TIDAL_WEB_CLIENT_ID": "public-web-client",
+        "TIDAL_WEB_HEADERS": json.dumps({
+            "access_token": _tidal_web_token(client="8049"),
+            "refresh_token": "new-refresh",
+            "expires_in": 86_400,
+            "scope": "r_usr w_usr",
+        }),
+    })
+
+    assert status.state == "error"
+    assert "rejected" in status.detail.lower()
+    assert read_token(str(token_file)) == previous
+    assert connector._store.get("TIDAL_WEB_HEADERS") is None
+
+
 def test_tidal_disconnect_removes_web_and_developer_credentials(tmp_path, monkeypatch):
     from songmirror.oauth import read_token, write_token
     from songmirror.services.accounts.tidal import TidalConnector
@@ -443,6 +632,7 @@ def test_tidal_disconnect_removes_web_and_developer_credentials(tmp_path, monkey
     store = SettingsStore(dir=tmp_path / "settings")
     store.save({
         "TIDAL_WEB_HEADERS": "stored-browser-session",
+        "TIDAL_WEB_CLIENT_ID": "public-web-client",
         "TIDAL_OAUTH_STATE": "state",
         "TIDAL_OAUTH_VERIFIER": "verifier",
     })
@@ -451,6 +641,7 @@ def test_tidal_disconnect_removes_web_and_developer_credentials(tmp_path, monkey
     connector.disconnect()
 
     assert store.get("TIDAL_WEB_HEADERS") == ""
+    assert store.get("TIDAL_WEB_CLIENT_ID") == ""
     assert store.get("TIDAL_OAUTH_STATE") == ""
     assert store.get("TIDAL_OAUTH_VERIFIER") == ""
     assert not token_file.exists()
