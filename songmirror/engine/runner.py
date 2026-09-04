@@ -14,6 +14,7 @@ from contextlib import nullcontext
 from dotenv import load_dotenv
 
 from . import archive, spotify, spotify_cookie
+from .aggregation import AggregateSourceSnapshot, aggregate_source_tracks
 from .config import spotify_write_backend
 from .logs import fmt_counts, fmt_secs, log, log_note, log_section, log_summary, log_warn, paint
 from .targets import (
@@ -140,9 +141,10 @@ def _summary_entry(name, agg):
     return entry
 
 
-def _summary(opts, per_target, started, *, ok=True, error=None, interrupted=None):
+def _summary(opts, per_target, started, *, ok=True, error=None, interrupted=None,
+             aggregate=None):
     """The value the web layer renders after a pass. The CLI ignores it."""
-    return {
+    summary = {
         "mode": opts.sync_mode,
         "execute": opts.execute,
         "duration_s": round(time.monotonic() - started, 1),
@@ -151,6 +153,288 @@ def _summary(opts, per_target, started, *, ok=True, error=None, interrupted=None
         "interrupted": interrupted,  # "pause" | "stop" when a Stop/Pause cut the pass short
         "per_target": per_target,
     }
+    if aggregate is not None:
+        summary["aggregate"] = aggregate
+    return summary
+
+
+def _merge_failure(agg, source, message):
+    """Record one bounded, user-facing source failure in an aggregate pass."""
+    agg["failed"] += 1
+    if len(agg["failures"]) < FAILURE_DETAIL:
+        agg["failures"].append({
+            "playlist": source.get("name") or source.get("playlist_id") or "Source",
+            "provider": source.get("provider", ""),
+            "error": str(message),
+        })
+
+
+def _run_merge(opts, sp, should_continue=None):
+    """Read every explicit source and reconcile their union once.
+
+    A failed, truncated, malformed, unavailable, or unknowably-empty source is
+    allowed to contribute whatever valid rows it did return, but disables every
+    destination removal for this pass. This is the fail-closed property that
+    independent source→destination jobs cannot provide.
+    """
+    ctrl = should_continue or (lambda: "run")
+    descriptors = list(getattr(opts, "sources", None) or [])
+    destination_spec = dict(getattr(opts, "destination", None) or {})
+    aggregate = {
+        "sources": len(descriptors),
+        "sources_read": 0,
+        "sources_failed": 0,
+        "input_tracks": 0,
+        "union_tracks": 0,
+        "duplicates": 0,
+        "removal_strategy": getattr(opts, "removal_strategy", "append_only"),
+        "removals_guarded": False,
+        "destination_provider": destination_spec.get("provider", ""),
+        "destination_playlist_id": destination_spec.get("playlist_id", ""),
+    }
+    destination_label = destination_spec.get("name") or destination_spec.get("playlist_id") or "Destination"
+    agg = {
+        "name": destination_label,
+        "pairs": 0, "added": 0, "removed": 0, "missing": 0, "held": 0,
+        "uncertain_matches": 0, "deferred": 0, "removals_skipped": 0,
+        "chronology_replayed": 0, "created": 0, "skipped": 0, "failed": 0,
+        "read_anomalies": 0, "held_removals": [], "change_diagnostics": [],
+        "failures": [],
+    }
+
+    providers = {}
+    destination_identity = destination_spec.get("provider")
+
+    def provider(provider_id):
+        if provider_id not in providers:
+            providers[provider_id] = build_one(
+                provider_id,
+                opts,
+                sp,
+                sync_peer=provider_id == destination_identity,
+            )
+        return providers[provider_id]
+
+    snapshots = []
+    incomplete = False
+    for descriptor in descriptors:
+        if ctrl() != "run":
+            incomplete = True
+            break
+        try:
+            source = provider(descriptor.get("provider"))
+        except Exception as exc:
+            incomplete = True
+            _merge_failure(agg, descriptor, str(exc) or repr(exc))
+            log_warn(
+                f"aggregate source {descriptor.get('name') or descriptor.get('playlist_id')}: "
+                f"provider setup failed ({exc!r}); removals disabled for this pass",
+                tag=descriptor.get("provider") or "sync",
+            )
+            continue
+        if source is None:
+            incomplete = True
+            _merge_failure(agg, descriptor, "source provider is not connected")
+            continue
+        playlist = None
+        try:
+            playlist = source.find_playlist(descriptor.get("playlist_id"))
+            if playlist is None:
+                playlist = source.fetch_playlist(descriptor.get("playlist_id"))
+            if playlist is None:
+                raise RuntimeError(
+                    "playlist could not be opened; it may be private or no longer available"
+                )
+            reader = getattr(
+                source, "playlist_tracks_for_transfer", source.playlist_tracks
+            )
+            rows = list(reader(playlist))
+        except Exception as exc:
+            incomplete = True
+            _merge_failure(agg, descriptor, str(exc) or repr(exc))
+            log_warn(
+                f"aggregate source {descriptor.get('name') or descriptor.get('playlist_id')}: "
+                f"read failed ({exc!r}); removals disabled for this pass",
+                tag=getattr(source, "tag", "sync"),
+            )
+            continue
+
+        valid_rows = [
+            row for row in rows
+            if isinstance(row, dict)
+            and str(row.get("name") or "").strip()
+            and not row.get("unavailable")
+        ]
+        invalid_count = len(rows) - len(valid_rows)
+        invalid_count_value = False
+        try:
+            expected_count = source.playlist_count(playlist)
+            expected_count_value = (
+                int(expected_count) if expected_count is not None else None
+            )
+            invalid_count_value = (
+                expected_count_value is not None and expected_count_value < 0
+            )
+        except Exception as exc:
+            expected_count = f"unavailable: {exc}"
+            expected_count_value = None
+            invalid_count_value = True
+        count_shortfall = (
+            expected_count_value is not None
+            and expected_count_value > len(rows)
+        )
+        unknowable_empty = expected_count is None and not rows
+        if invalid_count or invalid_count_value or count_shortfall or unknowable_empty:
+            incomplete = True
+            agg["read_anomalies"] += 1
+            reasons = []
+            if invalid_count:
+                reasons.append(f"{invalid_count} unavailable or malformed entries")
+            if count_shortfall:
+                reasons.append(f"expected {expected_count} rows but received {len(rows)}")
+            if invalid_count_value:
+                reasons.append(f"provider returned an invalid track count ({expected_count!r})")
+            if unknowable_empty:
+                reasons.append("empty response with no authoritative track count")
+            message = "; ".join(reasons)
+            _merge_failure(agg, descriptor, message)
+            log_warn(
+                f"aggregate source {source.playlist_name(playlist)} was incomplete ({message}); "
+                "removals disabled for this pass",
+                tag=source.tag,
+            )
+        else:
+            aggregate["sources_read"] += 1
+        snapshots.append(AggregateSourceSnapshot(
+            provider=target_provider(source, source.source),
+            playlist_id=str(descriptor.get("playlist_id") or ""),
+            tracks=valid_rows,
+            track_id_of=source.track_id,
+        ))
+
+    aggregate["sources_failed"] = agg["failed"]
+    try:
+        merged = aggregate_source_tracks(snapshots)
+    except Exception as exc:
+        aggregate["removals_guarded"] = True
+        error = f"aggregate source rows could not be normalized: {exc}"
+        _merge_failure(agg, {"name": destination_label}, error)
+        log_warn(error, tag="sync")
+        return [_summary_entry(destination_label, agg)], aggregate, False, error
+    aggregate.update({
+        "input_tracks": merged.input_tracks,
+        "union_tracks": len(merged.tracks),
+        "duplicates": merged.duplicates,
+    })
+    if not snapshots:
+        aggregate["removals_guarded"] = True
+        error = "no aggregate source could be read"
+        log_warn(error, tag="sync")
+        return [_summary_entry(destination_label, agg)], aggregate, False, error
+
+    try:
+        destination = provider(destination_spec.get("provider"))
+    except Exception as exc:
+        _merge_failure(agg, {"name": destination_label, **destination_spec}, str(exc) or repr(exc))
+        aggregate["removals_guarded"] = True
+        log_warn(f"aggregate destination setup failed: {exc!r}", tag=destination_spec.get("provider") or "sync")
+        return [_summary_entry(destination_label, agg)], aggregate, False, str(exc) or repr(exc)
+    if destination is None:
+        _merge_failure(agg, {"name": destination_label, **destination_spec},
+                       "destination provider is not connected")
+        aggregate["removals_guarded"] = True
+        return [_summary_entry(destination_label, agg)], aggregate, False, "destination provider is not connected"
+
+    destination_playlist = None
+    destination_id = str(destination_spec.get("playlist_id") or "")
+    try:
+        if destination_id:
+            # A destination must remain a library playlist so its ownership and
+            # editability flags are available. Public fetch fallback is source-only.
+            destination_playlist = destination.find_playlist(destination_id)
+            if destination_playlist is None:
+                raise RuntimeError("destination playlist was not found in the connected library")
+        elif opts.execute:
+            destination_playlist = destination.create({
+                "name": destination_label,
+                "description": f"Aggregate of {len(descriptors)} playlists.",
+            })
+            agg["created"] = 1
+            destination_id = str(destination.playlist_id(destination_playlist) or "")
+            aggregate["destination_playlist_id"] = destination_id
+            log_note(
+                f"created {destination.name} aggregate playlist '{destination_label}'",
+                tag=destination.tag,
+            )
+        else:
+            log_note(
+                f"{destination_label}: destination would be created on --execute",
+                tag=destination.tag,
+            )
+            agg["skipped"] = 1
+            aggregate["removals_guarded"] = True
+            return [_summary_entry(destination.name, agg)], aggregate, agg["failed"] == 0, None
+        if not destination.is_editable(destination_playlist):
+            raise RuntimeError("destination playlist is not editable")
+    except Exception as exc:
+        _merge_failure(agg, {"name": destination_label, **destination_spec}, str(exc) or repr(exc))
+        aggregate["removals_guarded"] = True
+        log_warn(f"aggregate destination failed: {exc!r}", tag=destination.tag)
+        return [_summary_entry(destination.name, agg)], aggregate, False, str(exc) or repr(exc)
+
+    strategy = getattr(opts, "removal_strategy", "append_only")
+    removals_guarded = incomplete or strategy == "append_only"
+    aggregate["removals_guarded"] = removals_guarded
+    effective_max_removals = 0 if removals_guarded else opts.max_removals
+    source_label = f"{len(descriptors)}-source union"
+    cache = load_cache(destination.cache_file)
+    songs = archive.connect(opts.song_cache_file)
+    try:
+        result = mirror_pair(
+            destination,
+            merged.tracks,
+            {"id": f"merge:{getattr(opts, 'sync_job_id', '')}", "name": destination_label},
+            destination_playlist,
+            cache,
+            songs,
+            execute=opts.execute,
+            max_removals=effective_max_removals,
+            max_adds=opts.max_adds,
+            drain_removals=opts.apply_large_removals,
+            should_continue=ctrl,
+            source_key=f"merge:{getattr(opts, 'sync_job_id', '') or destination_id}",
+            source_name=source_label,
+            name=destination_label,
+            # A known-empty union is meaningful only after every source was
+            # read completely; legacy one-way keeps its empty-read guard.
+            allow_empty_source=not incomplete,
+        )
+    except Exception as exc:
+        _merge_failure(agg, {"name": destination_label, **destination_spec}, str(exc) or repr(exc))
+        log_warn(f"aggregate reconcile failed: {exc!r}", tag=destination.tag)
+        return [_summary_entry(destination.name, agg)], aggregate, False, str(exc) or repr(exc)
+    finally:
+        save_cache(destination.cache_file, cache)
+        songs.close()
+
+    agg["pairs"] = 1
+    for key in (
+        "added", "removed", "missing", "held", "uncertain_matches", "deferred",
+        "removals_skipped", "chronology_replayed",
+    ):
+        agg[key] += result.get(key, 0)
+    _collect_held(agg["held_removals"], result.get("held_removals", []))
+    _collect_diagnostics(agg["change_diagnostics"], result.get("change_diagnostics", []))
+    per_target = _summary_entry(destination.name, agg)
+    per_target["aggregate"] = dict(aggregate)
+    ok = agg["failed"] == 0
+    error = (
+        f"{agg['failed']} aggregate source read{'s' if agg['failed'] != 1 else ''} "
+        "were incomplete; removals were disabled"
+        if agg["failed"]
+        else None
+    )
+    return [per_target], aggregate, ok, error
 
 
 def _load_links(opts=None):
@@ -425,21 +709,43 @@ def run_pass(opts, should_continue=None):
     with _ENV_LOCK:
         load_dotenv(os.getenv("SONGMIRROR_ENV_FILE") or ".env", override=True)
     profiles = getattr(opts, "account_profiles", None)
+    merge_mode = opts.sync_mode == "merge"
     wanted_providers = _wanted_providers(opts)
     if profiles is not None:
-        participant_ids = list(dict.fromkeys(profiles.expand_ids(opts.providers)))
+        if merge_mode:
+            opts.sources = [
+                {**source, "provider": profiles.canonical_id(source.get("provider"))}
+                for source in (getattr(opts, "sources", None) or [])
+            ]
+            if getattr(opts, "destination", None) is not None:
+                opts.destination = {
+                    **opts.destination,
+                    "provider": profiles.canonical_id(opts.destination.get("provider")),
+                }
+            participant_ids = list(dict.fromkeys([
+                *(source.get("provider") for source in opts.sources),
+                (opts.destination or {}).get("provider"),
+            ]))
+            participant_ids = [identity for identity in participant_ids if identity]
+        else:
+            participant_ids = list(dict.fromkeys(profiles.expand_ids(opts.providers)))
+            opts.sync_source = profiles.canonical_id(opts.sync_source)
+            opts.authorities = ",".join(profiles.expand_ids(opts.authorities))
+            opts.liked_routes = {
+                profiles.canonical_id(identity): route
+                for identity, route in (getattr(opts, "liked_routes", None) or {}).items()
+            }
         wanted_providers = set(participant_ids)
         opts.providers = ",".join(participant_ids)
-        opts.sync_source = profiles.canonical_id(opts.sync_source)
-        opts.authorities = ",".join(profiles.expand_ids(opts.authorities))
-        opts.liked_routes = {
-            profiles.canonical_id(identity): route
-            for identity, route in (getattr(opts, "liked_routes", None) or {}).items()
-        }
         spotify_requested = not wanted_providers or any(
             profiles.provider_of(identity) == "spotify" for identity in wanted_providers
         )
     else:
+        if merge_mode:
+            wanted_providers = {
+                *(source.get("provider") for source in (getattr(opts, "sources", None) or [])),
+                (getattr(opts, "destination", None) or {}).get("provider"),
+            } - {None, ""}
         spotify_requested = not wanted_providers or "spotify" in wanted_providers
     # Group mode's order authority also supplies playlist names and ordering.
     # It remains writable because additions from another authority flow back.
@@ -448,8 +754,18 @@ def run_pass(opts, should_continue=None):
     # N-way/group execute, or a one-way execute where another provider is the
     # source and Spotify is one of the targets.
     source_provider_type = profiles.provider_of(source_provider) if profiles is not None else source_provider
-    spotify_is_target = (opts.sync_mode == "oneway" and source_provider_type != "spotify"
-                         and spotify_requested)
+    destination_identity = (getattr(opts, "destination", None) or {}).get("provider")
+    destination_provider_type = (
+        profiles.provider_of(destination_identity) if profiles is not None
+        else destination_identity
+    )
+    spotify_is_target = (
+        (opts.sync_mode == "oneway" and source_provider_type != "spotify" and spotify_requested)
+        or (
+            merge_mode
+            and destination_provider_type == "spotify"
+        )
+    )
     sp = None
     cookie_spotify = spotify_write_backend() == "cookie" and spotify_cookie.configured()
     if profiles is None and (source_provider == "spotify" or spotify_requested):
@@ -463,6 +779,23 @@ def run_pass(opts, should_continue=None):
                 if source_provider == "spotify":
                     raise
                 log_note(f"Spotify skipped: {exc}", tag="spotify")
+
+    if merge_mode:
+        mode = paint("EXECUTE", "green", "bold") if opts.execute else paint("DRY RUN", "yellow", "bold")
+        log(paint("═══ Omni playlist mirror ═══", "bold", "cyan"))
+        log(f"  mode: {mode}{paint('   ⇉ MERGE', 'magenta', 'bold')}")
+        log(f"  sources: {paint(str(len(getattr(opts, 'sources', None) or [])), 'bold')} constituent playlist(s)")
+        per_target, aggregate, ok, error = _run_merge(opts, sp, ctrl)
+        c = ctrl()
+        return _summary(
+            opts,
+            per_target,
+            pass_started,
+            ok=ok,
+            error=error,
+            interrupted=(None if c == "run" else c),
+            aggregate=aggregate,
+        )
 
     # The library whose playlists drive this pass: a configured participant for
     # N-way; the chosen source/order authority for one-way and group modes.

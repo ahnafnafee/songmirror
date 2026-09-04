@@ -612,7 +612,8 @@ def _enrich_hard_isrcs(songs, source_key, source_tracks):
 
 def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, execute, max_removals,
                 max_adds, drain_removals=False, should_continue=None, source_key="spotify",
-                source_provider=None, source_name="Spotify", name=None):
+                source_provider=None, source_name="Spotify", name=None,
+                allow_empty_source=False):
     """Reconcile one source→target playlist pair. Returns a stats dict; `clean`
     is True when everything applied with no guard tripped.
 
@@ -645,6 +646,18 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
         source_id: set(target_ids)
         for source_id, target_ids in target.expected_ids(sp_tracks, links, cache).items()
     }
+    # Aggregate rows remember the physical ids supplied by every constituent
+    # provider. A same-provider merge can therefore prove membership directly
+    # instead of searching its own catalog, and a duplicate seen in several
+    # sources can use whichever copy belongs to this destination.
+    target_provider = getattr(target, "provider", None) or target.source
+    for track in sp_tracks:
+        provider_ids = track.get("_provider_ids") or {}
+        direct_id = provider_ids.get(target.source)
+        if direct_id is None:
+            direct_id = provider_ids.get(target_provider)
+        if direct_id is not None and track.get("id"):
+            expected_by_source.setdefault(track["id"], set()).add(direct_id)
     to_add, to_remove = compute_diff(
         sp_tracks, tgt_tracks, expected_by_source, target.track_id
     )
@@ -666,8 +679,11 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
             stopped_early = True  # Pause/Stop — defer the rest; keep the pass "not clean" below
             break
         label = f"{track['name']} - {', '.join(track['artists'])}"
-        tid = links.get(track.get("id"))
-        method = "link" if tid else None
+        tid = (track.get("_provider_ids") or {}).get(target.source)
+        method = "source id" if tid else None
+        if not tid:
+            tid = links.get(track.get("id"))
+            method = "link" if tid else None
         try:
             if tid:
                 validator = getattr(target, "validate_link", None)
@@ -773,7 +789,7 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
     removals, uncertain_matches = match_unresolved_removals(to_remove, not_found)
     held = [existing for existing, _unresolved in uncertain_matches]
     removals_skipped, held_back = 0, []
-    if not sp_tracks and tgt_tracks:
+    if not sp_tracks and tgt_tracks and not allow_empty_source:
         log_warn(f"{source_name} returned 0 tracks but {target.name} has {len(tgt_tracks)}; skipping all removals this pass", tag=tag)
         removals, guard = [], True
     elif len(removals) > max_removals:

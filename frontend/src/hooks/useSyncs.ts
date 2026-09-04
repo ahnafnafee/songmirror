@@ -12,7 +12,7 @@ function isSyncJobArray(value: unknown): value is SyncJob[] {
         typeof job.id === 'string' &&
         typeof job.name === 'string' &&
         typeof job.enabled === 'boolean' &&
-        (job.mode === 'oneway' || job.mode === 'group' || job.mode === 'nway') &&
+        (job.mode === 'oneway' || job.mode === 'group' || job.mode === 'nway' || job.mode === 'merge') &&
         ('authorities' in job ? typeof job.authorities === 'string' : true),
     )
   )

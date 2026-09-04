@@ -17,7 +17,7 @@ DEFAULT_CACHE_FILE = "apple_resolve_cache.json"
 DEFAULT_SONG_CACHE_FILE = "song_cache.db"
 DEFAULT_STOREFRONT = "us"
 DEFAULT_SPOTIFY_REDIRECT_URI = "http://127.0.0.1:8888/callback"
-DEFAULT_SYNC_MODE = "oneway"                          # oneway | group | nway
+DEFAULT_SYNC_MODE = "oneway"                          # oneway | group | nway | merge
 DEFAULT_PROVIDERS = "spotify,tidal,qobuz,deezer,amazon,apple,ytmusic"  # participating providers
 DEFAULT_SYNC_SOURCE = "spotify"                       # one-way source of truth (any connected provider)
 DEFAULT_SPOTIFY_CACHE_FILE = "spotify_resolve_cache.json"
@@ -89,6 +89,13 @@ class Options:
     sync_playlists: bool = True
     liked_tracks: bool = False
     liked_routes: dict = field(default_factory=dict)
+    # Web-created merge jobs resolve public URLs once and pass durable provider
+    # playlist descriptors into the engine. These defaults keep CLI and every
+    # stored pre-merge job byte-for-byte on the legacy execution paths.
+    sources: list[dict] = field(default_factory=list)
+    destination: dict | None = None
+    removal_strategy: str = "append_only"
+    sync_job_id: str = ""
 
 
 def parse_args(argv=None):
@@ -122,9 +129,9 @@ def parse_args(argv=None):
     p.add_argument("--song-cache-file", default=os.getenv("SONG_CACHE_FILE", DEFAULT_SONG_CACHE_FILE),
                    help=f"Ever-growing SQLite song archive (default: {DEFAULT_SONG_CACHE_FILE}).")
     p.add_argument("--sync-mode", default=os.getenv("SYNC_MODE", DEFAULT_SYNC_MODE),
-                   choices=("oneway", "group", "nway"),
+                   choices=("oneway", "group", "nway", "merge"),
                    help="oneway = one source; group = selected authorities feed mirrors; "
-                        "nway = every provider is bidirectional.")
+                        "nway = every provider is bidirectional; merge = web job with explicit playlists.")
     p.add_argument("--providers", default=os.getenv("PROVIDERS", DEFAULT_PROVIDERS),
                    help=f"Providers participating in sync, comma-separated (default: {DEFAULT_PROVIDERS}).")
     p.add_argument("--sync-source", default=os.getenv("SYNC_SOURCE", DEFAULT_SYNC_SOURCE),
