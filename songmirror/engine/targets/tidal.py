@@ -56,11 +56,16 @@ class TidalTarget(MirrorTarget):
         # catalog entries TIDAL has since delisted (see playlist_tracks).
         self._songs = songs
         self._web_headers = (os.getenv("TIDAL_WEB_HEADERS") or "").strip()
+        self._web_client_id = (os.getenv("TIDAL_WEB_CLIENT_ID") or "").strip()
         if not self._web_headers:
             raise RuntimeError("Missing TIDAL web-player session; connect TIDAL in Accounts")
         self._token_file = token_path("TIDAL_TOKEN_FILE", DEFAULT_TOKEN_FILE)
         try:
-            self._tok = ensure_web_access_token(self._web_headers, self._token_file)
+            self._tok = ensure_web_access_token(
+                self._web_headers,
+                self._token_file,
+                client_id=self._web_client_id,
+            )
         except TidalWebRejected as exc:
             raise TargetAuthError(str(exc)) from exc
         except TidalWebUnavailable as exc:
@@ -77,7 +82,12 @@ class TidalTarget(MirrorTarget):
     # -- auth / HTTP ---------------------------------------------------------
     def _access(self, force=False):
         try:
-            self._tok = ensure_web_access_token(self._web_headers, self._token_file, force=force)
+            self._tok = ensure_web_access_token(
+                self._web_headers,
+                self._token_file,
+                force=force,
+                client_id=self._web_client_id,
+            )
         except TidalWebRejected as exc:
             raise TargetAuthError(str(exc)) from exc
         except TidalWebUnavailable as exc:
