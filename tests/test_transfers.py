@@ -450,6 +450,77 @@ def test_transfer_preserving_order_spends_past_the_write_budget():
     assert result["chronology_replayed"] == 2               # s4 and s5 were already there
 
 
+class _DeezerChronologySource:
+    source = "spotify"
+
+    def playlist_tracks(self, playlist):
+        return [
+            {"id": f"source-{name.lower()}", "name": name, "artists": ["Artist"],
+             "duration_ms": 1, "added_at": f"2020-01-01T00:00:0{index}Z"}
+            for index, name in enumerate(("A", "B", "C", "D"))
+        ]
+
+
+def _lagging_deezer_destination():
+    """A real Deezer adapter with provider I/O replaced by a stale read model."""
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    destination = DeezerTarget.__new__(DeezerTarget)
+    existing = [
+        {"id": name.lower(), "name": name, "artist": "Artist", "duration_ms": 1}
+        for name in ("C", "D")
+    ]
+    calls = {"adds": [], "removes": []}
+
+    def playlist_tracks(_playlist):
+        # Model Deezer's replication lag: even after an append, the next read
+        # still exposes only the two entries that preceded the transfer.
+        return existing
+
+    destination.playlist_tracks = playlist_tracks
+    destination.resolve = lambda track, _cache: (track["name"].lower(), "search")
+    destination.add = lambda _playlist, ids: calls["adds"].append(list(ids))
+    destination.remove = lambda _playlist, track: calls["removes"].append(track["id"])
+    return destination, calls
+
+
+def test_deezer_transfer_appends_every_match_past_the_sync_write_cap():
+    """A one-off Deezer copy has no next pass, so MAX_ADDS must not stall it."""
+    destination, calls = _lagging_deezer_destination()
+
+    result = transfer(
+        _DeezerChronologySource(), destination,
+        {"id": "source"}, {"id": "destination"},
+        {"search": {}, "isrc": {}, "dirty": False},
+        execute=True, max_adds=1,
+    )
+
+    assert calls["adds"] == [["a", "b"]]
+    assert calls["removes"] == []
+    assert result["added"] == 2 and result["deferred"] == 0
+    assert result["chronology_replayed"] == 0
+
+
+def test_deezer_transfer_never_replays_chronology_on_a_lagging_read():
+    """A stale Deezer read must never drive catalog-ID removal after staging."""
+    # Exercise both the safe default and a stale/direct API client that still
+    # asks for preservation. Provider capability wins in either case.
+    for options in ({}, {"preserve_order": True}):
+        destination, calls = _lagging_deezer_destination()
+
+        result = transfer(
+            _DeezerChronologySource(), destination,
+            {"id": "source"}, {"id": "destination"},
+            {"search": {}, "isrc": {}, "dirty": False},
+            execute=True, max_adds=100, **options,
+        )
+
+        assert calls["adds"] == [["a", "b"]]
+        assert calls["removes"] == []
+        assert result["added"] == 2 and result["deferred"] == 0
+        assert result["chronology_replayed"] == 0
+
+
 def test_transfer_does_not_truncate_a_copy_at_the_write_cap():
     added = []
     source_tracks = [
