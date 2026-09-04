@@ -172,13 +172,14 @@ export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries
                     { value: OMIT, label: 'Not included in this pairing' },
                     { value: KEEP, label: `Keep current (${currentRaw === null ? 'create new' : currentRaw})` },
                   ]
-              const logoId = serviceLogoId(id)
+              const provider = accounts.find((account) => account.id === id)?.provider ?? id
+              const logoId = serviceLogoId(provider)
               return (
                 <SelectField
                   key={id}
                   label={connected ? accountName(id) : `${accountName(id)} (not connected)`}
                   help={connected ? undefined : 'Reconnect this service on the Accounts page to change its playlist.'}
-                  icon={logoId ? <ServiceLogo service={logoId} className={`size-4 ${tagText(id)}`} /> : undefined}
+                  icon={logoId ? <ServiceLogo service={logoId} className={`size-4 ${tagText(provider)}`} /> : undefined}
                   options={options}
                   value={memberChoices[id] ?? OMIT}
                   onChange={(e) => setMemberChoice(id, e.target.value)}

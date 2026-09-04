@@ -129,7 +129,9 @@ class SpotifyTarget(MirrorTarget):
         if spotify_write_backend() == "cookie":
             known = None
             if self._sync_peer and self._songs is not None:
-                known = lambda ids: archive.get_isrcs(self._songs, "spotify", ids)  # noqa: E731
+                known = lambda ids: archive.get_isrcs(  # noqa: E731
+                    self._songs, self.archive_source or self.source, ids
+                )
             return spotify_cookie.playlist_tracks(
                 playlist["id"], require_isrc=False, known_isrc=known)
         return spotify.playlist_tracks(self._sp, playlist["id"])

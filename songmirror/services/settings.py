@@ -14,7 +14,15 @@ wired in the app factory) makes wizard saves authoritative instead.
 import json
 import os
 import shlex
+import threading
 from pathlib import Path
+
+
+# Provider adapters still inherit part of their runtime configuration through
+# ``os.environ``.  Root settings projection and account-profile activation must
+# therefore serialize on the same lock: otherwise a settings request can swap
+# credentials while a target call is in flight.
+_ENV_LOCK = threading.RLock()
 
 
 def _scalar(v):
@@ -35,7 +43,7 @@ def _open_private(path):
 
 
 class SettingsStore:
-    def __init__(self, dir=None):
+    def __init__(self, dir=None, *, project_env=True):
         # Default to $SONGMIRROR_DATA_DIR (Docker points it at the /data bind mount) so
         # wizard-saved config + OAuth secrets land on the persistent volume, not
         # the container's ephemeral filesystem. Falls back to a local ./data.
@@ -47,6 +55,7 @@ class SettingsStore:
             pass
         self._json = self._dir / "settings.json"
         self.env_path = str(self._dir / "app.env")
+        self._project_env = project_env
         self._data = self._read()
 
     @property
@@ -73,7 +82,8 @@ class SettingsStore:
         with _open_private(self._json) as f:
             json.dump(self._data, f, indent=2)
         self._render_env()
-        self.apply_to_env()
+        if self._project_env:
+            self.apply_to_env()
 
     def _render_env(self):
         lines = [f"{k}={shlex.quote(str(v))}" for k, v in self._data.items() if _scalar(v)]
@@ -82,6 +92,7 @@ class SettingsStore:
 
     def apply_to_env(self):
         """Project scalar settings into the process env (engine reads os.getenv)."""
-        for k, v in self._data.items():
-            if _scalar(v):
-                os.environ[k] = str(v)
+        with _ENV_LOCK:
+            for k, v in self._data.items():
+                if _scalar(v):
+                    os.environ[k] = str(v)

@@ -16,6 +16,9 @@ def preview_transfer_source(request: Request, body: dict = Body(...)):
     never be shadowed by a job-id pattern (FastAPI matches in declaration order).
     """
     try:
+        account_id = body.get("source_account")
+        if account_id:
+            return request.app.state.transfers.preview(body.get("url", ""), account_id)
         return request.app.state.transfers.preview(body.get("url", ""))
     except TransferPreviewError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -26,9 +29,9 @@ async def start_transfer(request: Request, body: dict = Body(...)):
     # async so submit()'s asyncio.create_task has a running loop (a sync endpoint
     # runs in a threadpool with no loop and would 500).
     job = request.app.state.transfers.submit({
-        "source_provider": body["source_provider"],
+        "source_account": body.get("source_account") or body["source_provider"],
         "source_playlist_id": body["source_playlist_id"],
-        "dest_provider": body["dest_provider"],
+        "dest_account": body.get("dest_account") or body["dest_provider"],
         "dest_playlist_id": body.get("dest_playlist_id"),
         "dest_name": body.get("dest_name", ""),
         # Off unless asked for: the repair costs many extra writes and only

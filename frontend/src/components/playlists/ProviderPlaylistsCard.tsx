@@ -31,8 +31,8 @@ export function ProviderPlaylistsCard({
   onRetry: () => void
 }) {
   const connected = account.state === 'connected'
-  const logoId = serviceLogoId(account.id)
-  const homeUrl = serviceHomeUrl(account.id)
+  const logoId = serviceLogoId(account.provider)
+  const homeUrl = serviceHomeUrl(account.provider)
 
   return (
     <Card className="flex flex-col gap-3 p-4 sm:p-5">
@@ -43,7 +43,7 @@ export function ProviderPlaylistsCard({
           title its own full-width line first avoids both. */}
       <div className="flex flex-col items-start gap-1.5">
         <div className="flex w-full items-center gap-2">
-          {logoId && <ServiceLogo service={logoId} className={cn('size-4 shrink-0', tagText(account.id))} />}
+          {logoId && <ServiceLogo service={logoId} className={cn('size-4 shrink-0', tagText(account.provider))} />}
           <h3 className="min-w-0 flex-1 truncate text-base font-bold text-text">{account.name}</h3>
           {connected && entry && entry.playlists.length > 0 && (
             <span className="shrink-0 font-mono text-[11px] text-text-3">

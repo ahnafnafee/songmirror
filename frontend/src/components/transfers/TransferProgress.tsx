@@ -15,7 +15,7 @@ import { ServiceLogo } from '../ui/ServiceLogo'
 import { LoadingStatus, Skeleton } from '../ui/Skeleton'
 import { Spinner } from '../ui/Spinner'
 
-function EndpointBadge({ provider, playlistName }: { provider: string; playlistName: string }) {
+function EndpointBadge({ provider, accountName, playlistName }: { provider: string; accountName?: string; playlistName: string }) {
   const logoId = serviceLogoId(provider)
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -25,7 +25,7 @@ function EndpointBadge({ provider, playlistName }: { provider: string; playlistN
         <span className={cn('size-2 shrink-0 rounded-full', tagDot(provider))} aria-hidden="true" />
       )}
       <span className="min-w-0 truncate font-semibold text-text">{playlistName}</span>
-      <span className="shrink-0 text-xs font-normal text-text-3">({tagLabel(provider)})</span>
+      <span className="shrink-0 text-xs font-normal text-text-3">({accountName || tagLabel(provider)})</span>
     </span>
   )
 }
@@ -192,9 +192,9 @@ export function TransferProgress({
     <Card className="flex flex-col gap-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-          <EndpointBadge provider={job.source.provider} playlistName={job.source.playlist_name} />
+          <EndpointBadge provider={job.source.provider} accountName={job.source.name} playlistName={job.source.playlist_name} />
           <LuArrowRight className="size-3.5 shrink-0 text-text-3" aria-hidden="true" />
-          <EndpointBadge provider={job.dest.provider} playlistName={job.dest.playlist_name} />
+          <EndpointBadge provider={job.dest.provider} accountName={job.dest.name} playlistName={job.dest.playlist_name} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Pill toneClasses={style.badge} label={style.label} pulsing={isRunning} />

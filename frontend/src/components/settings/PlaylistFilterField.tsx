@@ -35,6 +35,7 @@ interface PickerSource {
   /** The provider the list is drawn from — `null` when it's a union across
    * every connected service (Spotify isn't connected). */
   providerId: string | null
+  provider: string | null
   providerLabel: string
   playlists: ProviderPlaylist[]
   loading: boolean
@@ -55,7 +56,9 @@ function usePickerSource(preferredProviderId?: string | null): PickerSource {
   const connected = useMemo(() => accounts?.filter((a: Account) => a.state === 'connected') ?? [], [accounts])
   const connectedIds = useMemo(() => connected.map((a) => a.id), [connected])
   const { entries } = useProviderPlaylists(connectedIds)
-  const pinned = connected.find((a) => a.id === (preferredProviderId || 'spotify'))
+  const pinned = preferredProviderId
+    ? connected.find((a) => a.id === preferredProviderId)
+    : connected.find((a) => a.provider === 'spotify')
 
   return useMemo<PickerSource>(() => {
     const hasConnectedAccounts = connected.length > 0
@@ -64,6 +67,7 @@ function usePickerSource(preferredProviderId?: string | null): PickerSource {
       const entry = entries[pinned.id]
       return {
         providerId: pinned.id,
+        provider: pinned.provider,
         providerLabel: pinned.name,
         playlists: entry?.playlists ?? [],
         loading: !entry || entry.loading,
@@ -73,7 +77,7 @@ function usePickerSource(preferredProviderId?: string | null): PickerSource {
     }
 
     if (!hasConnectedAccounts) {
-      return { providerId: null, providerLabel: '', playlists: [], loading: false, error: null, hasConnectedAccounts }
+      return { providerId: null, provider: null, providerLabel: '', playlists: [], loading: false, error: null, hasConnectedAccounts }
     }
 
     const seen = new Map<string, ProviderPlaylist>()
@@ -89,6 +93,7 @@ function usePickerSource(preferredProviderId?: string | null): PickerSource {
 
     return {
       providerId: null,
+      provider: null,
       providerLabel: 'your connected services',
       playlists: [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)),
       loading: !allSettled && seen.size === 0,
@@ -241,7 +246,7 @@ export function PlaylistFilterField({
     onChange(joinCsv(selectedNames.filter((n) => casefold(n) !== key)))
   }
 
-  const likedTracksLabel = providerLikedTracksLabel(source.providerId, source.providerLabel)
+  const likedTracksLabel = providerLikedTracksLabel(source.provider, source.providerLabel)
   const showLikedTracks = includeLikedTracks && Boolean(source.providerId) && Boolean(onLikedTracksChange)
   const isEmpty = selectedNames.length === 0 && !likedTracksSelected
   const syncingAllWithLiked = likedTracksSelected && syncAllRegularPlaylists && selectedNames.length === 0

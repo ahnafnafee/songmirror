@@ -177,6 +177,30 @@ ON playlist_track_cache (provider, track_id)
 """,
 ]
 
+# Columns whose values historically held a provider type (``spotify``,
+# ``tidal``, ...), but now hold an account-profile identity. Profile-aware
+# archive opens migrate them every time because an older headless CLI may write
+# fresh legacy rows into a database after the first web-app upgrade.
+_PROFILE_ID_COLUMNS = (
+    ("songs", "source"),
+    ("links", "target"),
+    ("sync_state", "target"),
+    ("playlist_state", "source"),
+    ("playlist_state_meta", "source"),
+    ("playlist_pending_removal", "source"),
+    ("track_identity", "source"),
+    ("track_identity_history", "source"),
+    ("playlist_order", "source"),
+)
+
+_GROUP_KEY_COLUMNS = (
+    ("sync_state", "pair"),
+    ("playlist_state", "playlist"),
+    ("playlist_state_meta", "playlist"),
+    ("playlist_pending_removal", "playlist"),
+    ("playlist_order", "playlist"),
+)
+
 UPSERT = """
 INSERT INTO songs (source, id, isrc, name, artist, album, duration_ms, meta, first_seen, last_seen)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -191,7 +215,7 @@ def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def connect(path):
+def connect(path, source_aliases=None):
     # Connections are opened on the coordinator thread and then assigned
     # exclusively to one provider worker. check_same_thread=False permits that
     # handoff; separate connections plus the timeout safely serialize file writes.
@@ -239,7 +263,130 @@ def connect(path):
         "SELECT source, track_id, canonical_id, updated FROM track_identity",
     )
     conn.commit()
+    if source_aliases:
+        try:
+            _migrate_profile_namespaces(conn, source_aliases)
+        except Exception:
+            conn.close()
+            raise
     return conn
+
+
+def _table_columns(conn, table):
+    return [row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')]
+
+
+def _insert_remapped_rows(conn, table, column, old, new, *, extra="", params=()):
+    """Copy matching rows with one column replaced, preserving destination rows."""
+    columns = _table_columns(conn, table)
+    quoted = ", ".join(f'"{name}"' for name in columns)
+    selected = ", ".join("?" if name == column else f'"{name}"' for name in columns)
+    conn.execute(
+        f'INSERT OR IGNORE INTO "{table}" ({quoted}) '
+        f'SELECT {selected} FROM "{table}" WHERE "{column}" = ?{extra}',
+        (new, old, *params),
+    )
+
+
+def _remap_column_value(conn, table, column, old, new):
+    if old == new:
+        return
+    _insert_remapped_rows(conn, table, column, old, new)
+    conn.execute(f'DELETE FROM "{table}" WHERE "{column}" = ?', (old,))
+
+
+def _profile_group_key(value, aliases):
+    """Rewrite the authority set embedded in an authoritative-group state key."""
+    value = str(value)
+    if not value.startswith("group:"):
+        return value
+    authorities, separator, logical_key = value.removeprefix("group:").partition(":")
+    if not separator:
+        return value
+    mapped = sorted({aliases.get(identity, identity) for identity in authorities.split(",")})
+    return f"group:{','.join(mapped)}:{logical_key}"
+
+
+def _migrate_playlist_cache(conn, old, new):
+    """Move complete cached ledgers without blending colliding snapshots."""
+    legacy_ids = conn.execute(
+        "SELECT playlist_id FROM playlist_cache WHERE provider = ?", (old,)
+    ).fetchall()
+    for (playlist_id,) in legacy_ids:
+        destination = conn.execute(
+            "SELECT 1 FROM playlist_cache WHERE provider = ? AND playlist_id = ?",
+            (new, playlist_id),
+        ).fetchone()
+        if destination is None:
+            # An orphaned destination track set has no readable header and must
+            # not collide position-by-position with the complete legacy ledger.
+            conn.execute(
+                "DELETE FROM playlist_track_cache WHERE provider = ? AND playlist_id = ?",
+                (new, playlist_id),
+            )
+            _insert_remapped_rows(
+                conn,
+                "playlist_track_cache",
+                "provider",
+                old,
+                new,
+                extra=" AND playlist_id = ?",
+                params=(playlist_id,),
+            )
+            _insert_remapped_rows(
+                conn,
+                "playlist_cache",
+                "provider",
+                old,
+                new,
+                extra=" AND playlist_id = ?",
+                params=(playlist_id,),
+            )
+    # A profile-era destination ledger wins a collision as one atomic snapshot;
+    # never merge extra legacy positions into it.
+    conn.execute("DELETE FROM playlist_track_cache WHERE provider = ?", (old,))
+    conn.execute("DELETE FROM playlist_cache WHERE provider = ?", (old,))
+
+
+def _migrate_profile_namespaces(conn, source_aliases):
+    """Atomically move legacy provider-keyed state to default profile ids.
+
+    Inserts happen before deletes and use ``OR IGNORE`` so current profile-era
+    rows win primary-key collisions. Membership/history tables naturally union
+    non-conflicting evidence. The transaction makes a failed copy fully
+    rollback-safe, and the absence of a one-time marker lets later legacy CLI
+    writes migrate on the next profile-aware open.
+    """
+    aliases = {
+        str(old): str(new)
+        for old, new in source_aliases.items()
+        if old and new and str(old) != str(new)
+    }
+    if not aliases:
+        return
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        for old, new in aliases.items():
+            for table, column in _PROFILE_ID_COLUMNS:
+                _remap_column_value(conn, table, column, old, new)
+            _migrate_playlist_cache(conn, old, new)
+
+        # Group reconciliation keys embed a sorted authority set in addition to
+        # carrying a source column. Rewrite both dimensions so established
+        # baselines and pending-removal confirmations survive the upgrade.
+        for table, column in _GROUP_KEY_COLUMNS:
+            values = conn.execute(
+                f'SELECT DISTINCT "{column}" FROM "{table}" '
+                f'WHERE "{column}" LIKE \'group:%\''
+            ).fetchall()
+            for (old_value,) in values:
+                new_value = _profile_group_key(old_value, aliases)
+                if new_value != old_value:
+                    _remap_column_value(conn, table, column, old_value, new_value)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def upsert_many(conn, source, tracks):
@@ -340,6 +487,24 @@ def get_isrcs(conn, source, ids):
         conn, "SELECT id, isrc FROM songs WHERE source = ? AND isrc IS NOT NULL AND id IN ({marks})",
         [source], ids)
     return {k: v for k, v in got.items() if v}
+
+
+def get_isrcs_from_sources(conn, sources, ids):
+    """ISRCs for globally stable track ids seen through any selected account.
+
+    Spotify catalog ids are shared by its accounts, but a track may only have
+    been archived through a custom profile. Preserve source order on the rare
+    conflicting row and stop querying once every requested id is satisfied.
+    """
+    wanted = [track_id for track_id in ids if track_id]
+    out = {}
+    for source in dict.fromkeys(source for source in sources if source):
+        remaining = [track_id for track_id in wanted if track_id not in out]
+        if not remaining:
+            break
+        for track_id, isrc in get_isrcs(conn, source, remaining).items():
+            out.setdefault(track_id, isrc)
+    return out
 
 
 def get_snapshots(conn, source, ids):

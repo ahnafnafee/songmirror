@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from songmirror.services.events import EventBus
+from songmirror.services.account_profiles import AccountProfileStore
 from songmirror.services.settings import SettingsStore
 from songmirror.services.sync_service import SyncService
 from songmirror.services.transfers import (
@@ -234,6 +235,62 @@ def test_transfer_same_provider_copies_by_id_without_resolving():
     assert res["added"] == 2
     assert added == ["t1", "t2"]   # copied by their own ids, oldest-first
     assert resolved == []          # resolver never invoked
+
+
+def test_transfer_service_builds_both_selected_profiles_for_cross_account_copy(
+    monkeypatch, tmp_path
+):
+    """Two accounts of one provider stay distinct all the way to construction.
+
+    The copy path must still recognize the underlying provider as identical so
+    Spotify track ids can be written directly into the other account.
+    """
+    built, added, resolved = [], [], []
+    settings = SettingsStore(dir=tmp_path)
+    profiles = AccountProfileStore(settings)
+    source_profile = profiles.create("spotify", "Alice")
+    dest_profile = profiles.create("spotify", "Bob")
+
+    src = _Prov(
+        str(tmp_path / "alice-cache.json"),
+        [{"id": "spotify-track", "name": "Song", "artists": ["Artist"],
+          "duration_ms": 1, "isrc": "I", "added_at": "1"}],
+        source="spotify",
+    )
+    dst = _Prov(str(tmp_path / "bob-cache.json"), [], source="spotify")
+    src.track_id = lambda raw: raw["id"]
+    dst.resolve = lambda norm, cache: resolved.append(norm["name"])
+    dst.add = lambda playlist, ids: added.extend(ids)
+
+    def build(_self, account_id, _opts):
+        built.append(account_id)
+        return src if account_id == source_profile.id else dst
+
+    monkeypatch.setattr(TransferService, "_build", build)
+
+    async def scenario():
+        bus = EventBus()
+        bus.bind_loop(asyncio.get_running_loop())
+        sync = SyncService(settings, bus, profiles=profiles)
+        service = TransferService(settings, bus, sync, profiles=profiles)
+        job = service.submit({
+            "source_account": source_profile.id,
+            "source_playlist_id": "p1",
+            "dest_account": dest_profile.id,
+            "dest_playlist_id": "p1",
+        })
+        return service.public(await _await_job(service, job["id"]))
+
+    job = asyncio.run(scenario())
+
+    assert built == [source_profile.id, dest_profile.id]
+    assert job["source"]["account"] == source_profile.id
+    assert job["source"]["provider"] == "spotify"
+    assert job["dest"]["account"] == dest_profile.id
+    assert job["dest"]["provider"] == "spotify"
+    assert job["status"] == "done"
+    assert added == ["spotify-track"]
+    assert resolved == []
 
 
 def test_transfer_orders_mixed_timestamp_formats_chronologically():

@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..services.events import EventBus
+from ..services.account_profiles import AccountProfileStore
 from ..services.playlists import LinkStore
 from ..services.resolve_cache import ResolveCacheStore
 from ..services.settings import SettingsStore
@@ -35,15 +36,18 @@ _DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
 def create_app(settings=None, bus=None, sync_service=None, links=None, transfers=None,
-               syncs=None, resolve_cache=None) -> FastAPI:
+               syncs=None, resolve_cache=None, account_profiles=None) -> FastAPI:
     install_oauth_access_log_filter()
     settings = settings or SettingsStore()
     bus = bus or EventBus()
-    syncs = syncs or SyncStore(dir=Path(settings.env_path).parent)
-    sync_service = sync_service or SyncService(settings, bus, syncs)
-    links = links or LinkStore(dir=Path(settings.env_path).parent)
-    transfers = transfers or TransferService(settings, bus, sync_service)
-    resolve_cache = resolve_cache or ResolveCacheStore(settings, sync_service)
+    account_profiles = account_profiles or AccountProfileStore(settings)
+    syncs = syncs or SyncStore(dir=Path(settings.env_path).parent, profiles=account_profiles)
+    sync_service = sync_service or SyncService(settings, bus, syncs, profiles=account_profiles)
+    links = links or LinkStore(dir=Path(settings.env_path).parent, profiles=account_profiles)
+    transfers = transfers or TransferService(settings, bus, sync_service, profiles=account_profiles)
+    resolve_cache = resolve_cache or ResolveCacheStore(
+        settings, sync_service, profiles=account_profiles
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -63,6 +67,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
 
     app = FastAPI(title="SongMirror", lifespan=lifespan)
     app.state.settings = settings
+    app.state.account_profiles = account_profiles
     app.state.bus = bus
     app.state.sync = sync_service
     app.state.syncs = syncs

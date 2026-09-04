@@ -10,6 +10,7 @@ import { Card } from '../ui/Card'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ServiceLogo } from '../ui/ServiceLogo'
 import { StatusPill } from '../ui/StatusPill'
+import { TextField } from '../ui/TextField'
 import { ConnectWizardModal } from './ConnectWizardModal'
 
 const SERVICE_BLURBS: Record<string, string> = {
@@ -41,11 +42,15 @@ function borderClass(state: Account['state']): string {
 export function AccountCard({ account, onChanged }: { account: Account; onChanged: () => void }) {
   const [wizardOpen, setWizardOpen] = useState(false)
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
+  const [editingLabel, setEditingLabel] = useState(false)
+  const [label, setLabel] = useState(account.label)
+  const [savingLabel, setSavingLabel] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const isConnected = account.state === 'connected' || account.state === 'expired'
-  const logoId = serviceLogoId(account.id)
+  const logoId = serviceLogoId(account.provider)
 
   async function disconnect() {
     setDisconnecting(true)
@@ -61,6 +66,35 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
     }
   }
 
+  async function remove() {
+    setDisconnecting(true)
+    setError(null)
+    try {
+      await api.removeAccount(account.id)
+      setConfirmingRemove(false)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+
+  async function rename() {
+    if (!label.trim()) return
+    setSavingLabel(true)
+    setError(null)
+    try {
+      await api.renameAccount(account.id, label.trim())
+      setEditingLabel(false)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setSavingLabel(false)
+    }
+  }
+
   return (
     <Card className={cn('flex flex-col gap-3.5 p-4 sm:p-5', borderClass(account.state))}>
       <div className="flex flex-wrap items-center gap-2.5">
@@ -69,17 +103,29 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
             className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-card border border-border bg-surface-2"
             aria-hidden="true"
           >
-            <ServiceLogo service={logoId} className={cn('size-6', tagText(account.id))} />
+            <ServiceLogo service={logoId} className={cn('size-6', tagText(account.provider))} />
           </span>
         ) : (
-          <span className={cn('size-2.5 shrink-0 rounded-full', tagDot(account.id))} aria-hidden="true" />
+          <span className={cn('size-2.5 shrink-0 rounded-full', tagDot(account.provider))} aria-hidden="true" />
         )}
         <h3 className="text-base font-bold text-text">{account.name}</h3>
         <span className="font-mono text-[10px] tracking-wide text-text-3">{AUTH_KIND_LABELS[account.auth_kind]}</span>
         <StatusPill state={account.state} className="ml-auto" />
       </div>
 
-      <p className="text-[13px] leading-relaxed text-text-2">{SERVICE_BLURBS[account.id] ?? ''}</p>
+      <p className="text-[13px] leading-relaxed text-text-2">{SERVICE_BLURBS[account.provider] ?? ''}</p>
+
+      {editingLabel && (
+        <div className="flex items-end gap-2">
+          <TextField label="Profile label" value={label} onChange={(event) => setLabel(event.target.value)} />
+          <Button size="sm" loading={savingLabel} disabled={!label.trim()} onClick={() => void rename()}>
+            Save
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { setLabel(account.label); setEditingLabel(false) }}>
+            Cancel
+          </Button>
+        </div>
+      )}
 
       {account.detail && account.state !== 'connected' && account.state !== 'error' && (
         <p className="text-xs leading-relaxed text-text-3">{account.detail}</p>
@@ -105,6 +151,16 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
             Disconnect
           </Button>
         )}
+        {!editingLabel && (
+          <Button variant="ghost" size="sm" onClick={() => setEditingLabel(true)}>
+            Rename
+          </Button>
+        )}
+        {account.removable && (
+          <Button variant="ghost" size="sm" onClick={() => setConfirmingRemove(true)}>
+            Remove
+          </Button>
+        )}
       </div>
 
       <ConnectWizardModal
@@ -127,6 +183,17 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
         loading={disconnecting}
         onConfirm={() => void disconnect()}
         onCancel={() => setConfirmingDisconnect(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmingRemove}
+        title={`Remove ${account.name}?`}
+        description="This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account."
+        confirmLabel="Remove profile"
+        danger
+        loading={disconnecting}
+        onConfirm={() => void remove()}
+        onCancel={() => setConfirmingRemove(false)}
       />
     </Card>
   )

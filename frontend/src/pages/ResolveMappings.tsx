@@ -256,7 +256,8 @@ function GuideStep({ number, title, children }: { number: string; title: string;
 }
 
 function ProviderTab({ row, active, onSelect }: { row: ResolveCacheProvider; active: boolean; onSelect: () => void }) {
-  const logoId = serviceLogoId(row.id)
+  const provider = row.provider ?? row.id
+  const logoId = serviceLogoId(provider)
   return (
     <button
       type="button"
@@ -271,7 +272,7 @@ function ProviderTab({ row, active, onSelect }: { row: ResolveCacheProvider; act
           : 'border-border bg-surface text-text-3 hover:bg-surface-2 hover:text-text-2',
       )}
     >
-      {logoId && <ServiceLogo service={logoId} className={`size-4 ${tagText(row.id)}`} />}
+      {logoId && <ServiceLogo service={logoId} className={`size-4 ${tagText(provider)}`} />}
       <span className={cn('text-sm', active ? 'font-bold' : 'font-semibold')}>{row.name}</span>
       <span className={cn('font-mono text-xs', active ? 'text-accent' : 'text-text-3')}>{row.total}</span>
     </button>

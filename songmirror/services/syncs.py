@@ -114,20 +114,41 @@ def validate_sync_job(job):
 class SyncStore:
     """Named sync jobs persisted to data/syncs.json (owner-only)."""
 
-    def __init__(self, dir="data"):
+    def __init__(self, dir="data", profiles=None):
         self._path = Path(dir) / "syncs.json"
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._profiles = profiles
 
     def list(self):
         try:
             with open(self._path, encoding="utf-8") as f:
                 rows = json.load(f)
             jobs = []
+            migrated = False
             for row in rows:
                 data = dict(row)
                 if not str(data.get("providers") or "").strip():
                     data["providers"] = LEGACY_NAMED_JOB_PROVIDERS
+                    migrated = True
+                if self._profiles is not None:
+                    before = dict(data)
+                    data["source"] = self._profiles.canonical_id(
+                        data.get("source", DEFAULT_SYNC_SOURCE)
+                    )
+                    data["providers"] = ",".join(
+                        self._profiles.expand_ids(data.get("providers", ""))
+                    )
+                    data["authorities"] = ",".join(
+                        self._profiles.expand_ids(data.get("authorities", ""))
+                    )
+                    data["liked_routes"] = {
+                        self._profiles.canonical_id(identity): route
+                        for identity, route in (data.get("liked_routes") or {}).items()
+                    }
+                    migrated = migrated or data != before
                 jobs.append(SyncJob(**data))
+            if migrated:
+                self._save(jobs)
             return jobs
         except (FileNotFoundError, json.JSONDecodeError):
             return []

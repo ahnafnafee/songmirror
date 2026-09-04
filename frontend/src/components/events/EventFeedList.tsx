@@ -1,7 +1,7 @@
 import { LuChevronDown, LuChevronUp } from 'react-icons/lu'
 
 import { useStickToBottom } from '@/hooks/useStickToBottom'
-import type { SyncEvent } from '@/types'
+import type { Account, SyncEvent } from '@/types'
 
 import { EmptyState } from '../ui/EmptyState'
 import { EventRow } from './EventRow'
@@ -12,6 +12,7 @@ interface EventFeedListProps {
   emptyDescription: string
   ariaLabel: string
   newestFirst?: boolean
+  accounts?: Account[] | null
 }
 
 /** The scrollable, auto-following list of event rows shared by the
@@ -20,7 +21,7 @@ interface EventFeedListProps {
  * chat-log pattern - but leaves their scroll position alone once they've
  * scrolled up to read older lines, surfacing a floating "jump to newest"
  * button instead of yanking them back down. */
-export function EventFeedList({ events, emptyTitle, emptyDescription, ariaLabel, newestFirst = false }: EventFeedListProps) {
+export function EventFeedList({ events, emptyTitle, emptyDescription, ariaLabel, newestFirst = false, accounts }: EventFeedListProps) {
   const { containerRef, isAtBottom, newCount, scrollToBottom } = useStickToBottom<HTMLUListElement>(
     events.length,
     newestFirst ? 'top' : 'bottom',
@@ -43,7 +44,11 @@ export function EventFeedList({ events, emptyTitle, emptyDescription, ariaLabel,
           // No backend id exists, so combine immutable event fields. The index
           // only disambiguates genuinely identical lines and sorting can safely
           // reverse the list without lending one row another row's identity.
-          <EventRow key={`${event.ts}:${event.kind}:${event.tag}:${event.message}:${i}`} event={event} />
+          <EventRow
+            key={`${event.ts}:${event.kind}:${event.tag}:${event.message}:${i}`}
+            event={event}
+            account={accounts?.find((candidate) => candidate.id === event.tag)}
+          />
         ))}
       </ul>
       {!isAtBottom && (

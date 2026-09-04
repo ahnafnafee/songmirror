@@ -9,6 +9,7 @@ import json
 import os
 import threading
 import time
+from contextlib import nullcontext
 
 from dotenv import load_dotenv
 
@@ -24,8 +25,10 @@ from .targets import (
     mirror_pair,
     nway_order_candidates,
     reconcile,
+    target_provider,
 )
 from .targets.base import _normalize, reconcile_state_key
+from ..services.settings import _ENV_LOCK
 
 
 class _SourceAuthError(TargetAuthError):
@@ -150,12 +153,31 @@ def _summary(opts, per_target, started, *, ok=True, error=None, interrupted=None
     }
 
 
-def _load_links():
+def _load_links(opts=None):
     """Enabled explicit pairings (empty when none configured, so behavior is
     unchanged). Late import keeps the engine's module graph free of the web tier."""
     from ..services.playlists import LinkStore
 
-    return [link for link in LinkStore().list() if link.enabled]
+    profiles = getattr(opts, "account_profiles", None) if opts is not None else None
+    directory = profiles.settings.data_dir if profiles is not None else "data"
+    return [
+        link for link in LinkStore(dir=directory, profiles=profiles).list()
+        if link.enabled
+    ]
+
+
+def _target_activation(target):
+    activate = getattr(target, "activate", None)
+    return activate() if activate is not None else nullcontext()
+
+
+def _archive_connection(path, profiles=None):
+    # Preserve the historical one-argument archive.connect call for headless
+    # users and tests that replace it; only profile-aware runs request namespace
+    # migration.
+    if profiles is None:
+        return archive.connect(path)
+    return archive.connect(path, source_aliases=profiles.archive_aliases())
 
 
 def run_target(target, selected, get_source_tracks, songs, opts, links=None, source=None, should_continue=None):
@@ -243,11 +265,22 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
                 raise _SourceAuthError(str(exc)) from exc
 
             try:
+                pair_options = {
+                    "execute": opts.execute,
+                    "max_removals": opts.max_removals,
+                    "max_adds": opts.max_adds,
+                    "drain_removals": opts.apply_large_removals,
+                    "should_continue": should_continue,
+                    "source_key": src_key,
+                    "source_name": source.name,
+                    "name": name,
+                }
+                source_type = target_provider(source)
+                if source_type != src_key:
+                    pair_options["source_provider"] = source_type
                 res = mirror_pair(
                     target, source_tracks, sp_playlist, tgt, cache, songs,
-                    execute=opts.execute, max_removals=opts.max_removals, max_adds=opts.max_adds,
-                    drain_removals=opts.apply_large_removals, should_continue=should_continue,
-                    source_key=src_key, source_name=source.name, name=name,
+                    **pair_options,
                 )
                 agg["pairs"] += 1
                 for k in ("added", "removed", "missing", "held", "deferred",
@@ -323,6 +356,19 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
                     except TargetAuthError as exc:
                         raise _SourceAuthError(str(exc)) from exc
                     try:
+                        liked_options = {
+                            "execute": opts.execute,
+                            "max_removals": opts.max_removals,
+                            "max_adds": opts.max_adds,
+                            "drain_removals": opts.apply_large_removals,
+                            "should_continue": should_continue,
+                            "source_key": src_key,
+                            "source_name": source.name,
+                            "name": source_name,
+                        }
+                        source_type = target_provider(source)
+                        if source_type != src_key:
+                            liked_options["source_provider"] = source_type
                         result = mirror_pair(
                             target,
                             source_tracks,
@@ -330,14 +376,7 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
                             target_resource,
                             cache,
                             songs,
-                            execute=opts.execute,
-                            max_removals=opts.max_removals,
-                            max_adds=opts.max_adds,
-                            drain_removals=opts.apply_large_removals,
-                            should_continue=should_continue,
-                            source_key=src_key,
-                            source_name=source.name,
-                            name=source_name,
+                            **liked_options,
                         )
                         agg["pairs"] += 1
                         for key in (
@@ -383,20 +422,37 @@ def run_pass(opts, should_continue=None):
     # The web app points SONGMIRROR_ENV_FILE at SettingsStore's managed file so wizard
     # saves win; the headless CLI falls back to a plain .env. Either way this
     # picks up re-captured tokens without a restart.
-    load_dotenv(os.getenv("SONGMIRROR_ENV_FILE") or ".env", override=True)
+    with _ENV_LOCK:
+        load_dotenv(os.getenv("SONGMIRROR_ENV_FILE") or ".env", override=True)
+    profiles = getattr(opts, "account_profiles", None)
     wanted_providers = _wanted_providers(opts)
-    spotify_requested = not wanted_providers or "spotify" in wanted_providers
+    if profiles is not None:
+        participant_ids = list(dict.fromkeys(profiles.expand_ids(opts.providers)))
+        wanted_providers = set(participant_ids)
+        opts.providers = ",".join(participant_ids)
+        opts.sync_source = profiles.canonical_id(opts.sync_source)
+        opts.authorities = ",".join(profiles.expand_ids(opts.authorities))
+        opts.liked_routes = {
+            profiles.canonical_id(identity): route
+            for identity, route in (getattr(opts, "liked_routes", None) or {}).items()
+        }
+        spotify_requested = not wanted_providers or any(
+            profiles.provider_of(identity) == "spotify" for identity in wanted_providers
+        )
+    else:
+        spotify_requested = not wanted_providers or "spotify" in wanted_providers
     # Group mode's order authority also supplies playlist names and ordering.
     # It remains writable because additions from another authority flow back.
     source_provider = opts.sync_source if opts.sync_mode in {"oneway", "group"} else None
     # Spotify needs a writable client whenever it's a write destination: any
     # N-way/group execute, or a one-way execute where another provider is the
     # source and Spotify is one of the targets.
-    spotify_is_target = (opts.sync_mode == "oneway" and source_provider != "spotify"
+    source_provider_type = profiles.provider_of(source_provider) if profiles is not None else source_provider
+    spotify_is_target = (opts.sync_mode == "oneway" and source_provider_type != "spotify"
                          and spotify_requested)
     sp = None
     cookie_spotify = spotify_write_backend() == "cookie" and spotify_cookie.configured()
-    if source_provider == "spotify" or spotify_requested:
+    if profiles is None and (source_provider == "spotify" or spotify_requested):
         if cookie_spotify:
             log_note("Spotify is using its signed-in web session (no developer API)", tag="spotify")
         else:
@@ -452,11 +508,13 @@ def run_pass(opts, should_continue=None):
             return _summary(opts, [], pass_started)
         from . import downloads
 
-        downloads.refresh(sp, selected, opts.download_dir)
+        source_sp = getattr(source, "_sp", sp)
+        with _target_activation(source):
+            downloads.refresh(source_sp, selected, opts.download_dir)
         return _summary(opts, [], pass_started)
 
     if opts.sync_mode in {"nway", "group"}:
-        songs = archive.connect(opts.song_cache_file)
+        songs = _archive_connection(opts.song_cache_file, profiles)
         try:
             if opts.sync_mode == "group":
                 per_target = _run_authoritative_group(opts, sp, selected, songs, ctrl)
@@ -466,8 +524,13 @@ def run_pass(opts, should_continue=None):
             songs.close()
         c = ctrl()
         if c == "run":
-            _post_sync(opts, sp, selected, source_is_spotify=source.source == "spotify",
-                       should_continue=ctrl)
+            source_sp = getattr(source, "_sp", sp)
+            with _target_activation(source):
+                _post_sync(
+                    opts, source_sp, selected,
+                    source_is_spotify=target_provider(source) == "spotify",
+                    should_continue=ctrl,
+                )
         return _summary(opts, per_target, pass_started, interrupted=(None if c == "run" else c))
 
     targets = build_targets(opts, sp)
@@ -478,14 +541,18 @@ def run_pass(opts, should_continue=None):
         + (paint(f"   local downloads -> {opts.download_dir}", "grey") if opts.download_dir and opts.execute else ""))
 
     sp_memo, sp_lock = {}, threading.Lock()
-    src_is_spotify = source.source == "spotify"
+    src_is_spotify = target_provider(source) == "spotify"
     # Disk cache of playlist tracks keyed by Spotify's snapshot_id: while a
     # playlist is unchanged its 7-page fetch is served from disk, so passes
     # don't re-hammer Spotify. snapshot_id changes exactly when the playlist
     # does, so there's no staleness. Only Spotify exposes a snapshot id, so the
     # skip optimization applies solely when Spotify is the source.
     sp_snap = {p["id"]: p.get("snapshot_id") for p in selected} if src_is_spotify else {}
-    tracks_cache_file = os.getenv("SPOTIFY_TRACKS_CACHE", "spotify_tracks_cache.json")
+    tracks_cache_file = (
+        source.profile_value("SPOTIFY_TRACKS_CACHE", "spotify_tracks_cache.json")
+        if src_is_spotify and hasattr(source, "profile_value")
+        else os.getenv("SPOTIFY_TRACKS_CACHE", "spotify_tracks_cache.json")
+    )
     tracks_cache = _load_json(tracks_cache_file) if src_is_spotify else {}
     tracks_state = {"dirty": False}
 
@@ -505,7 +572,7 @@ def run_pass(opts, should_continue=None):
                 else:
                     tracks = []
                     for track in raw_tracks:
-                        normalized = _normalize(track, source.source)
+                        normalized = _normalize(track, target_provider(source))
                         normalized["id"] = source.track_id(track)
                         tracks.append(normalized)
                 sp_memo[memo_key] = tracks
@@ -516,7 +583,7 @@ def run_pass(opts, should_continue=None):
             out = []
             reader = source.resource_tracks if is_liked else source.playlist_tracks
             for t in reader(playlist):
-                norm = _normalize(t, source.source)
+                norm = _normalize(t, target_provider(source))
                 norm["id"] = source.track_id(t)
                 out.append(norm)
             return out
@@ -537,7 +604,9 @@ def run_pass(opts, should_continue=None):
                 tracks_state["dirty"] = True
             return tracks
 
-    links = _load_links()  # explicit pairings override same-name matching (one-way)
+    links = (
+        _load_links(opts) if profiles is not None else _load_links()
+    )  # explicit pairings override same-name matching (one-way)
     results, errors = {}, []
 
     def worker(target, songs):
@@ -577,7 +646,10 @@ def run_pass(opts, should_continue=None):
     target_songs = []
     try:
         for target in targets:
-            target_songs.append((target, archive.connect(opts.song_cache_file)))
+            target_songs.append((
+                target,
+                _archive_connection(opts.song_cache_file, profiles),
+            ))
     except BaseException:
         for _, songs in target_songs:
             songs.close()
@@ -625,7 +697,12 @@ def run_pass(opts, should_continue=None):
 
     c = ctrl()
     if c == "run":
-        _post_sync(opts, sp, selected, source_is_spotify=src_is_spotify, should_continue=ctrl)
+        source_sp = getattr(source, "_sp", sp)
+        with _target_activation(source):
+            _post_sync(
+                opts, source_sp, selected, source_is_spotify=src_is_spotify,
+                should_continue=ctrl,
+            )
     per_target = [
         _summary_entry(results[target.tag]["name"], results[target.tag])
         for target in targets

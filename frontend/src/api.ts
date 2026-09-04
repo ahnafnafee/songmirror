@@ -114,28 +114,33 @@ const json = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.strin
 export const api = {
   // Accounts
   getAccounts: () => request<Account[]>('/api/accounts'),
+  addAccount: (provider: string, label: string) =>
+    request<Account>('/api/accounts', json({ provider, label })),
+  renameAccount: (id: string, label: string) =>
+    request<Account>(`/api/accounts/${id}`, { method: 'PATCH', body: JSON.stringify({ label }) }),
   saveAccountConfig: (id: string, values: Record<string, string>) =>
     request<OkResponse>(`/api/accounts/${id}/config`, json(values)),
   connectAccount: (id: string, values?: Record<string, string>) =>
     request<ConnectResponse>(`/api/accounts/${id}/connect`, { method: 'POST', ...(values ? { body: JSON.stringify(values) } : {}) }),
   pollAccount: (id: string, deviceCode: string, interval: number) =>
     request<PollResponse>(`/api/accounts/${id}/poll`, json({ device_code: deviceCode, interval })),
-  disconnectAccount: (id: string) => request<OkResponse>(`/api/accounts/${id}`, { method: 'DELETE' }),
+  disconnectAccount: (id: string) => request<OkResponse>(`/api/accounts/${id}/disconnect`, { method: 'POST' }),
+  removeAccount: (id: string) => request<OkResponse>(`/api/accounts/${id}`, { method: 'DELETE' }),
   /** YouTube Music-only "no-quota" mode: routes reads/writes through a pasted
    * browser session instead of the (daily-capped) Data API. `headers` is the
    * raw "copy request headers" block from a music.youtube.com XHR. */
-  enableYtmusicBrowserMode: (headers: string) => request<PollResponse>('/api/accounts/ytmusic/browser', json({ headers })),
-  disableYtmusicBrowserMode: () => request<PollResponse>('/api/accounts/ytmusic/browser', { method: 'DELETE' }),
+  enableYtmusicBrowserMode: (id: string, headers: string) => request<PollResponse>(`/api/accounts/${id}/ytmusic/browser`, json({ headers })),
+  disableYtmusicBrowserMode: (id: string) => request<PollResponse>(`/api/accounts/${id}/ytmusic/browser`, { method: 'DELETE' }),
   /** Spotify signed-in web session: routes library reads, playlist reads/writes,
    * and catalog search through the first-party web client without a developer app. */
-  enableSpotifyCookieMode: (spDc: string) => request<PollResponse>('/api/accounts/spotify/cookie', json({ sp_dc: spDc })),
-  disableSpotifyCookieMode: () => request<PollResponse>('/api/accounts/spotify/cookie', { method: 'DELETE' }),
+  enableSpotifyCookieMode: (id: string, spDc: string) => request<PollResponse>(`/api/accounts/${id}/spotify/cookie`, json({ sp_dc: spDc })),
+  disableSpotifyCookieMode: (id: string) => request<PollResponse>(`/api/accounts/${id}/spotify/cookie`, { method: 'DELETE' }),
 
   /** Legacy OAuth-only compatibility endpoints. Cookie-only N-way matching learns
    * Spotify identities from the other ISRC-bearing peers and does not use these. */
-  setSpotifyIsrcApp: (clientId: string, clientSecret: string) =>
-    request<PollResponse>('/api/accounts/spotify/isrc-app', json({ client_id: clientId, client_secret: clientSecret })),
-  clearSpotifyIsrcApp: () => request<PollResponse>('/api/accounts/spotify/isrc-app', { method: 'DELETE' }),
+  setSpotifyIsrcApp: (id: string, clientId: string, clientSecret: string) =>
+    request<PollResponse>(`/api/accounts/${id}/spotify/isrc-app`, json({ client_id: clientId, client_secret: clientSecret })),
+  clearSpotifyIsrcApp: (id: string) => request<PollResponse>(`/api/accounts/${id}/spotify/isrc-app`, { method: 'DELETE' }),
 
   // Settings
   getSettings: () => request<Settings>('/api/settings'),
@@ -226,8 +231,8 @@ export const api = {
     request<OkResponse>(`/api/transfers/${encodeURIComponent(id)}/resolve`, json(body)),
   /** Resolve a pasted public playlist link into a startable transfer source.
    * The link is parsed on the server, so the URL grammar has one home. */
-  previewTransferSource: (url: string) =>
-    request<TransferSourcePreview>('/api/transfers/preview', json({ url })),
+  previewTransferSource: (url: string, sourceAccount: string) =>
+    request<TransferSourcePreview>('/api/transfers/preview', json({ url, source_account: sourceAccount })),
 
   // Resolve mappings (the per-provider match caches)
   getResolveCacheProviders: () => request<ResolveCacheProvider[]>('/api/resolve-cache'),

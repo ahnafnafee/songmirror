@@ -16,7 +16,9 @@ router = APIRouter()
 @router.get("/api/playlists")
 def playlists(request: Request, provider: str):
     try:
-        return PlaylistService(request.app.state.settings).browse(provider)
+        return PlaylistService(
+            request.app.state.settings, request.app.state.account_profiles
+        ).browse(provider)
     except PlaylistServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
@@ -41,7 +43,9 @@ def export_provider_playlists(
 ):
     """Download every current playlist on one provider as a single backup."""
     try:
-        result = PlaylistService(request.app.state.settings).export(provider, format)
+        result = PlaylistService(
+            request.app.state.settings, request.app.state.account_profiles
+        ).export(provider, format)
         return _export_response(result)
     except PlaylistServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -56,7 +60,9 @@ def export_playlist(
 ):
     """Download one fresh playlist snapshot, optionally as Soundiiz JSON."""
     try:
-        result = PlaylistService(request.app.state.settings).export(
+        result = PlaylistService(
+            request.app.state.settings, request.app.state.account_profiles
+        ).export(
             provider,
             format,
             playlist_id=playlist_id,
@@ -93,7 +99,9 @@ def playlist_detail(
         raise HTTPException(status_code=422, detail="cursor is too long")
     try:
         if page_size is not None:
-            return PlaylistService(request.app.state.settings).detail_page(
+            return PlaylistService(
+                request.app.state.settings, request.app.state.account_profiles
+            ).detail_page(
                 provider,
                 playlist_id,
                 cursor=cursor or None,
@@ -101,7 +109,9 @@ def playlist_detail(
                 refresh=refresh,
                 expected_count=expected_count,
             )
-        return PlaylistService(request.app.state.settings).detail(
+        return PlaylistService(
+            request.app.state.settings, request.app.state.account_profiles
+        ).detail(
             provider,
             playlist_id,
             refresh=refresh,
@@ -148,7 +158,9 @@ async def remove_playlist_track(
                 detail="every selected track needs a non-negative position and track_id",
             ) from exc
 
-        service = PlaylistService(request.app.state.settings)
+        service = PlaylistService(
+            request.app.state.settings, request.app.state.account_profiles
+        )
         try:
             return await request.app.state.sync.run_exclusive(
                 lambda: service.remove_tracks(
@@ -169,7 +181,9 @@ async def remove_playlist_track(
             detail="position and track_id are required",
         ) from exc
 
-    service = PlaylistService(request.app.state.settings)
+    service = PlaylistService(
+        request.app.state.settings, request.app.state.account_profiles
+    )
     try:
         return await request.app.state.sync.run_exclusive(
             lambda: service.remove_track(

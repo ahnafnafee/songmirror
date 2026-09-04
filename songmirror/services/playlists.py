@@ -9,6 +9,7 @@ import json
 import os
 import uuid
 from dataclasses import asdict, dataclass, field
+from contextlib import nullcontext
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import quote
@@ -16,7 +17,7 @@ from urllib.parse import quote
 from ..engine import archive, spotify, spotify_cookie
 from ..engine.config import parse_args, spotify_write_backend
 from ..engine.logs import log_warn
-from ..engine.targets import build_one
+from ..engine.targets import build_one, target_provider
 from .playlist_exports import render_backup
 from .playlist_links import external_url, provider_label
 from .settings import _open_private
@@ -149,11 +150,23 @@ def _track_artist(track):
 
 
 class PlaylistService:
-    def __init__(self, settings):
+    def __init__(self, settings, profiles=None):
         self._settings = settings
+        self._profiles = profiles
+
+    def _provider(self, account_id):
+        return self._profiles.provider_of(account_id) if self._profiles else account_id
+
+    def _account(self, account_id):
+        return self._profiles.canonical_id(account_id) if self._profiles else account_id
+
+    def _label(self, account_id):
+        provider = self._provider(account_id)
+        base = provider_label(provider)
+        return self._profiles.display_name(account_id, base) if self._profiles else base
 
     def _failure(self, provider_id, action, exc):
-        label = provider_label(provider_id)
+        label = self._label(provider_id)
         log_warn(f"{action} failed: {exc!r}", tag=provider_id)
         raise PlaylistBrowseError(
             f"{label} could not {action} right now. Retry; if it continues, reconnect the account."
@@ -162,18 +175,25 @@ class PlaylistService:
     def _target(self, provider_id):
         self._settings.apply_to_env()
         opts = parse_args([])
+        opts.account_profiles = self._profiles
         try:
+            provider = self._provider(provider_id)
             cookie = (
-                provider_id == "spotify"
+                self._profiles is None
+                and provider == "spotify"
                 and spotify_write_backend() == "cookie"
                 and spotify_cookie.configured()
             )
-            sp = spotify.client() if provider_id == "spotify" and not cookie else None
+            sp = (
+                spotify.client()
+                if self._profiles is None and provider == "spotify" and not cookie
+                else None
+            )
             target = build_one(provider_id, opts, sp)
         except Exception as exc:
             self._failure(provider_id, "load playlists", exc)
         if target is None:
-            label = provider_label(provider_id)
+            label = self._label(provider_id)
             raise PlaylistBrowseError(
                 f"{label} is not available. Connect or reconnect the account and retry."
             )
@@ -185,13 +205,19 @@ class PlaylistService:
         cache_file = os.getenv("SONG_CACHE_FILE") or str(
             self._settings.data_dir / "song_cache.db"
         )
-        conn = archive.connect(cache_file)
+        conn = archive.connect(
+            cache_file,
+            source_aliases=(
+                self._profiles.archive_aliases() if self._profiles is not None else None
+            ),
+        )
         try:
             return callback(conn)
         finally:
             conn.close()
 
     def _cached_detail(self, provider_id, playlist_id):
+        provider_id = self._account(provider_id)
         try:
             return self._with_cache(
                 lambda conn: archive.get_playlist_detail_cache(
@@ -203,12 +229,14 @@ class PlaylistService:
             return None
 
     def _cache_detail(self, detail):
+        detail = {**detail, "provider": self._account(detail["provider"])}
         try:
             self._with_cache(lambda conn: archive.set_playlist_detail_cache(conn, detail))
         except Exception as exc:
             log_warn(f"playlist cache write failed: {exc!r}", tag="cache")
 
     def _invalidate_detail(self, provider_id, playlist_id):
+        provider_id = self._account(provider_id)
         try:
             self._with_cache(
                 lambda conn: archive.invalidate_playlist_detail_cache(
@@ -219,6 +247,7 @@ class PlaylistService:
             log_warn(f"playlist cache invalidation failed: {exc!r}", tag="cache")
 
     def _prune_details(self, provider_id, playlist_ids):
+        provider_id = self._account(provider_id)
         try:
             self._with_cache(
                 lambda conn: archive.prune_playlist_detail_cache(
@@ -235,18 +264,21 @@ class PlaylistService:
         change here. `owned` is False only for a followed (non-owned) playlist — a
         provider surfaces those by overriding browse_playlists (Spotify does today).
         Jellyfin is browse-only and lists via its own API."""
-        if provider_id == "jellyfin":
+        if self._provider(provider_id) == "jellyfin":
             from ..engine import jellyfin
-            self._settings.apply_to_env()
-            server = (os.getenv("JELLYFIN_URL") or "").rstrip("/")
-            rows = [{
-                **row,
-                "owned": True,
-                "external_url": (
-                    f"{server}/web/#/details?id={quote(str(row['id']), safe='')}"
-                    if server else ""
-                ),
-            } for row in jellyfin.list_playlists()]
+            activation = self._profiles.activate(provider_id) if self._profiles else nullcontext()
+            with activation:
+                if self._profiles is None:
+                    self._settings.apply_to_env()
+                server = (os.getenv("JELLYFIN_URL") or "").rstrip("/")
+                rows = [{
+                    **row,
+                    "owned": True,
+                    "external_url": (
+                        f"{server}/web/#/details?id={quote(str(row['id']), safe='')}"
+                        if server else ""
+                    ),
+                } for row in jellyfin.list_playlists()]
             return sorted(rows, key=lambda r: (r["name"] or "").casefold())
         target = self._target(provider_id)
         try:
@@ -258,7 +290,7 @@ class PlaylistService:
             self._failure(provider_id, "load playlists", exc)
         rows = [{"id": _pl_id(pl), "name": _pl_name(pl), "count": target.playlist_count(pl),
                  "image": playlist_image(pl), "owned": bool(pl.get("_owned", True)),
-                 "external_url": external_url(provider_id, "playlist", _pl_id(pl))}
+                 "external_url": external_url(target_provider(target, self._provider(provider_id)), "playlist", _pl_id(pl))}
                 for pl in playlists]
         self._prune_details(provider_id, [row["id"] for row in rows])
         return sorted(rows, key=lambda r: (r["name"] or "").casefold())
@@ -297,7 +329,7 @@ class PlaylistService:
                 ),
                 "external_url": (
                     "" if unavailable
-                    else external_url(provider_id, "track", track_id)
+                    else external_url(target_provider(target, provider_id), "track", track_id)
                 ),
             }
             try:
@@ -324,7 +356,7 @@ class PlaylistService:
             "image": playlist_image(playlist),
             "owned": bool(playlist.get("_owned", True)),
             "editable": bool(target.is_editable(playlist)),
-            "external_url": external_url(provider_id, "playlist", playlist_id),
+            "external_url": external_url(target_provider(target, provider_id), "playlist", playlist_id),
             "tracks": tracks,
         }
 
@@ -372,7 +404,7 @@ class PlaylistService:
             and (expected_count is None or cached["count"] == expected_count)
         ):
             return cached
-        if provider_id == "jellyfin":
+        if self._provider(provider_id) == "jellyfin":
             raise PlaylistReadOnlyError(
                 "Jellyfin playlist tracks are managed in Jellyfin. Open the service to edit them."
             )
@@ -382,7 +414,7 @@ class PlaylistService:
             if playlist is None:
                 self._invalidate_detail(provider_id, playlist_id)
                 raise PlaylistNotFoundError(
-                    f"That {provider_label(provider_id)} playlist no longer exists. Refresh Browse."
+                    f"That {self._label(provider_id)} playlist no longer exists. Refresh Browse."
                 )
             return self._read_detail(
                 provider_id,
@@ -403,7 +435,7 @@ class PlaylistService:
         playlist-scoped, so that interoperability format requires playlist_id.
         """
         export_format = str(export_format).casefold()
-        if provider_id == "jellyfin":
+        if self._provider(provider_id) == "jellyfin":
             raise PlaylistReadOnlyError(
                 "Jellyfin playlist tracks are managed in Jellyfin and cannot be exported here."
             )
@@ -419,7 +451,7 @@ class PlaylistService:
                 if playlist is None:
                     self._invalidate_detail(provider_id, playlist_id)
                     raise PlaylistNotFoundError(
-                        f"That {provider_label(provider_id)} playlist no longer exists. Refresh Browse."
+                        f"That {self._label(provider_id)} playlist no longer exists. Refresh Browse."
                     )
                 playlists = [playlist]
             else:
@@ -437,8 +469,8 @@ class PlaylistService:
             ]
             details.sort(key=lambda detail: (detail["name"].casefold(), detail["id"]))
             return render_backup(
-                provider_id,
-                provider_label(provider_id) or getattr(target, "name", provider_id),
+                target_provider(target),
+                self._label(provider_id) or getattr(target, "name", provider_id),
                 details,
                 export_format,
                 filename_scope="all-playlists" if playlist_id is None else None,
@@ -496,7 +528,7 @@ class PlaylistService:
             if playlist is None:
                 self._invalidate_detail(provider_id, playlist_id)
                 raise PlaylistNotFoundError(
-                    f"That {provider_label(provider_id)} playlist no longer exists. Refresh Browse."
+                    f"That {self._label(provider_id)} playlist no longer exists. Refresh Browse."
                 )
             tracks, next_cursor = page_reader(playlist, cursor=cursor)
         except PlaylistServiceError:
@@ -605,14 +637,33 @@ class LinkStore:
     """Explicit pairings persisted to data/links.json (owner-only, alongside the
     other data-dir state)."""
 
-    def __init__(self, dir="data"):
+    def __init__(self, dir="data", profiles=None):
         self._path = Path(dir) / "links.json"
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._profiles = profiles
 
     def list(self):
         try:
             with open(self._path, encoding="utf-8") as f:
-                return [PlaylistLink(**d) for d in json.load(f)]
+                rows = json.load(f)
+            links = []
+            migrated = False
+            for row in rows:
+                data = dict(row)
+                if self._profiles is not None:
+                    members = {
+                        self._profiles.canonical_id(identity): playlist_id
+                        for identity, playlist_id in (data.get("members") or {}).items()
+                    }
+                    source = data.get("source")
+                    canonical_source = self._profiles.canonical_id(source) if source else source
+                    migrated = migrated or members != data.get("members") or canonical_source != source
+                    data["members"] = members
+                    data["source"] = canonical_source
+                links.append(PlaylistLink(**data))
+            if migrated:
+                self._save(links)
+            return links
         except (FileNotFoundError, json.JSONDecodeError):
             return []
 

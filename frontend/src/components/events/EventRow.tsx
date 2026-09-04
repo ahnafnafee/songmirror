@@ -14,7 +14,7 @@ import {
 import { cn } from '@/lib/cn'
 import { KIND_STYLES, serviceLogoId, tagDot, tagLabel, tagText } from '@/lib/constants'
 import { formatClock } from '@/lib/format'
-import type { EventKind, SyncEvent } from '@/types'
+import type { Account, EventKind, SyncEvent } from '@/types'
 
 import { ServiceLogo } from '../ui/ServiceLogo'
 
@@ -36,9 +36,11 @@ const EVENT_KIND_ICONS: Record<Exclude<EventKind, 'section'>, IconType> = {
  * mobile-wrap behavior keeps working (message drops to its own line below
  * `sm`, verified overflow-free at 320px); the column proportions match the
  * spec at `sm` and up either way. */
-export function EventRow({ event }: { event: SyncEvent }) {
+export function EventRow({ event, account }: { event: SyncEvent; account?: Account }) {
   const style = KIND_STYLES[event.kind]
-  const logoId = serviceLogoId(event.tag)
+  const brand = account?.provider ?? event.tag
+  const label = account?.name ?? tagLabel(event.tag)
+  const logoId = serviceLogoId(brand)
 
   if (event.kind === 'section') {
     return (
@@ -76,15 +78,15 @@ export function EventRow({ event }: { event: SyncEvent }) {
       >
         {logoId ? (
           <>
-            <ServiceLogo service={logoId} className={cn('size-3.5 shrink-0', tagText(event.tag))} />
+            <ServiceLogo service={logoId} className={cn('size-3.5 shrink-0', tagText(brand))} />
             {/* The icon alone (no visible label) needs a text alternative —
                 ServiceLogo's own glyphs are aria-hidden. */}
-            <span className="sr-only">{tagLabel(event.tag)}</span>
+            <span className="sr-only">{label}</span>
           </>
         ) : (
           <>
-            <span className={cn('size-[7px] shrink-0 rounded-full', tagDot(event.tag))} aria-hidden="true" />
-            {event.tag}
+            <span className={cn('size-[7px] shrink-0 rounded-full', tagDot(brand))} aria-hidden="true" />
+            {account ? label : event.tag}
           </>
         )}
       </span>
