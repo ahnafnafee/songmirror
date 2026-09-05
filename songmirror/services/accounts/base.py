@@ -9,6 +9,13 @@ from dataclasses import dataclass
 from typing import Literal
 
 AuthKind = Literal["oauth_redirect", "oauth_device", "token_paste", "api_key"]
+AccountCapability = Literal["library_read", "library_write", "public_playlist_read"]
+
+FULL_PEER_CAPABILITIES = frozenset({
+    "library_read",
+    "library_write",
+    "public_playlist_read",
+})
 
 
 @dataclass
@@ -26,6 +33,9 @@ class Field:
 class ConnStatus:
     state: Literal["connected", "expired", "unconfigured", "error"]
     detail: str = ""
+    # None means the connector uses the normal full peer capability set. A
+    # connector with narrower credentials supplies the exact granted subset.
+    capabilities: frozenset[AccountCapability] | None = None
 
 
 @dataclass

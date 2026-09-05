@@ -10,11 +10,16 @@ import { LoadingStatus, Skeleton } from '@/components/ui/Skeleton'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useLinks } from '@/hooks/useLinks'
 import { useProviderPlaylists } from '@/hooks/useProviderPlaylists'
+import { canSyncAccount, capabilitiesOf } from '@/lib/accountCapabilities'
 import type { Account, PlaylistLink, ProviderPlaylist } from '@/types'
 
 export default function Playlists() {
   const { accounts, loading: accountsLoading, error: accountsError } = useAccounts()
-  const connectedAccounts = useMemo(() => accounts?.filter((a) => a.state === 'connected') ?? [], [accounts])
+  const connectedAccounts = useMemo(
+    () => accounts?.filter((account) => account.state === 'connected' && capabilitiesOf(account).library_read) ?? [],
+    [accounts],
+  )
+  const syncAccounts = useMemo(() => accounts?.filter(canSyncAccount) ?? [], [accounts])
   const connectedIds = useMemo(() => connectedAccounts.map((a) => a.id), [connectedAccounts])
   const { entries, refresh: refreshPlaylists } = useProviderPlaylists(connectedIds)
   const { links, loading: linksLoading, error: linksError, refresh: refreshLinks } = useLinks()
@@ -76,8 +81,8 @@ export default function Playlists() {
           </div>
           <Button
             onClick={() => setEditorTarget('new')}
-            disabled={connectedAccounts.length < 2}
-            title={connectedAccounts.length < 2 ? 'Connect at least 2 services first' : undefined}
+            disabled={syncAccounts.length < 2}
+            title={syncAccounts.length < 2 ? 'Connect at least 2 full-library services first' : undefined}
           >
             + New pairing
           </Button>

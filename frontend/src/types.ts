@@ -18,6 +18,15 @@ export interface AccountField {
   configured?: boolean
 }
 
+export interface AccountCapabilities {
+  /** The credentials can list and open the signed-in account's playlists. */
+  library_read: boolean
+  /** The credentials can create and edit playlists in the signed-in account. */
+  library_write: boolean
+  /** The credentials can open a public playlist URL as a transfer source. */
+  public_playlist_read: boolean
+}
+
 export interface Account {
   /** Stable selectable profile id. Never equal to a provider type id. */
   id: string
@@ -40,6 +49,9 @@ export interface Account {
    * False where the provider's writes can't express the repair safely (Deezer),
    * which greys out the transfer form's "preserve order" switch. */
   preserves_order: boolean
+  /** Operations granted by the current credentials. Optional only so a cached
+   * account payload from an older SongMirror release can be upgraded safely. */
+  capabilities?: AccountCapabilities
 }
 
 /** Shared shape for the plain `{ok: true}` acks (config save, settings save,
@@ -68,6 +80,7 @@ export interface ConnectDirectResponse {
   kind: 'token_paste' | 'api_key'
   state: AccountState
   detail: string | null
+  capabilities?: AccountCapabilities
 }
 
 export type ConnectResponse = ConnectRedirectResponse | ConnectDeviceResponse | ConnectDirectResponse
@@ -75,6 +88,7 @@ export type ConnectResponse = ConnectRedirectResponse | ConnectDeviceResponse | 
 export interface PollResponse {
   state: AccountState
   detail: string | null
+  capabilities?: AccountCapabilities
 }
 
 /** GET/PUT /api/settings — arbitrary KEY:value config; secrets are masked out

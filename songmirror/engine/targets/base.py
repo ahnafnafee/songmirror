@@ -40,6 +40,10 @@ class TargetAuthError(RuntimeError):
     """Auth expired / rejected. Fatal for the pass — never a partial write."""
 
 
+class TargetCapabilityError(RuntimeError):
+    """Valid credentials lack a provider capability required by this action."""
+
+
 class TargetDirectoryIncompleteError(RuntimeError):
     """A playlist directory was incomplete and cannot safely drive writes."""
 

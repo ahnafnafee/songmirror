@@ -401,6 +401,8 @@ No Apple Developer account needed — two headers from `music.apple.com` are eno
 
 The connect wizard lets you paste the raw headers and parses the values for you. Tokens last months; re-paste them on the Accounts page when they expire.
 
+An Apple ID without an active Apple Music subscription can still connect in **Catalog-only** mode. In that mode, paste a public Apple Music playlist link on Transfers to copy it into another connected service. Apple library browsing, scheduled syncing, and using Apple Music as a transfer destination still require the paid CloudLibrary privilege; SongMirror shows those operations as unavailable instead of treating the valid catalog credentials as expired.
+
 ### YouTube Music
 
 Talks to the **official [YouTube Data API v3](https://developers.google.com/youtube/v3)**, whose OAuth refresh token is durable and survives restarts.

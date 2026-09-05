@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { api, errorMessage } from '@/api'
 import type { ProviderPlaylistsEntry } from '@/hooks/useProviderPlaylists'
+import { canSyncAccount } from '@/lib/accountCapabilities'
 import { serviceLogoId, tagText } from '@/lib/constants'
 import type { Account, LinkDirection, LinkMembers, PlaylistLink } from '@/types'
 
@@ -41,7 +42,7 @@ export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const connectedIds = useMemo(() => new Set(accounts.filter((a) => a.state === 'connected').map((a) => a.id)), [accounts])
+  const connectedIds = useMemo(() => new Set(accounts.filter(canSyncAccount).map((a) => a.id)), [accounts])
 
   // Fresh state whenever the editor (re)opens, so a previous attempt never
   // leaks into a new one. Rows cover every currently-connected service PLUS

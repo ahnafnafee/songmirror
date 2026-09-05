@@ -872,6 +872,85 @@ def test_preview_resolves_a_public_link_into_a_startable_source(monkeypatch, tmp
         "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
 
 
+def test_catalog_only_apple_link_previews_and_transfers_without_library_access(
+    monkeypatch, tmp_path,
+):
+    from songmirror.engine.targets.apple import AppleMusicTarget
+
+    class Response:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    calls = []
+
+    def request(method, url, params=None, json_body=None, ok404=False):
+        calls.append((method, url))
+        if url.endswith("/tracks"):
+            return Response({"data": [{
+                "id": "relationship-1",
+                "attributes": {
+                    "name": "Public song",
+                    "artistName": "Public artist",
+                    "durationInMillis": 180000,
+                    "isrc": "USAAA2600001",
+                    "playParams": {"id": "apple-catalog-track"},
+                },
+            }]})
+        return Response({"data": [{
+            "id": "pl.u-public",
+            "attributes": {"name": "Public mix", "description": {"standard": "Open"}},
+            "relationships": {"tracks": {"data": [{"id": "relationship-1"}]}},
+        }]})
+
+    source = AppleMusicTarget.__new__(AppleMusicTarget)
+    source.storefront = "tr"
+    source.cache_file = str(tmp_path / "apple.json")
+    source._request = request
+
+    added = []
+    destination = _Prov(str(tmp_path / "dest.json"), [], source="deezer")
+    destination.resolve = lambda _track, _cache: ("deezer-track", "isrc")
+    destination.add = lambda _playlist, ids: added.extend(ids)
+
+    monkeypatch.setattr(
+        TransferService,
+        "_build",
+        lambda _self, provider_id, _opts: (
+            source if provider_id == "apple" else destination
+        ),
+    )
+    result = {}
+
+    async def scenario():
+        bus = EventBus()
+        bus.bind_loop(asyncio.get_running_loop())
+        sync = SyncService(SettingsStore(dir=tmp_path), bus)
+        service = TransferService(SettingsStore(dir=tmp_path), bus, sync)
+        result["preview"] = service.preview(
+            "https://music.apple.com/tr/playlist/public-mix/pl.u-public"
+        )
+        job = service.submit({
+            "source_provider": "apple",
+            "source_playlist_id": "pl.u-public",
+            "dest_provider": "deezer",
+            "dest_playlist_id": "p1",
+        })
+        result["job"] = await _await_job(service, job["id"])
+
+    asyncio.run(scenario())
+
+    assert result["preview"]["name"] == "Public mix"
+    assert result["preview"]["count"] == 1
+    assert result["job"]["status"] == "done"
+    assert result["job"]["added"] == 1
+    assert added == ["deezer-track"]
+    assert calls
+    assert all("/me/library/" not in url for _method, url in calls)
+
+
 def test_preview_rejects_text_that_is_not_a_playlist_link(tmp_path):
     svc = TransferService(SettingsStore(dir=tmp_path), EventBus(), None)
     with pytest.raises(TransferPreviewError):

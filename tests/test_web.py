@@ -86,6 +86,10 @@ def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
     for keys in PROVIDER_KEYS.values():
         for key in keys:
             monkeypatch.delenv(key, raising=False)
+    # The app lifespan normally loads an operator's local .env. This test
+    # models a clean install and must not perform live status checks with that
+    # machine-local configuration.
+    monkeypatch.setattr("songmirror.web.load_dotenv", lambda: False)
     with TestClient(_app(tmp_path)) as client:
         accounts = client.get("/api/accounts").json()
         assert {a["provider"] for a in accounts} == {
@@ -145,6 +149,38 @@ def test_account_profile_api_adds_labels_isolates_secrets_and_removes(tmp_path):
         assert client.delete(f"/api/accounts/{profile['id']}").json() == {"ok": True}
         assert not profile_dir.exists()
         assert profile["id"] not in {a["id"] for a in client.get("/api/accounts").json()}
+
+
+def test_accounts_report_catalog_only_apple_capabilities(tmp_path, monkeypatch):
+    from songmirror.services.accounts.apple import (
+        CATALOG_ONLY_CAPABILITIES,
+        CATALOG_ONLY_DETAIL,
+        AppleConnector,
+    )
+    from songmirror.services.accounts.base import ConnStatus
+
+    monkeypatch.setattr(
+        AppleConnector,
+        "status",
+        lambda _self: ConnStatus(
+            "connected",
+            CATALOG_ONLY_DETAIL,
+            CATALOG_ONLY_CAPABILITIES,
+        ),
+    )
+
+    with TestClient(_app(tmp_path)) as client:
+        accounts = client.get("/api/accounts").json()
+
+    apple = next(account for account in accounts if account["provider"] == "apple")
+    assert apple["id"].startswith("profile_default_")
+    assert apple["state"] == "connected"
+    assert apple["detail"] == CATALOG_ONLY_DETAIL
+    assert apple["capabilities"] == {
+        "library_read": False,
+        "library_write": False,
+        "public_playlist_read": True,
+    }
 
 
 def test_settings_roundtrip_masks_secrets(tmp_path):
@@ -242,6 +278,11 @@ def test_spotify_connect_accepts_web_session_without_oauth_redirect(tmp_path, mo
         "kind": "token_paste",
         "state": "connected",
         "detail": "signed-in web session · no developer API",
+        "capabilities": {
+            "library_read": True,
+            "library_write": True,
+            "public_playlist_read": True,
+        },
     }
 
 

@@ -16,9 +16,11 @@ from fastapi.responses import HTMLResponse
 
 from ...engine.targets import is_peer, target_class
 from ...services.accounts import CONNECTORS
-from ...services.accounts.base import ConnStatus, DeviceCode
+from ...services.accounts.base import FULL_PEER_CAPABILITIES, ConnStatus, DeviceCode
 
 router = APIRouter()
+
+_CAPABILITY_KEYS = ("library_read", "library_write", "public_playlist_read")
 
 
 def _profile(request: Request, identity: str):
@@ -42,6 +44,35 @@ def _conn(request: Request, identity: str):
 def _preserves_order(provider):
     cls = target_class(provider)
     return cls is not None and callable(getattr(cls, "replay_chronology", None))
+
+
+def _capabilities(provider, status):
+    """Current operations the connected credentials can perform.
+
+    Most peer connectors grant the target's full read/write contract. A
+    connector can narrow that set in ConnStatus when the credentials are valid
+    for only part of the provider, as with Apple's catalog-only accounts.
+    """
+
+    granted = set()
+    if status.state == "connected":
+        if status.capabilities is not None:
+            granted = set(status.capabilities)
+        elif is_peer(provider):
+            granted = set(FULL_PEER_CAPABILITIES)
+        else:
+            # Browse-only connectors still expose their own playlist directory,
+            # but cannot participate in track-level syncs or transfers.
+            granted = {"library_read"}
+    return {key: key in granted for key in _CAPABILITY_KEYS}
+
+
+def _status_values(provider, status):
+    return {
+        "state": status.state,
+        "detail": status.detail,
+        "capabilities": _capabilities(provider, status),
+    }
 
 
 def _redirect_uri(request: Request, account_id: str) -> str:
@@ -106,8 +137,7 @@ def _status_payload(request, profile):
         "removable": not profile.is_default,
         "auth_kind": connector.auth_kind,
         "fields": fields,
-        "state": status.state,
-        "detail": status.detail,
+        **_status_values(profile.provider, status),
         "transferable": is_peer(profile.provider),
         "preserves_order": _preserves_order(profile.provider),
     }
@@ -170,7 +200,7 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
         if connector.auth_kind == "oauth_device":
             return {"kind": "device", **asdict(connector.begin_device())}
         status = connector.submit(body or {})
-    return {"kind": connector.auth_kind, "state": status.state, "detail": status.detail}
+    return {"kind": connector.auth_kind, **_status_values(profile.provider, status)}
 
 
 @router.get("/oauth/{account_id}/callback")
@@ -205,7 +235,7 @@ async def poll(account_id: str, request: Request):
     code = DeviceCode("", "", body["device_code"], body.get("interval", 5))
     with request.app.state.account_profiles.activate(profile.id):
         status = _conn(request, profile.id).poll_device(code)
-    return {"state": status.state, "detail": status.detail}
+    return _status_values(profile.provider, status)
 
 
 @router.post("/api/accounts/{account_id}/disconnect")
@@ -240,7 +270,7 @@ async def ytmusic_enable_browser(account_id: str, request: Request, body: dict =
     profile, connector = _provider_connector(request, account_id, "ytmusic")
     with request.app.state.account_profiles.activate(profile.id):
         status = connector.enable_browser(body.get("headers", ""))
-    return {"state": status.state, "detail": status.detail}
+    return _status_values(profile.provider, status)
 
 
 @router.delete("/api/accounts/{account_id}/ytmusic/browser")
@@ -248,7 +278,7 @@ def ytmusic_disable_browser(account_id: str, request: Request):
     profile, connector = _provider_connector(request, account_id, "ytmusic")
     with request.app.state.account_profiles.activate(profile.id):
         status = connector.disable_browser()
-    return {"state": status.state, "detail": status.detail}
+    return _status_values(profile.provider, status)
 
 
 @router.post("/api/accounts/{account_id}/spotify/cookie")
@@ -256,7 +286,7 @@ async def spotify_enable_cookie(account_id: str, request: Request, body: dict = 
     profile, connector = _provider_connector(request, account_id, "spotify")
     with request.app.state.account_profiles.activate(profile.id):
         status = connector.enable_cookie(body.get("sp_dc", ""))
-    return {"state": status.state, "detail": status.detail}
+    return _status_values(profile.provider, status)
 
 
 @router.delete("/api/accounts/{account_id}/spotify/cookie")
@@ -264,7 +294,7 @@ def spotify_disable_cookie(account_id: str, request: Request):
     profile, connector = _provider_connector(request, account_id, "spotify")
     with request.app.state.account_profiles.activate(profile.id):
         status = connector.disable_cookie()
-    return {"state": status.state, "detail": status.detail}
+    return _status_values(profile.provider, status)
 
 
 @router.post("/api/accounts/{account_id}/spotify/isrc-app")
@@ -274,7 +304,7 @@ async def spotify_set_isrc_app(account_id: str, request: Request, body: dict = B
         status = connector.set_isrc_app(
             body.get("client_id", ""), body.get("client_secret", "")
         )
-    return {"state": status.state, "detail": status.detail}
+    return _status_values(profile.provider, status)
 
 
 @router.delete("/api/accounts/{account_id}/spotify/isrc-app")
@@ -282,7 +312,7 @@ def spotify_clear_isrc_app(account_id: str, request: Request):
     profile, connector = _provider_connector(request, account_id, "spotify")
     with request.app.state.account_profiles.activate(profile.id):
         status = connector.clear_isrc_app()
-    return {"state": status.state, "detail": status.detail}
+    return _status_values(profile.provider, status)
 
 
 # Compatibility routes used by pre-profile frontends. Provider ids resolve to

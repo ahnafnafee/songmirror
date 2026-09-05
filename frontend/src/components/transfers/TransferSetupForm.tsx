@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { api, errorMessage } from '@/api'
 import type { ProviderPlaylistsEntry } from '@/hooks/useProviderPlaylists'
+import { capabilitiesOf } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { serviceLogoId, tagText } from '@/lib/constants'
 import type { Account, StartTransferRequest, TransferSourcePreview } from '@/types'
@@ -61,11 +62,26 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   // Only sync/transfer peers can be an endpoint — browse-only services like
   // Jellyfin (a local mirror the download step feeds) are filtered out.
   const transferable = useMemo(() => accounts.filter((a) => a.transferable), [accounts])
+  const librarySources = useMemo(
+    () => transferable.filter((account) => capabilitiesOf(account).library_read),
+    [transferable],
+  )
+  const publicSources = useMemo(
+    () => transferable.filter((account) => capabilitiesOf(account).public_playlist_read),
+    [transferable],
+  )
   // Same-provider transfers are allowed (e.g. copy a followed Spotify list into a
   // new owned Spotify playlist), so the destination service list isn't filtered.
-  const destProviderOptions = transferable
+  const destProviderOptions = useMemo(
+    () => transferable.filter((account) => capabilitiesOf(account).library_write),
+    [transferable],
+  )
   const sourceAccount = transferable.find((account) => account.id === sourceProvider)
   const destAccount = transferable.find((account) => account.id === destProvider)
+  const canConfigureTransfer =
+    transferable.length >= 2 &&
+    destProviderOptions.length > 0 &&
+    (librarySources.length > 0 || publicSources.length > 0)
 
   // Default "create new"'s name to the source playlist's name — re-derives
   // whenever the source playlist or the create-new choice changes, but a
@@ -185,10 +201,10 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
         </p>
       </div>
 
-      {transferable.length < 2 ? (
+      {!canConfigureTransfer ? (
         <p className="text-sm text-text-3">
-          Connect at least 2 transferable accounts on the Accounts page to copy a playlist between
-          them. Browse-only accounts like Jellyfin can't be a transfer endpoint.
+          Connect a readable source and a writable destination on the Accounts page to copy a playlist
+          between them. Catalog-only accounts can supply a public link, but cannot be destinations.
         </p>
       ) : (
         <>
@@ -221,7 +237,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                     <SelectField
                       label="Service"
                       icon={serviceIcon(sourceAccount)}
-                      options={[{ value: '', label: 'Choose a service…' }, ...transferable.map((a) => ({ value: a.id, label: a.name }))]}
+                      options={[{ value: '', label: 'Choose a service…' }, ...librarySources.map((a) => ({ value: a.id, label: a.name }))]}
                       value={sourceProvider}
                       onChange={(e) => {
                         setSourceProvider(e.target.value)
@@ -243,7 +259,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                       label="Open with account"
                       help="The link must belong to the selected account's service."
                       icon={serviceIcon(sourceAccount)}
-                      options={[{ value: '', label: 'Choose an account…' }, ...transferable.map((a) => ({ value: a.id, label: a.name }))]}
+                      options={[{ value: '', label: 'Choose an account…' }, ...publicSources.map((a) => ({ value: a.id, label: a.name }))]}
                       value={sourceProvider}
                       onChange={(e) => {
                         setSourceProvider(e.target.value)
@@ -254,7 +270,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                     />
                     <TextField
                       label="Playlist link"
-                      help="A public playlist URL from any connected service. It does not have to be saved in your library."
+                      help="A public playlist URL from a connected service with public-link access. It does not have to be saved in your library."
                       placeholder="https://open.spotify.com/playlist/…"
                       value={sourceLink}
                       onChange={(e) => clearLink(e.target.value)}

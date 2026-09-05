@@ -12,6 +12,7 @@ import { TextField } from '@/components/ui/TextField'
 import { Toggle } from '@/components/ui/Toggle'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { useSettings } from '@/hooks/useSettings'
+import { canSyncAccount } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { serviceLogoId, tagDot, tagText } from '@/lib/constants'
 import { isValidIntervalText, isValidPositiveInt } from '@/lib/format'
@@ -149,8 +150,9 @@ function ProviderChip({
   role?: 'source' | 'order' | 'authority' | 'mirror'
   onToggle: () => void
 }) {
+  const connected = canSyncAccount(account)
+  const unavailableLabel = account.state === 'connected' ? 'catalog only' : 'not connected'
   const logoId = serviceLogoId(account.provider)
-  const connected = account.state === 'connected'
 
   return (
     <button
@@ -160,7 +162,9 @@ function ProviderChip({
       aria-pressed={connected ? checked : undefined}
       title={
         !connected
-          ? `Connect ${account.name} on the Accounts page to include it in syncing.`
+          ? account.state === 'connected'
+            ? `${account.name} has catalog-only access and cannot participate in syncing.`
+            : `Connect ${account.name} on the Accounts page to include it in syncing.`
           : locked
             ? `${account.name} is ${role === 'order' ? 'the order authority' : role === 'authority' ? 'an authority' : 'the sync source'} and is always included.`
             : undefined
@@ -185,7 +189,7 @@ function ProviderChip({
           {role}
         </span>
       )}
-      {!connected && <span className="font-normal text-text-3">not connected</span>}
+      {!connected && <span className="font-normal text-text-3">{unavailableLabel}</span>}
     </button>
   )
 }
@@ -194,8 +198,9 @@ function ProviderChip({
  * source of truth" picker — same visual language as ProviderChip, but
  * exclusive-choice (radio) rather than a toggle set. */
 function SourceChip({ account, selected, onSelect }: { account: Account; selected: boolean; onSelect: () => void }) {
+  const connected = canSyncAccount(account)
+  const unavailableLabel = account.state === 'connected' ? 'catalog only' : 'not connected'
   const logoId = serviceLogoId(account.provider)
-  const connected = account.state === 'connected'
 
   return (
     <button
@@ -204,7 +209,13 @@ function SourceChip({ account, selected, onSelect }: { account: Account; selecte
       aria-checked={connected ? selected : undefined}
       onClick={connected ? onSelect : undefined}
       disabled={!connected}
-      title={!connected ? `Connect ${account.name} on the Accounts page to choose it as the source.` : undefined}
+      title={
+        !connected
+          ? account.state === 'connected'
+            ? `${account.name} has catalog-only access and cannot be a sync source.`
+            : `Connect ${account.name} on the Accounts page to choose it as the source.`
+          : undefined
+      }
       className={cn(
         'inline-flex h-9 items-center gap-2 rounded-chip border-[1.5px] px-3 text-[13px] font-semibold transition-colors duration-fast',
         !connected
@@ -220,7 +231,7 @@ function SourceChip({ account, selected, onSelect }: { account: Account; selecte
         <span className={cn('size-2 shrink-0 rounded-full', tagDot(account.provider))} aria-hidden="true" />
       )}
       {account.name}
-      {!connected && <span className="font-normal text-text-3">not connected</span>}
+      {!connected && <span className="font-normal text-text-3">{unavailableLabel}</span>}
     </button>
   )
 }
@@ -308,7 +319,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     if (!job) {
       // Snapshot the connected peers now. Persisting an empty sentinel would
       // make this job silently gain every provider connected in the future.
-      const connected = syncPeersOf(accounts).filter((account) => account.state === 'connected')
+      const connected = syncPeersOf(accounts).filter(canSyncAccount)
       initial.providers = connected.map((account) => account.id).join(',')
       initial.source = connected.find((account) => account.provider === 'spotify')?.id ?? connected[0]?.id ?? initial.source
     }
@@ -347,7 +358,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     form.mode !== 'nway' && sourceAccount?.provider !== 'spotify' && (form.download || jellyfinConnected)
 
   const enabledProviders = enabledProvidersOf({ providers: form.providers }, syncPeers)
-  const connectedPeerIds = new Set(syncPeers.filter((account) => account.state === 'connected').map((account) => account.id))
+  const connectedPeerIds = new Set(syncPeers.filter(canSyncAccount).map((account) => account.id))
 
   function csvInPeerOrder(ids: Set<string>) {
     return syncPeers.filter((account) => ids.has(account.id)).map((account) => account.id).join(',')
@@ -356,7 +367,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
   function selectMode(mode: SyncMode) {
     setForm((prev) => {
       const next = { ...prev, mode }
-      const connected = syncPeers.filter((account) => account.state === 'connected').map((account) => account.id)
+      const connected = syncPeers.filter(canSyncAccount).map((account) => account.id)
       if (mode === 'group') {
         const spotifyAccount = syncPeers.find(
           (account) => account.state === 'connected' && account.provider === 'spotify',

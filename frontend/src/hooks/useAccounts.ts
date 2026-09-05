@@ -15,7 +15,17 @@ function isAccountArray(value: unknown): value is Account[] {
         typeof account.name === 'string' &&
         typeof account.state === 'string' &&
         Array.isArray(account.fields) &&
-        typeof account.transferable === 'boolean',
+        typeof account.transferable === 'boolean' &&
+        (!('capabilities' in account) || (
+          account.capabilities !== null &&
+          typeof account.capabilities === 'object' &&
+          'library_read' in account.capabilities &&
+          typeof account.capabilities.library_read === 'boolean' &&
+          'library_write' in account.capabilities &&
+          typeof account.capabilities.library_write === 'boolean' &&
+          'public_playlist_read' in account.capabilities &&
+          typeof account.capabilities.public_playlist_read === 'boolean'
+        )),
     )
   )
 }

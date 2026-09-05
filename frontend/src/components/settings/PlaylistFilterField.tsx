@@ -3,6 +3,7 @@ import { LuCheck, LuChevronDown, LuChevronUp, LuHeart, LuInfo, LuSearch, LuX } f
 
 import { useAccounts } from '@/hooks/useAccounts'
 import { useProviderPlaylists } from '@/hooks/useProviderPlaylists'
+import { capabilitiesOf } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { formatTrackCount } from '@/lib/format'
 import { providerLikedTracksLabel } from '@/lib/likedTracks'
@@ -53,7 +54,12 @@ interface PickerSource {
  * playlist can legitimately exist on more than one service). */
 function usePickerSource(preferredProviderId?: string | null): PickerSource {
   const { accounts } = useAccounts()
-  const connected = useMemo(() => accounts?.filter((a: Account) => a.state === 'connected') ?? [], [accounts])
+  const connected = useMemo(
+    () => accounts?.filter((account: Account) => (
+      account.state === 'connected' && capabilitiesOf(account).library_read
+    )) ?? [],
+    [accounts],
+  )
   const connectedIds = useMemo(() => connected.map((a) => a.id), [connected])
   const { entries } = useProviderPlaylists(connectedIds)
   const pinned = preferredProviderId

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { api, errorMessage } from '@/api'
+import { capabilitiesOf } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { serviceLogoId, tagDot, tagText } from '@/lib/constants'
 import type { Account, AuthKind } from '@/types'
@@ -50,6 +51,8 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
   const [error, setError] = useState<string | null>(null)
 
   const isConnected = account.state === 'connected' || account.state === 'expired'
+  const capabilities = capabilitiesOf(account)
+  const catalogOnly = capabilities.public_playlist_read && !capabilities.library_read
   const logoId = serviceLogoId(account.provider)
 
   async function disconnect() {
@@ -125,6 +128,12 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
             Cancel
           </Button>
         </div>
+      )}
+
+      {catalogOnly && account.detail && (
+        <p className="rounded-control bg-info-soft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-text-2">
+          {account.detail}
+        </p>
       )}
 
       {account.detail && account.state !== 'connected' && account.state !== 'error' && (

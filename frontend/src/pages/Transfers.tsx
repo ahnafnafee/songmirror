@@ -11,11 +11,15 @@ import { useAccounts } from '@/hooks/useAccounts'
 import { useEventStream } from '@/hooks/useEventStream'
 import { useProviderPlaylists } from '@/hooks/useProviderPlaylists'
 import { useTransfer } from '@/hooks/useTransfer'
+import { capabilitiesOf } from '@/lib/accountCapabilities'
 
 export default function Transfers() {
   const { accounts, loading: accountsLoading, error: accountsError } = useAccounts()
   const connectedAccounts = useMemo(() => accounts?.filter((a) => a.state === 'connected') ?? [], [accounts])
-  const connectedIds = useMemo(() => connectedAccounts.map((a) => a.id), [connectedAccounts])
+  const connectedIds = useMemo(
+    () => connectedAccounts.filter((account) => capabilitiesOf(account).library_read).map((account) => account.id),
+    [connectedAccounts],
+  )
   const { entries } = useProviderPlaylists(connectedIds)
 
   const [jobId, setJobId] = useState<string | null>(null)

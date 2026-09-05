@@ -14,6 +14,7 @@ from .amazon_music import AmazonMusicTarget
 from .base import (
     MirrorTarget,
     TargetAuthError,
+    TargetCapabilityError,
     TargetDirectoryIncompleteError,
     TargetTransientError,
     mirror_pair,
@@ -27,6 +28,7 @@ from . import ytmusic
 
 __all__ = ["AppleMusicTarget", "AmazonMusicTarget", "DeezerTarget", "QobuzTarget",
            "SpotifyTarget", "TidalTarget", "MirrorTarget", "TargetAuthError",
+           "TargetCapabilityError",
            "TargetDirectoryIncompleteError", "TargetTransientError",
            "mirror_pair", "reconcile", "build_targets", "build_peers", "build_one", "is_peer",
            "target_class", "provider_ids",
