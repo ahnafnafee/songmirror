@@ -151,19 +151,19 @@ export const api = {
 
   // Persistent scheduled playlist-metadata backups
   getPlaylistBackups: () => request<PlaylistBackupJob[]>('/api/playlist-backups'),
-  savePlaylistBackup: (provider: string, values: PlaylistBackupUpdate) =>
+  savePlaylistBackup: (accountId: string, values: PlaylistBackupUpdate) =>
     request<PlaylistBackupJob>(
-      `/api/playlist-backups/${encodeURIComponent(provider)}`,
+      `/api/playlist-backups/${encodeURIComponent(accountId)}`,
       { method: 'PUT', body: JSON.stringify(values) },
     ),
-  deletePlaylistBackup: (provider: string) =>
-    request<OkResponse>(`/api/playlist-backups/${encodeURIComponent(provider)}`, { method: 'DELETE' }),
-  runPlaylistBackup: (provider: string) =>
-    request<QueueResponse>(`/api/playlist-backups/${encodeURIComponent(provider)}/run`, { method: 'POST' }),
-  downloadLatestPlaylistBackup: (provider: string) =>
+  deletePlaylistBackup: (accountId: string) =>
+    request<OkResponse>(`/api/playlist-backups/${encodeURIComponent(accountId)}`, { method: 'DELETE' }),
+  runPlaylistBackup: (accountId: string) =>
+    request<QueueResponse>(`/api/playlist-backups/${encodeURIComponent(accountId)}/run`, { method: 'POST' }),
+  downloadLatestPlaylistBackup: (accountId: string) =>
     download(
-      `/api/playlist-backups/${encodeURIComponent(provider)}/latest`,
-      `songmirror-${provider}-playlists.json`,
+      `/api/playlist-backups/${encodeURIComponent(accountId)}/latest`,
+      `songmirror-${accountId}-playlists.json`,
     ),
 
   // Sync (global: run-all + the auto-sync master switch)

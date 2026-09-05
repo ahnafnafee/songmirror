@@ -147,8 +147,10 @@ const SETTINGS = {
 function initialPlaylistBackups() {
   const now = Date.now()
   return [{
+    account_id: 'spotify',
     provider: 'spotify',
     provider_name: 'Spotify',
+    account_name: 'Spotify',
     enabled: true,
     interval: '24h',
     format: 'json',
@@ -584,13 +586,15 @@ async function installMocks(page, opts = {}) {
 
     if (p === '/api/playlist-backups' && method === 'GET') return json(playlistBackupsData)
     if (/^\/api\/playlist-backups\/[^/]+$/.test(p) && method === 'PUT') {
-      const provider = decodeURIComponent(p.split('/')[3])
+      const accountId = decodeURIComponent(p.split('/')[3])
       const body = req.postDataJSON() ?? {}
-      const account = accountsData.find((item) => item.id === provider)
-      const existing = playlistBackupsData.find((item) => item.provider === provider)
+      const account = accountsData.find((item) => item.id === accountId)
+      const existing = playlistBackupsData.find((item) => item.account_id === accountId)
       const updated = {
-        provider,
-        provider_name: account?.name ?? provider,
+        account_id: accountId,
+        provider: account?.provider ?? existing?.provider ?? accountId,
+        provider_name: account?.provider_name ?? existing?.provider_name ?? accountId,
+        account_name: account?.name ?? existing?.account_name ?? accountId,
         enabled: true,
         interval: '24h',
         format: 'json',
@@ -598,31 +602,31 @@ async function installMocks(page, opts = {}) {
         running: false,
         next_run_at: Math.floor(Date.now() / 1000) + 24 * 3600,
         snapshot_count: 0,
-        storage_path: `/data/playlist_backups/${provider}`,
+        storage_path: `/data/playlist_backups/${accountId}`,
         last_success: null,
         last_failure: null,
         ...existing,
         ...body,
       }
       playlistBackupsData = [
-        ...playlistBackupsData.filter((item) => item.provider !== provider),
+        ...playlistBackupsData.filter((item) => item.account_id !== accountId),
         updated,
       ]
       return json(updated)
     }
     if (/^\/api\/playlist-backups\/[^/]+$/.test(p) && method === 'DELETE') {
-      const provider = decodeURIComponent(p.split('/')[3])
-      playlistBackupsData = playlistBackupsData.filter((item) => item.provider !== provider)
+      const accountId = decodeURIComponent(p.split('/')[3])
+      playlistBackupsData = playlistBackupsData.filter((item) => item.account_id !== accountId)
       return json({ ok: true })
     }
     if (/^\/api\/playlist-backups\/[^/]+\/run$/.test(p) && method === 'POST') {
-      const provider = decodeURIComponent(p.split('/')[3])
-      playlistBackupsData = playlistBackupsData.map((item) => item.provider === provider ? {
+      const accountId = decodeURIComponent(p.split('/')[3])
+      playlistBackupsData = playlistBackupsData.map((item) => item.account_id === accountId ? {
         ...item,
         snapshot_count: item.snapshot_count + 1,
         last_success: {
           at: new Date().toISOString(),
-          filename: `songmirror-${provider}-all-playlists-20260904T120000Z.${item.format}`,
+          filename: `songmirror-${accountId}-all-playlists-20260904T120000Z.${item.format}`,
           format: item.format,
           playlist_count: 12,
           track_count: 847,
@@ -2418,11 +2422,11 @@ async function main() {
       console.log(`${manualBackupRecorded ? 'ok        ' : 'FAIL      '} an on-demand backup refreshes the persisted snapshot status`)
       if (!manualBackupRecorded) results.push({ label: 'playlist backup run now', overflow: true })
 
-      await page.getByLabel('Add a connected service', { exact: true }).selectOption('apple')
+      await page.getByLabel('Add a connected account', { exact: true }).selectOption('apple')
       await page.getByRole('button', { name: 'Add daily backup', exact: true }).click()
       await page.waitForSelector('h3:has-text("Apple Music")')
       const appleScheduleAdded = (await page.locator('body').innerText()).includes('/data/playlist_backups/apple')
-      console.log(`${appleScheduleAdded ? 'ok        ' : 'FAIL      '} a connected provider gets its own persisted backup schedule`)
+      console.log(`${appleScheduleAdded ? 'ok        ' : 'FAIL      '} a connected account gets its own persisted backup schedule`)
       if (!appleScheduleAdded) results.push({ label: 'playlist backup schedule create', overflow: true })
       await checkOverflow(page, `Settings shape @ ${width}`, results)
       await shot(page, `settings-${width}`)
@@ -4058,6 +4062,79 @@ async function main() {
       if (!payloadOk) results.push({ label: 'same-provider transfer profile payload', overflow: true })
       await checkOverflow(page, 'Household profiles and cross-profile transfer @ 1280', results)
       await shot(page, 'household-profile-transfer')
+      await context.close()
+    }
+
+    // -----------------------------------------------------------------
+    // Scheduled backups are account-scoped: after one Spotify profile has a
+    // schedule, a second Spotify profile remains selectable and gets its own
+    // API identity, card label, storage directory, and run history.
+    // -----------------------------------------------------------------
+    {
+      const context = await browser.newContext()
+      await context.addInitScript(() => window.localStorage.setItem('songmirror-theme', 'light'))
+      const page = await context.newPage()
+      const spotify = ACCOUNTS.find((account) => account.provider === 'spotify')
+      const defaultSpotify = {
+        ...spotify,
+        id: 'profile_default_spotify',
+        label: 'Spotify',
+        name: 'Spotify',
+        is_default: true,
+        removable: false,
+        state: 'connected',
+      }
+      const alexSpotify = {
+        ...spotify,
+        id: 'profile_alex_spotify',
+        label: 'Alex',
+        name: 'Spotify · Alex',
+        is_default: false,
+        removable: true,
+        state: 'connected',
+      }
+      const defaultBackup = {
+        ...initialPlaylistBackups()[0],
+        account_id: defaultSpotify.id,
+        provider: 'spotify',
+        provider_name: 'Spotify',
+        account_name: 'Spotify',
+        storage_path: `/data/playlist_backups/${defaultSpotify.id}`,
+      }
+      await installMocks(page, {
+        accounts: [defaultSpotify, alexSpotify],
+        playlistBackups: [defaultBackup],
+      })
+      let scheduledAccount = null
+      page.on('request', (request) => {
+        const url = new URL(request.url())
+        if (request.method() === 'PUT' && /^\/api\/playlist-backups\/[^/]+$/.test(url.pathname)) {
+          scheduledAccount = decodeURIComponent(url.pathname.split('/')[3])
+        }
+      })
+
+      await page.setViewportSize({ width: 1280, height: 900 })
+      await page.goto(BASE_URL + '/settings', { waitUntil: 'networkidle' })
+      const accountSelect = page.getByLabel('Add a connected account', { exact: true })
+      const availableAccountIds = await accountSelect.locator('option').evaluateAll(
+        (options) => options.map((option) => option.value),
+      )
+      const secondProfileAvailable =
+        availableAccountIds.includes(alexSpotify.id)
+        && !availableAccountIds.includes(defaultSpotify.id)
+      await accountSelect.selectOption(alexSpotify.id)
+      await page.getByRole('button', { name: 'Add daily backup', exact: true }).click()
+      await page.getByRole('heading', { name: 'Spotify · Alex', exact: true }).waitFor()
+      const body = await page.locator('body').innerText()
+      const profilesStaySeparate =
+        secondProfileAvailable
+        && scheduledAccount === alexSpotify.id
+        && body.includes(`/data/playlist_backups/${defaultSpotify.id}`)
+        && body.includes(`/data/playlist_backups/${alexSpotify.id}`)
+      console.log(`${profilesStaySeparate ? 'ok        ' : 'FAIL      '} scheduled backups keep same-provider accounts separate`)
+      if (!profilesStaySeparate) results.push({ label: 'account-scoped scheduled backups', overflow: true })
+      await checkOverflow(page, 'Account-scoped scheduled backups @ 1280', results)
+      await shot(page, 'account-scoped-scheduled-backups')
       await context.close()
     }
 

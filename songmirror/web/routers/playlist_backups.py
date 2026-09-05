@@ -14,9 +14,9 @@ router = APIRouter()
 _FIELDS = {"enabled", "interval", "format", "retention"}
 
 
-def _known_provider(provider, profiles=None):
-    account_id = str(provider).strip().casefold()
-    provider_id = account_id
+def _known_account(account_id, profiles=None):
+    account_id = str(account_id).strip().casefold()
+    provider = account_id
     if profiles is not None:
         profile = profiles.resolve(account_id)
         if profile is None:
@@ -25,8 +25,8 @@ def _known_provider(provider, profiles=None):
                 detail="account must be a supported playlist service",
             )
         account_id = profile.id
-        provider_id = profile.provider
-    if provider_id not in CONNECTORS or not is_peer(provider_id):
+        provider = profile.provider
+    if provider not in CONNECTORS or not is_peer(provider):
         raise HTTPException(
             status_code=422,
             detail="account must be a supported playlist service",
@@ -34,8 +34,8 @@ def _known_provider(provider, profiles=None):
     return account_id
 
 
-def _job_from(provider, values, existing=None, profiles=None):
-    provider = _known_provider(provider, profiles)
+def _job_from(account_id, values, existing=None, profiles=None):
+    account_id = _known_account(account_id, profiles)
     if not isinstance(values, dict):
         raise HTTPException(status_code=422, detail="request body must be an object")
     unknown = set(values) - _FIELDS
@@ -44,9 +44,9 @@ def _job_from(provider, values, existing=None, profiles=None):
             status_code=422,
             detail=f"unknown field: {sorted(unknown)[0]}",
         )
-    data = asdict(existing) if existing is not None else {"provider": provider}
+    data = asdict(existing) if existing is not None else {"account_id": account_id}
     data.update(values)
-    data["provider"] = provider
+    data["account_id"] = account_id
     retention = data.get("retention")
     if retention is not None and type(retention) is not int:
         raise HTTPException(status_code=422, detail="retention must be a whole number")
@@ -61,20 +61,20 @@ def list_playlist_backups(request: Request):
     return request.app.state.playlist_backups.list_status()
 
 
-@router.put("/api/playlist-backups/{provider}")
+@router.put("/api/playlist-backups/{account_id}")
 async def put_playlist_backup(
-    provider: str,
+    account_id: str,
     request: Request,
     values: dict = Body(...),
 ):
     service = request.app.state.playlist_backups
     profiles = request.app.state.account_profiles
-    provider = _known_provider(provider, profiles)
+    account_id = _known_account(account_id, profiles)
     job = service.store.upsert(
         _job_from(
-            provider,
+            account_id,
             values,
-            existing=service.store.get(provider),
+            existing=service.store.get(account_id),
             profiles=profiles,
         )
     )
@@ -82,34 +82,34 @@ async def put_playlist_backup(
     return service.job_status(job)
 
 
-@router.delete("/api/playlist-backups/{provider}")
-async def delete_playlist_backup(provider: str, request: Request):
+@router.delete("/api/playlist-backups/{account_id}")
+async def delete_playlist_backup(account_id: str, request: Request):
     service = request.app.state.playlist_backups
-    provider = _known_provider(provider, request.app.state.account_profiles)
-    if service.store.get(provider) is None:
+    account_id = _known_account(account_id, request.app.state.account_profiles)
+    if service.store.get(account_id) is None:
         raise HTTPException(status_code=404, detail="backup schedule not found")
-    service.store.delete(provider)
+    service.store.delete(account_id)
     await service.reconcile()
     return {"ok": True}
 
 
-@router.post("/api/playlist-backups/{provider}/run")
-async def run_playlist_backup(provider: str, request: Request):
+@router.post("/api/playlist-backups/{account_id}/run")
+async def run_playlist_backup(account_id: str, request: Request):
     service = request.app.state.playlist_backups
-    provider = _known_provider(provider, request.app.state.account_profiles)
-    if service.store.get(provider) is None:
+    account_id = _known_account(account_id, request.app.state.account_profiles)
+    if service.store.get(account_id) is None:
         raise HTTPException(status_code=404, detail="backup schedule not found")
-    queued = service.queue(provider)
+    queued = service.queue(account_id)
     return JSONResponse({"queued": queued}, status_code=202)
 
 
-@router.get("/api/playlist-backups/{provider}/latest")
-def latest_playlist_backup(provider: str, request: Request):
+@router.get("/api/playlist-backups/{account_id}/latest")
+def latest_playlist_backup(account_id: str, request: Request):
     service = request.app.state.playlist_backups
-    provider = _known_provider(provider, request.app.state.account_profiles)
-    if service.store.get(provider) is None:
+    account_id = _known_account(account_id, request.app.state.account_profiles)
+    if service.store.get(account_id) is None:
         raise HTTPException(status_code=404, detail="backup schedule not found")
-    snapshot = service.store.latest_snapshot(provider)
+    snapshot = service.store.latest_snapshot(account_id)
     if snapshot is None:
         raise HTTPException(status_code=404, detail="no playlist backup exists yet")
     media_type = "application/xml" if snapshot.suffix == ".xml" else "application/json"

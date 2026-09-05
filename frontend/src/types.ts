@@ -418,14 +418,17 @@ export interface PlaylistBackupFailure {
   error: string
 }
 
-/** GET /api/playlist-backups — one persistent provider-wide backup schedule
- * plus its scheduler state and durable last-success/last-failure history. */
+/** GET /api/playlist-backups — one persistent account-wide backup schedule
+ * plus its provider metadata, scheduler state, and durable run history. */
 export interface PlaylistBackupJob {
-  /** Stable account profile id used by the schedule and API routes. */
+  /** Stable account profile id used by the schedule, storage, and API routes. */
+  account_id: string
+  /** Connector/catalog type shared by one or more accounts. */
   provider: string
-  /** Connector/catalog type used for provider branding. */
-  provider_type?: string
+  /** Provider brand name, such as Spotify. */
   provider_name: string
+  /** Profile-aware display name, such as Spotify · Alex. */
+  account_name: string
   enabled: boolean
   interval: string
   format: PlaylistBackupFormat

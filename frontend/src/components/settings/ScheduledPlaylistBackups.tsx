@@ -112,7 +112,7 @@ function BackupScheduleCard({
     setBusy('save')
     setActionError(null)
     try {
-      await api.savePlaylistBackup(job.provider, {
+      await api.savePlaylistBackup(job.account_id, {
         enabled: draft.enabled,
         interval: draft.interval.trim(),
         format: draft.format,
@@ -130,7 +130,7 @@ function BackupScheduleCard({
     setBusy('run')
     setActionError(null)
     try {
-      await api.runPlaylistBackup(job.provider)
+      await api.runPlaylistBackup(job.account_id)
       await refresh()
     } catch (err) {
       setActionError(errorMessage(err))
@@ -143,7 +143,7 @@ function BackupScheduleCard({
     setBusy('download')
     setActionError(null)
     try {
-      await api.downloadLatestPlaylistBackup(job.provider)
+      await api.downloadLatestPlaylistBackup(job.account_id)
     } catch (err) {
       setActionError(errorMessage(err))
     } finally {
@@ -155,7 +155,7 @@ function BackupScheduleCard({
     setBusy('delete')
     setActionError(null)
     try {
-      await api.deletePlaylistBackup(job.provider)
+      await api.deletePlaylistBackup(job.account_id)
       setConfirmDelete(false)
       await refresh()
     } catch (err) {
@@ -170,13 +170,13 @@ function BackupScheduleCard({
       <div className="flex flex-wrap items-start gap-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface text-text-2">
           <ServiceLogo
-            service={(job.provider_type ?? job.provider) as Parameters<typeof ServiceLogo>[0]['service']}
+            service={job.provider as Parameters<typeof ServiceLogo>[0]['service']}
             className="size-5"
           />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-text">{job.provider_name}</h3>
+            <h3 className="text-sm font-semibold text-text">{job.account_name}</h3>
             <span className={`rounded-chip px-2 py-0.5 font-mono text-[10px] font-semibold ${
               job.running
                 ? 'bg-accent-soft text-accent'
@@ -202,7 +202,7 @@ function BackupScheduleCard({
         <Toggle
           checked={draft.enabled}
           onChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
-          label={`Automatically back up ${job.provider_name}`}
+          label={`Automatically back up ${job.account_name}`}
           hideLabel
         />
       </div>
@@ -274,7 +274,7 @@ function BackupScheduleCard({
           icon={<LuSave className="size-3.5" aria-hidden="true" />}
           loading={busy === 'save'}
           disabled={!dirty || !intervalOk || !retentionOk || busy !== null}
-          aria-label={`Save ${job.provider_name} backup schedule`}
+          aria-label={`Save ${job.account_name} backup schedule`}
           onClick={() => void save()}
         >
           Save schedule
@@ -285,7 +285,7 @@ function BackupScheduleCard({
           icon={<LuPlay className="size-3.5" aria-hidden="true" />}
           loading={busy === 'run'}
           disabled={dirty || job.running || busy !== null}
-          aria-label={`Back up ${job.provider_name} now`}
+          aria-label={`Back up ${job.account_name} now`}
           onClick={() => void runNow()}
         >
           Back up now
@@ -296,7 +296,7 @@ function BackupScheduleCard({
           icon={<LuDownload className="size-3.5" aria-hidden="true" />}
           loading={busy === 'download'}
           disabled={job.snapshot_count === 0 || busy !== null}
-          aria-label={`Download latest ${job.provider_name} backup`}
+          aria-label={`Download latest ${job.account_name} backup`}
           onClick={() => void downloadLatest()}
         >
           Download latest
@@ -306,7 +306,7 @@ function BackupScheduleCard({
           variant="danger-ghost"
           icon={<LuTrash2 className="size-3.5" aria-hidden="true" />}
           disabled={busy !== null}
-          aria-label={`Remove ${job.provider_name} backup schedule`}
+          aria-label={`Remove ${job.account_name} backup schedule`}
           onClick={() => setConfirmDelete(true)}
         >
           Remove schedule
@@ -315,7 +315,7 @@ function BackupScheduleCard({
 
       <ConfirmDialog
         open={confirmDelete}
-        title={`Remove ${job.provider_name} backup schedule?`}
+        title={`Remove ${job.account_name} backup schedule?`}
         description={`Automatic runs will stop. The ${job.snapshot_count} snapshots already stored on disk will not be deleted.`}
         confirmLabel="Remove schedule"
         danger
@@ -327,7 +327,7 @@ function BackupScheduleCard({
   )
 }
 
-function connectedBackupProviders(accounts: Account[] | null, scheduled: Set<string>) {
+function connectedBackupAccounts(accounts: Account[] | null, scheduled: Set<string>) {
   return (accounts ?? []).filter((account) => (
     account.state === 'connected'
     && account.transferable
@@ -339,33 +339,33 @@ function connectedBackupProviders(accounts: Account[] | null, scheduled: Set<str
 export function ScheduledPlaylistBackups() {
   const { accounts, loading: accountsLoading } = useAccounts()
   const { backups, loading, error, refresh } = usePlaylistBackups()
-  const [provider, setProvider] = useState('')
+  const [accountId, setAccountId] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
   const scheduled = useMemo(
-    () => new Set((backups ?? []).map((job) => job.provider)),
+    () => new Set((backups ?? []).map((job) => job.account_id)),
     [backups],
   )
   const available = useMemo(
-    () => connectedBackupProviders(accounts, scheduled),
+    () => connectedBackupAccounts(accounts, scheduled),
     [accounts, scheduled],
   )
-  const connectedProviderCount = (accounts ?? []).filter((account) => (
+  const connectedAccountCount = (accounts ?? []).filter((account) => (
     account.state === 'connected'
     && account.transferable
     && capabilitiesOf(account).library_read
   )).length
-  const selectedProvider = available.some((account) => account.id === provider)
-    ? provider
+  const selectedAccount = available.some((account) => account.id === accountId)
+    ? accountId
     : available[0]?.id ?? ''
 
   async function addSchedule() {
-    if (!selectedProvider) return
+    if (!selectedAccount) return
     setAdding(true)
     setAddError(null)
     try {
-      await api.savePlaylistBackup(selectedProvider, DEFAULT_UPDATE)
-      setProvider('')
+      await api.savePlaylistBackup(selectedAccount, DEFAULT_UPDATE)
+      setAccountId('')
       await refresh()
     } catch (err) {
       setAddError(errorMessage(err))
@@ -383,7 +383,7 @@ export function ScheduledPlaylistBackups() {
         <div>
           <p className="text-sm font-medium text-text">Scheduled playlist archive</p>
           <p className="mt-0.5 text-xs leading-relaxed text-text-3">
-            Save fresh metadata for every playlist on a connected service alongside SongMirror's persistent app data.
+            Save fresh metadata for every playlist on a connected account alongside SongMirror's persistent app data.
             Snapshots contain no credentials and stay available when their schedule is removed.
           </p>
         </div>
@@ -392,7 +392,7 @@ export function ScheduledPlaylistBackups() {
       {error ? <p role="alert" className="rounded-control bg-danger-soft px-3 py-2 text-xs text-danger">Could not load backup schedules: {error}</p> : null}
       {loading ? <p className="text-xs text-text-3">Loading backup schedules…</p> : null}
       {(backups ?? []).map((job) => (
-        <BackupScheduleCard key={job.provider} job={job} refresh={refresh} />
+        <BackupScheduleCard key={job.account_id} job={job} refresh={refresh} />
       ))}
 
       {backups !== null ? (
@@ -401,11 +401,11 @@ export function ScheduledPlaylistBackups() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="min-w-0 flex-1">
                 <SelectField
-                  label="Add a connected service"
-                  help="One schedule archives all playlists from that service."
+                  label="Add a connected account"
+                  help="Each account gets its own schedule, storage, and run history."
                   options={available.map((account) => ({ value: account.id, label: account.name }))}
-                  value={selectedProvider}
-                  onChange={(event) => setProvider(event.target.value)}
+                  value={selectedAccount}
+                  onChange={(event) => setAccountId(event.target.value)}
                 />
               </div>
               <Button
@@ -421,9 +421,9 @@ export function ScheduledPlaylistBackups() {
             <p className="text-xs leading-relaxed text-text-3">
               {accountsLoading
                 ? 'Loading connected services…'
-                : connectedProviderCount === 0
-                  ? 'Connect a playlist service on the Accounts page to add a backup schedule.'
-                  : 'Every connected playlist service already has a backup schedule.'}
+                : connectedAccountCount === 0
+                  ? 'Connect a playlist account on the Accounts page to add a backup schedule.'
+                  : 'Every connected playlist account already has a backup schedule.'}
             </p>
           )}
           {addError ? <p role="alert" className="mt-2 text-xs text-danger">{addError}</p> : null}

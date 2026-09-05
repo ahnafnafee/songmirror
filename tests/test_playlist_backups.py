@@ -52,7 +52,7 @@ def _export(day, *, playlist_count=2, track_count=3):
     ],
 )
 def test_backup_job_validation_rejects_unsafe_schedules(changes, message):
-    job = PlaylistBackupJob(provider="spotify")
+    job = PlaylistBackupJob(account_id="spotify")
     for key, value in changes.items():
         setattr(job, key, value)
 
@@ -73,8 +73,8 @@ def test_backup_run_persists_status_and_prunes_only_managed_snapshots(
         lambda self, provider, format: next(exports),
     )
     store = PlaylistBackupStore(tmp_path)
-    store.upsert(PlaylistBackupJob(provider="spotify", retention=2))
-    unmanaged = store.provider_dir("spotify") / "read-me.txt"
+    store.upsert(PlaylistBackupJob(account_id="spotify", retention=2))
+    unmanaged = store.account_dir("spotify") / "read-me.txt"
     unmanaged.parent.mkdir(parents=True)
     unmanaged.write_text("keep me", encoding="utf-8")
     sync = _ExclusiveSync()
@@ -125,7 +125,7 @@ def test_backup_failure_is_persisted_without_erasing_last_success(tmp_path, monk
 
     monkeypatch.setattr(module.PlaylistService, "export", export)
     store = PlaylistBackupStore(tmp_path)
-    store.upsert(PlaylistBackupJob(provider="spotify"))
+    store.upsert(PlaylistBackupJob(account_id="spotify"))
     service = PlaylistBackupService(
         SettingsStore(dir=tmp_path),
         _ExclusiveSync(),
@@ -147,8 +147,8 @@ def test_backup_failure_is_persisted_without_erasing_last_success(tmp_path, monk
 
 def test_backup_scheduler_status_survives_restart_and_respects_enabled(tmp_path):
     store = PlaylistBackupStore(tmp_path)
-    store.upsert(PlaylistBackupJob(provider="spotify", interval="12h"))
-    store.upsert(PlaylistBackupJob(provider="apple", enabled=False))
+    store.upsert(PlaylistBackupJob(account_id="spotify", interval="12h"))
+    store.upsert(PlaylistBackupJob(account_id="apple", enabled=False))
     store.record_success("spotify", {
         "at": "2026-09-04T12:00:00Z",
         "filename": _export(1).filename,
@@ -166,7 +166,7 @@ def test_backup_scheduler_status_survives_restart_and_respects_enabled(tmp_path)
 
     async def scenario():
         await service.start()
-        statuses = {row["provider"]: row for row in service.list_status()}
+        statuses = {row["account_id"]: row for row in service.list_status()}
         assert statuses["spotify"]["next_run_at"] is not None
         assert statuses["spotify"]["last_success"]["filename"] == _export(1).filename
         assert statuses["apple"]["next_run_at"] is None
@@ -179,7 +179,7 @@ def test_scheduler_boundary_queues_an_automatic_backup(tmp_path, monkeypatch):
     import songmirror.services.playlist_backups as module
 
     store = PlaylistBackupStore(tmp_path)
-    store.upsert(PlaylistBackupJob(provider="spotify", interval="1m"))
+    store.upsert(PlaylistBackupJob(account_id="spotify", interval="1m"))
     service = PlaylistBackupService(
         SettingsStore(dir=tmp_path),
         _ExclusiveSync(),
@@ -218,7 +218,7 @@ def test_backup_run_and_storage_are_scoped_to_the_selected_profile(tmp_path, mon
 
     monkeypatch.setattr(module.PlaylistService, "export", export)
     store = PlaylistBackupStore(tmp_path, profiles=profiles)
-    store.upsert(PlaylistBackupJob(provider=alex.id))
+    store.upsert(PlaylistBackupJob(account_id=alex.id))
     service = PlaylistBackupService(
         settings,
         _ExclusiveSync(),
@@ -231,11 +231,78 @@ def test_backup_run_and_storage_are_scoped_to_the_selected_profile(tmp_path, mon
 
     status = service.list_status()[0]
     assert seen == [(alex.id, "json")]
-    assert status["provider"] == alex.id
-    assert status["provider_type"] == "spotify"
-    assert status["provider_name"] == "Spotify · Alex"
+    assert status["account_id"] == alex.id
+    assert status["provider"] == "spotify"
+    assert status["provider_name"] == "Spotify"
+    assert status["account_name"] == "Spotify · Alex"
     assert Path(status["storage_path"]).name == alex.id
     assert store.latest_snapshot(alex.id).is_file()
+
+
+def test_legacy_provider_schedule_and_history_migrate_to_default_account(tmp_path):
+    settings = SettingsStore(dir=tmp_path)
+    profiles = AccountProfileStore(settings)
+    default_spotify = profiles.default_id("spotify")
+    success = {
+        "at": "2026-09-04T12:00:00Z",
+        "filename": _export(1).filename,
+        "format": "json",
+        "playlist_count": 2,
+        "track_count": 3,
+        "pruned": 0,
+    }
+    (tmp_path / "playlist_backups.json").write_text(
+        json.dumps([{"provider": "spotify", "interval": "12h"}]),
+        encoding="utf-8",
+    )
+    (tmp_path / "playlist_backup_status.json").write_text(
+        json.dumps({"spotify": {"last_success": success}}),
+        encoding="utf-8",
+    )
+
+    store = PlaylistBackupStore(tmp_path, profiles=profiles)
+
+    assert store.list() == [
+        PlaylistBackupJob(account_id=default_spotify, interval="12h")
+    ]
+    assert store.status(default_spotify)["last_success"] == success
+    persisted_jobs = json.loads((tmp_path / "playlist_backups.json").read_text())
+    persisted_status = json.loads(
+        (tmp_path / "playlist_backup_status.json").read_text()
+    )
+    assert persisted_jobs[0]["account_id"] == default_spotify
+    assert "provider" not in persisted_jobs[0]
+    assert set(persisted_status) == {default_spotify}
+
+
+def test_playlist_backup_api_keeps_same_provider_profiles_separate(tmp_path):
+    app = create_app(settings=SettingsStore(dir=tmp_path))
+    profiles = app.state.account_profiles
+    default_spotify = profiles.default_id("spotify")
+    alex = profiles.create("spotify", "Alex")
+
+    with TestClient(app) as client:
+        for account_id in (default_spotify, alex.id):
+            response = client.put(
+                f"/api/playlist-backups/{account_id}",
+                json={"enabled": False, "interval": "24h", "format": "json"},
+            )
+            assert response.status_code == 200
+
+        schedules = client.get("/api/playlist-backups").json()
+
+    assert {schedule["account_id"] for schedule in schedules} == {
+        default_spotify,
+        alex.id,
+    }
+    assert {schedule["provider"] for schedule in schedules} == {"spotify"}
+    assert {schedule["account_name"] for schedule in schedules} == {
+        "Spotify",
+        "Spotify · Alex",
+    }
+    assert {
+        Path(schedule["storage_path"]).name for schedule in schedules
+    } == {default_spotify, alex.id}
 
 
 def test_playlist_backup_api_configures_runs_and_downloads_latest(
@@ -259,9 +326,10 @@ def test_playlist_backup_api_configures_runs_and_downloads_latest(
         )
         assert response.status_code == 200
         configured = response.json()
-        assert configured["provider"] == spotify_account
-        assert configured["provider_type"] == "spotify"
+        assert configured["account_id"] == spotify_account
+        assert configured["provider"] == "spotify"
         assert configured["provider_name"] == "Spotify"
+        assert configured["account_name"] == "Spotify"
         assert configured["next_run_at"] is not None
         assert configured["snapshot_count"] == 0
         assert configured["last_success"] is None
