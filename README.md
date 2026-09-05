@@ -10,7 +10,7 @@
 Self-hosted, always-on **playlist sync for Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, and YouTube Music** — plus a local, Jellyfin-ready audio mirror.<br/>
 A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and FreeYourMusic** that _you_ own and run.
 
-**One-way, authoritative-group, or full bidirectional (N-way) sync · one-off playlist transfers · ISRC-accurate matching · all from your browser**
+**One-way, multi-source merge, authoritative-group, or full bidirectional (N-way) sync · one-off playlist transfers · ISRC-accurate matching · all from your browser**
 
 [Quick Start](#-quick-start) · [Features](#-features) · [Screenshots](#-screenshots) · [Docker](#-always-running-docker) · [How it works](#-how-it-works) · [Report Bug][github-issues-link] · [Request Feature][github-issues-link]
 
@@ -53,6 +53,7 @@ A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and Fre
 - [🐳 Always running: Docker](#-always-running-docker)
 - [⚙️ How it works](#-how-it-works)
   - [Matching](#matching)
+  - [Multi-source merge sync](#multi-source-merge-sync)
   - [Authoritative groups](#authoritative-groups)
   - [Bidirectional (N-way) sync](#bidirectional-n-way-sync)
 - [📦 Playlist metadata backups](#-playlist-metadata-backups)
@@ -87,6 +88,7 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 - 🔁 **True mirroring, not append-only** — adds _and_ removals. Choose a source of truth (Spotify by default) and the others follow it.
 - ⇆ **Authoritative groups** — trust two or more services (for example Spotify + Apple Music) while every other selected service remains a destination-only mirror.
 - ⇄ **Bidirectional N-way sync** — an add or removal on _any_ connected service propagates to all the others, echo-free, behind removal guards.
+- ⇉ **Multi-source merge sync** — schedule the deduplicated union of library playlists and public playlist URLs into one destination, without saving or following the public lists.
 - ♥ **Liked and favorite tracks** — sync each service's built-in liked collection across all seven music providers, either into the destination's own favorites or a new named playlist.
 - 🎯 **ISRC-accurate matching** — exact recording identity where available, with Unicode-aware fuzzy title/artist/duration fallbacks (feat-credit drift, "- 2015 Remaster" suffixes, non-Latin scripts, video-only uploads — all handled).
 - 🎛️ **Multiple named syncs** — set up as many independent syncs as you like, each with its own services, playlists, schedule, and safety caps.
@@ -118,7 +120,7 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 
 <img src="./.github/assets/dashboard.png" alt="SongMirror dashboard showing sync status, configured jobs, live activity, and health for Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, YouTube Music, and Jellyfin" width="82%">
 
-**Set up any number of syncs — one-way, authoritative-group, or bidirectional — in a short wizard**
+**Set up any number of syncs — one-way, multi-source merge, authoritative-group, or bidirectional — in a short wizard**
 
 <img src="./.github/assets/sync-wizard.png" alt="The SongMirror setup wizard selecting services for a bidirectional sync across Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, and YouTube Music" width="82%">
 
@@ -238,6 +240,17 @@ Same hierarchy the cross-service tools use ([TuneLink](https://tommcfarlin.com/c
    - **Video-only tracks** — YouTube search falls back to the `videos` filter for indie/OST tracks that live on YT only as uploads.
 
 The **duration anchor** unlocks the looser title match, so a different version (`Runaway - Piano Version`) or a wrong-artist cover isn't accepted when its length disagrees. Tracks with no confident match are reported and skipped.
+
+### Multi-source merge sync
+
+A **Merge sources** job combines one or more explicit playlists into one chosen destination. Each source can come from a connected account's library or a pasted public provider URL; the latter is resolved to a provider and playlist id once, so the playlist does not need to be saved or followed and scheduled runs do not replay an arbitrary URL.
+
+- **One membership union** — all constituents are read before the destination is reconciled. Shared ISRCs are one recording; without an ISRC, exact/conservative title, artist, version, and duration evidence deduplicates overlaps.
+- **Deterministic order** — source descriptor priority first, then the order returned by each source playlist. The first occurrence owns the destination position and display metadata; later copies only enrich missing identity metadata.
+- **Union-safe removals** — a destination track can be removed only when a complete pass finds it absent from every constituent source. A failed, truncated, malformed, unavailable, or unknowably empty source disables every removal for that pass, while safe additions from readable sources may continue.
+- **Append-only by default** — leave **Remove tracks absent from every source** off to keep all destination-only tracks. Turning it on opts into the normal per-pass removal cap after the complete-read guard passes.
+
+Merge jobs currently target one provider playlist; the separate Spotify-led local download/Jellyfin mirror is not available for an aggregate job.
 
 ### Authoritative groups
 
@@ -459,6 +472,7 @@ Removals are destructive, so they're guarded:
 - A chronology repair stages a duplicate copy before retiring the original. On a service whose delete takes every copy of a song, that keeper count has to be right, so Apple Music re-reads until the staged copies are visible and refuses to retire anything against a read that still trails its own writes. Deezer skips the repair entirely and always appends: it has no positional insert either, so replaying an order it cannot express is not worth the risk to the destination. The transfer form greys its order switch out there and says why.
 - **Net-loss protection** — a target-side track resembling a source track that has no match on that service is held, not deleted.
 - Any provider authentication failure aborts that provider's pass immediately — no partial deletes on expired tokens.
+- A merge job must finish every constituent source read before deleting from its destination; any partial/failed source snapshot forces that pass into append-only behavior.
 
 <div align="right">
 

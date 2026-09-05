@@ -2940,6 +2940,81 @@ async function main() {
     }
 
     // -----------------------------------------------------------------
+    // Merge sync: combine one library source with a public playlist that
+    // is absent from the library, choose one writable destination, and
+    // persist the explicit append-only strategy plus ordered descriptors.
+    // -----------------------------------------------------------------
+    {
+      const context = await browser.newContext()
+      await context.addInitScript(() => window.localStorage.setItem('songmirror-theme', 'light'))
+      const page = await context.newPage()
+      let createdMergeSync = null
+      await installMocks(page)
+      await page.route('**/api/syncs', async (route) => {
+        if (route.request().method() === 'POST') createdMergeSync = route.request().postDataJSON()
+        await route.fallback()
+      })
+
+      await page.setViewportSize({ width: 1280, height: 1000 })
+      await page.goto(BASE_URL + '/sync', { waitUntil: 'networkidle' })
+      await page.getByRole('button', { name: 'New sync', exact: true }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByLabel('Name', { exact: false }).fill('Chart mashup')
+      await dialog.getByText('Merge sources →', { exact: true }).click()
+
+      await dialog.getByRole('radio', { name: 'Services', exact: true }).click()
+      await dialog.getByLabel('Destination service', { exact: true }).selectOption('apple')
+      await dialog.getByLabel('Existing destination playlist', { exact: true }).click()
+      await page.getByRole('option', { name: /Rainy Day/ }).click()
+
+      await dialog.getByRole('radio', { name: 'Playlists', exact: true }).click()
+      await dialog.getByLabel('Source service', { exact: true }).selectOption('spotify')
+      await dialog.getByLabel('Source playlist', { exact: true }).click()
+      await page.getByRole('option', { name: /Road Trip 2025/ }).click()
+      await dialog.getByRole('button', { name: 'Add source', exact: true }).click()
+
+      await dialog.getByRole('radio', { name: 'Paste a link', exact: true }).click()
+      await dialog.getByLabel('Public playlist link', { exact: true }).fill(
+        'https://open.spotify.com/playlist/pl_public_link',
+      )
+      await dialog.getByRole('button', { name: 'Open and add source', exact: true }).click()
+      await dialog.getByText("Someone Else's Mix", { exact: true }).waitFor()
+      const orderedSources = dialog.getByRole('list', { name: 'Merge sources in priority order' })
+      const sourceCount = await orderedSources.getByRole('listitem').count()
+
+      const appendOnlyToggle = dialog.getByRole('switch', {
+        name: 'Remove tracks absent from every source', exact: false,
+      })
+      await dialog.getByRole('radio', { name: 'Limits & downloads', exact: true }).click()
+      const appendOnlyExplicit = (await appendOnlyToggle.getAttribute('aria-checked')) === 'false'
+      await dialog.getByRole('button', { name: 'Create sync', exact: true }).click()
+      await dialog.waitFor({ state: 'hidden' })
+
+      const mergePayloadOk =
+        sourceCount === 2 &&
+        appendOnlyExplicit &&
+        createdMergeSync?.mode === 'merge' &&
+        createdMergeSync?.removal_strategy === 'append_only' &&
+        createdMergeSync?.destination?.provider === 'apple' &&
+        createdMergeSync?.destination?.playlist_id === 'pl_apple_4' &&
+        createdMergeSync?.sources?.[0]?.kind === 'library' &&
+        createdMergeSync?.sources?.[0]?.playlist_id === 'pl_spotify_1' &&
+        createdMergeSync?.sources?.[1]?.kind === 'public' &&
+        createdMergeSync?.sources?.[1]?.playlist_id === 'pl_public_link'
+      console.log(`${mergePayloadOk ? 'ok        ' : 'FAIL      '} merge wizard persists ordered library/public sources, one destination, and append-only strategy (got ${JSON.stringify(createdMergeSync)})`)
+      if (!mergePayloadOk) results.push({ label: 'wizard merge payload', overflow: true })
+
+      const mergeCard = page.locator('h3', { hasText: 'Chart mashup' }).locator('xpath=ancestor::div[contains(@class,"rounded-card")][1]')
+      const mergeSummary = await mergeCard.innerText()
+      const mergeSummaryOk = mergeSummary.includes('Merge') && mergeSummary.includes('2 sources') && mergeSummary.includes('append-only')
+      console.log(`${mergeSummaryOk ? 'ok        ' : 'FAIL      '} merge card summarizes aggregate endpoints and append-only behavior`)
+      if (!mergeSummaryOk) results.push({ label: 'merge card summary', overflow: true })
+      await checkOverflow(page, 'Merge sync card after create @ 1280', results)
+
+      await context.close()
+    }
+
+    // -----------------------------------------------------------------
     // Sync "queuing": passes are serialized backend-side, but that no longer
     // means every OTHER job's "Sync now"/"Preview" gets disabled while one
     // runs - only the running job's own buttons, and a queued job's own

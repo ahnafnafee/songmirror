@@ -195,6 +195,21 @@ export interface PassSummary {
   ok: boolean
   error: string | null
   per_target: TargetSummary[]
+  /** Merge-only constituent read/dedupe/deletion-guard accounting. */
+  aggregate?: AggregatePassSummary
+}
+
+export interface AggregatePassSummary {
+  sources: number
+  sources_read: number
+  sources_failed: number
+  input_tracks: number
+  union_tracks: number
+  duplicates: number
+  removal_strategy: MergeRemovalStrategy
+  removals_guarded: boolean
+  destination_provider: string
+  destination_playlist_id: string
 }
 
 /** One entry of GET /api/sync/status's `jobs` array — this job's own
@@ -214,6 +229,10 @@ export interface SyncJobStatus {
   pending: 'pause' | 'stop' | null
   next_run_at: number | null
   last: PassSummary | null
+  sync_mode?: SyncMode
+  source_count?: number
+  destination?: SyncDestination | null
+  removal_strategy?: MergeRemovalStrategy
 }
 
 export interface SyncStatus {
@@ -238,7 +257,30 @@ export interface SyncStatus {
   jobs: SyncJobStatus[]
 }
 
-export type SyncMode = 'oneway' | 'group' | 'nway'
+export type SyncMode = 'oneway' | 'group' | 'nway' | 'merge'
+
+export type SyncSourceKind = 'library' | 'public'
+export type MergeRemovalStrategy = 'append_only' | 'mirror'
+
+/** One ordered merge constituent. Public links are resolved once to the same
+ * provider/id shape used by library rows, so scheduled runs never depend on a
+ * source being followed or saved. */
+export interface SyncSource {
+  /** Stable account profile id (legacy payloads may contain a provider id). */
+  provider: string
+  playlist_id: string
+  name: string
+  kind: SyncSourceKind
+  external_url: string
+}
+
+/** A blank playlist_id creates `name` on the first execute pass. */
+export interface SyncDestination {
+  /** Stable account profile id (legacy payloads may contain a provider id). */
+  provider: string
+  playlist_id: string
+  name: string
+}
 
 export type LikedTrackRoute =
   | { kind: 'native' }
@@ -278,6 +320,11 @@ export interface SyncJob {
    * instead of being held back. Default false (held back for safety). */
   apply_large_removals: boolean
   download: boolean
+  /** Ordered constituent sources and one destination for merge mode. Empty/null
+   * on legacy one-way, authority-group, and N-way jobs. */
+  sources: SyncSource[]
+  destination: SyncDestination | null
+  removal_strategy: MergeRemovalStrategy
 }
 
 /** POST /api/syncs (create) / PUT /api/syncs/{id} (merge-update) body —

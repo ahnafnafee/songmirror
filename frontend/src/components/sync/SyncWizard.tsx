@@ -26,7 +26,18 @@ import {
   syncPeersOf,
 } from '@/lib/syncSummary'
 import { PlaylistFilterField } from '../settings/PlaylistFilterField'
-import type { Account, LikedTrackRoute, LikedTrackRoutes, SyncJob, SyncJobUpsertRequest, SyncMode } from '@/types'
+import { MergeDestinationFields, MergeSourcesFields } from './MergeFields'
+import type {
+  Account,
+  LikedTrackRoute,
+  LikedTrackRoutes,
+  MergeRemovalStrategy,
+  SyncDestination,
+  SyncJob,
+  SyncJobUpsertRequest,
+  SyncMode,
+  SyncSource,
+} from '@/types'
 
 // Kept as strings locally (not the SyncJob numbers) so they compose directly
 // with TextField and the existing string-based validators; converted to
@@ -49,6 +60,9 @@ interface JobFormState {
   max_removals: string
   apply_large_removals: boolean
   download: boolean
+  sources: SyncSource[]
+  destination: SyncDestination | null
+  removal_strategy: MergeRemovalStrategy
 }
 
 const NEW_JOB_DEFAULTS: JobFormState = {
@@ -68,6 +82,9 @@ const NEW_JOB_DEFAULTS: JobFormState = {
   max_removals: '25',
   apply_large_removals: false,
   download: false,
+  sources: [],
+  destination: null,
+  removal_strategy: 'append_only',
 }
 
 function formFromJob(job: SyncJob | null): JobFormState {
@@ -85,11 +102,14 @@ function formFromJob(job: SyncJob | null): JobFormState {
     liked_routes: { ...(job.liked_routes ?? {}) },
     interval: job.interval,
     max_adds: String(job.max_adds),
-    mirror_removals: job.max_removals > 0,
+    mirror_removals: job.mode === 'merge' ? job.removal_strategy === 'mirror' : job.max_removals > 0,
     // Keep a sane cap staged so switching mirroring on doesn't start from 0.
     max_removals: job.max_removals > 0 ? String(job.max_removals) : '25',
     apply_large_removals: job.apply_large_removals,
     download: job.download,
+    sources: [...(job.sources ?? [])],
+    destination: job.destination ? { ...job.destination } : null,
+    removal_strategy: job.removal_strategy ?? 'append_only',
   }
 }
 
@@ -392,6 +412,12 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
         const providers = new Set(parseCsv(prev.providers))
         if (prev.source) providers.add(prev.source)
         next.providers = csvInPeerOrder(providers)
+      } else if (mode === 'merge') {
+        next.sync_playlists = true
+        next.liked_tracks = false
+        next.liked_routes = {}
+        next.download = false
+        next.mirror_removals = next.removal_strategy === 'mirror'
       }
       if (next.liked_tracks) {
         next.liked_routes = normalizedLikedRoutes(next.liked_routes, parseCsv(next.providers), next.source)
@@ -543,12 +569,29 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
           return route?.kind === 'native' || (route?.kind === 'playlist' && route.name.trim().length > 0)
         }))
   const resourceSelectionValid = form.sync_playlists || form.liked_tracks
+  const mergeDestinationValid =
+    form.mode !== 'merge' ||
+    Boolean(form.destination?.provider && (form.destination.playlist_id || form.destination.name.trim()))
+  const mergeSourcesValid =
+    form.mode !== 'merge' ||
+    (form.sources.length > 0 &&
+      !form.sources.some(
+        (source) =>
+          source.provider === form.destination?.provider && source.playlist_id === form.destination?.playlist_id,
+      ))
   const formValid =
-    nameValid && intervalValid && maxAddsValid && maxRemovalsValid && groupValid && likedRoutesValid && resourceSelectionValid
+    nameValid && intervalValid && maxAddsValid && maxRemovalsValid && groupValid &&
+    likedRoutesValid && resourceSelectionValid && mergeDestinationValid && mergeSourcesValid
 
   // Only Direction's name (always valid) aside, Schedule (interval) and
   // Limits (caps) are the only steps with a bad state to block Next on.
-  const stepValid = [groupValid, true, likedRoutesValid && resourceSelectionValid, intervalValid, maxAddsValid && maxRemovalsValid]
+  const stepValid = [
+    groupValid,
+    mergeDestinationValid,
+    form.mode === 'merge' ? mergeSourcesValid : likedRoutesValid && resourceSelectionValid,
+    intervalValid,
+    maxAddsValid && maxRemovalsValid,
+  ]
   const isLastStep = step === STEPS.length - 1
 
   const previewJob: SyncJob = {
@@ -568,6 +611,11 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     max_removals: form.mirror_removals ? Number(form.max_removals) || 0 : 0,
     apply_large_removals: form.mirror_removals && form.apply_large_removals,
     download: form.download,
+    sources: form.sources,
+    destination: form.destination,
+    removal_strategy: form.mode === 'merge'
+      ? (form.mirror_removals ? 'mirror' : 'append_only')
+      : form.removal_strategy,
   }
   const summaryRows = buildSyncSummaryRows(previewJob, syncPeers, settings?.DOWNLOAD_DIR)
 
@@ -580,18 +628,28 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
         name: form.name.trim(),
         enabled: form.enabled,
         mode: form.mode,
-        source: form.source,
+        source: form.mode === 'merge' ? (form.sources[0]?.provider || form.source) : form.source,
         authorities: form.authorities,
-        providers: form.providers,
+        providers: form.mode === 'merge'
+          ? [...new Set([
+              ...form.sources.map((source) => source.provider),
+              ...(form.destination?.provider ? [form.destination.provider] : []),
+            ])].join(',')
+          : form.providers,
         playlists: form.playlists,
-        sync_playlists: form.sync_playlists,
-        liked_tracks: form.liked_tracks,
-        liked_routes: form.liked_routes,
+        sync_playlists: form.mode === 'merge' ? true : form.sync_playlists,
+        liked_tracks: form.mode === 'merge' ? false : form.liked_tracks,
+        liked_routes: form.mode === 'merge' ? {} : form.liked_routes,
         interval: form.interval,
         max_adds: Number(form.max_adds),
         max_removals: form.mirror_removals ? Number(form.max_removals) : 0,
         apply_large_removals: form.mirror_removals && form.apply_large_removals,
-        download: form.download,
+        download: form.mode === 'merge' ? false : form.download,
+        sources: form.mode === 'merge' ? form.sources : [],
+        destination: form.mode === 'merge' ? form.destination : null,
+        removal_strategy: form.mode === 'merge'
+          ? (form.mirror_removals ? 'mirror' : 'append_only')
+          : form.removal_strategy,
       }
       if (job) await api.updateSync(job.id, values)
       else await api.createSync(values)
@@ -670,7 +728,14 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                   onChange={() => selectMode('group')}
                   title="Authority group ⇆"
                   description="Two or more trusted services contribute changes; every other selected service only mirrors them."
-                  className="sm:col-span-2"
+                />
+                <RadioCard
+                  name="sync-mode"
+                  value="merge"
+                  checked={form.mode === 'merge'}
+                  onChange={() => selectMode('merge')}
+                  title="Merge sources →"
+                  description="Combine multiple library playlists or public links into one scheduled destination playlist."
                 />
               </div>
 
@@ -769,39 +834,55 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
           )}
 
           {step === 1 && (
-            <div className="flex flex-wrap gap-2">
-              {syncPeers.map((account) => {
-                const locked = lockedProviderIds.has(account.id)
-                const checked = locked || enabledProviders.has(account.id)
-                const role =
-                  form.mode === 'group'
-                    ? account.id === syncSource && authorityIds.has(account.id)
-                      ? 'order'
-                      : authorityIds.has(account.id)
-                        ? 'authority'
-                        : checked
-                          ? 'mirror'
-                          : undefined
-                    : form.mode === 'oneway' && account.id === syncSource
-                      ? 'source'
-                      : form.liked_tracks && account.id === syncSource
+            form.mode === 'merge' ? (
+              <MergeDestinationFields
+                accounts={accounts}
+                destination={form.destination}
+                onChange={(destination) => setField('destination', destination)}
+              />
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {syncPeers.map((account) => {
+                  const locked = lockedProviderIds.has(account.id)
+                  const checked = locked || enabledProviders.has(account.id)
+                  const role =
+                    form.mode === 'group'
+                      ? account.id === syncSource && authorityIds.has(account.id)
+                        ? 'order'
+                        : authorityIds.has(account.id)
+                          ? 'authority'
+                          : checked
+                            ? 'mirror'
+                            : undefined
+                      : form.mode === 'oneway' && account.id === syncSource
                         ? 'source'
-                      : undefined
-                return (
-                  <ProviderChip
-                    key={account.id}
-                    account={account}
-                    checked={checked}
-                    locked={locked}
-                    role={role}
-                    onToggle={() => toggleProvider(account.id)}
-                  />
-                )
-              })}
-            </div>
+                        : form.liked_tracks && account.id === syncSource
+                          ? 'source'
+                        : undefined
+                  return (
+                    <ProviderChip
+                      key={account.id}
+                      account={account}
+                      checked={checked}
+                      locked={locked}
+                      role={role}
+                      onToggle={() => toggleProvider(account.id)}
+                    />
+                  )
+                })}
+              </div>
+            )
           )}
 
           {step === 2 && (
+            form.mode === 'merge' ? (
+              <MergeSourcesFields
+                accounts={accounts}
+                sources={form.sources}
+                destination={form.destination}
+                onChange={(sources) => setField('sources', sources)}
+              />
+            ) : (
             <div className="flex flex-col gap-4">
               <PlaylistFilterField
                 value={form.playlists}
@@ -889,6 +970,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                 </section>
               )}
             </div>
+            )
           )}
 
           {step === 3 && (
@@ -955,9 +1037,11 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                     className="flex-1"
                     checked={form.mirror_removals}
                     onChange={(v) => setField('mirror_removals', v)}
-                    label="Mirror removals"
+                    label={form.mode === 'merge' ? 'Remove tracks absent from every source' : 'Mirror removals'}
                     description={
-                      form.mode === 'group'
+                      form.mode === 'merge'
+                        ? 'Off: append-only; destination-only tracks are always kept. On: remove a track only after a complete pass confirms it is absent from every source.'
+                        : form.mode === 'group'
                         ? 'Off (default): removals and mirror-only tracks are kept. On: confirmed removals from either authority—and tracks found only on mirrors—are pruned everywhere, capped per pass.'
                         : form.mode === 'nway'
                           ? 'Off (default): a track removed on one service is kept on the others. On: confirmed removals from any service sync too, capped per pass.'
@@ -967,7 +1051,12 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                   <Tooltip
                     content={
                       <>
-                        {form.mode === 'group' ? (
+                        {form.mode === 'merge' ? (
+                          <>
+                            Every source must be read completely before a removal is allowed. Any failed or partial
+                            source read disables all removals for that pass.
+                          </>
+                        ) : form.mode === 'group' ? (
                           <>
                             A confirmed removal on <span className="font-semibold text-text">either authority</span>, or
                             a track added only to a mirror, is removed across the group. Mirror edits never become
@@ -987,7 +1076,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                   >
                     <button
                       type="button"
-                      aria-label="About mirroring removals"
+                      aria-label={form.mode === 'merge' ? 'About aggregate removals' : 'About mirroring removals'}
                       className="cursor-help rounded-full p-1 text-text-3 transition-colors duration-fast hover:text-warning focus-visible:text-warning"
                     >
                       <LuInfo size={15} />
@@ -1005,12 +1094,19 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
               </div>
 
               <div className="border-t border-border pt-3.5">
-                <Toggle
-                  checked={form.download}
-                  onChange={(v) => setField('download', v)}
-                  label="Download this sync's playlists"
-                  description="Uses the folder and format configured in Settings → Download mirror."
-                />
+                {form.mode === 'merge' ? (
+                  <p className="text-xs leading-relaxed text-text-3">
+                    Aggregate jobs write one provider playlist. The separate download mirror currently follows
+                    ordinary Spotify-led playlist jobs and is unavailable here.
+                  </p>
+                ) : (
+                  <Toggle
+                    checked={form.download}
+                    onChange={(v) => setField('download', v)}
+                    label="Download this sync's playlists"
+                    description="Uses the folder and format configured in Settings → Download mirror."
+                  />
+                )}
               </div>
 
               <div className="flex flex-col gap-2.5 rounded-control border border-border bg-surface-2/40 p-3.5">

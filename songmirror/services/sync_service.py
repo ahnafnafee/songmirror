@@ -17,6 +17,7 @@ through the EventBus.
 import asyncio
 import os
 import time
+from dataclasses import asdict
 
 from ..engine import logs
 from ..engine.config import DEFAULT_INTERVAL, parse_args, parse_interval
@@ -68,6 +69,10 @@ class SyncService:
         opts.sync_playlists = job.sync_playlists
         opts.liked_tracks = job.liked_tracks
         opts.liked_routes = job.liked_routes
+        opts.sources = [asdict(source) for source in job.sources]
+        opts.destination = asdict(job.destination) if job.destination is not None else None
+        opts.removal_strategy = job.removal_strategy
+        opts.sync_job_id = job.id
         opts.max_adds = job.max_adds
         opts.max_removals = job.max_removals
         opts.apply_large_removals = job.apply_large_removals
@@ -97,10 +102,33 @@ class SyncService:
                 self._control = "run"
                 self._interrupted.pop(job_id, None)
                 try:
-                    self._emit("section", f"{job.name}: pass started ({'execute' if execute else 'dry run'})", "sync")
+                    if job.mode == "merge" and job.destination is not None:
+                        detail = (
+                            f"{len(job.sources)} source{'s' if len(job.sources) != 1 else ''} → "
+                            f"{job.destination.name or job.destination.playlist_id}"
+                        )
+                        self._emit(
+                            "section",
+                            f"{job.name}: aggregate pass started ({'execute' if execute else 'dry run'}; {detail})",
+                            "sync",
+                        )
+                    else:
+                        self._emit("section", f"{job.name}: pass started ({'execute' if execute else 'dry run'})", "sync")
                     summary = await _run_pass_async(self._opts_for(job, execute),
                                                     should_continue=lambda: self._control)
                     summary.update(job_id=job_id, job_name=job.name)
+                    aggregate = summary.get("aggregate") or {}
+                    created_destination_id = aggregate.get("destination_playlist_id")
+                    if (
+                        execute
+                        and created_destination_id
+                        and job.destination is not None
+                        and not job.destination.playlist_id
+                    ):
+                        # Creation is part of the serialized pass, so no later
+                        # scheduled/manual run can race this durable id update.
+                        job.destination.playlist_id = str(created_destination_id)
+                        self._syncs.upsert(job)
                     self._last[job_id] = self._last_any = summary
                     if summary.get("interrupted"):
                         self._interrupted[job_id] = "paused" if summary["interrupted"] == "pause" else "stopped"
@@ -216,8 +244,9 @@ class SyncService:
         }
 
     def _job_status(self, job):
-        return {
+        status = {
             "id": job.id, "name": job.name, "enabled": job.enabled,
+            "sync_mode": job.mode,
             "running": self._running_job == job.id,
             # Triggered but waiting behind the shared lock for the running pass to
             # finish — passes are serialized (shared caches/archive/rate limits),
@@ -231,6 +260,13 @@ class SyncService:
             "next_run_at": self._next_run.get(job.id),
             "last": self._last.get(job.id),
         }
+        if job.mode == "merge":
+            status.update({
+                "source_count": len(job.sources),
+                "destination": asdict(job.destination) if job.destination is not None else None,
+                "removal_strategy": job.removal_strategy,
+            })
+        return status
 
     def _interval_s(self, value):
         try:

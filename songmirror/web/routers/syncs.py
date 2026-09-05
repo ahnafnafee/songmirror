@@ -10,16 +10,17 @@ from dataclasses import asdict
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from ...services.syncs import SyncJob, validate_sync_job
+from ...services.syncs import sync_job_from_dict, validate_sync_job
 
 router = APIRouter()
 
 _FIELDS = {"name", "enabled", "mode", "source", "authorities", "providers", "playlists", "sync_playlists",
            "liked_tracks", "liked_routes",
-           "interval", "max_adds", "max_removals", "apply_large_removals", "download", "id"}
+           "interval", "max_adds", "max_removals", "apply_large_removals", "download",
+           "sources", "destination", "removal_strategy", "id"}
 
 
-def _job_from(values):
+def _job_from(values, profiles=None):
     """SyncJob from a request dict — unknown keys dropped, types coerced."""
     data = {k: v for k, v in values.items() if k in _FIELDS}
     for k in ("max_adds", "max_removals"):
@@ -29,7 +30,7 @@ def _job_from(values):
         if k in data:
             data[k] = bool(data[k])
     try:
-        return validate_sync_job(SyncJob(**data))
+        return validate_sync_job(sync_job_from_dict(data, profiles), profiles)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -41,7 +42,9 @@ def list_syncs(request: Request):
 
 @router.post("/api/syncs")
 async def create_sync(request: Request, values: dict = Body(...)):
-    job = request.app.state.syncs.upsert(_job_from(values))
+    job = request.app.state.syncs.upsert(
+        _job_from(values, request.app.state.syncs.profiles)
+    )
     await request.app.state.sync.reconcile()
     return asdict(job)
 
@@ -51,7 +54,10 @@ async def update_sync(job_id: str, request: Request, values: dict = Body(...)):
     existing = request.app.state.syncs.get(job_id)
     if existing is None:
         return JSONResponse({"detail": "not found"}, status_code=404)
-    job = request.app.state.syncs.upsert(_job_from({**asdict(existing), **values, "id": job_id}))
+    job = request.app.state.syncs.upsert(_job_from(
+        {**asdict(existing), **values, "id": job_id},
+        request.app.state.syncs.profiles,
+    ))
     await request.app.state.sync.reconcile()
     return asdict(job)
 

@@ -63,6 +63,35 @@ export function buildSyncSummaryRows(job: SyncJob, peers: Account[], downloadDir
 
   rows.push({ label: 'Schedule', value: job.enabled ? `Every ${job.interval || '?'}` : 'Manual' })
 
+  if (job.mode === 'merge') {
+    const providerName = (id: string) => peers.find((peer) => peer.id === id)?.name ?? id
+    const sources = job.sources ?? []
+    const sourceNames = sources.map((source) => source.name || `${providerName(source.provider)} playlist`)
+    const sourceLabel =
+      sourceNames.length === 0
+        ? 'no sources selected'
+        : sourceNames.length <= 3
+          ? sourceNames.join(' + ')
+          : `${sourceNames.slice(0, 3).join(' + ')} +${sourceNames.length - 3} more`
+    const destination = job.destination
+    const destinationLabel = destination
+      ? `${destination.name || 'chosen playlist'} on ${providerName(destination.provider)}`
+      : 'no destination selected'
+    rows.push({ label: 'Direction', value: `Merge · ${sources.length} source${sources.length === 1 ? '' : 's'} → ${destinationLabel}` })
+    rows.push({ label: 'Sources', value: sourceLabel })
+
+    const removalNote = job.apply_large_removals ? ' (large removals drained in batches)' : ''
+    rows.push({
+      label: 'Limits',
+      value:
+        job.removal_strategy === 'mirror'
+          ? `≤${job.max_adds} adds, ≤${job.max_removals} removals / pass${removalNote}`
+          : `≤${job.max_adds} adds / pass · append-only`,
+    })
+    rows.push({ label: 'Downloads', value: 'Off for aggregate playlists' })
+    return rows
+  }
+
   const enabled = enabledProvidersOf(job, peers)
   const lockedId = lockedSourceOf(job)
   const authorities = authorityProvidersOf(job)
