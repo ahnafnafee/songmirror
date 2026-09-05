@@ -4,6 +4,7 @@ import { LuArrowRight } from 'react-icons/lu'
 
 import { api, errorMessage } from '@/api'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
+import { ScheduledPlaylistBackups } from '@/components/settings/ScheduledPlaylistBackups'
 import { Button } from '@/components/ui/Button'
 import { SelectField } from '@/components/ui/SelectField'
 import { LoadingStatus, Skeleton } from '@/components/ui/Skeleton'
@@ -91,7 +92,7 @@ export default function Settings() {
       <div>
         <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Settings</h1>
         <p className="mt-1 text-sm text-text-3">
-          Profile, appearance, and the shared download folder. Provider credentials live on the Accounts page.
+          Profile, appearance, downloads, and persistent playlist archives. Provider credentials live on the Accounts page.
         </p>
         <Link
           to="/sync"
@@ -109,6 +110,10 @@ export default function Settings() {
         <p className="text-xs leading-relaxed text-text-3">
           Applies instantly and is remembered on this device, separate from your account settings.
         </p>
+      </SettingsGroup>
+
+      <SettingsGroup label="PLAYLIST ARCHIVE">
+        <ScheduledPlaylistBackups />
       </SettingsGroup>
 
       {loading && !form ? (

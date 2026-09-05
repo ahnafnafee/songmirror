@@ -15,8 +15,9 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..services.events import EventBus
 from ..services.account_profiles import AccountProfileStore
+from ..services.events import EventBus
+from ..services.playlist_backups import PlaylistBackupService, PlaylistBackupStore
 from ..services.playlists import LinkStore
 from ..services.resolve_cache import ResolveCacheStore
 from ..services.settings import SettingsStore
@@ -25,8 +26,9 @@ from ..services.syncs import SyncStore
 from ..services.transfers import TransferService
 from .access_log import install_oauth_access_log_filter
 from .routers import (
-    accounts, events, playlists, resolve_cache as resolve_cache_router,
-    settings as settings_router, sync, syncs as syncs_router,
+    accounts, events, playlist_backups as playlist_backups_router, playlists,
+    resolve_cache as resolve_cache_router, settings as settings_router, sync,
+    syncs as syncs_router,
     transfers as transfers_router,
 )
 
@@ -36,7 +38,8 @@ _DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
 def create_app(settings=None, bus=None, sync_service=None, links=None, transfers=None,
-               syncs=None, resolve_cache=None, account_profiles=None) -> FastAPI:
+               syncs=None, resolve_cache=None, account_profiles=None,
+               playlist_backups=None) -> FastAPI:
     install_oauth_access_log_filter()
     settings = settings or SettingsStore()
     bus = bus or EventBus()
@@ -47,6 +50,13 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
     transfers = transfers or TransferService(settings, bus, sync_service, profiles=account_profiles)
     resolve_cache = resolve_cache or ResolveCacheStore(
         settings, sync_service, profiles=account_profiles
+    )
+    playlist_backups = playlist_backups or PlaylistBackupService(
+        settings,
+        sync_service,
+        bus,
+        PlaylistBackupStore(settings.data_dir, profiles=account_profiles),
+        profiles=account_profiles,
     )
 
     @asynccontextmanager
@@ -60,9 +70,11 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
         os.environ["SONGMIRROR_ENV_FILE"] = settings.env_path
         settings.apply_to_env()
         await sync_service.start()
+        await playlist_backups.start()
         try:
             yield
         finally:
+            await playlist_backups.shutdown()
             await sync_service.shutdown()
 
     app = FastAPI(title="SongMirror", lifespan=lifespan)
@@ -74,6 +86,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
     app.state.links = links
     app.state.transfers = transfers
     app.state.resolve_cache = resolve_cache
+    app.state.playlist_backups = playlist_backups
 
     app.include_router(accounts.router)
     app.include_router(settings_router.router)
@@ -81,6 +94,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
     app.include_router(syncs_router.router)
     app.include_router(events.router)
     app.include_router(playlists.router)
+    app.include_router(playlist_backups_router.router)
     app.include_router(transfers_router.router)
     app.include_router(resolve_cache_router.router)
 

@@ -52,6 +52,8 @@ class PlaylistExport:
     content: bytes
     media_type: str
     filename: str
+    playlist_count: int = 0
+    track_count: int = 0
 
 
 def _utc_timestamp(now=None):
@@ -246,4 +248,10 @@ def render_backup(
     timestamp = re.sub(r"[-:]", "", backup["exported_at"])
     suffix = "soundiiz.json" if export_format == "soundiiz" else export_format
     filename = f"songmirror-{provider_part}-{scope_part}-{timestamp}.{suffix}"
-    return PlaylistExport(content=content, media_type=media_type, filename=filename)
+    return PlaylistExport(
+        content=content,
+        media_type=media_type,
+        filename=filename,
+        playlist_count=backup["playlist_count"],
+        track_count=backup["track_count"],
+    )

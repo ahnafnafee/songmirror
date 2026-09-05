@@ -402,6 +402,57 @@ export interface ProviderPlaylistDetail extends ProviderPlaylist {
  * option follows Soundiiz's documented importable JSON array shape. */
 export type PlaylistExportFormat = 'json' | 'xml' | 'soundiiz'
 
+export type PlaylistBackupFormat = 'json' | 'xml'
+
+export interface PlaylistBackupSuccess {
+  at: string
+  filename: string
+  format: PlaylistBackupFormat
+  playlist_count: number
+  track_count: number
+  pruned: number
+}
+
+export interface PlaylistBackupFailure {
+  at: string
+  error: string
+}
+
+/** GET /api/playlist-backups — one persistent account-wide backup schedule
+ * plus its provider metadata, scheduler state, and durable run history. */
+export interface PlaylistBackupJob {
+  /** Stable account profile id used by the schedule, storage, and API routes. */
+  account_id: string
+  /** Connector/catalog type shared by one or more accounts. */
+  provider: string
+  /** Provider brand name, such as Spotify. */
+  provider_name: string
+  /** Profile-aware display name, such as Spotify · Alex. */
+  account_name: string
+  enabled: boolean
+  interval: string
+  format: PlaylistBackupFormat
+  /** Maximum snapshots retained; zero keeps every snapshot. */
+  retention: number
+  running: boolean
+  next_run_at: number | null
+  snapshot_count: number
+  storage_path: string
+  last_success: PlaylistBackupSuccess | null
+  last_failure: PlaylistBackupFailure | null
+}
+
+export interface PlaylistBackupUpdate {
+  enabled?: boolean
+  interval?: string
+  format?: PlaylistBackupFormat
+  retention?: number
+}
+
+export interface QueueResponse {
+  queued: boolean
+}
+
 export interface RemovePlaylistTrackRequest {
   position: number
   track_id: string
