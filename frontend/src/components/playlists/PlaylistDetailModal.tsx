@@ -131,11 +131,11 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
       // making the last entry the newest available evidence. YouTube Music's
       // authenticated playlist read is already newest-first, so reversing it
       // would put the oldest track at the top under a misleading label.
-      return provider === 'ytmusic'
+      return account?.provider === 'ytmusic'
         ? left.position - right.position
         : right.position - left.position
     })
-  }, [detail, deferredQuery, order, provider])
+  }, [account?.provider, detail, deferredQuery, order])
 
   const pageCount = Math.max(1, Math.ceil(orderedTracks.length / PAGE_SIZE))
   const safePage = Math.min(page, pageCount)
@@ -310,7 +310,7 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
           <div className="flex items-start gap-2.5 rounded-control border border-warning/30 bg-warning-soft px-3.5 py-3 text-xs leading-relaxed text-text-2">
             <span className="font-mono font-bold text-warning" aria-hidden="true">~</span>
             <p>
-              {provider === 'spotify'
+              {account?.provider === 'spotify'
                 ? 'Spotify is authoritative for your one-way syncs. Manual edits here flow to mirrors on the next run.'
                 : `This changes ${account?.name} directly. If Spotify owns this mirror, make the same edit in Spotify or the next sync will restore it.`}
             </p>

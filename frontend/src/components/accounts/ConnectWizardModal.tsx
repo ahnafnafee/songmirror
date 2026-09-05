@@ -520,7 +520,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
               </>
             )}
 
-            {account.id === 'ytmusic' && <NoQuotaModeSection account={account} onChanged={onChanged} />}
+            {account.provider === 'ytmusic' && <NoQuotaModeSection account={account} onChanged={onChanged} />}
           </>
         )}
       </div>
@@ -545,7 +545,7 @@ function FieldsStep({
   onSubmit: () => void
   submitLabel: string
 }) {
-  const guide = CONNECT_GUIDES[account.id]
+  const guide = CONNECT_GUIDES[account.provider]
   const canKeepBlank = account.auth_kind === 'oauth_redirect' || account.auth_kind === 'oauth_device'
   return (
     <form
@@ -743,7 +743,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     setSaving(true)
     setError(null)
     try {
-      const res = await api.enableYtmusicBrowserMode(headers)
+      const res = await api.enableYtmusicBrowserMode(account.id, headers)
       if (res.state === 'connected') onChanged()
       else setError(res.detail || 'Could not enable no-quota mode with those headers.')
     } catch (err) {
@@ -757,7 +757,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     setSaving(true)
     setError(null)
     try {
-      await api.disableYtmusicBrowserMode()
+      await api.disableYtmusicBrowserMode(account.id)
       onChanged()
     } catch (err) {
       setError(errorMessage(err))

@@ -465,7 +465,9 @@ class TidalTarget(MirrorTarget):
         if self._songs is None:
             return {}
         try:
-            found = archive.get_snapshots(self._songs, self.source, ids)
+            found = archive.get_snapshots(
+                self._songs, self.archive_source or self.source, ids
+            )
         except Exception as e:
             log_warn(f"archive lookup failed for {len(ids)} delisted track(s): {e!r}", tag=self.tag)
             return {}

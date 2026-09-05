@@ -106,12 +106,13 @@ export function LinkCard({ link, accounts, playlistEntries, onEdit, onChanged }:
         <ul className="flex flex-wrap gap-x-3.5 gap-y-1.5 pl-[54px] text-[12.5px] text-text-2 sm:pl-[62px]">
           {memberEntries.map(([providerId, playlistId]) => {
             const isSource = link.direction === 'oneway' && link.source === providerId
+            const provider = accounts.find((account) => account.id === providerId)?.provider ?? providerId
             return (
               <li key={providerId} className="inline-flex items-center gap-1.5">
                 {/* Dot conveys the service at a glance (matches the design);
                     the name stays in the DOM for anyone who can't rely on
                     color alone. */}
-                <span className={cn('size-[7px] shrink-0 rounded-full', tagDot(providerId))} aria-hidden="true" />
+                <span className={cn('size-[7px] shrink-0 rounded-full', tagDot(provider))} aria-hidden="true" />
                 <span className="sr-only">{providerName(accounts, providerId)}: </span>
                 {playlistLabel(playlistEntries, providerId, playlistId)}
                 {isSource && <span className="font-mono text-[10px] text-text-3">SOURCE</span>}

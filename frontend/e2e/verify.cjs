@@ -124,6 +124,18 @@ const ACCOUNTS = [
   },
 ]
 
+// Profile-aware account contract. The established scenarios keep provider ids
+// as legacy/default aliases so their saved-job fixtures remain meaningful; a
+// focused household scenario below uses two genuinely distinct profile ids.
+for (const account of ACCOUNTS) {
+  account.provider = account.id
+  account.provider_name = account.name
+  account.label = account.name
+  account.is_default = true
+  account.removable = false
+  account.preserves_order = !['deezer', 'jellyfin'].includes(account.provider)
+}
+
 // Global-only now — direction/providers/playlists/interval/caps/download-opt-in
 // all moved to per-job SyncJob records (SYNCS below).
 const SETTINGS = {
@@ -430,6 +442,7 @@ const SHOWCASE_TRANSFER_JOB = {
 // A pasted public playlist link resolves to a source that is NOT in the
 // fixture library, which is the whole point of the feature.
 const LINK_PREVIEW = {
+  account: 'spotify',
   provider: 'spotify',
   playlist_id: 'pl_public_link',
   name: "Someone Else's Mix",
@@ -465,7 +478,7 @@ async function installMocks(page, opts = {}) {
   // Fresh per installation (one per test context/page) so CRUD mutations in
   // one test never leak into another.
   let syncsData = opts.syncs ?? initialSyncs()
-  const accountsData = opts.accounts ?? ACCOUNTS
+  let accountsData = [...(opts.accounts ?? ACCOUNTS)]
   const settingsData = opts.settings ?? SETTINGS
   const playlistsData = opts.playlists ?? PLAYLISTS
   const delays = opts.delays ?? {}
@@ -497,6 +510,30 @@ async function installMocks(page, opts = {}) {
     if (p === '/api/accounts' && method === 'GET') {
       await delay('accounts')
       return json(accountsData)
+    }
+    if (p === '/api/accounts' && method === 'POST') {
+      const body = req.postDataJSON() ?? {}
+      const provider = String(body.provider ?? '')
+      const template = accountsData.find((account) => account.provider === provider)
+        ?? ACCOUNTS.find((account) => account.provider === provider)
+      if (!template) return json({ detail: `unknown provider: ${provider}` }, 422)
+      const number = accountsData.filter((account) => account.provider === provider).length + 1
+      const providerName = template.provider_name ?? template.name
+      const label = String(body.label ?? '').trim() || `${providerName} ${number}`
+      const created = {
+        ...template,
+        id: `profile_e2e_${provider}_${number}`,
+        provider,
+        provider_name: providerName,
+        label,
+        name: label === providerName ? providerName : `${providerName} · ${label}`,
+        is_default: false,
+        removable: true,
+        state: 'unconfigured',
+        detail: null,
+      }
+      accountsData = [...accountsData, created]
+      return json(created)
     }
     if (/^\/api\/accounts\/[^/]+\/config$/.test(p) && method === 'POST') return json({ ok: true })
     if (/^\/api\/accounts\/[^/]+\/connect$/.test(p) && method === 'POST') {
@@ -1277,6 +1314,7 @@ async function main() {
       const linkModeHidesPickers = serviceSelects === 1   // destination only
       console.log((linkModeHidesPickers ? 'ok        ' : 'FAIL      ') + ' link mode replaces the source pickers with a link field (service selects: ' + serviceSelects + ')')
       if (!linkModeHidesPickers) results.push({ label: 'link mode source pickers', overflow: true })
+      await page.getByLabel('Open with account', { exact: true }).selectOption('spotify')
 
       // A paste that is not a playlist link surfaces the server's own copy.
       await page.getByLabel('Playlist link', { exact: true }).fill('https://open.spotify.com/album/123')
@@ -2479,7 +2517,7 @@ async function main() {
     // -----------------------------------------------------------------
     // YouTube Music "no-quota mode" (browser cookies) - an optional
     // section below the OAuth device flow. Paste raw request headers ->
-    // POST /api/accounts/ytmusic/browser; bad/rejected headers surface the
+    // POST /api/accounts/{profile}/ytmusic/browser; bad/rejected headers surface the
     // error detail, good ones activate it (an "On" badge, a "Switch back to
     // OAuth" button -> DELETE reverts it). installMocks' own /api/accounts
     // is a static fixture (fine everywhere else); this test overrides it
@@ -2501,7 +2539,7 @@ async function main() {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
       })
       let lastBrowserPost = null
-      await page.route('**/api/accounts/ytmusic/browser', async (route) => {
+      await page.route('**/api/accounts/ytmusic/ytmusic/browser', async (route) => {
         const method = route.request().method()
         if (method === 'POST') {
           lastBrowserPost = JSON.parse(route.request().postData() || '{}')
@@ -2557,7 +2595,7 @@ async function main() {
       await page.getByRole('button', { name: 'Enable no-quota mode', exact: true }).click()
       await page.waitForSelector('text=No-quota mode is on.')
       const postFiredOk = Boolean(lastBrowserPost && typeof lastBrowserPost.headers === 'string' && lastBrowserPost.headers.includes('cookie:'))
-      console.log(`${postFiredOk ? 'ok        ' : 'FAIL      '} pasting valid headers POSTs {headers} to /api/accounts/ytmusic/browser (got ${JSON.stringify(lastBrowserPost)})`)
+      console.log(`${postFiredOk ? 'ok        ' : 'FAIL      '} pasting valid headers POSTs {headers} to the selected profile endpoint (got ${JSON.stringify(lastBrowserPost)})`)
       if (!postFiredOk) results.push({ label: 'ytmusic noquota post body', overflow: true })
 
       const onBadgeOk = await noQuotaSummary.getByText('On', { exact: true }).isVisible()
@@ -3748,6 +3786,98 @@ async function main() {
 
       await checkOverflow(page, 'Transfers page with Pause/Resume/Stop controls @ 1280', results)
       await shot(page, 'transfers-page-controls')
+      await context.close()
+    }
+
+    // -----------------------------------------------------------------
+    // Household profiles remain distinct end-to-end: Accounts can add a
+    // labeled profile, and Transfers preserves two Spotify profile ids in its
+    // selectors and request instead of collapsing them to provider="spotify".
+    // -----------------------------------------------------------------
+    {
+      const context = await browser.newContext()
+      await context.addInitScript(() => window.localStorage.setItem('songmirror-theme', 'light'))
+      const page = await context.newPage()
+      const spotify = ACCOUNTS.find((account) => account.provider === 'spotify')
+      const defaultSpotify = {
+        ...spotify,
+        id: 'profile_default_spotify',
+        label: 'Spotify',
+        name: 'Spotify',
+        is_default: true,
+        removable: false,
+        state: 'connected',
+      }
+      const alexSpotify = {
+        ...spotify,
+        id: 'profile_alex_spotify',
+        label: 'Alex',
+        name: 'Spotify · Alex',
+        is_default: false,
+        removable: true,
+        state: 'connected',
+      }
+      await installMocks(page, {
+        accounts: [defaultSpotify, alexSpotify],
+        playlists: {
+          [defaultSpotify.id]: [
+            { id: 'spotify-source', name: 'Household source', count: 12, image: '' },
+          ],
+          [alexSpotify.id]: [
+            { id: 'spotify-destination', name: 'Alex destination', count: 3, image: '', owned: true },
+          ],
+        },
+      })
+      let submittedTransfer = null
+      await page.route('**/api/transfers', async (route) => {
+        if (route.request().method() !== 'POST') return route.fallback()
+        submittedTransfer = route.request().postDataJSON()
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ job_id: 'job1' }),
+        })
+      })
+      await page.setViewportSize({ width: 1280, height: 900 })
+      await page.goto(BASE_URL + '/accounts', { waitUntil: 'networkidle' })
+      await page.getByLabel('New profile label', { exact: true }).fill('Work')
+      await page.getByRole('button', { name: 'Add profile', exact: true }).click()
+      await page.waitForSelector('h3:has-text("Spotify · Work")')
+      const addedOk = await page.getByRole('heading', { name: 'Spotify · Work', exact: true }).isVisible()
+      console.log(`${addedOk ? 'ok        ' : 'FAIL      '} Accounts adds and renders a labeled provider profile`)
+      if (!addedOk) results.push({ label: 'accounts add profile', overflow: true })
+
+      await page.goto(BASE_URL + '/transfers', { waitUntil: 'networkidle' })
+      await page.waitForSelector('h1:has-text("Transfers")')
+      const sourceSelect = page.getByLabel('Service', { exact: true }).first()
+      const sourceOptions = await sourceSelect.locator('option').evaluateAll((options) => (
+        options.map((option) => ({ value: option.value, label: option.textContent ?? '' }))
+      ))
+      const profilesDistinct =
+        sourceOptions.some((option) => option.value === defaultSpotify.id && option.label === 'Spotify')
+        && sourceOptions.some((option) => option.value === alexSpotify.id && option.label === 'Spotify · Alex')
+      console.log(`${profilesDistinct ? 'ok        ' : 'FAIL      '} Transfers keeps same-provider profiles as distinct selector identities`)
+      if (!profilesDistinct) results.push({ label: 'transfer profile identities', overflow: true })
+
+      await sourceSelect.selectOption(defaultSpotify.id)
+      await page.getByLabel('Playlist', { exact: true }).click()
+      await page.getByRole('option', { name: 'Household source' }).click()
+      const destinationSelect = page.getByLabel('Service', { exact: true }).nth(1)
+      await destinationSelect.selectOption(alexSpotify.id)
+      await page.getByLabel('Existing playlist', { exact: true }).click()
+      await page.getByRole('option', { name: 'Alex destination' }).click()
+      await page.getByRole('button', { name: 'Copy playlist', exact: true }).click()
+      await page.getByRole('dialog').getByRole('button', { name: 'Copy playlist', exact: true }).click()
+      await page.waitForTimeout(100)
+      const payloadOk =
+        submittedTransfer?.source_account === defaultSpotify.id
+        && submittedTransfer?.dest_account === alexSpotify.id
+        && submittedTransfer?.source_playlist_id === 'spotify-source'
+        && submittedTransfer?.dest_playlist_id === 'spotify-destination'
+      console.log(`${payloadOk ? 'ok        ' : 'FAIL      '} same-provider transfer submits both selected profile ids`)
+      if (!payloadOk) results.push({ label: 'same-provider transfer profile payload', overflow: true })
+      await checkOverflow(page, 'Household profiles and cross-profile transfer @ 1280', results)
+      await shot(page, 'household-profile-transfer')
       await context.close()
     }
 

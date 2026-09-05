@@ -77,19 +77,74 @@ def test_playlist_export_routes_reject_unknown_formats(tmp_path):
     assert response.status_code == 422
 
 
-def test_accounts_list_all_unconfigured(tmp_path):
+def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
+    # Default profiles deliberately honor legacy env-based installations. Make
+    # this clean-install assertion independent of credentials another test may
+    # have projected into the process environment.
+    from songmirror.services.account_profiles import PROVIDER_KEYS
+
+    for keys in PROVIDER_KEYS.values():
+        for key in keys:
+            monkeypatch.delenv(key, raising=False)
     with TestClient(_app(tmp_path)) as client:
         accounts = client.get("/api/accounts").json()
-        assert {a["id"] for a in accounts} == {
+        assert {a["provider"] for a in accounts} == {
             "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic", "jellyfin"
         }
+        assert all(a["id"].startswith("profile_default_") for a in accounts)
+        assert all(a["id"] != a["provider"] for a in accounts)
+        assert all(a["is_default"] is True and a["removable"] is False for a in accounts)
         assert all(a["state"] == "unconfigured" for a in accounts)
         # The transfer form greys out its "preserve order" switch on a service
         # whose writes can't replay date-added order.
-        by_id = {a["id"]: a for a in accounts}
-        assert by_id["apple"]["preserves_order"] is True
-        assert by_id["deezer"]["preserves_order"] is False
-        assert by_id["jellyfin"]["preserves_order"] is False   # browse-only, no target
+        by_provider = {a["provider"]: a for a in accounts}
+        assert by_provider["apple"]["preserves_order"] is True
+        assert by_provider["deezer"]["preserves_order"] is False
+        assert by_provider["jellyfin"]["preserves_order"] is False   # browse-only, no target
+
+
+def test_account_profile_api_adds_labels_isolates_secrets_and_removes(tmp_path):
+    store = SettingsStore(dir=tmp_path)
+    with TestClient(create_app(settings=store)) as client:
+        created = client.post(
+            "/api/accounts", json={"provider": "spotify", "label": "Alex"}
+        )
+        assert created.status_code == 200
+        profile = created.json()
+        assert profile["id"].startswith("profile_")
+        assert profile["id"] != "spotify"
+        assert profile["provider"] == "spotify"
+        assert profile["label"] == "Alex"
+        assert profile["name"] == "Spotify · Alex"
+        assert profile["is_default"] is False and profile["removable"] is True
+
+        assert client.post(
+            f"/api/accounts/{profile['id']}/config",
+            json={"SPOTIFY_SP_DC": "profile-secret"},
+        ).json() == {"ok": True}
+        listed = next(
+            account for account in client.get("/api/accounts").json()
+            if account["id"] == profile["id"]
+        )
+        secret = next(
+            field for field in listed["fields"]
+            if field["key"] == "SPOTIFY_SP_DC"
+        )
+        assert secret["configured"] is True
+        assert secret["value"] == ""
+        assert store.get("SPOTIFY_SP_DC") is None
+        assert "profile-secret" not in (tmp_path / "profiles.json").read_text(encoding="utf-8")
+
+        renamed = client.patch(
+            f"/api/accounts/{profile['id']}", json={"label": "Household"}
+        ).json()
+        assert renamed["label"] == "Household"
+        profile_dir = tmp_path / "profiles" / profile["id"]
+        assert "profile-secret" in (profile_dir / "settings.json").read_text(encoding="utf-8")
+
+        assert client.delete(f"/api/accounts/{profile['id']}").json() == {"ok": True}
+        assert not profile_dir.exists()
+        assert profile["id"] not in {a["id"] for a in client.get("/api/accounts").json()}
 
 
 def test_settings_roundtrip_masks_secrets(tmp_path):
@@ -236,13 +291,54 @@ def test_oauth_redirect_uses_configured_public_url(tmp_path, monkeypatch):
     assert result["redirect_uri"] == expected
 
 
+def test_oauth_redirect_keeps_default_callback_and_scopes_custom_profile(
+    tmp_path, monkeypatch
+):
+    from songmirror.services.accounts.spotify import SpotifyConnector
+
+    seen = []
+    monkeypatch.setenv("SPOTIFY_AUTH_MODE", "oauth")
+    monkeypatch.setattr(
+        SpotifyConnector,
+        "begin_redirect",
+        lambda _self, uri: (seen.append(uri), "https://accounts.spotify.test/authorize")[1],
+    )
+
+    with TestClient(_app(tmp_path)) as client:
+        default = next(
+            account for account in client.get("/api/accounts").json()
+            if account["provider"] == "spotify" and account["is_default"]
+        )
+        default_result = client.post(
+            f"/api/accounts/{default['id']}/connect",
+            headers={"host": "localhost:8888"},
+        ).json()
+        custom = client.post(
+            "/api/accounts", json={"provider": "spotify", "label": "Family"}
+        ).json()
+        client.post(
+            f"/api/accounts/{custom['id']}/config",
+            json={"SPOTIFY_AUTH_MODE": "oauth"},
+        )
+        custom_result = client.post(
+            f"/api/accounts/{custom['id']}/connect",
+            headers={"host": "localhost:8888"},
+        ).json()
+
+    legacy = "http://127.0.0.1:8888/oauth/spotify/callback"
+    scoped = f"http://127.0.0.1:8888/oauth/{custom['id']}/callback"
+    assert default_result["redirect_uri"] == legacy
+    assert custom_result["redirect_uri"] == scoped
+    assert seen == [legacy, scoped]
+
+
 def test_spotify_oauth_mode_exposes_masked_env_credentials(tmp_path, monkeypatch):
     monkeypatch.setenv("SPOTIFY_AUTH_MODE", "oauth")
     monkeypatch.setenv("SPOTIFY_CLIENT_ID", "env-client")
     monkeypatch.setenv("SPOTIFY_CLIENT_SECRET", "env-secret")
 
     with TestClient(_app(tmp_path)) as client:
-        spotify = next(a for a in client.get("/api/accounts").json() if a["id"] == "spotify")
+        spotify = next(a for a in client.get("/api/accounts").json() if a["provider"] == "spotify")
 
     assert spotify["auth_kind"] == "oauth_redirect"
     fields = {field["key"]: field for field in spotify["fields"]}

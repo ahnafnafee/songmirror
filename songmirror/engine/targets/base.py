@@ -31,6 +31,11 @@ from ..matching import (
 COLLAPSE_FRACTION = 0.4
 
 
+def _target_provider(target):
+    """Catalog/protocol id, distinct from an account-bound archive identity."""
+    return getattr(target, "provider", None) or target.source
+
+
 class TargetAuthError(RuntimeError):
     """Auth expired / rejected. Fatal for the pass — never a partial write."""
 
@@ -53,6 +58,8 @@ class MirrorTarget:
     name = "target"       # human label, e.g. "Apple Music"
     tag = "target"        # short log tag, e.g. "apple"
     source = "target"     # archive source key, e.g. "apple"
+    provider = ""          # catalog type when source is an account profile id
+    archive_source = None  # account identity for target-internal archive reads
     cache_file = None     # this target's own resolution cache path (ids differ per service)
     # True only when the provider gives every physical playlist entry its own
     # durable id. The manual editor can then delete that exact occurrence
@@ -600,7 +607,8 @@ def _enrich_hard_isrcs(songs, source_key, source_tracks):
 
 
 def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, execute, max_removals,
-                max_adds, drain_removals=False, should_continue=None, source_key="spotify", source_name="Spotify", name=None):
+                max_adds, drain_removals=False, should_continue=None, source_key="spotify",
+                source_provider=None, source_name="Spotify", name=None):
     """Reconcile one source→target playlist pair. Returns a stats dict; `clean`
     is True when everything applied with no guard tripped.
 
@@ -624,7 +632,7 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
                          [[target.track_id(t), t.get("name", ""), t.get("artist", "")] for t in tgt_tracks])
 
     links = (archive.get_links(songs, target.source, [t.get("id") for t in sp_tracks])
-             if source_key == "spotify" else {})
+             if (source_provider or source_key) == "spotify" else {})
     recovered_links = _recover_archived_links(
         songs, source_key, target, sp_tracks, links)
     links = {**links, **recovered_links}  # fresh conservative archive evidence repairs stale links
@@ -838,7 +846,7 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
         log_miss(f"not on {target.name}: {track['name']} - {', '.join(track['artists'])}", tag=tag)
 
     if execute:
-        if source_key == "spotify":
+        if (source_provider or source_key) == "spotify":
             actual_id = getattr(target, "added_id", lambda target_id: target_id)
             archive.delete_links(songs, target.source, rejected_link_ids)
             archive.set_links(
@@ -849,7 +857,7 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
             )
         for track in removals:
             _resource_call(target, "resource_remove", "remove", tgt_playlist, track)
-    elif source_key == "spotify":
+    elif (source_provider or source_key) == "spotify":
         # A dry run may still warm proven cross-provider mappings, but there is
         # no write-time provider repair to account for.
         archive.set_links(songs, target.source, new_links)
@@ -936,9 +944,18 @@ def _entry_cids(target, tracks, songs, cache, key2isrc, rebindings=None, remembe
     but cannot overwrite proven memory; the memory otherwise covers for a read
     too degraded to derive one."""
     ids = [target.track_id(t) for t in tracks]
-    rev = ({} if target.source == "spotify"
+    rev = ({} if _target_provider(target) == "spotify"
            else archive.get_reverse_links(songs, target.source, ids))
-    sp_isrc = archive.get_isrcs(songs, "spotify", list(rev.values())) if rev else {}
+    if rev:
+        archive_sources = getattr(target, "archive_sources", None)
+        spotify_sources = (
+            archive_sources("spotify") if callable(archive_sources) else ("spotify",)
+        )
+        sp_isrc = archive.get_isrcs_from_sources(
+            songs, spotify_sources, list(rev.values())
+        )
+    else:
+        sp_isrc = {}
     id2isrc = target.native_isrc_map(cache)  # provider-supplied track_id -> ISRC (Apple, future providers)
     known = {tid: normalize_canonical_id(cid)
              for tid, cid in archive.get_identities(songs, target.source, ids).items()}
@@ -951,7 +968,7 @@ def _entry_cids(target, tracks, songs, cache, key2isrc, rebindings=None, remembe
         history.setdefault(tid, set()).add(cid)
     out, learned = [], {}
     for playlist_position, t in enumerate(tracks):
-        norm = _normalize(t, target.source)
+        norm = _normalize(t, _target_provider(target))
         norm["_playlist_position"] = playlist_position
         tid = target.track_id(t)
         # The joined credit is the most specific key, so it decides first; the
@@ -1262,7 +1279,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     for p in peers:
         native = p.native_isrc_map(caches[p.source])
         for track in raw_by_source[p.source]:
-            norm = _normalize(track, p.source)
+            norm = _normalize(track, _target_provider(p))
             isrc = normalize_isrc(norm.get("isrc") or native.get(p.track_id(track)))
             if isrc:
                 for key_ in spotify_track_keys(norm):

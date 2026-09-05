@@ -19,7 +19,14 @@ export interface AccountField {
 }
 
 export interface Account {
+  /** Stable selectable profile id. Never equal to a provider type id. */
   id: string
+  /** Connector/catalog type shared by one or more profiles. */
+  provider: string
+  provider_name: string
+  label: string
+  is_default: boolean
+  removable: boolean
   name: string
   auth_kind: AuthKind
   fields: AccountField[]
@@ -376,7 +383,9 @@ export interface LinkUpsertRequest {
 export type TransferStatus = 'queued' | 'running' | 'done' | 'error' | 'busy' | 'paused' | 'stopped'
 
 export interface TransferEndpoint {
+  account: string
   provider: string
+  name?: string
   playlist_id: string
   playlist_name: string
 }
@@ -417,9 +426,9 @@ export interface TransferJob {
  * named `dest_name` on the destination instead of copying into an existing
  * one. */
 export interface StartTransferRequest {
-  source_provider: string
+  source_account: string
   source_playlist_id: string
-  dest_provider: string
+  dest_account: string
   dest_playlist_id: string | null
   dest_name: string
   /** Repair the destination's date-added order when a copied track is older
@@ -445,6 +454,7 @@ export interface TransferControlResponse {
 
 /** POST /api/transfers/preview: what a pasted playlist link resolves to. */
 export interface TransferSourcePreview {
+  account: string
   provider: string
   playlist_id: string
   name: string
@@ -457,6 +467,7 @@ export interface TransferSourcePreview {
 /** GET /api/resolve-cache: one provider's cached-mapping counts. */
 export interface ResolveCacheProvider {
   id: string
+  provider?: string
   name: string
   total: number
   /** Mappings a person set by hand in the transfer conflict editor. */

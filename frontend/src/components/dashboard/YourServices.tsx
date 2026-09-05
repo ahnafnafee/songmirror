@@ -28,13 +28,13 @@ export function YourServices({ accounts, status }: { accounts: Account[] | null;
         <ul className="flex flex-col divide-y divide-border border-t border-border">
           {accounts.map((a) => {
             const target = status?.last?.per_target.find((t) => t.name === a.name)
-            const logoId = serviceLogoId(a.id)
+            const logoId = serviceLogoId(a.provider)
             return (
               <li key={a.id} className="flex items-center gap-3 px-4 py-3">
                 {logoId ? (
-                  <ServiceLogo service={logoId} className={cn('size-4 shrink-0', tagText(a.id))} />
+                  <ServiceLogo service={logoId} className={cn('size-4 shrink-0', tagText(a.provider))} />
                 ) : (
-                  <span className={cn('size-[9px] shrink-0 rounded-full', tagDot(a.id))} aria-hidden="true" />
+                  <span className={cn('size-[9px] shrink-0 rounded-full', tagDot(a.provider))} aria-hidden="true" />
                 )}
                 <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-text">{a.name}</span>
                 {target && (target.added > 0 || target.removed > 0) && (

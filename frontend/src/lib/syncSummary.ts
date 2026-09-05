@@ -100,15 +100,16 @@ export function buildSyncSummaryRows(job: SyncJob, peers: Account[], downloadDir
 
   if (job.liked_tracks) {
     const sourceId = job.source || 'spotify'
-    const sourceName = peers.find((peer) => peer.id === sourceId)?.name ?? sourceId
-    const sourceLabel = providerLikedTracksLabel(sourceId, sourceName)
+    const sourcePeer = peers.find((peer) => peer.id === sourceId)
+    const sourceName = sourcePeer?.name ?? sourceId
+    const sourceLabel = providerLikedTracksLabel(sourcePeer?.provider, sourceName)
     const destinations = peers
       .filter((peer) => enabled.has(peer.id) && peer.id !== sourceId)
       .map((peer) => {
         const route = job.liked_routes?.[peer.id]
         return route?.kind === 'playlist'
           ? `${peer.name} “${route.name}”`
-          : providerLikedTracksLabel(peer.id, peer.name)
+          : providerLikedTracksLabel(peer.provider, peer.name)
       })
     const arrow = job.mode === 'oneway' ? '→' : '⇄'
     rows.push({

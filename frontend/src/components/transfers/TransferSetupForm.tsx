@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api, errorMessage } from '@/api'
 import type { ProviderPlaylistsEntry } from '@/hooks/useProviderPlaylists'
 import { cn } from '@/lib/cn'
-import { serviceLogoId, tagLabel, tagText } from '@/lib/constants'
+import { serviceLogoId, tagText } from '@/lib/constants'
 import type { Account, StartTransferRequest, TransferSourcePreview } from '@/types'
 
 import { Button } from '../ui/Button'
@@ -34,11 +34,11 @@ const SOURCE_MODE_OPTIONS = [
   { value: 'link', label: 'Paste a link' },
 ]
 
-/** A provider id's brand mark, tinted with its identity color — undefined
- * (no icon) for an unset or unrecognized id. */
-function serviceIcon(providerId: string) {
-  const logoId = serviceLogoId(providerId)
-  return logoId ? <ServiceLogo service={logoId} className={`size-4 ${tagText(providerId)}`} /> : undefined
+/** A profile's provider brand mark, tinted with its provider identity color. */
+function serviceIcon(account: Account | undefined) {
+  const provider = account?.provider ?? ''
+  const logoId = serviceLogoId(provider)
+  return logoId ? <ServiceLogo service={logoId} className={`size-4 ${tagText(provider)}`} /> : undefined
 }
 
 export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
@@ -64,6 +64,8 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   // Same-provider transfers are allowed (e.g. copy a followed Spotify list into a
   // new owned Spotify playlist), so the destination service list isn't filtered.
   const destProviderOptions = transferable
+  const sourceAccount = transferable.find((account) => account.id === sourceProvider)
+  const destAccount = transferable.find((account) => account.id === destProvider)
 
   // Default "create new"'s name to the source playlist's name — re-derives
   // whenever the source playlist or the create-new choice changes, but a
@@ -99,7 +101,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
     : destMode === 'create'
       ? 'A new playlist has nothing to reorder — copies land in source order.'
       : !destSupportsOrder
-        ? `${tagLabel(destProvider)} can't replay order safely, so copies land at the end of the playlist.`
+        ? `${destAccount?.name ?? 'This account'} can't replay order safely, so copies land at the end of the playlist.`
         : 'Slower, and writes every track after the oldest new one again. Off: copies land at the end.'
 
   // Copying a playlist into itself is a no-op — block only the exact same-provider,
@@ -115,19 +117,18 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
 
   async function handlePreview() {
     const url = sourceLink.trim()
-    if (!url) return
+    if (!url || !sourceProvider) return
     setPreviewing(true)
     setPreviewError(null)
     try {
-      const resolved = await api.previewTransferSource(url)
+      const resolved = await api.previewTransferSource(url, sourceProvider)
       setPreview(resolved)
       // A resolved link fills in exactly what the library picker would have, so
       // everything downstream (confirm, start, progress) is unchanged.
-      setSourceProvider(resolved.provider)
+      setSourceProvider(resolved.account)
       setSourcePlaylistId(resolved.playlist_id)
     } catch (err) {
       setPreview(null)
-      setSourceProvider('')
       setSourcePlaylistId('')
       setPreviewError(errorMessage(err))
     } finally {
@@ -140,7 +141,6 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
     // A link edited after resolving is no longer the thing that was resolved.
     if (preview) {
       setPreview(null)
-      setSourceProvider('')
       setSourcePlaylistId('')
     }
     setPreviewError(null)
@@ -159,9 +159,9 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
     setError(null)
     try {
       const body: StartTransferRequest = {
-        source_provider: sourceProvider,
+        source_account: sourceProvider,
         source_playlist_id: sourcePlaylistId,
-        dest_provider: destProvider,
+        dest_account: destProvider,
         dest_playlist_id: destMode === 'create' ? null : destPlaylistId,
         dest_name: destMode === 'create' ? destName.trim() : (destPlaylist?.name ?? ''),
         preserve_order: canPreserveOrder && preserveOrder,
@@ -187,8 +187,8 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
 
       {transferable.length < 2 ? (
         <p className="text-sm text-text-3">
-          Connect at least 2 transferable services on the Accounts page to copy a playlist between
-          them. Browse-only services like Jellyfin can't be a transfer endpoint.
+          Connect at least 2 transferable accounts on the Accounts page to copy a playlist between
+          them. Browse-only accounts like Jellyfin can't be a transfer endpoint.
         </p>
       ) : (
         <>
@@ -220,7 +220,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                   <>
                     <SelectField
                       label="Service"
-                      icon={serviceIcon(sourceProvider)}
+                      icon={serviceIcon(sourceAccount)}
                       options={[{ value: '', label: 'Choose a service…' }, ...transferable.map((a) => ({ value: a.id, label: a.name }))]}
                       value={sourceProvider}
                       onChange={(e) => {
@@ -239,6 +239,19 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                   </>
                 ) : (
                   <>
+                    <SelectField
+                      label="Open with account"
+                      help="The link must belong to the selected account's service."
+                      icon={serviceIcon(sourceAccount)}
+                      options={[{ value: '', label: 'Choose an account…' }, ...transferable.map((a) => ({ value: a.id, label: a.name }))]}
+                      value={sourceProvider}
+                      onChange={(e) => {
+                        setSourceProvider(e.target.value)
+                        setSourcePlaylistId('')
+                        setPreview(null)
+                        setPreviewError(null)
+                      }}
+                    />
                     <TextField
                       label="Playlist link"
                       help="A public playlist URL from any connected service. It does not have to be saved in your library."
@@ -256,13 +269,13 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                       <Button
                         variant="secondary"
                         onClick={() => void handlePreview()}
-                        disabled={!sourceLink.trim() || previewing}
+                        disabled={!sourceProvider || !sourceLink.trim() || previewing}
                       >
                         {previewing ? 'Opening…' : 'Open link'}
                       </Button>
                       {preview && (
                         <span className="flex min-w-0 items-center gap-1.5 text-xs text-text-3">
-                          {serviceIcon(preview.provider)}
+                          {serviceIcon(sourceAccount)}
                           <span className="truncate font-semibold text-text-2">{preview.name}</span>
                         </span>
                       )}
@@ -315,7 +328,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                         : 'Pick a source service first.'
                       : undefined
                   }
-                  icon={serviceIcon(destProvider)}
+                  icon={serviceIcon(destAccount)}
                   options={[
                     { value: '', label: 'Choose a service…' },
                     ...destProviderOptions.map((a) => ({ value: a.id, label: a.name })),
@@ -403,11 +416,11 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
         title="Copy this playlist?"
         description={
           sourcePlaylist
-            ? `"${sourcePlaylist.name}" will be copied from ${tagLabel(sourceProvider)} to ${
+            ? `"${sourcePlaylist.name}" will be copied from ${sourceAccount?.name ?? 'the source account'} to ${
                 destMode === 'create'
                   ? `a new playlist named "${destName.trim()}"`
                   : `"${destPlaylist?.name ?? ''}"`
-              } on ${tagLabel(destProvider)}. Existing tracks on the destination are kept, this only adds.${
+              } on ${destAccount?.name ?? 'the destination account'}. Existing tracks on the destination are kept, this only adds.${
                 canPreserveOrder && preserveOrder
                   ? ' Tracks already there will be rewritten to keep Recently Added order, which takes longer.'
                   : ''

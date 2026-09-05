@@ -36,10 +36,11 @@ def next_boundary_delay(now, interval):
 
 
 class SyncService:
-    def __init__(self, settings, bus, syncs=None):
+    def __init__(self, settings, bus, syncs=None, profiles=None):
         self._settings = settings
         self._bus = bus
         self._syncs = syncs or SyncStore()
+        self._profiles = profiles
         self._running_job = None       # id of the job currently holding the lock, or None
         self._running_mode = None      # "preview" | "execute" while a pass runs
         self._active = set()           # ids running-or-queued, to coalesce duplicate triggers
@@ -57,6 +58,7 @@ class SyncService:
         """Build engine Options from a job + the global download mirror."""
         self._settings.apply_to_env()
         opts = parse_args([])
+        opts.account_profiles = self._profiles
         opts.execute = execute
         opts.sync_mode = job.mode
         opts.sync_source = job.source

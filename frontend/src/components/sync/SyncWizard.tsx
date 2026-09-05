@@ -149,7 +149,7 @@ function ProviderChip({
   role?: 'source' | 'order' | 'authority' | 'mirror'
   onToggle: () => void
 }) {
-  const logoId = serviceLogoId(account.id)
+  const logoId = serviceLogoId(account.provider)
   const connected = account.state === 'connected'
 
   return (
@@ -175,9 +175,9 @@ function ProviderChip({
       )}
     >
       {logoId ? (
-        <ServiceLogo service={logoId} className={cn('size-4 shrink-0', connected && tagText(account.id))} />
+        <ServiceLogo service={logoId} className={cn('size-4 shrink-0', connected && tagText(account.provider))} />
       ) : (
-        <span className={cn('size-2 shrink-0 rounded-full', tagDot(account.id))} aria-hidden="true" />
+        <span className={cn('size-2 shrink-0 rounded-full', tagDot(account.provider))} aria-hidden="true" />
       )}
       {account.name}
       {role && connected && checked && (
@@ -194,7 +194,7 @@ function ProviderChip({
  * source of truth" picker — same visual language as ProviderChip, but
  * exclusive-choice (radio) rather than a toggle set. */
 function SourceChip({ account, selected, onSelect }: { account: Account; selected: boolean; onSelect: () => void }) {
-  const logoId = serviceLogoId(account.id)
+  const logoId = serviceLogoId(account.provider)
   const connected = account.state === 'connected'
 
   return (
@@ -215,9 +215,9 @@ function SourceChip({ account, selected, onSelect }: { account: Account; selecte
       )}
     >
       {logoId ? (
-        <ServiceLogo service={logoId} className={cn('size-4 shrink-0', connected && tagText(account.id))} />
+        <ServiceLogo service={logoId} className={cn('size-4 shrink-0', connected && tagText(account.provider))} />
       ) : (
-        <span className={cn('size-2 shrink-0 rounded-full', tagDot(account.id))} aria-hidden="true" />
+        <span className={cn('size-2 shrink-0 rounded-full', tagDot(account.provider))} aria-hidden="true" />
       )}
       {account.name}
       {!connected && <span className="font-normal text-text-3">not connected</span>}
@@ -308,10 +308,9 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     if (!job) {
       // Snapshot the connected peers now. Persisting an empty sentinel would
       // make this job silently gain every provider connected in the future.
-      initial.providers = syncPeersOf(accounts)
-        .filter((account) => account.state === 'connected')
-        .map((account) => account.id)
-        .join(',')
+      const connected = syncPeersOf(accounts).filter((account) => account.state === 'connected')
+      initial.providers = connected.map((account) => account.id).join(',')
+      initial.source = connected.find((account) => account.provider === 'spotify')?.id ?? connected[0]?.id ?? initial.source
     }
     setForm(initial)
     setStep(0)
@@ -330,12 +329,13 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
   }
 
   const syncPeers = syncPeersOf(accounts)
-  const jellyfinConnected = accounts.some((a) => a.id === 'jellyfin' && a.state === 'connected')
+  const jellyfinConnected = accounts.some((a) => a.provider === 'jellyfin' && a.state === 'connected')
 
   // One-way uses this as its source of truth. In group mode it is the order
   // authority: playlist names and sequence follow it, while membership can be
   // changed on any authority.
   const syncSource = form.source || 'spotify'
+  const sourceAccount = syncPeers.find((account) => account.id === syncSource)
   const authorityIds = authorityProvidersOf({ mode: form.mode, authorities: form.authorities })
   const lockedProviderIds = lockedProvidersOf({
     mode: form.mode,
@@ -344,7 +344,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
   })
   if (form.liked_tracks) lockedProviderIds.add(syncSource)
   const nonSpotifySourceConflict =
-    form.mode !== 'nway' && syncSource !== 'spotify' && (form.download || jellyfinConnected)
+    form.mode !== 'nway' && sourceAccount?.provider !== 'spotify' && (form.download || jellyfinConnected)
 
   const enabledProviders = enabledProvidersOf({ providers: form.providers }, syncPeers)
   const connectedPeerIds = new Set(syncPeers.filter((account) => account.state === 'connected').map((account) => account.id))
@@ -358,10 +358,13 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
       const next = { ...prev, mode }
       const connected = syncPeers.filter((account) => account.state === 'connected').map((account) => account.id)
       if (mode === 'group') {
+        const spotifyAccount = syncPeers.find(
+          (account) => account.state === 'connected' && account.provider === 'spotify',
+        )?.id
         const source = connected.includes(prev.source)
           ? prev.source
-          : connected.includes('spotify')
-            ? 'spotify'
+          : spotifyAccount
+            ? spotifyAccount
             : connected[0] || prev.source
         const authorities = new Set(parseCsv(prev.authorities).filter((id) => connected.includes(id)))
         if (source) authorities.add(source)
@@ -451,10 +454,11 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     ? syncSource
     : form.mode !== 'nway'
       ? syncSource
-      : (enabledProviders.has('spotify') ? 'spotify' : syncPeers.find((a) => enabledProviders.has(a.id))?.id) || null
+      : (syncPeers.find((account) => account.provider === 'spotify' && enabledProviders.has(account.id))?.id
+        ?? syncPeers.find((account) => enabledProviders.has(account.id))?.id) || null
 
   const likedSourceName = syncPeers.find((account) => account.id === syncSource)?.name ?? syncSource
-  const likedPlaylistSuggestion = providerLikedTracksLabel(syncSource, likedSourceName)
+  const likedPlaylistSuggestion = providerLikedTracksLabel(sourceAccount?.provider, likedSourceName)
   const likedDestinations = syncPeers.filter(
     (account) => enabledProviders.has(account.id) && account.id !== syncSource,
   )
@@ -828,10 +832,10 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                         return (
                           <div key={account.id} className="flex flex-col gap-2">
                             <div className="flex items-center gap-2 text-[12.5px] font-semibold text-text-2">
-                              {serviceLogoId(account.id) ? (
-                                <ServiceLogo service={serviceLogoId(account.id)!} className={cn('size-4', tagText(account.id))} />
+                              {serviceLogoId(account.provider) ? (
+                                <ServiceLogo service={serviceLogoId(account.provider)!} className={cn('size-4', tagText(account.provider))} />
                               ) : (
-                                <span className={cn('size-2 rounded-full', tagDot(account.id))} aria-hidden="true" />
+                                <span className={cn('size-2 rounded-full', tagDot(account.provider))} aria-hidden="true" />
                               )}
                               {account.name}
                             </div>
@@ -845,7 +849,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                                 value="native"
                                 checked={route.kind === 'native'}
                                 onChange={() => setLikedRoute(account.id, { kind: 'native' })}
-                                title={`Use ${account.name} ${nativeLikedTracksName(account.id)}`}
+                                title={`Use ${account.name} ${nativeLikedTracksName(account.provider)}`}
                                 description="Sync directly into this service's built-in liked collection."
                               />
                               <RadioCard

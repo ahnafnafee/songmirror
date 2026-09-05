@@ -100,12 +100,14 @@ function CounterDetails({
   value,
   providers,
   reasons,
+  accounts,
 }: {
   title: string
   description: string
   value: number
   providers: Record<string, number>
   reasons?: Record<string, number>
+  accounts?: Account[] | null
 }) {
   const providerRows = Object.entries(providers).sort((a, b) => b[1] - a[1] || tagLabel(a[0]).localeCompare(tagLabel(b[0])))
   const reasonRows = Object.entries(reasons ?? {}).sort((a, b) => b[1] - a[1])
@@ -121,15 +123,17 @@ function CounterDetails({
           <p className="mb-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wide text-text-3">By service</p>
           <div className="flex flex-col gap-1.5">
             {providerRows.map(([tag, count]) => {
-              const logo = serviceLogoId(tag)
+              const account = accounts?.find((candidate) => candidate.id === tag)
+              const brand = account?.provider ?? tag
+              const logo = serviceLogoId(brand)
               return (
                 <div key={tag} className="flex items-center gap-2">
                   {logo ? (
-                    <ServiceLogo service={logo} className={cn('size-3.5 shrink-0', tagText(tag))} />
+                    <ServiceLogo service={logo} className={cn('size-3.5 shrink-0', tagText(brand))} />
                   ) : (
-                    <span className={cn('size-2 shrink-0 rounded-full', tagDot(tag))} aria-hidden="true" />
+                    <span className={cn('size-2 shrink-0 rounded-full', tagDot(brand))} aria-hidden="true" />
                   )}
-                  <span className="min-w-0 flex-1 truncate text-[11.5px] text-text-2">{tagLabel(tag)}</span>
+                  <span className="min-w-0 flex-1 truncate text-[11.5px] text-text-2">{account?.name ?? tagLabel(tag)}</span>
                   <span className="font-mono text-[11px] font-bold tabular-nums text-text">{COUNT_FORMATTER.format(count)}</span>
                 </div>
               )
@@ -162,15 +166,16 @@ function matchesKind(event: SyncEvent, filter: KindFilter): boolean {
   return event.kind === filter
 }
 
-function ServiceOptionMark({ tag }: { tag: string }) {
+function ServiceOptionMark({ tag, account }: { tag: string; account?: Account }) {
   if (tag === 'sync') return <LuRefreshCw className="size-3.5 text-accent" />
   if (tag === 'local') return <LuDownload className="size-3.5 text-info" />
   if (tag === 'transfer') return <LuArrowRightLeft className="size-3.5 text-info" />
-  const logo = serviceLogoId(tag)
+  const brand = account?.provider ?? tag
+  const logo = serviceLogoId(brand)
   return logo ? (
-    <ServiceLogo service={logo} className={cn('size-3.5', tagText(tag))} />
+    <ServiceLogo service={logo} className={cn('size-3.5', tagText(brand))} />
   ) : (
-    <span className={cn('size-2 rounded-full', tagDot(tag))} />
+    <span className={cn('size-2 rounded-full', tagDot(brand))} />
   )
 }
 
@@ -206,18 +211,20 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
     for (const account of accounts ?? []) {
       if (account.state !== 'unconfigured') ids.add(activitySourceId(account.id))
     }
-    return [...ids].sort((a, b) => tagLabel(a).localeCompare(tagLabel(b)))
+    const label = (id: string) => accounts?.find((account) => account.id === id)?.name ?? tagLabel(id)
+    return [...ids].sort((a, b) => label(a).localeCompare(label(b)))
   }, [accounts, events, syncs])
   const sourceOptions = useMemo<Array<FilterSelectOption<string>>>(() => {
-    const services = sources.filter((tag) => serviceLogoId(tag) !== null)
-    const internal = sources.filter((tag) => serviceLogoId(tag) === null)
+    const accountFor = (tag: string) => accounts?.find((account) => account.id === tag)
+    const services = sources.filter((tag) => serviceLogoId(accountFor(tag)?.provider ?? tag) !== null)
+    const internal = sources.filter((tag) => serviceLogoId(accountFor(tag)?.provider ?? tag) === null)
     return [
       { value: 'all', label: 'All sources', leading: <LuLayers3 className="size-3.5 text-text-3" /> },
       ...services.map((tag) => ({
         value: tag,
-        label: tagLabel(tag),
+        label: accountFor(tag)?.name ?? tagLabel(tag),
         group: 'Music services',
-        leading: <ServiceOptionMark tag={tag} />,
+        leading: <ServiceOptionMark tag={tag} account={accountFor(tag)} />,
       })),
       ...internal.map((tag) => ({
         value: tag,
@@ -227,17 +234,18 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
         leading: <ServiceOptionMark tag={tag} />,
       })),
     ]
-  }, [sources])
+  }, [accounts, sources])
 
   const visibleEvents = useMemo(() => {
     const filtered = events.filter((event) => {
       if (source !== 'all' && activitySourceId(event.tag) !== source) return false
       if (!matchesKind(event, kind)) return false
       if (!deferredQuery) return true
-      return `${event.message} ${tagLabel(event.tag)} ${event.kind}`.toLocaleLowerCase().includes(deferredQuery)
+      const label = accounts?.find((account) => account.id === event.tag)?.name ?? tagLabel(event.tag)
+      return `${event.message} ${label} ${event.kind}`.toLocaleLowerCase().includes(deferredQuery)
     })
     return sort === 'newest' ? filtered.slice().reverse() : filtered
-  }, [deferredQuery, events, kind, sort, source])
+  }, [accounts, deferredQuery, events, kind, sort, source])
 
   const filtered = query.trim() !== '' || source !== 'all' || kind !== 'all'
 
@@ -267,6 +275,7 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
                   value={counters[counter.key]}
                   providers={breakdown[counter.key]}
                   reasons={counter.key === 'held' ? holdReasons : undefined}
+                  accounts={accounts}
                 />
               )}
             />
@@ -348,6 +357,7 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
 
       <EventFeedList
         events={visibleEvents}
+        accounts={accounts}
         newestFirst={sort === 'newest'}
         emptyTitle={filtered ? 'No matching activity' : 'No activity yet'}
         emptyDescription={filtered

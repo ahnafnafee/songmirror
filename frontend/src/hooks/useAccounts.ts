@@ -10,6 +10,8 @@ function isAccountArray(value: unknown): value is Account[] {
         account !== null &&
         typeof account === 'object' &&
         typeof account.id === 'string' &&
+        typeof account.provider === 'string' &&
+        typeof account.label === 'string' &&
         typeof account.name === 'string' &&
         typeof account.state === 'string' &&
         Array.isArray(account.fields) &&

@@ -47,10 +47,14 @@ def _split_key(key):
 class ResolveCacheStore:
     """The resolution caches as an editable table, one file per provider."""
 
-    def __init__(self, settings, sync=None):
+    def __init__(self, settings, sync=None, profiles=None):
         self._settings = settings
         # Consulted only to refuse writes while a pass holds the cache in memory.
         self._sync = sync
+        self._profiles = profiles
+
+    def _provider(self, identity):
+        return self._profiles.provider_of(identity) if self._profiles else identity
 
     # -- paths -----------------------------------------------------------------
     def _path(self, provider_id):
@@ -59,17 +63,29 @@ class ResolveCacheStore:
         Read through the target class so this opens exactly the file the engine
         writes, including any operator override of its environment variable.
         """
-        cls = target_class(provider_id)
+        provider = self._provider(provider_id)
+        cls = target_class(provider)
         if cls is None:
             return None
-        self._settings.apply_to_env()
-        return cls.resolve_cache_path(parse_args([]))
+        if self._profiles is None:
+            self._settings.apply_to_env()
+            return cls.resolve_cache_path(parse_args([]))
+        profile = self._profiles.resolve(provider_id)
+        if profile is None:
+            return None
+        with self._profiles.activate(profile.id):
+            opts = parse_args([])
+            if provider == "spotify":
+                opts.spotify_cache_file = os.getenv("SPOTIFY_CACHE_FILE", opts.spotify_cache_file)
+            elif provider == "apple":
+                opts.cache_file = os.getenv("APPLE_CACHE_FILE", opts.cache_file)
+            return cls.resolve_cache_path(opts)
 
     def _load(self, provider_id):
         path = self._path(provider_id)
         if path is None:
             raise ResolveCacheError(
-                f"{provider_label(provider_id)} does not keep a resolve cache.")
+                f"{provider_label(self._provider(provider_id))} does not keep a resolve cache.")
         return path, load_cache(path)
 
     # -- reads -----------------------------------------------------------------
@@ -81,19 +97,31 @@ class ResolveCacheStore:
         zeroes.
         """
         out = []
-        for provider_id in provider_ids():
+        identities = (
+            [profile.id for profile in self._profiles.list()]
+            if self._profiles else provider_ids()
+        )
+        for provider_id in identities:
             path = self._path(provider_id)
             if path is None or not os.path.exists(path):
                 continue
             cache = load_cache(path)
             search = cache["search"]
-            out.append({
+            row = {
                 "id": provider_id,
-                "name": provider_label(provider_id),
+                "name": (
+                    self._profiles.display_name(
+                        provider_id, provider_label(self._provider(provider_id))
+                    )
+                    if self._profiles else provider_label(provider_id)
+                ),
                 "total": len(search),
                 "manual": sum(1 for key in cache["manual"] if key in search),
                 "unmatched": sum(1 for value in search.values() if not value),
-            })
+            }
+            if self._profiles is not None:
+                row["provider"] = self._provider(provider_id)
+            out.append(row)
         return out
 
     def entries(self, provider_id, *, query="", kind="all", offset=0, limit=50):
@@ -122,7 +150,7 @@ class ResolveCacheStore:
                 "artist": artist,
                 "target_id": "" if target_id is None else str(target_id),
                 "manual": manual,
-                "url": track_url(provider_id, target_id),
+                "url": track_url(self._provider(provider_id), target_id),
             })
         rows.sort(key=lambda row: (row["name"], row["artist"]))
         offset = max(0, int(offset))
@@ -148,14 +176,15 @@ class ResolveCacheStore:
         path, cache = self._load(provider_id)
         if key not in cache["search"]:
             raise ResolveCacheError("That mapping is no longer in the cache. Refresh the list.")
-        cls = target_class(provider_id)
+        provider = self._provider(provider_id)
+        cls = target_class(provider)
         try:
             normalized = cls.normalize_manual_track_id(target_id)
         except ValueError as exc:
             raise ResolveCacheError(str(exc)) from exc
         if not normalized:
             raise ResolveCacheError(
-                f"Paste a {provider_label(provider_id)} track link or id.")
+                f"Paste a {provider_label(provider)} track link or id.")
         cache["search"][key] = normalized
         cache["manual"].add(key)
         cache["dirty"] = True
@@ -167,7 +196,7 @@ class ResolveCacheStore:
             "artist": artist,
             "target_id": normalized,
             "manual": True,
-            "url": track_url(provider_id, normalized),
+            "url": track_url(provider, normalized),
         }
 
     def delete(self, provider_id, key):

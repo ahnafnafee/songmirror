@@ -15,7 +15,7 @@ from ..engine.config import parse_args, spotify_write_backend
 from ..engine.logs import log_add, log_miss, log_note, log_warn
 from ..engine.matching import spotify_track_keys, track_key, tracks_oldest_first
 from ..engine.runner import load_cache, save_cache
-from ..engine.targets import build_one, is_peer
+from ..engine.targets import build_one, is_peer, target_provider
 from ..engine.targets.base import (
     MirrorTarget,
     TargetAuthError,
@@ -64,7 +64,7 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
     raw_source = list(read_source(src_pl))
     unavailable = [track for track in raw_source if track.get("unavailable")]
     src = [
-        _normalize(track, source.source)
+        _normalize(track, target_provider(source))
         for track in raw_source
         if not track.get("unavailable")
     ]
@@ -89,7 +89,7 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
         if (target_id := target_id_of(track)) is not None
     }
     dst = [
-        _normalize(track, dest.source)
+        _normalize(track, target_provider(dest))
         for track in raw_destination
     ]
     seen = set().union(*(spotify_track_keys(n) for n in dst)) if dst else set()
@@ -108,7 +108,7 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
     # Same-provider copy (e.g. a followed Spotify list into a new owned one): the
     # track's own id is already valid on the destination, so use it directly instead
     # of re-searching for it (which resolve() does for the cross-provider case).
-    same_provider = source.source == dest.source
+    same_provider = target_provider(source) == target_provider(dest)
     additions, not_found = [], []
     resolved_existing = {}
     completed = True
@@ -243,13 +243,14 @@ class TransferService:
     """One-off cross-service copies, serialized with syncs via SyncService. Jobs
     are in-memory and transient."""
 
-    def __init__(self, settings, bus, sync):
+    def __init__(self, settings, bus, sync, profiles=None):
         self._settings = settings
         self._bus = bus
         self._sync = sync
+        self._profiles = profiles
         self._jobs = {}
 
-    def preview(self, url):
+    def preview(self, url, account_id=None):
         """Resolve a pasted playlist link into a startable transfer source.
 
         Returns {provider, playlist_id, name, description, count, image,
@@ -267,13 +268,29 @@ class TransferService:
         if parsed is None:
             raise TransferPreviewError(PLAYLIST_LINK_HINT)
         provider_id, playlist_id = parsed
+        if self._profiles is not None:
+            if account_id:
+                profile = self._profiles.resolve(account_id)
+                if profile is None:
+                    raise TransferPreviewError("That account profile no longer exists.")
+                if profile.provider != provider_id:
+                    raise TransferPreviewError(
+                        f"That link belongs to {provider_label(provider_id)}, not {profile.label}."
+                    )
+                account_id = profile.id
+            else:
+                account_id = self._profiles.canonical_id(provider_id)
+        else:
+            account_id = provider_id
         label = provider_label(provider_id)
         if not is_peer(provider_id):
             raise TransferPreviewError(
                 f"{label} is browse-only and cannot be a transfer source.")
 
         self._settings.apply_to_env()
-        target = self._build(provider_id, parse_args([]))
+        opts = parse_args([])
+        opts.account_profiles = self._profiles
+        target = self._build(account_id, opts)
         if target is None:
             raise TransferPreviewError(
                 f"{label} is not connected. Connect it on the Accounts page, then paste the link again.")
@@ -293,6 +310,7 @@ class TransferService:
 
         return {
             "provider": provider_id,
+            "account": account_id,
             "playlist_id": str(playlist_id),
             "name": target.playlist_name(playlist),
             "description": target.playlist_description(playlist),
@@ -302,25 +320,48 @@ class TransferService:
         }
 
     def submit(self, spec):
-        """spec: {source_provider, source_playlist_id, dest_provider,
+        """spec: {source_account, source_playlist_id, dest_account,
         dest_playlist_id | None, dest_name, preserve_order}. Returns the job
-        dict (with id)."""
+        dict (with id). Legacy source_provider/dest_provider keys select the
+        corresponding compatibility profiles."""
+        source_account = spec.get("source_account") or spec.get("source_provider")
+        dest_account = spec.get("dest_account") or spec.get("dest_provider")
+        if self._profiles is not None:
+            source_account = self._profiles.canonical_id(source_account)
+            dest_account = self._profiles.canonical_id(dest_account)
+        normalized_spec = {
+            **spec,
+            "source_account": source_account,
+            "dest_account": dest_account,
+        }
+        source_provider = (
+            self._profiles.provider_of(source_account) if self._profiles else source_account
+        )
+        dest_provider = self._profiles.provider_of(dest_account) if self._profiles else dest_account
+        source_name = (
+            self._profiles.display_name(source_account, provider_label(source_provider))
+            if self._profiles else provider_label(source_provider)
+        )
+        dest_name = (
+            self._profiles.display_name(dest_account, provider_label(dest_provider))
+            if self._profiles else provider_label(dest_provider)
+        )
         job = {
             "id": uuid.uuid4().hex[:8], "status": "queued",
-            "source": {"provider": spec["source_provider"],
+            "source": {"account": source_account, "provider": source_provider, "name": source_name,
                        "playlist_id": spec["source_playlist_id"], "playlist_name": ""},
-            "dest": {"provider": spec["dest_provider"],
+            "dest": {"account": dest_account, "provider": dest_provider, "name": dest_name,
                      "playlist_id": spec.get("dest_playlist_id"),
                      "playlist_name": spec.get("dest_name", "")},
             "preserve_order": bool(spec.get("preserve_order")),
             "added": 0, "deferred": 0, "chronology_replayed": 0,
             "unavailable": 0, "conflicts": [], "error": None,
             "total": 0, "processed": 0,  # live progress: source tracks examined / total
-            "_spec": spec,      # kept so resume can re-run the same copy
+            "_spec": normalized_spec,  # kept so resume re-runs the same account pair
             "_control": "run",  # "run" | "pause" | "stop" — polled by the running loop
         }
         self._jobs[job["id"]] = job
-        asyncio.create_task(self._run(job, spec))
+        asyncio.create_task(self._run(job, normalized_spec))
         return job
 
     def get(self, job_id):
@@ -400,13 +441,14 @@ class TransferService:
         job["status"] = "running"
         self._settings.apply_to_env()
         opts = parse_args([])
-        for side, prov in (("source", spec["source_provider"]), ("destination", spec["dest_provider"])):
-            if not is_peer(prov):  # e.g. Jellyfin — browse-only, can't read/write tracks
-                job["status"], job["error"] = "error", f"'{prov}' can't be a transfer {side} — it's a browse-only service."
+        opts.account_profiles = self._profiles
+        for side, account_id in (("source", spec["source_account"]), ("destination", spec["dest_account"])):
+            if not is_peer(account_id, opts):  # e.g. Jellyfin — browse-only
+                job["status"], job["error"] = "error", f"'{account_id}' can't be a transfer {side} — it's a browse-only service."
                 self._emit("warn", f"transfer: {job['error']}", "transfer")
                 return
-        src = self._build(spec["source_provider"], opts)
-        dst = self._build(spec["dest_provider"], opts)
+        src = self._build(spec["source_account"], opts)
+        dst = self._build(spec["dest_account"], opts)
         if src is None or dst is None:
             job["status"], job["error"] = "error", "source or destination not connected"
             self._emit("warn", f"transfer: {job['error']}", "transfer")
@@ -464,6 +506,8 @@ class TransferService:
             self._emit("warn", f"transfer failed: {job['error']}", "transfer")
 
     def _build(self, provider_id, opts):
+        if self._profiles is not None:
+            return build_one(provider_id, opts)
         sp = None
         cookie = (provider_id == "spotify" and spotify_write_backend() == "cookie"
                   and spotify_cookie.configured())
