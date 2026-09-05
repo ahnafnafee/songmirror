@@ -106,10 +106,18 @@ def tracks_oldest_first(tracks):
 def normalize_text(value):
     """Unicode-aware: keeps letters/digits in ANY script (Cyrillic, CJK,
     Bengali, ...). A Latin-only character class silently empties non-Latin
-    titles, which breaks matching and can delete real tracks."""
+    titles, which breaks matching and can delete real tracks.
+
+    Casefolding can itself produce a decomposed sequence. Recompose that output
+    before punctuation removal, and collapse the redundant combining dot from
+    Turkish capital dotted I. Otherwise ``İki`` becomes ``i ki`` when the mark
+    is mistaken for punctuation. Do not discard combining marks wholesale:
+    doing so would conflate accent-distinct canonical keys in every language.
+    """
     if not value:
         return ""
     normalized = unicodedata.normalize("NFKC", str(value)).casefold()
+    normalized = unicodedata.normalize("NFKC", normalized.replace("i\u0307", "i"))
     normalized = re.sub(r"[\W_]+", " ", normalized)
     return " ".join(normalized.split())
 

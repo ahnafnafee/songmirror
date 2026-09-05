@@ -7,7 +7,99 @@ import pytest
 
 from songmirror.engine.targets import ytmusic
 from songmirror.engine.targets.base import TargetAuthError
-from songmirror.engine.targets.ytmusic import YTMusicBrowserTarget, _expired, rotate_browser_cookie
+from songmirror.engine.targets.ytmusic import (
+    YTMusicBrowserTarget,
+    _expired,
+    _normalized_data_api_playlist_item,
+    _normalized_youtubei_playlist_track,
+    rotate_browser_cookie,
+)
+
+
+def _data_api_item(title, channel="BLOK3"):
+    return {
+        "id": "playlist-item-1",
+        "contentDetails": {"videoId": "video-1"},
+        "snippet": {
+            "title": title,
+            "videoOwnerChannelTitle": channel,
+            "publishedAt": "2026-08-01T00:00:00Z",
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("title", "channel", "expected"),
+    [
+        ("BLOK3 - KAYIP KALP (Official Music Video)", "BLOK3", "KAYIP KALP"),
+        ("BLOK3 – KAYIP KALP [Official Video]", "BLOK3", "KAYIP KALP"),
+        ("BLOK3: KAYIP KALP | Official Audio", "BLOK3", "KAYIP KALP"),
+        ("BLOK3 | KAYIP KALP [4K]", "BLOK3", "KAYIP KALP"),
+        ("BLOK3 - KAYIP KALP (Lyric Video)", "BLOK3", "KAYIP KALP"),
+        ("BLOK3 - KAYIP KALP (Prod. by Worry)", "BLOK3", "KAYIP KALP"),
+        ("BLOK3 - KAYIP KALP [4K · Official MV · UHD]", "BLOK3", "KAYIP KALP"),
+        ("BLOK3 - KAYIP KALP (Official Video)", "BLOK3VEVO", "KAYIP KALP"),
+        (
+            "BLOK3 — KAYIP KALP (Official Visualizer) [4K]",
+            "BLOK3 Official Channel",
+            "KAYIP KALP",
+        ),
+        (
+            "Emir Can İğrek - Ali Cabbar (Official Video)",
+            "Emir Can İğrek - Topic",
+            "Ali Cabbar",
+        ),
+    ],
+)
+def test_data_api_playlist_titles_strip_channel_prefixes_and_video_noise(
+    title, channel, expected
+):
+    track = _normalized_data_api_playlist_item(_data_api_item(title, channel))
+
+    assert track["name"] == expected
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "BLOK3 - KAYIP KALP (Acoustic)",
+        "BLOK3 - KAYIP KALP (Live at Zorlu PSM)",
+        "BLOK3 - KAYIP KALP (feat. Ati242)",
+        "BLOK3 - KAYIP KALP (Official Remix)",
+        "BLOK3 - KAYIP KALP [Remastered 2024]",
+    ],
+)
+def test_data_api_playlist_titles_preserve_recording_qualifiers(title):
+    track = _normalized_data_api_playlist_item(_data_api_item(title))
+
+    assert track["name"] == title.removeprefix("BLOK3 - ")
+
+
+@pytest.mark.parametrize(
+    ("title", "channel", "expected"),
+    [
+        ("Love - Hate (Official Video)", "Some Channel", "Love - Hate"),
+        ("BLOK3", "BLOK3", "BLOK3"),
+        ("BLOK3 - Official Video", "BLOK3", "Official Video"),
+        ("BLOK3 - KAYIP-KALP [From the Album]", "BLOK3", "KAYIP-KALP [From the Album]"),
+    ],
+)
+def test_data_api_playlist_title_cleanup_is_conservative(title, channel, expected):
+    track = _normalized_data_api_playlist_item(_data_api_item(title, channel))
+
+    assert track["name"] == expected
+
+
+def test_native_youtubei_titles_are_not_reparsed_as_raw_video_titles():
+    title = "BLOK3 - KAYIP KALP (Official Music Video)"
+
+    track = _normalized_youtubei_playlist_track({
+        "videoId": "video-1",
+        "title": title,
+        "artists": [{"name": "BLOK3"}],
+    })
+
+    assert track["name"] == title
 
 
 def _auth_file(tmp_path, ts="old"):
