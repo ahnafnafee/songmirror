@@ -29,7 +29,10 @@ import requests
 
 from ..config import REQUEST_TIMEOUT, polite_sleep
 from ..logs import log, log_note, log_warn
-from ..matching import normalize_text, romanized, score_candidate, track_key
+from ..matching import (
+    featured_artists, normalize_text, recording_version_signature,
+    recording_versions_compatible, romanized, score_candidate, track_key,
+)
 from .base import MirrorTarget, TargetAuthError
 from .provider_utils import source_playlist_details
 
@@ -45,6 +48,8 @@ _TITLE_SEPARATOR = r"(?:\s+-\s+|\s*[–—]\s*|\s+\|\s+|:\s+)"
 _TITLE_PREFIX_RE = re.compile(
     rf"^(?P<prefix>.+?){_TITLE_SEPARATOR}(?P<title>.+)$"
 )
+_COLLABORATOR_RE = re.compile(r"\s+(?:x|×|&|feat\.?|ft\.?)\s+|\s*,\s*", re.IGNORECASE)
+_PUBLISHER_RE = re.compile(r"\b(?:production|productions|records|recordings)\b")
 _TRAILING_BRACKET_RE = re.compile(
     r"\s*(?:\((?P<paren>[^()]*)\)|\[(?P<bracket>[^\[\]]*)\]|\{(?P<brace>[^{}]*)\})\s*$"
 )
@@ -72,6 +77,7 @@ _VIDEO_PRODUCTION_TAGS = {
     "official music clip",
     "official music video",
     "official music video clip",
+    "official performance video",
     "official mv",
     "official video",
     "official video clip",
@@ -81,11 +87,19 @@ _VIDEO_PRODUCTION_TAGS = {
     "video clip",
     "visualiser",
     "visualizer",
+    "visualizer music video",
+    "visualiser music video",
+    "resmi muzik videosu",
+    "resmi ai muzik videosu",
+    "resmi video",
+    "resmi video klip",
+    "resmi klip",
+    "sarki sozleri",
 }
 _VIDEO_QUALITY_TAGS = {
     "4k", "8k", "720p", "1080p", "1440p", "2160p", "hd", "hq", "uhd",
 }
-_PRODUCER_CREDIT_RE = re.compile(r"prod(?:uced)?\s+by\s+.+")
+_PRODUCER_CREDIT_RE = re.compile(r"(?:prod\s+(?:by\s+)?|produced\s+by\s+).+")
 
 
 ROTATE_URL = "https://accounts.youtube.com/RotateCookies"
@@ -204,7 +218,7 @@ def _channel_name_keys(channel):
 
 
 def _is_video_production_tag(value):
-    normalized = normalize_text(value)
+    normalized = romanized(value)
     if _PRODUCER_CREDIT_RE.fullmatch(normalized):
         return True
     words = normalized.split()
@@ -214,25 +228,65 @@ def _is_video_production_tag(value):
     )
 
 
-def _clean_data_api_video_title(title, channel):
-    """Turn an unstructured Data API video title into a search-safe track name.
+def _credit_matches(credit, artist):
+    """Accept a credited artist's channel spelling or longer display name."""
+    key = normalize_text(credit)
+    compact = key.replace(" ", "")
+    return any(
+        compact == channel.replace(" ", "")
+        or (len(compact) >= 4 and channel.startswith(key + " "))
+        for channel in _channel_name_keys(artist)
+    )
 
-    Prefix removal is gated on the owner channel, so a legitimate title such as
-    ``Love - Hate`` is never split just because it contains a dash. Production
-    labels are removed only when they occupy a complete trailing bracket or a
-    separator-delimited suffix. Creative recording qualifiers (live, acoustic,
-    remix, remaster, featured artists) deliberately remain for match safety.
+
+def _clean_video_metadata(title, artists):
+    """Separate confirmed music credits from an unstructured video title.
+
+    A channel can name one collaborator, a longer artist display name, or a
+    publisher. Whole credited band names take precedence over splitting an
+    ampersand. Production labels are removable; recording qualifiers are not.
     """
     raw = str(title or "").strip()
     if not raw:
-        return ""
+        return "", artists
 
     cleaned = raw
+    prefix_guests = []
     prefix = _TITLE_PREFIX_RE.match(cleaned)
-    if prefix and normalize_text(prefix.group("prefix")) in _channel_name_keys(channel):
-        candidate = prefix.group("title").strip()
-        if candidate:
-            cleaned = candidate
+    if prefix:
+        credit = prefix.group("prefix").strip()
+        if any(_credit_matches(credit, artist) for artist in artists):
+            credits = [credit]
+        else:
+            credits = [part.strip() for part in _COLLABORATOR_RE.split(credit) if part.strip()]
+        confirmed = any(
+            _credit_matches(part, artist) for part in credits for artist in artists
+        )
+        publisher = any(_PUBLISHER_RE.search(romanized(artist)) for artist in artists)
+        production = _TRAILING_BRACKET_RE.search(raw)
+        collaboration = len(credits) > 1 and production is not None and any(
+            value is not None and _is_video_production_tag(value)
+            for value in production.groups()
+        )
+        if confirmed or publisher or collaboration:
+            cleaned = prefix.group("title").strip()
+            artists = credits
+            # A feature is recording information as well as an artist credit.
+            # Keep it in the normalized title when the video puts it first.
+            prefix_guests = featured_artists(credit)
+
+    # Some uploader titles concatenate an uppercase artist credit and a song
+    # without punctuation. Require the complete credit at a word boundary.
+    if cleaned == raw:
+        for boundary in re.finditer(r"\s+", raw):
+            credit = raw[:boundary.start()]
+            if credit.isupper() and any(
+                normalize_text(credit).replace(" ", "")
+                in {key.replace(" ", "") for key in _channel_name_keys(artist)}
+                for artist in artists
+            ):
+                cleaned = raw[boundary.end():]
+                break
 
     while cleaned:
         bracket = _TRAILING_BRACKET_RE.search(cleaned)
@@ -246,11 +300,18 @@ def _clean_data_api_video_title(title, channel):
                 )
                 if value is not None
             )
-            if _is_video_production_tag(tag):
+            parts = re.split(r"\s*(?:[|·]|\s+-\s+)\s*", tag)
+            remaining = [part for part in parts if not _is_video_production_tag(part)]
+            if not remaining:
                 candidate = cleaned[:bracket.start()].rstrip(" -–—|:")
                 if candidate:
                     cleaned = candidate
                     continue
+            elif len(remaining) != len(parts):
+                # "Version 2.0 - Resmi Müzik Videosu" still identifies a
+                # different recording after the production label is removed.
+                start = next(i for i in range(bracket.start(), bracket.end()) if cleaned[i] in "([{")
+                cleaned = cleaned[:start + 1] + " - ".join(remaining) + cleaned[-1]
 
         suffix = _TRAILING_SEPARATOR_RE.match(cleaned)
         if suffix and _is_video_production_tag(suffix.group("tag")):
@@ -260,33 +321,68 @@ def _clean_data_api_video_title(title, channel):
                 continue
         break
 
-    return cleaned or raw
+    if prefix_guests and not featured_artists(cleaned):
+        cleaned += f" (feat. {', '.join(prefix_guests)})"
+    return cleaned or raw, artists
 
 
-def _normalized_data_api_playlist_item(item):
+def _clean_data_api_video_title(title, channel):
+    return _clean_video_metadata(title, [channel])[0]
+
+
+def _normalized_data_api_playlist_item(item, music_metadata=None):
     video_id = item.get("contentDetails", {}).get("videoId")
     if not video_id:
         return None
     snippet = item.get("snippet", {})
     artist = _artist_from_channel(snippet.get("videoOwnerChannelTitle", ""))
+    name, artists = _clean_video_metadata(snippet.get("title", ""), [artist] if artist else [""])
     thumbnails = snippet.get("thumbnails") or {}
     image = next((
         (thumbnails.get(size) or {}).get("url")
         for size in ("medium", "high", "default")
         if (thumbnails.get(size) or {}).get("url")
     ), "")
-    return {
+    track = {
         "id": video_id,
         "videoId": video_id,
         "playlistItemId": item.get("id"),
-        "name": _clean_data_api_video_title(snippet.get("title", ""), artist),
-        "artist": artist,
-        "artists": [artist] if artist else [""],
+        "name": name,
+        "artist": ", ".join(artists),
+        "artists": artists,
         "album": None,
         "duration_ms": None,
         "added_at": snippet.get("publishedAt") or "",
         "image": image,
     }
+    if (
+        isinstance(music_metadata, dict)
+        and music_metadata.get("videoId") == video_id
+        and isinstance(music_metadata.get("title"), str)
+        and isinstance(music_metadata.get("artists"), list)
+        and all(
+            isinstance(credit, dict) and isinstance(credit.get("name"), str)
+            for credit in music_metadata["artists"]
+        )
+    ):
+        music = _normalized_youtubei_playlist_track(music_metadata)
+        if music and music["name"] and any(music["artists"]):
+            raw_name, raw_artists = _clean_video_metadata(snippet.get("title", ""), music["artists"])
+            # The same video can appear in Music with its studio title. Keep
+            # explicit live/remix/version information from the original video.
+            raw_markers, raw_details = recording_version_signature(raw_name)
+            music_markers, music_details = recording_version_signature(music["name"])
+            keep_raw = (raw_markers - music_markers or raw_details - music_details) or (
+                featured_artists(raw_name) and not recording_versions_compatible(
+                    raw_name, raw_artists, music["name"], music["artists"],
+                )
+            )
+            track.update({
+                "name": raw_name if keep_raw else music["name"],
+                "artist": music["artist"], "artists": music["artists"],
+                "album": music["album"], "duration_ms": music["duration_ms"],
+            })
+    return track
 
 
 def _normalized_youtubei_playlist_track(track):
@@ -301,6 +397,7 @@ def _normalized_youtubei_playlist_track(track):
         )
         if artist
     ]
+    name, artists = _clean_video_metadata(track.get("title", ""), artists or [""])
     album = track.get("album")
     duration_seconds = track.get("duration_seconds")
     thumbnails = track.get("thumbnails") or []
@@ -313,7 +410,7 @@ def _normalized_youtubei_playlist_track(track):
         "id": video_id,
         "videoId": video_id,
         "setVideoId": track.get("setVideoId"),
-        "name": track.get("title", ""),
+        "name": name,
         "artist": ", ".join(artists),
         "artists": artists or [""],
         "album": album.get("name") if isinstance(album, dict) else None,
@@ -510,22 +607,43 @@ class YTMusicTarget(MirrorTarget):
             raise RuntimeError(
                 "YouTube Music playlist read incomplete: an empty page advertised more tracks"
             )
+        return self._playlist_items(playlist["playlistId"], items), next_cursor
+
+    def _playlist_items(self, playlist_id, items):
+        """Use Music's credits for matching, retaining Data API occurrences.
+
+        Public metadata is optional: private playlists and an unavailable Music
+        endpoint still use the successful authenticated read. Match by video id,
+        never position, since unavailable videos can shift the public listing.
+        Progressive reads request only the prefix needed for the current page.
+        """
+        music = {}
+        public = getattr(self, "_ytm", None)
+        if public is not None and items:
+            positions = [item.get("snippet", {}).get("position") for item in items]
+            limit = max([len(items), *(position + 1 for position in positions if isinstance(position, int))])
+            try:
+                data = public.get_playlist(str(playlist_id), limit=limit)
+                music = {
+                    row["videoId"]: row for row in data.get("tracks") or []
+                    if isinstance(row, dict) and row.get("videoId")
+                }
+            except Exception:
+                pass  # The authenticated Data API remains authoritative.
         return [
-            track
-            for item in items
-            if (track := _normalized_data_api_playlist_item(item)) is not None
-        ], next_cursor
+            track for item in items
+            if (track := _normalized_data_api_playlist_item(
+                item, music.get(item.get("contentDetails", {}).get("videoId"))
+            )) is not None
+        ]
 
     def playlist_tracks(self, playlist):
-        return [
-            track
-            for item in self._paged("playlistItems", {
-                "part": "snippet,contentDetails",
-                "playlistId": playlist["playlistId"],
-                "maxResults": 50,
-            })
-            if (track := _normalized_data_api_playlist_item(item)) is not None
-        ]
+        items = list(self._paged("playlistItems", {
+            "part": "snippet,contentDetails",
+            "playlistId": playlist["playlistId"],
+            "maxResults": 50,
+        }))
+        return self._playlist_items(playlist["playlistId"], items)
 
     def _liked_playlist_id(self):
         data = self._request(

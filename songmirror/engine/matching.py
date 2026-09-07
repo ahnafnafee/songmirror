@@ -23,7 +23,10 @@ DURATION_TOLERANCE_MS = 2500
 CATALOG_DURATION_TOLERANCE_MS = 5000
 
 PAREN_FEAT_RE = re.compile(r"[\(\[]\s*(feat|featuring|ft|with)\b.*?[\)\]]", re.IGNORECASE)
-TRAILING_FEAT_RE = re.compile(r"\s+(feat|featuring|ft)\s+.*$")
+TRAILING_FEAT_RE = re.compile(
+    r"\s+(?:feat|featuring|ft)\.?\s+.*?(?=\s*[\(\[\{]|\s+[-–—]\s+|$)",
+    re.IGNORECASE,
+)
 CATALOG_TAG = r"(?:(?:\d{4}\s+)?re-?master(?:ed)?(?:\s+\d{4})?|clean|explicit)"
 BRACKETED_CATALOG_TAG_RE = re.compile(rf"[\(\[]\s*(?:{CATALOG_TAG})\s*[\)\]]", re.IGNORECASE)
 TRAILING_CATALOG_TAG_RE = re.compile(rf"\s*[-–—]\s*(?:{CATALOG_TAG})\s*$", re.IGNORECASE)
@@ -32,9 +35,13 @@ FROM_RELEASE_RE = re.compile(
     re.IGNORECASE,
 )
 CREATIVE_VERSION_PATTERNS = (
-    ("live", re.compile(r"\blive\b", re.IGNORECASE)),
-    ("acoustic", re.compile(r"\b(?:acoustic|unplugged)\b", re.IGNORECASE)),
-    ("remix", re.compile(r"\b(?:remix|rework|extended mix|radio edit)\b", re.IGNORECASE)),
+    ("live", re.compile(r"\b(?:live|canli|ao vivo|en vivo)\b", re.IGNORECASE)),
+    ("acoustic", re.compile(r"\b(?:acoustic|akustik|acustic[oa]|acoustique|unplugged|stripped)\b", re.IGNORECASE)),
+    ("remix", re.compile(r"\b(?:remix|rework|mashup)\b", re.IGNORECASE)),
+    ("dub", re.compile(r"\b(?:dub|dubbed)\b", re.IGNORECASE)),
+    ("mix", re.compile(r"\bmix\b", re.IGNORECASE)),
+    ("edit", re.compile(r"\bedit\b", re.IGNORECASE)),
+    ("vip", re.compile(r"\bvip\b", re.IGNORECASE)),
     ("instrumental", re.compile(r"\binstrumental\b", re.IGNORECASE)),
     ("karaoke", re.compile(r"\bkaraoke\b", re.IGNORECASE)),
     ("piano", re.compile(r"\bpiano\b", re.IGNORECASE)),
@@ -43,6 +50,13 @@ CREATIVE_VERSION_PATTERNS = (
     ("alternate-speed", re.compile(r"\b(?:sped up|slowed(?: down)?|nightcore)\b", re.IGNORECASE)),
     ("mix-format", re.compile(r"\b(?:mono|stereo)\b", re.IGNORECASE)),
     ("cover", re.compile(r"\bcover\b", re.IGNORECASE)),
+    ("a-cappella", re.compile(r"\ba ?ca?pp?ella\b", re.IGNORECASE)),
+    ("orchestral", re.compile(r"\b(?:orchestral|orchestra|symphonic)\b", re.IGNORECASE)),
+    ("re-recording", re.compile(r"\bre ?record(?:ed|ing)\b", re.IGNORECASE)),
+    ("reverb", re.compile(r"\breverb\b", re.IGNORECASE)),
+    ("spatial", re.compile(r"\b(?:8d|binaural)\b", re.IGNORECASE)),
+    ("solo", re.compile(r"\bsolo\b", re.IGNORECASE)),
+    ("alternate", re.compile(r"\b(?:alternate|alternative)\b", re.IGNORECASE)),
 )
 
 
@@ -141,12 +155,16 @@ def normalize_canonical_id(value):
     return f"i:{isrc}" if isrc else canonical
 
 
+def _without_feature_credits(name):
+    return TRAILING_FEAT_RE.sub("", PAREN_FEAT_RE.sub(" ", str(name or "")))
+
+
 def loose_name(name):
     """Title with feat-clauses stripped — '(feat. X)' is the classic drift for
     the SAME song. Version qualifiers like (Live)/(Acoustic) are kept: those
     are different recordings — but the abbreviation 'ver' expands to 'version'
     so 'Twin Ver.' and 'Twin Version' agree token-for-token."""
-    cleaned = TRAILING_FEAT_RE.sub("", normalize_text(PAREN_FEAT_RE.sub(" ", name or ""))).strip()
+    cleaned = normalize_text(_without_feature_credits(name))
     cleaned = re.sub(r"\bver\b", "version", cleaned)
     return cleaned or normalize_text(name)
 
@@ -180,7 +198,7 @@ def creative_version_markers(name):
     is used only when no more specific qualifier explains it, so "Piano
     Version" and "Piano" still describe the same creative variant.
     """
-    normalized = normalize_text(name)
+    normalized = romanized(loose_name(name))
     markers = {
         marker
         for marker, pattern in CREATIVE_VERSION_PATTERNS
@@ -198,8 +216,65 @@ def romanized(text):
     return normalize_text(anyascii(str(text or "")))
 
 
+def featured_artists(name):
+    """Explicit guest credits, independent of title-vs-artist API formatting."""
+    credits = []
+    for pattern in (PAREN_FEAT_RE, TRAILING_FEAT_RE):
+        for match in pattern.finditer(str(name or "")):
+            credit = re.sub(r"^[\s(\[]*(?:feat|featuring|ft|with)\b\.?\s*", "", match[0], flags=re.IGNORECASE)
+            credit = credit.rstrip(")] ")
+            credits.extend(part.strip() for part in re.split(r"\s*(?:,|&|\band\b)\s*", credit) if part.strip())
+    return credits
+
+
+def _has_credit(credit, artists):
+    return f" {romanized(credit)} " in f" {romanized(artists)} "
+
+
+def recording_version_signature(name):
+    """Recording family plus named mix, venue, or version-number qualifiers.
+
+    Token-set title similarity cannot distinguish two DJs' remixes or two
+    concerts. Compare explicit qualifiers before fuzzy scoring, while allowing
+    label spelling differences such as Acoustic Version / Akustik.
+    """
+    markers = frozenset(creative_version_markers(name))
+    details = set()
+    for part in re.split(r"\s+[-–—]\s+|[()\[\]{}]", _without_feature_credits(name))[1:]:
+        if not creative_version_markers(part):
+            continue
+        normalized = romanized(loose_name(part))
+        for marker, pattern in CREATIVE_VERSION_PATTERNS:
+            normalized = pattern.sub(marker, normalized)
+        if markers != {"alternate-version"}:
+            normalized = re.sub(r"\bversion\b", "", normalized)
+        detail = " ".join(sorted(normalized.split()))
+        if detail != " ".join(sorted(markers)):
+            details.add(detail)
+    return markers, frozenset(details)
+
+
+def recording_versions_compatible(name, artists, cand_name, cand_artists):
+    if recording_version_signature(name) != recording_version_signature(cand_name):
+        return False
+    features, cand_features = featured_artists(name), featured_artists(cand_name)
+    if isinstance(artists, str):
+        artists = [artists]
+    if isinstance(cand_artists, str):
+        cand_artists = [cand_artists]
+    credits = " ".join([*(artists or []), *features])
+    cand_credits = " ".join([*(cand_artists or []), *cand_features])
+    return all(_has_credit(guest, cand_credits) for guest in features) and all(
+        _has_credit(guest, credits) for guest in cand_features
+    )
+
+
 def track_key(name, artist):
-    return f"{loose_name(name)}|{normalize_text(artist)}"
+    credits = str(artist or "")
+    for guest in featured_artists(name):
+        if not _has_credit(guest, credits):
+            credits += " " + guest
+    return f"{loose_name(name)}|{normalize_text(credits)}"
 
 
 def _sim_strict(a, b):
@@ -262,7 +337,7 @@ def fuzzy_in(key, keys, threshold=FUZZY_THRESHOLD):
 def score_candidate(name, artists, duration_ms, cand_name, cand_artist, cand_duration_ms):
     """(score in 0..1, acceptable) for a search-result candidate vs the wanted
     track — the fuzzy fallback when no ISRC/link resolves it."""
-    if creative_version_markers(name) != creative_version_markers(cand_name):
+    if not recording_versions_compatible(name, artists, cand_name, cand_artist):
         return 0.0, False
     if isinstance(artists, str):
         artists = [artists]
@@ -303,6 +378,11 @@ def same_catalog_recording(track, candidate):
     it) near-identical duration. It catches alternate catalog releases without
     treating an acoustic/live/remix/version as the ordinary track.
     """
+    if not recording_versions_compatible(
+        track.get("name"), track.get("artists") or track.get("artist"),
+        candidate.get("name"), candidate.get("artists") or candidate.get("artist"),
+    ):
+        return False
     wanted = catalog_name(track.get("name"))
     existing = catalog_name(candidate.get("name"))
     if not wanted or wanted != existing:
@@ -328,8 +408,9 @@ def same_unresolved_recording(source_track, existing_track, threshold=0.8):
     performer (for example, two unrelated songs named "Bad Blood"). Duration,
     when both providers expose it, must also agree closely.
     """
-    if creative_version_markers(source_track.get("name")) != creative_version_markers(
-        existing_track.get("name")
+    if not recording_versions_compatible(
+        source_track.get("name"), source_track.get("artists") or source_track.get("artist"),
+        existing_track.get("name"), existing_track.get("artists") or existing_track.get("artist"),
     ):
         return False
 
@@ -363,23 +444,34 @@ def compute_diff(sp_tracks, target_tracks, expected_by_sp, target_id_of, thresho
     or fuzzy Spotify match (fuzzy applies only to this destructive side, as the
     guard against a metadata mismatch deleting a real track).
     """
-    target_ids = {target_id_of(t) for t in target_tracks if target_id_of(t)}
-    target_keys = {track_key(t["name"], t["artist"]) for t in target_tracks}
+    target_by_id, target_by_key = {}, {}
+    for track in target_tracks:
+        if target_id_of(track):
+            target_by_id.setdefault(target_id_of(track), []).append(track)
+        target_by_key.setdefault(track_key(track["name"], track["artist"]), []).append(track)
+
+    def compatible(source, target):
+        return recording_versions_compatible(
+            source.get("name"), source.get("artists") or source.get("artist"),
+            target.get("name"), target.get("artists") or target.get("artist"),
+        )
 
     expected_all = set()
-    sp_keys = set()
-    sp_keys_by_version = {}
+    sp_by_version = {}
     to_add = []
     for tr in sp_tracks:
         expected = expected_by_sp.get(tr.get("id")) or set()
+        expected = {
+            tid for tid in expected
+            if any(compatible(tr, target) for target in target_by_id.get(tid, []))
+        }
         expected_all |= expected
         keys = spotify_track_keys(tr)
-        sp_keys |= keys
-        version = frozenset(creative_version_markers(tr.get("name")))
-        sp_keys_by_version.setdefault(version, set()).update(keys)
-        if expected & target_ids:
+        version = recording_version_signature(tr.get("name"))
+        sp_by_version.setdefault(version, []).append((keys, tr))
+        if expected:
             continue
-        if keys & target_keys:
+        if any(compatible(tr, target) for key in keys for target in target_by_key.get(key, [])):
             continue
         to_add.append(tr)
     to_add = tracks_oldest_first(to_add)
@@ -390,10 +482,11 @@ def compute_diff(sp_tracks, target_tracks, expected_by_sp, target_id_of, thresho
         if tid and tid in expected_all:
             continue
         key = track_key(t["name"], t["artist"])
-        compatible_keys = sp_keys_by_version.get(
-            frozenset(creative_version_markers(t.get("name"))), set()
+        sources = sp_by_version.get(
+            recording_version_signature(t.get("name")), []
         )
-        if key in sp_keys or fuzzy_in(key, compatible_keys, threshold):
+        if any((key in keys or fuzzy_in(key, keys, threshold)) and compatible(source, t)
+               for keys, source in sources):
             continue
         to_remove.append(t)
     return to_add, to_remove

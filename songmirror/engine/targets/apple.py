@@ -13,14 +13,14 @@ from ..config import (
     AMP, DEFAULT_CACHE_FILE, REQUEST_TIMEOUT, polite_sleep, required_env,
 )
 from ..logs import log, log_warn
-from ..matching import normalize_text, romanized, score_candidate
+from ..matching import normalize_text, recording_versions_compatible, romanized, score_candidate
 from .base import (
     MirrorTarget,
     TargetAuthError,
     TargetCapabilityError,
     TargetTransientError,
 )
-from .provider_utils import source_playlist_details
+from .provider_utils import compatible_isrc_candidates, source_playlist_details
 
 # playlist_id -> (lastModifiedDate, track_count): in-process cache so the browse
 # doesn't re-issue a meta.total call for an unchanged Apple playlist (library
@@ -434,10 +434,7 @@ class AppleMusicTarget(MirrorTarget):
         out = {}
         for t in sp_tracks:
             ids = set()
-            candidates = [
-                c for c in cache["isrc"].get(t.get("isrc") or "", [])
-                if c.get("id")
-            ]
+            candidates = compatible_isrc_candidates(t, cache)
             for c in candidates:
                 if c.get("id"):
                     ids.add(c["id"])
@@ -451,7 +448,7 @@ class AppleMusicTarget(MirrorTarget):
         return out
 
     def resolve(self, track, cache):
-        candidates = [c for c in cache["isrc"].get(track["isrc"] or "", []) if c.get("id")]
+        candidates = compatible_isrc_candidates(track, cache)
         if candidates and track["duration_ms"] is not None:
             candidates.sort(key=lambda c: abs((c.get("duration_ms") or 0) - track["duration_ms"]))
         if candidates:
@@ -481,7 +478,7 @@ class AppleMusicTarget(MirrorTarget):
         isrc = track.get("isrc") or ""
         if isrc not in cache["isrc"]:
             return target_id, "link"
-        candidates = [candidate for candidate in cache["isrc"][isrc] if candidate.get("id")]
+        candidates = compatible_isrc_candidates(track, cache)
         if candidates and track.get("duration_ms") is not None:
             candidates.sort(
                 key=lambda candidate: abs(
@@ -503,9 +500,16 @@ class AppleMusicTarget(MirrorTarget):
                 f"{AMP}/catalog/{self.storefront}/songs/{target_id}",
                 ok404=True,
             )
-            validated[target_id] = response is not None
+            rows = response.json().get("data", []) if response is not None else []
+            validated[target_id] = next(
+                (row.get("attributes") or {} for row in rows if str(row.get("id")) == str(target_id)),
+                None,
+            )
             self._validated_catalog_ids = validated
-        if validated[target_id]:
+        attrs = validated[target_id]
+        if attrs is not None and recording_versions_compatible(
+            track.get("name"), track.get("artists"), attrs.get("name"), attrs.get("artistName"),
+        ):
             self._remember_resolution(track, target_id, cache)
             return target_id, "link"
         return None, None

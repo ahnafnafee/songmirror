@@ -55,25 +55,32 @@ def _save_json(path, data):
         json.dump(data, f)
 
 
+MATCHING_CACHE_VERSION = 1
+
+
 def load_cache(cache_file):
     """The provider's resolution cache: ISRC candidates, search results, and
     which search keys were set by hand.
 
-    `manual` is a set of `search` keys a person chose in the conflict editor
-    rather than the matcher finding. A cache written before that existed loads
-    with an empty set, and a cache written with it stays readable by anything
-    that only knows the other two keys.
+    `manual` is a set of `search` keys a person chose in the conflict editor.
+    Old automatic results must be searched again when matching rules change:
+    they contain only ids, so recording-version conflicts cannot be checked
+    offline. Manual choices survive migration. ISRC candidates are refetched
+    as older normalizers could discard the provider's separate version field.
     """
     try:
         with open(cache_file) as f:
             data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         data = {}
+    manual = set(data.get("manual") or [])
+    migrate = bool(data) and data.get("matching_version") != MATCHING_CACHE_VERSION
+    search = data.get("search", {})
     return {
-        "isrc": data.get("isrc", {}),
-        "search": data.get("search", {}),
-        "manual": set(data.get("manual") or []),
-        "dirty": False,
+        "isrc": {} if migrate else data.get("isrc", {}),
+        "search": {key: value for key, value in search.items() if key in manual} if migrate else search,
+        "manual": manual,
+        "dirty": migrate,
     }
 
 
@@ -82,6 +89,7 @@ def save_cache(cache_file, cache):
         return
     with open(cache_file, "w") as f:
         json.dump({
+            "matching_version": MATCHING_CACHE_VERSION,
             "isrc": cache["isrc"],
             "search": cache["search"],
             "manual": sorted(cache.get("manual") or ()),

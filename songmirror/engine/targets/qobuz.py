@@ -15,7 +15,7 @@ from ...qobuz_web import parse_web_request
 from ..config import REQUEST_TIMEOUT, polite_sleep, required_env
 from ..matching import normalize_text, romanized, track_key
 from .base import MirrorTarget, TargetAuthError
-from .provider_utils import best_candidate, source_playlist_details
+from .provider_utils import best_candidate, compatible_isrc_candidates, source_playlist_details, title_with_version
 
 API = "https://www.qobuz.com/api.json/0.2"
 
@@ -41,7 +41,7 @@ def _normalized_track(track):
     return {
         "id": str(track.get("id")) if track.get("id") is not None else None,
         "relationship_id": track.get("playlist_track_id"),
-        "name": track.get("title", ""),
+        "name": title_with_version(track.get("title"), track.get("version")),
         "artist": artist,
         "artists": [artist] if artist else [""],
         "album": album.get("title"),
@@ -327,7 +327,7 @@ class QobuzTarget(MirrorTarget):
     def expected_ids(self, source_tracks, links, cache):
         out = {}
         for track in source_tracks:
-            ids = {str(c["id"]) for c in cache["isrc"].get(track.get("isrc") or "", []) if c.get("id")}
+            ids = {str(c["id"]) for c in compatible_isrc_candidates(track, cache)}
             if links.get(track.get("id")):
                 ids.add(str(links[track["id"]]))
             if ids:
@@ -335,7 +335,7 @@ class QobuzTarget(MirrorTarget):
         return out
 
     def resolve(self, track, cache):
-        candidates = cache["isrc"].get(track.get("isrc") or "", [])
+        candidates = compatible_isrc_candidates(track, cache)
         if candidates:
             return best_candidate(track, candidates) or str(candidates[0]["id"]), "isrc"
         key = track_key(track.get("name", ""), " ".join(track.get("artists") or []))

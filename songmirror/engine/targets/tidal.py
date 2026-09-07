@@ -25,7 +25,10 @@ from ..config import REQUEST_TIMEOUT, polite_sleep
 from ..logs import log_note, log_warn
 from ..matching import normalize_text, romanized, track_key
 from .base import MirrorTarget, TargetAuthError
-from .provider_utils import best_candidate, chunks, iso_duration_ms, source_playlist_details
+from .provider_utils import (
+    best_candidate, chunks, compatible_isrc_candidates, iso_duration_ms,
+    source_playlist_details, title_with_version,
+)
 
 API = "https://openapi.tidal.com/v2"
 MAX_ISRC_FILTER_VALUES = 20
@@ -201,7 +204,7 @@ class TidalTarget(MirrorTarget):
                 {
                     "id": str(resource.get("id") or identifier.get("id")),
                     "relationship_id": meta.get("itemId"),
-                    "name": attrs.get("title", ""),
+                    "name": title_with_version(attrs.get("title"), attrs.get("version")),
                     "artist": ", ".join(artists),
                     "artists": artists or [""],
                     "album": album or None,
@@ -538,7 +541,7 @@ class TidalTarget(MirrorTarget):
     def expected_ids(self, source_tracks, links, cache):
         out = {}
         for track in source_tracks:
-            ids = {str(c["id"]) for c in cache["isrc"].get(track.get("isrc") or "", []) if c.get("id")}
+            ids = {str(c["id"]) for c in compatible_isrc_candidates(track, cache)}
             if links.get(track.get("id")):
                 ids.add(str(links[track["id"]]))
             if ids:
@@ -546,7 +549,7 @@ class TidalTarget(MirrorTarget):
         return out
 
     def resolve(self, track, cache):
-        candidates = cache["isrc"].get(track.get("isrc") or "", [])
+        candidates = compatible_isrc_candidates(track, cache)
         if candidates:
             return best_candidate(track, candidates) or str(candidates[0]["id"]), "isrc"
         key = track_key(track.get("name", ""), " ".join(track.get("artists") or []))
