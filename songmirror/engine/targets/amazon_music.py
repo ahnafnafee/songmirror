@@ -21,7 +21,7 @@ from ...oauth import merge_refresh, read_token, token_is_live, token_path, write
 from ..config import REQUEST_TIMEOUT, polite_sleep, required_env
 from ..matching import normalize_isrc, normalize_text, romanized, track_key
 from .base import MirrorTarget, TargetAuthError
-from .provider_utils import best_candidate, chunks, source_playlist_details
+from .provider_utils import best_candidate, chunks, compatible_isrc_candidates, source_playlist_details
 
 API = "https://api.music.amazon.dev/v1"
 TOKEN_URL = "https://api.amazon.com/auth/o2/token"
@@ -675,7 +675,7 @@ class AmazonMusicTarget(MirrorTarget):
     def expected_ids(self, source_tracks, links, cache):
         out = {}
         for track in source_tracks:
-            ids = {str(c["id"]) for c in cache["isrc"].get(track.get("isrc") or "", []) if c.get("id")}
+            ids = {str(c["id"]) for c in compatible_isrc_candidates(track, cache)}
             if links.get(track.get("id")):
                 ids.add(str(links[track["id"]]))
             if ids:
@@ -683,7 +683,7 @@ class AmazonMusicTarget(MirrorTarget):
         return out
 
     def resolve(self, track, cache):
-        candidates = cache["isrc"].get(track.get("isrc") or "", [])
+        candidates = compatible_isrc_candidates(track, cache)
         if candidates:
             return best_candidate(track, candidates) or str(candidates[0]["id"]), "isrc"
         key = track_key(track.get("name", ""), " ".join(track.get("artists") or []))

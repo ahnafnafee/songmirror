@@ -666,7 +666,9 @@ def test_apple_empty_isrc_result_keeps_only_a_live_archived_catalog_id():
     track = {"isrc": "WRONGEDITION", "duration_ms": 1000}
     cache = {"isrc": {"WRONGEDITION": []}}
 
-    target._request = lambda *args, **kwargs: object()
+    target._request = lambda *args, **kwargs: type("Response", (), {
+        "json": lambda _self: {"data": [{"id": "still-live", "attributes": {}}]},
+    })()
     assert target.validate_link(track, "still-live", cache) == ("still-live", "link")
 
     target._validated_catalog_ids.clear()

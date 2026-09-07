@@ -21,6 +21,7 @@ from ..matching import (
     catalog_name, compute_diff, fuzzy_in, match_unresolved_removals,
     protect_removals, romanized,
     normalize_canonical_id, normalize_isrc, same_catalog_recording,
+    recording_version_signature, recording_versions_compatible,
     spotify_track_keys, track_addition_order_key, track_key, tracks_oldest_first,
 )
 
@@ -557,7 +558,8 @@ def _recover_archived_links(songs, source_key, target, source_tracks, known):
     A destination playlist can be deleted while the catalog entries SongMirror
     previously proved remain valid. Reusing those mappings avoids unnecessary
     provider search traffic (and is especially important while a catalog search
-    route is throttled). Direct links supplied by the caller remain authoritative.
+    route is throttled). Explicit recording conflicts in saved metadata reject
+    a historical link, including one produced by an older matcher.
     """
     source_ids = [track.get("id") for track in source_tracks if track.get("id")]
     recovered = archive.get_identity_crosswalk(
@@ -565,10 +567,11 @@ def _recover_archived_links(songs, source_key, target, source_tracks, known):
     recovered = {source_id: target_id for source_id, target_id in recovered.items()
                  if source_id not in known and target_id}
 
-    by_name = {}
+    by_name, by_id = {}, {}
     for candidate in archive.get_song_history(songs, target.source):
         target_id = target.track_id(candidate) or candidate.get("_archive_id")
         if target_id:
+            by_id.setdefault(str(target_id), candidate)
             by_name.setdefault(catalog_name(candidate.get("name", "")), []).append(
                 (target_id, candidate))
 
@@ -587,7 +590,15 @@ def _recover_archived_links(songs, source_key, target, source_tracks, known):
             # Fresh, conservative metadata evidence also repairs a stale direct
             # link or hard-identity candidate left by a deleted playlist.
             recovered[track["id"]] = matches[0][0]
-    return recovered
+    links = {**known, **recovered}
+    for track in source_tracks:
+        candidate = by_id.get(str(links.get(track.get("id"))))
+        if candidate and not recording_versions_compatible(
+            track.get("name"), track.get("artists") or track.get("artist"),
+            candidate.get("name"), candidate.get("artists") or candidate.get("artist"),
+        ):
+            links.pop(track["id"], None)
+    return links
 
 
 def _enrich_hard_isrcs(songs, source_key, source_tracks):
@@ -638,9 +649,8 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
 
     links = (archive.get_links(songs, target.source, [t.get("id") for t in sp_tracks])
              if (source_provider or source_key) == "spotify" else {})
-    recovered_links = _recover_archived_links(
+    links = _recover_archived_links(
         songs, source_key, target, sp_tracks, links)
-    links = {**links, **recovered_links}  # fresh conservative archive evidence repairs stale links
     target.prefetch(sp_tracks, cache)
     expected_by_source = {
         source_id: set(target_ids)
@@ -1061,17 +1071,20 @@ def _unify_aliases(canon):
     as a duplicate each pass — and a flip between aliases reads as a user
     deletion. Matching: any exact spotify_track_keys overlap, else the same
     composite-key fuzzy tolerance the one-way removal guard trusts. Hard ids
-    never merge with each other — two ISRCs are two recordings.
+    never merge with each other — two ISRCs are two recordings. Explicit
+    recording qualifiers must agree even when the fuzzy title is a subset.
 
     `canon` values may be {cid: norm} dicts OR per-entry (cid, norm) sequences.
     Per-entry is strictly better: one identity often spans several releases with
     DIFFERENT titles ("Song" + "Song (From ...)"), and an alias may match only
     the copy a dict fold would have dropped."""
-    keysets = {}
+    keysets, versions, recordings = {}, {}, {}
     for by_cid in canon.values():
         pairs = by_cid.items() if hasattr(by_cid, "items") else by_cid
         for cid, norm in pairs:
             keysets.setdefault(cid, set()).update(spotify_track_keys(norm))
+            versions.setdefault(cid, set()).add(recording_version_signature(norm.get("name")))
+            recordings.setdefault(cid, []).append(norm)
     soft = sorted(cid for cid in keysets if cid.startswith("k:"))
     if not soft:
         return {}
@@ -1080,7 +1093,7 @@ def _unify_aliases(canon):
     by_key = {}
     for cid in hard:
         for k in keysets[cid]:
-            by_key.setdefault(k, cid)
+            by_key.setdefault(k, []).append(cid)
     # For the fuzzy comparison, the "name|artist" separator must become a space
     # (left in, it fuses different neighbor tokens on each side — "legends|woodkid"
     # vs "legends|arcane" — and blocks matches on mere credit reordering), and a
@@ -1090,15 +1103,25 @@ def _unify_aliases(canon):
         return {k, romanized(k)}
 
     flat = {cid: set().union(*(_variants(k) for k in ks)) for cid, ks in keysets.items()}
+
+    def compatible(left, right):
+        return versions[left] == versions[right] and all(
+            recording_versions_compatible(a.get("name"), a.get("artists"), b.get("name"), b.get("artists"))
+            for a in recordings[left] for b in recordings[right]
+        )
+
     alias, anchors = {}, []  # anchors: surviving k: ids (matched pairwise, never chained)
     for cid in soft:
         qs = _variants(cid[2:])
-        winner = next((by_key[k] for k in sorted(keysets[cid]) if k in by_key), None)
+        winner = next((h for k in sorted(keysets[cid]) for h in by_key.get(k, [])
+                       if compatible(cid, h)), None)
         if not winner:
-            winner = next((h for h in hard if any(fuzzy_in(q, flat[h]) for q in qs)), None)
+            winner = next((h for h in hard if any(fuzzy_in(q, flat[h]) for q in qs)
+                           and compatible(cid, h)), None)
         if not winner:
             winner = next((a for a in anchors
-                           if keysets[cid] & keysets[a] or any(fuzzy_in(q, flat[a]) for q in qs)), None)
+                           if (keysets[cid] & keysets[a] or any(fuzzy_in(q, flat[a]) for q in qs))
+                           and compatible(cid, a)), None)
         if winner:
             alias[cid] = winner
         else:

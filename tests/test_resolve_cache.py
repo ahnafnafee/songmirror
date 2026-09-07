@@ -5,7 +5,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from songmirror.engine.runner import load_cache, save_cache
+from songmirror.engine.runner import MATCHING_CACHE_VERSION, load_cache, save_cache
 from songmirror.services.resolve_cache import (
     ResolveCacheBusy, ResolveCacheError, ResolveCacheStore,
 )
@@ -14,12 +14,30 @@ from songmirror.web import create_app
 
 
 # -- provenance round-trip ---------------------------------------------------
-def test_a_cache_written_before_provenance_loads_with_no_manual_keys(tmp_path):
+def test_legacy_automatic_matches_are_invalidated(tmp_path):
     path = tmp_path / "cache.json"
     path.write_text(json.dumps({"isrc": {}, "search": {"a|b": "1"}}), encoding="utf-8")
     cache = load_cache(str(path))
     assert cache["manual"] == set()
-    assert cache["search"] == {"a|b": "1"}
+    assert cache["search"] == {}
+    assert cache["dirty"] is True
+
+
+def test_legacy_migration_preserves_manual_choices_and_refreshes_isrc_metadata(tmp_path):
+    path = tmp_path / "cache.json"
+    path.write_text(json.dumps({
+        "isrc": {"ISRC": [{"id": "version-was-omitted"}]},
+        "search": {"a|b": "automatic", "c|d": "chosen", "e|f": None},
+        "manual": ["c|d"],
+    }), encoding="utf-8")
+    cache = load_cache(path)
+    assert cache["isrc"] == {}
+    assert cache["search"] == {"c|d": "chosen"}
+    assert cache["manual"] == {"c|d"}
+    save_cache(path, cache)
+    reloaded = load_cache(path)
+    assert reloaded["search"] == {"c|d": "chosen"}
+    assert reloaded["dirty"] is False
 
 
 def test_manual_keys_round_trip_through_save_and_load(tmp_path):
@@ -33,7 +51,7 @@ def test_manual_keys_round_trip_through_save_and_load(tmp_path):
     # Serialized as a sorted list so the file stays diffable, and still carries
     # the two keys every existing reader expects.
     written = json.loads(open(path, encoding="utf-8").read())
-    assert written == {"isrc": {}, "search": {"song|artist": "trk1"}, "manual": ["song|artist"]}
+    assert written == {"matching_version": MATCHING_CACHE_VERSION, "isrc": {}, "search": {"song|artist": "trk1"}, "manual": ["song|artist"]}
     assert load_cache(path)["manual"] == {"song|artist"}
 
 
@@ -71,7 +89,7 @@ def _store(tmp_path, monkeypatch, rows, *, manual=(), provider="deezer", sync=No
         monkeypatch.setenv(env_key, str(tmp_path / f"{name}_cache.json"))
     path = str(tmp_path / f"{provider}_cache.json")
     with open(path, "w", encoding="utf-8") as f:
-        json.dump({"isrc": {}, "search": rows, "manual": list(manual)}, f)
+        json.dump({"matching_version": MATCHING_CACHE_VERSION, "isrc": {}, "search": rows, "manual": list(manual)}, f)
     return ResolveCacheStore(SettingsStore(dir=tmp_path), sync), path
 
 

@@ -90,8 +90,8 @@ def test_data_api_playlist_title_cleanup_is_conservative(title, channel, expecte
     assert track["name"] == expected
 
 
-def test_native_youtubei_titles_are_not_reparsed_as_raw_video_titles():
-    title = "BLOK3 - KAYIP KALP (Official Music Video)"
+def test_native_youtubei_preserves_a_song_title_with_a_separator_and_version():
+    title = "Love - Hate (Acoustic)"
 
     track = _normalized_youtubei_playlist_track({
         "videoId": "video-1",

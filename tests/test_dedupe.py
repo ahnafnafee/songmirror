@@ -91,17 +91,17 @@ def test_scan_does_not_consume_identity_rebinding_history(tmp_path):
     conn.close()
 
 
-def test_version_boundary_folds_are_held_not_removed(tmp_path):
-    # A live video (fuzzy key, no ISRC) folds into the studio identity so the
-    # sync stays quiet — but the studio copy must NEVER be deleted as its
-    # "duplicate": the version markers differ, so it lands in `held`.
+def test_version_boundaries_remain_distinct_and_are_not_removed(tmp_path):
+    # A live video and a studio track are separate desired recordings. Neither
+    # may be folded into or deleted as a duplicate of the other.
     conn = archive.connect(str(tmp_path / "s.db"))
     yt = _Peer("ytmusic", [_t("v-live", "American Pie (Live)", "Don McLean"),
                            _t("v-studio", "American Pie", "Don McLean", isrc="S1")])
     entries, _ = dedupe.scan([yt], {"ytmusic": {"id": "y"}}, _caches("ytmusic"), conn, "mix")
     plan, held = dedupe.dup_plan([yt], entries)
     assert plan["ytmusic"] == []
-    assert [raw["id"] for _, _, raw, _ in held["ytmusic"]] == ["v-studio"]
+    assert held["ytmusic"] == []
+    assert len({entry[0] for entry in entries["ytmusic"]}) == 2
     # …while a same-recording decoration ("Official Audio") still dedupes:
     yt2 = _Peer("ytmusic", [_t("v1", "stevie (Official Audio)", "Kasabian"),
                             _t("v2", "stevie", "Kasabian", isrc="K1")])

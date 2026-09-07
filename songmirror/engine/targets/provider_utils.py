@@ -3,7 +3,32 @@
 import html
 import re
 
-from ..matching import score_candidate
+from ..matching import normalize_text, recording_versions_compatible, score_candidate
+
+
+def title_with_version(title, version):
+    """Keep separate provider recording labels visible to every identity path."""
+    title, version = str(title or ""), str(version or "").strip()
+    label = normalize_text(version)
+    if not label or f" {label} " in f" {normalize_text(title)} ":
+        return title
+    return f"{title} ({version.strip('()[] ')})".strip()
+
+
+def compatible_isrc_candidates(track, cache):
+    """Trust an ISRC crosswalk unless its title explicitly names another version.
+
+    ISRC results can outrank text or duration drift, but cannot bypass the
+    studio/live/acoustic boundary used by search and sync identity matching.
+    """
+    return [
+        candidate for candidate in cache["isrc"].get(track.get("isrc") or "", [])
+        if candidate and candidate.get("id")
+        and recording_versions_compatible(
+            track.get("name"), track.get("artists") or track.get("artist"),
+            candidate.get("name"), candidate.get("artists") or candidate.get("artist"),
+        )
+    ]
 
 
 def source_playlist_details(playlist):

@@ -18,7 +18,7 @@ from ...oauth import read_token, token_path
 from ..config import REQUEST_TIMEOUT, polite_sleep
 from ..matching import normalize_text, romanized, track_key
 from .base import MirrorTarget, TargetAuthError
-from .provider_utils import best_candidate, source_playlist_details
+from .provider_utils import best_candidate, compatible_isrc_candidates, source_playlist_details, title_with_version
 
 API = "https://api.deezer.com"
 DEFAULT_TOKEN_FILE = "data/deezer_oauth.json"
@@ -51,7 +51,7 @@ def _normalized_track(track):
                       if isinstance(album.get(key), str) and album.get(key)), "")
     return {
         "id": str(track.get("id")) if track.get("id") is not None else None,
-        "name": track.get("title", ""),
+        "name": title_with_version(track.get("title"), track.get("title_version")),
         "artist": ", ".join(artists),
         "artists": artists,
         "album": album.get("title") or album.get("displayTitle"),
@@ -411,8 +411,7 @@ class DeezerTarget(MirrorTarget):
         for track in source_tracks:
             ids = {
                 str(c["id"])
-                for c in cache["isrc"].get(track.get("isrc") or "", [])
-                if c and c.get("id")
+                for c in compatible_isrc_candidates(track, cache)
             }
             if links.get(track.get("id")):
                 ids.add(str(links[track["id"]]))
@@ -421,7 +420,7 @@ class DeezerTarget(MirrorTarget):
         return out
 
     def resolve(self, track, cache):
-        candidates = [c for c in cache["isrc"].get(track.get("isrc") or "", []) if c]
+        candidates = compatible_isrc_candidates(track, cache)
         if candidates:
             return best_candidate(track, candidates) or str(candidates[0]["id"]), "isrc"
         key = track_key(track.get("name", ""), " ".join(track.get("artists") or []))

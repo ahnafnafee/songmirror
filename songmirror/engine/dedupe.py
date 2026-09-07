@@ -18,14 +18,12 @@ CLI (report by default; inside the container prefix with `docker exec`):
 """
 
 from . import archive
-from .matching import fuzzy_in, loose_name, romanized, spotify_track_keys, track_key
+from .matching import creative_version_markers, fuzzy_in, loose_name, romanized, spotify_track_keys, track_key
 from .targets.base import _entry_cids, _unify_aliases
 
-# Words that mark a DIFFERENT RECORDING of the same song. Alias unification is
-# deliberately version-blind (folding "Song (Live)" into "Song" keeps the sync
-# from re-propagating provider-local variants), but a DELETION across such a
-# boundary would destroy a real recording — e.g. a studio track flagged as a
-# "copy" of a live video that happened to fold into it.
+# Duplicate deletion is stricter than alias matching: even a release-format
+# difference or remaster stays for review. Include the shared creative markers
+# so localized labels receive the same protection as English ones.
 VERSION_MARKERS = frozenset((
     "live", "instrumental", "acoustic", "unplugged", "remix", "mix", "karaoke",
     "demo", "cover", "sped", "slowed", "nightcore", "reverb", "orchestral",
@@ -34,7 +32,7 @@ VERSION_MARKERS = frozenset((
 
 
 def _markers(name):
-    return VERSION_MARKERS.intersection(loose_name(name).split())
+    return VERSION_MARKERS.intersection(loose_name(name).split()) | creative_version_markers(name)
 
 
 def _order_rows(peer, raw):
