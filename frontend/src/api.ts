@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // Thin typed fetch wrapper for the FastAPI backend. Same-origin in
 // production (FastAPI serves the built SPA); proxied through Vite in dev
 // (see vite.config.ts). No client-side base URL needed either way.
@@ -55,7 +56,7 @@ async function fetchResponse(path: string, init?: RequestInit): Promise<Response
       ...init,
     })
   } catch {
-    throw new ApiError(0, 'Could not reach the server. Check that it is running and reachable.')
+    throw new ApiError(0, t("Could not reach the server. Check that it is running and reachable."))
   }
 
   return res
@@ -63,7 +64,7 @@ async function fetchResponse(path: string, init?: RequestInit): Promise<Response
 
 async function requireOk(res: Response): Promise<void> {
   if (!res.ok) {
-    let detail = res.statusText || `HTTP ${res.status}`
+    let detail = res.statusText || t("HTTP {{resStatus}}", { resStatus: res.status })
     try {
       const body: unknown = await res.clone().json()
       if (body && typeof body === 'object' && 'detail' in body && typeof body.detail === 'string') {

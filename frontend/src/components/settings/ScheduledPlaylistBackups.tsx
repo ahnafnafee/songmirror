@@ -1,3 +1,5 @@
+import { formatDateTime } from '@/lib/format'
+import { t, Trans, useTranslation } from '@/i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { LuArchive, LuDownload, LuPlay, LuSave, LuTrash2 } from 'react-icons/lu'
 
@@ -6,7 +8,7 @@ import { useAccounts } from '@/hooks/useAccounts'
 import { useNow } from '@/hooks/useNow'
 import { usePlaylistBackups } from '@/hooks/usePlaylistBackups'
 import { capabilitiesOf } from '@/lib/accountCapabilities'
-import { formatCountdown, intervalSeconds } from '@/lib/format'
+import { formatCountdown, formatTrackCount, intervalSeconds } from '@/lib/format'
 import type {
   Account,
   PlaylistBackupFormat,
@@ -24,7 +26,7 @@ import { TextField } from '../ui/TextField'
 import { Toggle } from '../ui/Toggle'
 
 const FORMAT_OPTIONS = [
-  { value: 'json', label: 'JSON (recommended)' },
+  { value: 'json', get label() { return t("JSON (recommended)") } },
   { value: 'xml', label: 'XML' },
 ]
 
@@ -66,7 +68,7 @@ function validRetention(value: string): boolean {
 function dateTime(value: string): string {
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return value
-  return parsed.toLocaleString(undefined, {
+  return formatDateTime(parsed, {
     dateStyle: 'medium',
     timeStyle: 'short',
   })
@@ -85,6 +87,7 @@ function BackupScheduleCard({
   job: PlaylistBackupJob
   refresh: () => Promise<void>
 }) {
+  useTranslation()
   const [draft, setDraft] = useState<Draft>(() => draftFrom(job))
   const [busy, setBusy] = useState<'save' | 'run' | 'download' | 'delete' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -178,22 +181,20 @@ function BackupScheduleCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-text">{job.account_name}</h3>
-            <span className={`rounded-chip px-2 py-0.5 font-mono text-[10px] font-semibold ${
-              job.running
+            <span className={`rounded-chip px-2 py-0.5 font-mono text-[10px] font-semibold ${job.running
                 ? 'bg-accent-soft text-accent'
                 : latestFailed
                   ? 'bg-danger-soft text-danger'
                   : job.last_success
                     ? 'bg-success-soft text-success'
-                    : 'bg-neutral-soft text-neutral'
-            }`}>
+                    : 'bg-neutral-soft text-neutral'}`}>
               {job.running
-                ? 'RUNNING'
+                ? t("RUNNING")
                 : latestFailed
-                  ? 'LAST RUN FAILED'
+                  ? t("LAST RUN FAILED")
                   : job.last_success
-                    ? 'HEALTHY'
-                    : 'WAITING'}
+                    ? t("HEALTHY")
+                    : t("WAITING")}
             </span>
           </div>
           <p className="mt-0.5 break-all font-mono text-[10.5px] text-text-3">
@@ -203,22 +204,22 @@ function BackupScheduleCard({
         <Toggle
           checked={draft.enabled}
           onChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
-          label={`Automatically back up ${job.account_name}`}
+          label={t("Automatically back up {{jobAccount}}", { jobAccount: job.account_name })}
           hideLabel
         />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <IntervalField
-          label="Backup frequency"
-          help="Choose how often to save a fresh backup."
+          label={t("Backup frequency")}
+          help={t("Choose how often to save a fresh backup.")}
           value={draft.interval}
-          error={intervalOk ? undefined : 'Choose an interval from 1 minute to 365 days.'}
+          error={intervalOk ? undefined : t("Choose an interval from 1 minute to 365 days.")}
           onChange={(interval) => setDraft((current) => ({ ...current, interval }))}
         />
         <SelectField
-          label="Backup format"
-          help="Playlist names and track details; audio is not included."
+          label={t("Backup format")}
+          help={t("Playlist names and track details; audio is not included.")}
           options={FORMAT_OPTIONS}
           value={draft.format}
           onChange={(event) => setDraft((current) => ({
@@ -227,24 +228,24 @@ function BackupScheduleCard({
           }))}
         />
         <div className="flex min-w-0 flex-col gap-3">
-          <SelectField label="Keep backups"
-            help="Older backups are removed after a successful save."
-            value={customRetention || !['7', '30', '90', '0'].includes(draft.retention) ? 'custom' : draft.retention}
-            options={[{ value: '7', label: 'Latest 7 backups' }, { value: '30', label: 'Latest 30 backups' },
-              { value: '90', label: 'Latest 90 backups' }, { value: '0', label: 'All backups' }, { value: 'custom', label: 'Custom amount…' }]}
+          <SelectField label={t("Keep backups")}
+            help={t("Older backups are removed after a successful save.")}
+            value={customRetention || !['7', '30', '90', '0'].includes(draft.retention) ? "custom" : draft.retention}
+            options={[{ value: '7', label: t("Latest 7 backups") }, { value: '30', label: t("Latest 30 backups") },
+              { value: '90', label: t("Latest 90 backups") }, { value: '0', label: t("All backups") }, { value: 'custom', label: t("Custom amount…") }]}
             onChange={(event) => {
               setCustomRetention(event.target.value === 'custom')
               if (event.target.value !== 'custom') setDraft((current) => ({ ...current, retention: event.target.value }))
             }} />
           {(customRetention || !['7', '30', '90', '0'].includes(draft.retention)) && (
             <TextField
-              label="Keep latest backups"
+              label={t("Keep latest backups")}
               type="number"
               min={1}
               max={10_000}
               step={1}
               value={draft.retention}
-              error={retentionOk ? undefined : 'Enter a whole number from 1 through 10,000.'}
+              error={retentionOk ? undefined : t("Enter a whole number from 1 through 10,000.")}
               onChange={(event) => setDraft((current) => ({ ...current, retention: event.target.value }))}
             />
           )}
@@ -252,46 +253,48 @@ function BackupScheduleCard({
       </div>
 
       <div className="mt-4 rounded-control border border-border bg-surface p-3">
-        <FolderField label="Backup folder" value={draft.storage_dir}
+        <FolderField label={t("Backup folder")} value={draft.storage_dir}
           defaultPath={job.default_storage_dir}
           disabled={busy !== null}
-          help="Each account gets its own subfolder. Choose a folder or enter an existing path."
+          help={t("Each account gets its own subfolder. Choose a folder or enter an existing path.")}
           onChange={(storage_dir) => setDraft((current) => ({ ...current, storage_dir }))} />
         <div className="mt-3">
-          <Toggle label="Use default backup folder" checked={!draft.storage_dir}
+          <Toggle label={t("Use default backup folder")} checked={!draft.storage_dir}
             disabled={busy !== null}
             onChange={(useDefault) => setDraft((current) => ({ ...current, storage_dir: useDefault ? '' : job.default_storage_dir }))} />
         </div>
-        {draft.storage_dir !== storage_dir && <p className="mt-2 text-xs text-text-3">The new location applies to future backups. Existing files stay in their current folder.</p>}
-        {job.running && <p className="mt-2 text-xs text-text-3">You can choose a folder now. Save the new location after this backup finishes.</p>}
+        {draft.storage_dir !== storage_dir && <p className="mt-2 text-xs text-text-3">{t("The new location applies to future backups. Existing files stay in their current folder.")}</p>}
+        {job.running && <p className="mt-2 text-xs text-text-3">{t("You can choose a folder now. Save the new location after this backup finishes.")}</p>}
       </div>
 
       <div aria-live="polite" className="mt-4 rounded-control border border-border/80 bg-surface px-3 py-2.5 text-xs leading-relaxed text-text-2">
         {job.running ? (
-          <p>Reading every playlist now. Syncs and transfers will run before or after this backup, never at the same time.</p>
+          <p>{t("Reading every playlist now. Syncs and transfers will run before or after this backup, never at the same time.")}</p>
         ) : job.enabled && job.next_run_at ? (
           <p>
-            Next backup <span className="font-semibold text-text">{dateTime(new Date(job.next_run_at * 1000).toISOString())}</span>
-            {' '}· {formatCountdown(job.next_run_at, now)}
+            <Trans i18nKey={"Next backup <span1>{{dateTimeToISOString}}</span1> · {{formatCountdown}}"} values={{ dateTimeToISOString: dateTime(new Date(job.next_run_at * 1000).toISOString()), formatCountdown: formatCountdown(job.next_run_at, now) }} components={{ span1: <span className="font-semibold text-text" /> }} />
           </p>
         ) : (
-          <p>Automatic backups are paused. Run now is still available.</p>
+          <p>{t("Automatic backups are paused. Run now is still available.")}</p>
         )}
         {job.last_success ? (
           <p className="mt-1 break-words text-success">
-            Last success {dateTime(job.last_success.at)} · {job.last_success.playlist_count} playlists,
-            {' '}{job.last_success.track_count} tracks · {job.last_success.filename}
+            {t('Last success {{dateTime}} · {{playlists}}, {{tracks}} · {{filename}}', {
+              dateTime: dateTime(job.last_success.at),
+              playlists: t('{{count, number}} playlist', { count: job.last_success.playlist_count, defaultValue_one: '{{count, number}} playlist', defaultValue_other: '{{count, number}} playlists' }),
+              tracks: formatTrackCount(job.last_success.track_count), filename: job.last_success.filename,
+            })}
           </p>
         ) : (
-          <p className="mt-1 text-text-3">No successful snapshot yet.</p>
+          <p className="mt-1 text-text-3">{t("No successful snapshot yet.")}</p>
         )}
         {job.last_failure ? (
           <p className={`mt-1 break-words ${latestFailed ? 'text-danger' : 'text-text-3'}`}>
-            Last failure {dateTime(job.last_failure.at)} · {job.last_failure.error}
+            {t("Last failure {{dateTime}} · {{jobLast}}", { dateTime: dateTime(job.last_failure.at), jobLast: job.last_failure.error })}
           </p>
         ) : null}
         <p className="mt-1 text-text-3">
-          {job.snapshot_count} stored snapshot{job.snapshot_count === 1 ? '' : 's'}.
+          {t("{{count, number}} stored snapshot.", { count: job.snapshot_count, defaultValue_one: "{{count, number}} stored snapshot.", defaultValue_other: "{{count, number}} stored snapshots." })}
         </p>
       </div>
 
@@ -302,10 +305,10 @@ function BackupScheduleCard({
           icon={<LuSave className="size-3.5" aria-hidden="true" />}
           loading={busy === 'save'}
           disabled={!dirty || !intervalOk || !retentionOk || busy !== null || folderSaveBlocked}
-          aria-label={`Save ${job.account_name} backup schedule`}
+          aria-label={t("Save {{jobAccount}} backup schedule", { jobAccount: job.account_name })}
           onClick={() => void save()}
         >
-          Save schedule
+          {t("Save schedule")}
         </Button>
         <Button
           size="sm"
@@ -313,10 +316,10 @@ function BackupScheduleCard({
           icon={<LuPlay className="size-3.5" aria-hidden="true" />}
           loading={busy === 'run'}
           disabled={dirty || job.running || busy !== null}
-          aria-label={`Back up ${job.account_name} now`}
+          aria-label={t("Back up {{jobAccount}} now", { jobAccount: job.account_name })}
           onClick={() => void runNow()}
         >
-          Back up now
+          {t("Back up now")}
         </Button>
         <Button
           size="sm"
@@ -324,28 +327,32 @@ function BackupScheduleCard({
           icon={<LuDownload className="size-3.5" aria-hidden="true" />}
           loading={busy === 'download'}
           disabled={job.snapshot_count === 0 || busy !== null}
-          aria-label={`Download latest ${job.account_name} backup`}
+          aria-label={t("Download latest {{jobAccount}} backup", { jobAccount: job.account_name })}
           onClick={() => void downloadLatest()}
         >
-          Download latest
+          {t("Download latest")}
         </Button>
         <Button
           size="sm"
           variant="danger-ghost"
           icon={<LuTrash2 className="size-3.5" aria-hidden="true" />}
           disabled={busy !== null}
-          aria-label={`Remove ${job.account_name} backup schedule`}
+          aria-label={t("Remove {{jobAccount}} backup schedule", { jobAccount: job.account_name })}
           onClick={() => setConfirmDelete(true)}
         >
-          Remove schedule
+          {t("Remove schedule")}
         </Button>
       </div>
 
       <ConfirmDialog
         open={confirmDelete}
-        title={`Remove ${job.account_name} backup schedule?`}
-        description={`Automatic runs will stop. The ${job.snapshot_count} snapshots already stored on disk will not be deleted.`}
-        confirmLabel="Remove schedule"
+        title={t("Remove {{jobAccount}} backup schedule?", { jobAccount: job.account_name })}
+        description={t('Automatic runs will stop. Stored snapshots will not be deleted.', {
+          count: job.snapshot_count,
+          defaultValue_one: 'Automatic runs will stop. The {{count, number}} snapshot already stored on disk will not be deleted.',
+          defaultValue_other: 'Automatic runs will stop. The {{count, number}} snapshots already stored on disk will not be deleted.',
+        })}
+        confirmLabel={t("Remove schedule")}
         danger
         loading={busy === 'delete'}
         onConfirm={() => void removeSchedule()}
@@ -365,6 +372,7 @@ function connectedBackupAccounts(accounts: Account[] | null, scheduled: Set<stri
 }
 
 export function ScheduledPlaylistBackups() {
+  useTranslation()
   const { accounts, loading: accountsLoading } = useAccounts()
   const { backups, loading, error, refresh } = usePlaylistBackups()
   const [accountId, setAccountId] = useState('')
@@ -409,10 +417,9 @@ export function ScheduledPlaylistBackups() {
           <LuArchive className="size-4.5" aria-hidden="true" />
         </span>
         <div>
-          <p className="text-sm font-medium text-text">Scheduled playlist archive</p>
+          <p className="text-sm font-medium text-text">{t("Scheduled playlist archive")}</p>
           <p className="mt-0.5 text-xs leading-relaxed text-text-3">
-            Save playlist names and track details automatically. Backups use SongMirror's app data folder by default,
-            or a folder you choose. Removing a schedule keeps its saved files.
+            {t("Save playlist names and track details automatically. Backups use SongMirror's app data folder by default, or a folder you choose. Removing a schedule keeps its saved files.")}
           </p>
         </div>
       </div>
@@ -423,7 +430,7 @@ export function ScheduledPlaylistBackups() {
             <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
               <div className="min-w-0 flex-1">
                 <SelectField
-                  label="Add a connected account"
+                  label={t("Add a connected account")}
                   options={available.map((account) => ({ value: account.id, label: account.name }))}
                   value={selectedAccount}
                   onChange={(event) => setAccountId(event.target.value)}
@@ -434,24 +441,24 @@ export function ScheduledPlaylistBackups() {
                 loading={adding}
                 onClick={() => void addSchedule()}
               >
-                Add backup
+                {t("Add backup")}
               </Button>
-              <p className="text-xs text-text-3 sm:col-span-2">Each account gets its own schedule and folder. New schedules start with daily backups.</p>
+              <p className="text-xs text-text-3 sm:col-span-2">{t("Each account gets its own schedule and folder. New schedules start with daily backups.")}</p>
             </div>
           ) : (
             <p className="text-xs leading-relaxed text-text-3">
               {accountsLoading
-                ? 'Loading connected services…'
+                ? t("Loading connected services…")
                 : connectedAccountCount === 0
-                  ? 'Connect a playlist account on the Accounts page to add a backup schedule.'
-                  : 'Every connected playlist account already has a backup schedule.'}
+                  ? t("Connect a playlist account on the Accounts page to add a backup schedule.")
+                  : t("Every connected playlist account already has a backup schedule.")}
             </p>
           )}
           {addError ? <p role="alert" className="mt-2 text-xs text-danger">{addError}</p> : null}
         </div>
       ) : null}
-      {error ? <p role="alert" className="rounded-control bg-danger-soft px-3 py-2 text-xs text-danger">Could not load backup schedules: {error}</p> : null}
-      {loading ? <p className="text-xs text-text-3">Loading backup schedules…</p> : null}
+      {error ? <p role="alert" className="rounded-control bg-danger-soft px-3 py-2 text-xs text-danger">{t("Could not load backup schedules: {{error}}", { error: error })}</p> : null}
+      {loading ? <p className="text-xs text-text-3">{t("Loading backup schedules…")}</p> : null}
       {(backups ?? []).map((job) => (
         <BackupScheduleCard key={job.account_id} job={job} refresh={refresh} />
       ))}

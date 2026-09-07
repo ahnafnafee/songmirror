@@ -1,3 +1,5 @@
+import { formatNumber } from '@/lib/format'
+import { t, useTranslation } from '@/i18n'
 import { Link } from 'react-router-dom'
 import { LuArrowRight } from 'react-icons/lu'
 
@@ -15,13 +17,14 @@ import { StatusPill } from '../ui/StatusPill'
  * the API); where the last pass touched a service, its real add/remove
  * counts from that pass show instead. */
 export function YourServices({ accounts, status }: { accounts: Account[] | null; status: SyncStatus | null }) {
+  useTranslation()
   return (
     <Card className="flex flex-col overflow-hidden">
       <div className="flex items-center justify-between p-4">
-        <h2 className="text-[15px] font-extrabold text-text">Your services</h2>
+        <h2 className="text-[15px] font-extrabold text-text">{t("Your services")}</h2>
         <Link to="/accounts" className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-accent hover:text-accent-hover">
-          Manage
-          <LuArrowRight className="size-3.5" aria-hidden="true" />
+          {t("Manage")}
+          <LuArrowRight className="size-3.5 rtl:-scale-x-100" aria-hidden="true" />
         </Link>
       </div>
       {accounts && accounts.length > 0 ? (
@@ -39,8 +42,8 @@ export function YourServices({ accounts, status }: { accounts: Account[] | null;
                 <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-text">{a.name}</span>
                 {target && (target.added > 0 || target.removed > 0) && (
                   <span className="hidden shrink-0 items-center gap-1.5 font-mono text-[11px] sm:flex">
-                    {target.added > 0 && <span className="text-success">+{target.added}</span>}
-                    {target.removed > 0 && <span className="text-danger">−{target.removed}</span>}
+                    {target.added > 0 && <span className="text-success">+{formatNumber(target.added)}</span>}
+                    {target.removed > 0 && <span className="text-danger">−{formatNumber(target.removed)}</span>}
                   </span>
                 )}
                 <StatusPill state={a.state} className="shrink-0" />
@@ -50,7 +53,7 @@ export function YourServices({ accounts, status }: { accounts: Account[] | null;
         </ul>
       ) : (
         <div className="px-4 pb-4">
-          <EmptyState title="No connectors available" description="This installation has no configured services." />
+          <EmptyState title={t("No connectors available")} description={t("This installation has no configured services.")} />
         </div>
       )}
     </Card>

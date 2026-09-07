@@ -1,9 +1,11 @@
+import { t, useTranslation } from '@/i18n'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { LuArrowRight } from 'react-icons/lu'
 
 import { api, errorMessage } from '@/api'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
+import { LanguageSelector } from '@/components/layout/LanguageSelector'
 import { ScheduledPlaylistBackups } from '@/components/settings/ScheduledPlaylistBackups'
 import { Button } from '@/components/ui/Button'
 import { FolderField } from '@/components/ui/FolderField'
@@ -38,6 +40,7 @@ function settingsForm(settings: SettingsMap): SettingsMap {
 }
 
 export default function Settings() {
+  useTranslation()
   const [params] = useSearchParams()
   const section = ['backups', 'downloads'].includes(params.get('section') ?? '') ? params.get('section')! : 'general'
   const { settings, loading, error, refresh } = useSettings()
@@ -101,25 +104,25 @@ export default function Settings() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Settings</h1>
+        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">{t("Settings")}</h1>
         <p className="mt-1 text-sm text-text-3">
-          Profile, appearance, downloads, and persistent playlist archives. Provider credentials live on the Accounts page.
+          {t("Profile, appearance, downloads, and persistent playlist archives. Provider credentials live on the Accounts page.")}
         </p>
         <Link
           to="/sync"
           className="mt-1.5 inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:text-accent-hover"
         >
-          Manage your syncs on the Sync tab
-          <LuArrowRight className="size-3.5" aria-hidden="true" />
+          {t("Manage your syncs on the Sync tab")}
+          <LuArrowRight className="size-3.5 rtl:-scale-x-100" aria-hidden="true" />
         </Link>
       </div>
 
-      {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not load settings: {error}</p>}
+      {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{t("Could not load settings: {{error}}", { error: error })}</p>}
 
-      <nav aria-label="Settings sections" className="flex flex-wrap gap-1 rounded-card border border-border bg-surface p-1.5">
-        {[['general', 'General'], ['backups', 'Playlist backups'], ['downloads', 'Downloads & Jellyfin']].map(([key, title]) => (
-          <Link key={key} to={key === 'general' ? '/settings' : `/settings?section=${key}`}
-            aria-current={section === key ? 'page' : undefined}
+      <nav aria-label={t("Settings sections")} className="flex flex-wrap gap-1 rounded-card border border-border bg-surface p-1.5">
+        {[['general', t('General')], ['backups', t('Playlist backups')], ['downloads', t('Downloads & Jellyfin')]].map(([key, title]) => (
+          <Link key={key} to={key === 'general' ? "/settings" : `/settings?section=${key}`}
+            aria-current={section === key ? "page" : undefined}
             className={cn('flex min-h-11 items-center rounded-control px-4 text-sm font-semibold',
               section === key ? 'bg-accent-soft text-accent' : 'text-text-3 hover:bg-surface-2 hover:text-text')}>
             {title}
@@ -128,22 +131,23 @@ export default function Settings() {
       </nav>
 
       {section === 'general' && (
-      <SettingsGroup label="APPEARANCE">
+      <SettingsGroup label={t("APPEARANCE")}>
         <ThemeToggle />
+        <LanguageSelector />
         <p className="text-xs leading-relaxed text-text-3">
-          Applies instantly and is remembered on this device, separate from your account settings.
+          {t("Applies instantly and is remembered on this device, separate from your account settings.")}
         </p>
       </SettingsGroup>
       )}
 
       {section === 'backups' && (
-      <SettingsGroup label="PLAYLIST ARCHIVE">
+      <SettingsGroup label={t("PLAYLIST ARCHIVE")}>
         <ScheduledPlaylistBackups />
       </SettingsGroup>
       )}
 
       {section !== 'backups' && (loading && !form ? (
-        <LoadingStatus label="Loading settings…">
+        <LoadingStatus label={t("Loading settings…")}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Skeleton className="h-32 w-full rounded-card" />
             <Skeleton className="h-40 w-full rounded-card" />
@@ -159,11 +163,11 @@ export default function Settings() {
         >
           <div className="grid grid-cols-1 items-start gap-4">
             {section === 'general' && (
-            <SettingsGroup label="PROFILE">
+            <SettingsGroup label={t("PROFILE")}>
               <TextField
-                label="Display name"
-                help="Optional, used only for the dashboard's greeting."
-                placeholder="e.g. Maya"
+                label={t("Display name")}
+                help={t("Optional, used only for the dashboard's greeting.")}
+                placeholder={t("e.g. Maya")}
                 value={form.DISPLAY_NAME ?? ''}
                 onChange={(e) => setField('DISPLAY_NAME', e.target.value)}
               />
@@ -171,27 +175,26 @@ export default function Settings() {
             )}
 
             {section === 'downloads' && (
-            <SettingsGroup label="DOWNLOAD MIRROR">
+            <SettingsGroup label={t("DOWNLOAD MIRROR")}>
               <p className="text-xs leading-relaxed text-text-3">
-                Optional: where offline audio copies land for any sync that opts in ("Download this sync's
-                playlists", on the Sync tab).
+                {t("Optional: where offline audio copies land for any sync that opts in (\"Download this sync's playlists\", on the Sync tab).")}
               </p>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
                 <FolderField
-                  label="Download folder"
-                  help="Use a folder your Jellyfin music library can access. Enter an empty path to disable downloads."
+                  label={t("Download folder")}
+                  help={t("Use a folder your Jellyfin music library can access. Enter an empty path to disable downloads.")}
                   value={form.DOWNLOAD_DIR ?? ''}
                   onChange={(value) => setField('DOWNLOAD_DIR', value)}
                 />
                 <SelectField
-                  label="Audio format"
-                  help="Only used when a download folder is set above."
+                  label={t("Audio format")}
+                  help={t("Only used when a download folder is set above.")}
                   options={DOWNLOAD_FORMAT_OPTIONS}
                   value={form.LOCAL_MIRROR_FORMAT ?? ''}
                   onChange={(e) => setField('LOCAL_MIRROR_FORMAT', e.target.value)}
                 />
               </div>
-              <p className="text-xs text-text-3">Downloads follow each sync's schedule. Choose its frequency on the Sync tab.</p>
+              <p className="text-xs text-text-3">{t("Downloads follow each sync's schedule. Choose its frequency on the Sync tab.")}</p>
             </SettingsGroup>
             )}
           </div>
@@ -201,16 +204,16 @@ export default function Settings() {
               className={cn('size-2 shrink-0 rounded-full', dirty ? 'bg-warning' : 'bg-success')}
               aria-hidden="true"
             />
-            <span className="text-[13px] text-text-2">{dirty ? 'Unsaved changes' : justSaved ? 'Saved' : 'Up to date'}</span>
+            <span className="text-[13px] text-text-2">{dirty ? t("Unsaved changes") : justSaved ? t("Saved") : t("Up to date")}</span>
             {saveError && <span className="text-xs text-danger">{saveError}</span>}
-            <div className="ml-auto flex gap-2">
+            <div className="ms-auto flex gap-2">
               {dirty && (
                 <Button type="button" variant="secondary" size="sm" onClick={discard} disabled={saving}>
-                  Discard
+                  {t("Discard")}
                 </Button>
               )}
               <Button type="submit" size="sm" loading={saving} disabled={!dirty}>
-                Save changes
+                {t("Save changes")}
               </Button>
             </div>
           </div>

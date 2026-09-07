@@ -1,3 +1,5 @@
+import { formatNumber } from '@/lib/format'
+import { t, useTranslation } from '@/i18n'
 import { useState } from 'react'
 import { LuArrowRight, LuPause, LuPlay, LuSquare } from 'react-icons/lu'
 
@@ -16,6 +18,7 @@ import { LoadingStatus, Skeleton } from '../ui/Skeleton'
 import { Spinner } from '../ui/Spinner'
 
 function EndpointBadge({ provider, accountName, playlistName }: { provider: string; accountName?: string; playlistName: string }) {
+  useTranslation()
   const logoId = serviceLogoId(provider)
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -42,6 +45,7 @@ export interface TransferControlHandlers {
 }
 
 function TransferControls({ status, onPause, onResume, onStop }: TransferControlHandlers & { status: TransferStatus }) {
+  useTranslation()
   const [pausing, setPausing] = useState(false)
   const [resuming, setResuming] = useState(false)
   const [stopping, setStopping] = useState(false)
@@ -102,7 +106,7 @@ function TransferControls({ status, onPause, onResume, onStop }: TransferControl
             loading={pausing}
             disabled={resuming || stopping}
           >
-            Pause
+            {t("Pause")}
           </Button>
         )}
         {showResume && (
@@ -113,7 +117,7 @@ function TransferControls({ status, onPause, onResume, onStop }: TransferControl
             loading={resuming}
             disabled={stopping}
           >
-            Resume
+            {t("Resume")}
           </Button>
         )}
         {showStop && (
@@ -124,7 +128,7 @@ function TransferControls({ status, onPause, onResume, onStop }: TransferControl
             onClick={() => setConfirmingStop(true)}
             disabled={pausing || resuming || stopping}
           >
-            Stop
+            {t("Stop")}
           </Button>
         )}
       </div>
@@ -132,9 +136,9 @@ function TransferControls({ status, onPause, onResume, onStop }: TransferControl
 
       <ConfirmDialog
         open={confirmingStop}
-        title="Stop this transfer?"
-        description="Tracks already copied stay on the destination."
-        confirmLabel="Stop"
+        title={t("Stop this transfer?")}
+        description={t("Tracks already copied stay on the destination.")}
+        confirmLabel={t("Stop")}
         danger
         loading={stopping}
         onConfirm={() => void handleStop()}
@@ -154,13 +158,14 @@ export function TransferProgress({
   /** Pause/Resume/Stop action handlers — omit for a read-only display. */
   controls?: TransferControlHandlers
 }) {
+  useTranslation()
   if (!job) {
     return (
       <Card className="p-4 sm:p-6">
         {error ? (
-          <p className="text-sm text-danger">Could not load transfer status: {error}</p>
+          <p className="text-sm text-danger">{t("Could not load transfer status: {{error}}", { error: error })}</p>
         ) : (
-          <LoadingStatus label="Loading transfer status…">
+          <LoadingStatus label={t("Loading transfer status…")}>
             <div className="flex flex-col gap-3">
               <Skeleton className="h-4 w-40" />
               <Skeleton className="h-4 w-64" />
@@ -193,7 +198,7 @@ export function TransferProgress({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
           <EndpointBadge provider={job.source.provider} accountName={job.source.name} playlistName={job.source.playlist_name} />
-          <LuArrowRight className="size-3.5 shrink-0 text-text-3" aria-hidden="true" />
+          <LuArrowRight className="size-3.5 shrink-0 text-text-3 rtl:-scale-x-100" aria-hidden="true" />
           <EndpointBadge provider={job.dest.provider} accountName={job.dest.name} playlistName={job.dest.playlist_name} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -206,7 +211,7 @@ export function TransferProgress({
         (hasTotal ? (
           <div
             role="progressbar"
-            aria-label="Transfer progress"
+            aria-label={t("Transfer progress")}
             aria-valuenow={job.processed}
             aria-valuemin={0}
             aria-valuemax={job.total}
@@ -214,7 +219,7 @@ export function TransferProgress({
           >
             <div
               className={cn(
-                'absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ease-out',
+                'absolute inset-y-0 start-0 rounded-full transition-[width] duration-500 ease-out',
                 isPaused ? 'bg-text-3' : 'bg-accent',
               )}
               style={{ width: `${pct}%` }}
@@ -223,13 +228,13 @@ export function TransferProgress({
         ) : (
           <div
             role="progressbar"
-            aria-label="Transfer in progress"
-            aria-valuetext="Reading the source playlist"
+            aria-label={t("Transfer in progress")}
+            aria-valuetext={t("Reading the source playlist")}
             className="relative h-1.5 w-full overflow-hidden rounded-full bg-inset"
           >
             <div
               className={cn(
-                'absolute inset-y-0 left-0 w-1/3 rounded-full',
+                'absolute inset-y-0 start-0 w-1/3 rounded-full',
                 isPaused ? 'bg-text-3' : 'bg-accent [animation:indeterminate-bar_1.4s_ease-in-out_infinite]',
               )}
             />
@@ -240,8 +245,7 @@ export function TransferProgress({
 
       {unavailable > 0 && (
         <p className="rounded-control bg-warning-soft px-3 py-2 text-sm text-text-2">
-          Skipped {unavailable} unavailable TIDAL {unavailable === 1 ? 'entry' : 'entries'}. You can remove the hidden
-          {unavailable === 1 ? ' entry' : ' entries'} from the source playlist in the playlist inspector.
+          {t("Skipped {{count, number}} unavailable TIDAL entry. You can remove the hidden entry from the source playlist in the playlist inspector.", { count: unavailable, defaultValue_one: "Skipped {{count, number}} unavailable TIDAL entry. You can remove the hidden entry from the source playlist in the playlist inspector.", defaultValue_other: "Skipped {{count, number}} unavailable TIDAL entries. You can remove the hidden entries from the source playlist in the playlist inspector." })}
         </p>
       )}
 
@@ -249,8 +253,8 @@ export function TransferProgress({
         <div className="flex flex-wrap items-end gap-4">
           {job.added > 0 || isPaused ? (
             <div className="flex items-baseline gap-2">
-              <span className="font-mono text-[28px] font-bold leading-none text-success">+{job.added}</span>
-              <span className="font-mono text-[10px] tracking-[0.1em] text-text-3">ADDED SO FAR</span>
+              <span className="font-mono text-[28px] font-bold leading-none text-success">+{formatNumber(job.added)}</span>
+              <span className="font-mono text-[10px] tracking-[0.1em] text-text-3">{t("ADDED SO FAR")}</span>
             </div>
           ) : (
             // Nothing's landed yet — a prominent "+0" reads as broken, so this
@@ -261,39 +265,39 @@ export function TransferProgress({
             // always shows the plain (possibly "+0") count instead of a spinner.
             <div className="flex items-center gap-2 text-sm text-text-2">
               <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
-              {hasTotal ? 'Matching tracks…' : 'Reading source playlist…'}
+              {hasTotal ? t("Matching tracks…") : t("Reading source playlist…")}
             </div>
           )}
           {hasTotal && (
             <div className="flex items-baseline gap-1.5">
               <span className="font-mono text-sm font-semibold text-text-2">
-                {job.processed} / {job.total}
+                {formatNumber(job.processed)} / {formatNumber(job.total)}
               </span>
-              <span className="font-mono text-[10px] tracking-[0.1em] text-text-3">SCANNED</span>
+              <span className="font-mono text-[10px] tracking-[0.1em] text-text-3">{t("SCANNED")}</span>
             </div>
           )}
           {job.deferred > 0 && <CountChip tone="warning" value={job.deferred} />}
           {unresolvedConflicts > 0 && (
             <span className="inline-flex h-6 items-center rounded-chip bg-warning-soft px-2 font-mono text-xs font-semibold text-warning">
-              {unresolvedConflicts} need review
+              {t("{{unresolvedConflicts, number}} need review", { unresolvedConflicts: unresolvedConflicts })}
             </span>
           )}
         </div>
       ) : isDone ? (
         <p className="text-sm text-text-2">
-          <span className="font-semibold text-success">Done</span>
-          <span className="font-mono"> · {job.added} added</span>
-          {unavailable > 0 && <span className="font-mono"> · {unavailable} unavailable skipped</span>}
-          {job.deferred > 0 && <span className="font-mono"> · {job.deferred} deferred</span>}
-          {unresolvedConflicts > 0 && <span className="font-mono"> · {unresolvedConflicts} need review</span>}
+          <span className="font-semibold text-success">{t("Done")}</span>
+          <span className="font-mono"> {t("· {{jobAdded, number}} added", { jobAdded: job.added })}</span>
+          {unavailable > 0 && <span className="font-mono"> {t("· {{unavailable, number}} unavailable skipped", { unavailable: unavailable })}</span>}
+          {job.deferred > 0 && <span className="font-mono"> {t("· {{jobDeferred, number}} deferred", { jobDeferred: job.deferred })}</span>}
+          {unresolvedConflicts > 0 && <span className="font-mono"> {t("· {{unresolvedConflicts, number}} need review", { unresolvedConflicts: unresolvedConflicts })}</span>}
         </p>
       ) : isStopped ? (
         <p className="text-sm text-text-2">
-          <span className="font-semibold text-text-2">Stopped</span>
-          <span className="font-mono"> · {job.added} added</span>
-          {unavailable > 0 && <span className="font-mono"> · {unavailable} unavailable skipped</span>}
-          {job.deferred > 0 && <span className="font-mono"> · {job.deferred} deferred</span>}
-          {unresolvedConflicts > 0 && <span className="font-mono"> · {unresolvedConflicts} need review</span>}
+          <span className="font-semibold text-text-2">{t("Stopped")}</span>
+          <span className="font-mono"> {t("· {{jobAdded, number}} added", { jobAdded: job.added })}</span>
+          {unavailable > 0 && <span className="font-mono"> {t("· {{unavailable, number}} unavailable skipped", { unavailable: unavailable })}</span>}
+          {job.deferred > 0 && <span className="font-mono"> {t("· {{jobDeferred, number}} deferred", { jobDeferred: job.deferred })}</span>}
+          {unresolvedConflicts > 0 && <span className="font-mono"> {t("· {{unresolvedConflicts, number}} need review", { unresolvedConflicts: unresolvedConflicts })}</span>}
         </p>
       ) : (
         <div className="flex flex-wrap gap-2">
@@ -302,7 +306,7 @@ export function TransferProgress({
           {job.deferred > 0 && <CountChip tone="warning" value={job.deferred} />}
           {unresolvedConflicts > 0 && (
             <span className="inline-flex h-6 items-center rounded-chip bg-warning-soft px-2 font-mono text-xs font-semibold text-warning">
-              {unresolvedConflicts} need review
+              {t("{{unresolvedConflicts, number}} need review", { unresolvedConflicts: unresolvedConflicts })}
             </span>
           )}
         </div>

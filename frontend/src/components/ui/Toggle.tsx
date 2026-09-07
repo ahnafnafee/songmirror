@@ -27,7 +27,7 @@ export function Toggle({ checked, onChange, label, description, disabled, hideLa
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        'flex min-h-11 items-center gap-4 rounded-control text-left transition-colors duration-fast',
+        'flex min-h-11 items-center gap-4 rounded-control text-start transition-colors duration-fast',
         hideLabel ? 'w-fit' : 'w-full justify-between',
         'disabled:cursor-not-allowed disabled:opacity-45',
         className,
@@ -49,8 +49,8 @@ export function Toggle({ checked, onChange, label, description, disabled, hideLa
       >
         <span
           className={cn(
-            'absolute left-[3px] inline-block size-[19px] rounded-full bg-surface shadow-sm transition-transform duration-fast',
-            checked && 'translate-x-[17px]',
+            'absolute start-[3px] inline-block size-[19px] rounded-full bg-surface shadow-sm transition-transform duration-fast',
+            checked && 'translate-x-[17px] rtl:-translate-x-[17px]',
           )}
         />
       </span>

@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { Hero } from '@/components/dashboard/Hero'
 import { LiveFeed } from '@/components/dashboard/LiveFeed'
 import { NeedsALook } from '@/components/dashboard/NeedsALook'
@@ -15,6 +16,7 @@ import { useSyncStatus } from '@/hooks/useSyncStatus'
  * separate "Dashboard" title above it would just repeat what the sentence
  * already says. */
 export default function Dashboard() {
+  useTranslation()
   const { accounts } = useAccounts()
   const { status, error, refresh } = useSyncStatus()
   const { settings } = useSettings()
@@ -27,7 +29,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col gap-7">
-      {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not load sync status: {error}</p>}
+      {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{t("Could not load sync status: {{error}}", { error: error })}</p>}
 
       <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch lg:gap-6">
         <Hero accounts={accounts} status={status} displayName={settings?.DISPLAY_NAME} />
@@ -42,7 +44,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.65fr_1fr] lg:items-start">
         <Card className="flex flex-col gap-3 overflow-hidden p-4 sm:p-5">
-          <h2 className="text-[15px] font-extrabold text-text">Recent activity</h2>
+          <h2 className="text-[15px] font-extrabold text-text">{t("Recent activity")}</h2>
           <LiveFeed accounts={accounts} syncs={syncs} />
         </Card>
         <YourServices accounts={accounts} status={status} />

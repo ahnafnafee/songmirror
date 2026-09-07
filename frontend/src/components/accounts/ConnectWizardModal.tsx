@@ -1,3 +1,4 @@
+import { i18n, t, Trans, useTranslation } from '@/i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { LuCheck, LuChevronDown, LuCircleAlert, LuCircleHelp, LuClipboardPaste, LuExternalLink, LuInfinity } from 'react-icons/lu'
@@ -39,10 +40,10 @@ interface DirectResult {
 const YTMUSIC_BROWSER_MODE_DETAIL = 'no-quota (browser cookies) mode'
 
 const AUTH_KIND_TITLES: Record<Account['auth_kind'], string> = {
-  oauth_redirect: 'Connect with a browser sign-in',
-  oauth_device: 'Connect with a device code',
-  token_paste: 'Connect from a signed-in browser session',
-  api_key: 'Connect with a server URL and API key',
+  get oauth_redirect() { return t("Connect with a browser sign-in") },
+  get oauth_device() { return t("Connect with a device code") },
+  get token_paste() { return t("Connect from a signed-in browser session") },
+  get api_key() { return t("Connect with a server URL and API key") },
 }
 
 /** Inline monospace token for header names / literal values inside the guides. */
@@ -70,174 +71,159 @@ interface ConnectGuideContent {
 // Per-provider "how do I actually get these values" walkthroughs, shown as an
 // open-by-default disclosure above the credential fields. Keep in sync with the
 // concise per-field `help` hints defined on each connector (services/accounts).
-const CONNECT_GUIDES: Record<string, ConnectGuideContent> = {
+function connectGuides(): Record<string, ConnectGuideContent> { return {
   spotify: {
-    intro: 'Use the signed-in session already in Spotify\'s web player. No developer app, API key, or Premium account is required.',
+    intro: t("Use the signed-in session already in Spotify's web player. No developer app, API key, or Premium account is required."),
     steps: [
-      <>Open <GuideLink href="https://open.spotify.com">open.spotify.com</GuideLink> and sign in.</>,
+      <><Trans i18nKey={"Open <link1/> and sign in."} components={{ link1: <GuideLink href="https://open.spotify.com">open.spotify.com</GuideLink> }} /></>,
       <>
-        Open browser dev tools (<Code>F12</Code>) → <strong>Application</strong> (Chrome/Edge) or{' '}
-        <strong>Storage</strong> (Firefox).
+        <Trans i18nKey={"Open browser dev tools (<code1/>) → <strong2>Application</strong2> (Chrome/Edge) or <strong3>Storage</strong3> (Firefox)."} components={{ code1: <Code>F12</Code>, strong2: <strong />, strong3: <strong /> }} />
       </>,
       <>
-        Open <strong>Cookies</strong> → <Code>https://open.spotify.com</Code>, then find <Code>sp_dc</Code>.
+        <Trans i18nKey={"Open <strong1>Cookies</strong1> → <code2/>, then find <code3/>."} components={{ strong1: <strong />, code2: <Code>https://open.spotify.com</Code>, code3: <Code>sp_dc</Code> }} />
       </>,
-      <>Copy only that cookie's value and paste it below.</>,
+      <>{t("Copy only that cookie's value and paste it below.")}</>,
     ],
-    note: 'Treat sp_dc like a password. SongMirror stores it in its private data directory and never stores your Spotify password. Re-paste it if Spotify signs the web session out.',
-    link: { href: 'https://open.spotify.com', label: 'Open Spotify web player' },
+    note: t("Treat sp_dc like a password. SongMirror stores it in its private data directory and never stores your Spotify password. Re-paste it if Spotify signs the web session out."),
+    link: { href: 'https://open.spotify.com', label: t("Open Spotify web player") },
   },
   tidal: {
-    intro: 'Import the renewable session already issued to your signed-in TIDAL web player—no developer app is needed.',
+    intro: t("Import the renewable session already issued to your signed-in TIDAL web player—no developer app is needed."),
     steps: [
       <>
-        Open <GuideLink href="https://listen.tidal.com">listen.tidal.com</GuideLink>, open dev tools (<Code>F12</Code>)
-        → <strong>Network</strong>, and enable <strong>Preserve log</strong>.
+        <Trans i18nKey={"Open <link1/>, open dev tools (<code2/>) → <strong3>Network</strong3>, and enable <strong4>Preserve log</strong4>."} components={{ link1: <GuideLink href="https://listen.tidal.com">listen.tidal.com</GuideLink>, code2: <Code>F12</Code>, strong3: <strong />, strong4: <strong /> }} />
       </>,
       <>
-        Sign out of TIDAL and sign back in, then filter the Network list for <Code>oauth2/token</Code>.
+        <Trans i18nKey={"Sign out of TIDAL and sign back in, then filter the Network list for <code1/>."} components={{ code1: <Code>oauth2/token</Code> }} />
       </>,
       <>
-        Select the successful <Code>auth.tidal.com/v1/oauth2/token</Code> request. Open <strong>Payload</strong>{' '}
-        (Chrome/Edge) or <strong>Request</strong> (Firefox), then copy its <Code>client_id</Code> form value.
+        <Trans i18nKey={"Select the successful <code1/> request. Open <strong2>Payload</strong2> (Chrome/Edge) or <strong3>Request</strong3> (Firefox), then copy its <code4/> form value."} components={{ code1: <Code>auth.tidal.com/v1/oauth2/token</Code>, strong2: <strong />, strong3: <strong />, code4: <Code>client_id</Code> }} />
       </>,
       <>
-        Open <strong>Response</strong>, then copy the complete JSON into the token-response field. It should contain
-        both <Code>access_token</Code> and <Code>refresh_token</Code>.
+        <Trans i18nKey={"Open <strong1>Response</strong1>, then copy the complete JSON into the token-response field. It should contain both <code2/> and <code3/>."} components={{ strong1: <strong />, code2: <Code>access_token</Code>, code3: <Code>refresh_token</Code> }} />
       </>,
     ],
-    note: 'Treat the response like a password. The request client_id is public metadata; it is not the numeric cid inside the access token. SongMirror proves renewal before reporting success, discards profile data, and automatically persists token rotation. Older OpenAPI request-header pastes still work but cannot renew.',
-    link: { href: 'https://listen.tidal.com', label: 'Open TIDAL web player' },
+    note: t("Treat the response like a password. The request client_id is public metadata; it is not the numeric cid inside the access token. SongMirror proves renewal before reporting success, discards profile data, and automatically persists token rotation. Older OpenAPI request-header pastes still work but cannot renew."),
+    link: { href: 'https://listen.tidal.com', label: t("Open TIDAL web player") },
   },
   qobuz: {
-    intro: 'Use the first-party API session from your signed-in Qobuz web player; no business API approval is needed.',
+    intro: t("Use the first-party API session from your signed-in Qobuz web player; no business API approval is needed."),
     steps: [
       <>
-        Open <GuideLink href="https://play.qobuz.com">play.qobuz.com</GuideLink>, sign in, and open dev tools{' '}
-        (<Code>F12</Code>) → <strong>Network</strong>.
+        <Trans i18nKey={"Open <link1/>, sign in, and open dev tools (<code2/>) → <strong3>Network</strong3>."} components={{ link1: <GuideLink href="https://play.qobuz.com">play.qobuz.com</GuideLink>, code2: <Code>F12</Code>, strong3: <strong /> }} />
       </>,
-      <>Play or browse anything, then filter for <Code>api.json/0.2</Code>.</>,
+      <><Trans i18nKey={"Play or browse anything, then filter for <code1/>."} components={{ code1: <Code>api.json/0.2</Code> }} /></>,
       <>
-        Choose any request that contains <Code>X-App-Id</Code> and <Code>X-User-Auth-Token</Code>, then copy its{' '}
-        <strong>request headers</strong> or choose <strong>Copy as cURL</strong>.
+        <Trans i18nKey={"Choose any request that contains <code1/> and <code2/>, then copy its <strong3>request headers</strong3> or choose <strong4>Copy as cURL</strong4>."} components={{ code1: <Code>X-App-Id</Code>, code2: <Code>X-User-Auth-Token</Code>, strong3: <strong />, strong4: <strong /> }} />
       </>,
-      <>Paste it below; SongMirror keeps only those two Qobuz authentication headers.</>,
+      <>{t("Paste it below; SongMirror keeps only those two Qobuz authentication headers.")}</>,
     ],
-    note: 'An album/story request works when its signed-in X-App-Id and X-User-Auth-Token headers are included. Cookies are discarded.',
+    note: t("An album/story request works when its signed-in X-App-Id and X-User-Auth-Token headers are included. Cookies are discarded."),
   },
   deezer: {
-    intro: 'Use Deezer’s signed-in renewal session to keep its short-lived Pipe token current automatically.',
+    intro: t("Use Deezer’s signed-in renewal session to keep its short-lived Pipe token current automatically."),
     steps: [
       <>
-        Open <GuideLink href="https://www.deezer.com">deezer.com</GuideLink>, sign in, and open dev tools{' '}
-        (<Code>F12</Code>) → <strong>Network</strong>.
+        <Trans i18nKey={"Open <link1/>, sign in, and open dev tools (<code2/>) → <strong3>Network</strong3>."} components={{ link1: <GuideLink href="https://www.deezer.com">deezer.com</GuideLink>, code2: <Code>F12</Code>, strong3: <strong /> }} />
       </>,
-      <>Reload Deezer, then filter for <Code>auth.deezer.com/login/renew</Code>.</>,
+      <><Trans i18nKey={"Reload Deezer, then filter for <code1/>."} components={{ code1: <Code>auth.deezer.com/login/renew</Code> }} /></>,
       <>
-        Select the renewal <Code>POST</Code> and choose <strong>Copy → Copy request headers</strong> (or{' '}
-        <strong>Copy as cURL</strong>), then paste it into the renewal field below.
+        <Trans i18nKey={"Select the renewal <code1/> and choose <strong2>Copy → Copy request headers</strong2> (or <strong3>Copy as cURL</strong3>), then paste it into the renewal field below."} components={{ code1: <Code>POST</Code>, strong2: <strong />, strong3: <strong /> }} />
       </>,
       <>
-        SongMirror keeps only the <Code>refresh-token</Code> cookie. A current <Code>pipe.deezer.com/api</Code>{' '}
-        Bearer request is an optional immediate bootstrap.
+        <Trans i18nKey={"SongMirror keeps only the <code1/> cookie. A current <code2/> Bearer request is an optional immediate bootstrap."} components={{ code1: <Code>refresh-token</Code>, code2: <Code>pipe.deezer.com/api</Code> }} />
       </>,
       <>
-        Firefox may copy only a semicolon-delimited cookie block; paste that whole block into the renewal field and
-        SongMirror will still extract only <Code>refresh-token</Code>.
+        <Trans i18nKey={"Firefox may copy only a semicolon-delimited cookie block; paste that whole block into the renewal field and SongMirror will still extract only <code1/>."} components={{ code1: <Code>refresh-token</Code> }} />
       </>,
     ],
-    note: 'The Pipe JWT renews automatically and handles both additions and removals. No arl cookie is needed, and the complete browser cookie jar is never retained.',
+    note: t("The Pipe JWT renews automatically and handles both additions and removals. No arl cookie is needed, and the complete browser cookie jar is never retained."),
   },
   amazon: {
-    intro: 'Use a signed-in Amazon Music request to keep its short-lived web-player token current automatically.',
+    intro: t("Use a signed-in Amazon Music request to keep its short-lived web-player token current automatically."),
     steps: [
       <>
-        Open <GuideLink href="https://music.amazon.com">music.amazon.com</GuideLink>, sign in, and open your browser’s
-        dev tools (<Code>F12</Code>, or <Code>⌥⌘I</Code> on Mac).
+        <Trans i18nKey={"Open <link1/>, sign in, and open your browser’s dev tools (<code2/>, or <code3/> on Mac)."} components={{ link1: <GuideLink href="https://music.amazon.com">music.amazon.com</GuideLink>, code2: <Code>F12</Code>, code3: <Code>⌥⌘I</Code> }} />
       </>,
       <>
-        In <strong>Network</strong>, reload the page, filter for <Code>config.json</Code>, and select that request.
+        <Trans i18nKey={"In <strong1>Network</strong1>, reload the page, filter for <code2/>, and select that request."} components={{ strong1: <strong />, code2: <Code>config.json</Code> }} />
       </>,
       <>
-        Choose <strong>Copy request headers</strong> or <strong>Copy as cURL</strong>, then paste it into the renewal
-        field below. Keep the complete <Code>User-Agent</Code>, <Code>Referer</Code>, and <Code>Cookie</Code> headers.
+        <Trans i18nKey={"Choose <strong1>Copy request headers</strong1> or <strong2>Copy as cURL</strong2>, then paste it into the renewal field below. Keep the complete <code3/>, <code4/>, and <code5/> headers."} components={{ strong1: <strong />, strong2: <strong />, code3: <Code>User-Agent</Code>, code4: <Code>Referer</Code>, code5: <Code>Cookie</Code> }} />
       </>,
       <>
-        Paste those <strong>request</strong> headers into the renewal field. Its <strong>Response</strong> JSON is only
-        an optional bootstrap in the first field.
+        <Trans i18nKey={"Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field."} components={{ strong1: <strong />, strong2: <strong /> }} />
       </>,
     ],
-    note: 'SongMirror replays the captured browser context against /pandaToken and rejects a connection if Amazon revokes its Music renewal cookie. Only three safe request headers and a named allowlist of authentication cookies are retained.',
+    note: t("SongMirror replays the captured browser context against /pandaToken and rejects a connection if Amazon revokes its Music renewal cookie. Only three safe request headers and a named allowlist of authentication cookies are retained."),
   },
   apple: {
-    intro: 'No developer account needed. Copy two tokens the Apple Music web player already uses.',
+    intro: t("No developer account needed. Copy two tokens the Apple Music web player already uses."),
     steps: [
       <>
-        Open <GuideLink href="https://music.apple.com">music.apple.com</GuideLink> and sign in.
+        <Trans i18nKey={"Open <link1/> and sign in."} components={{ link1: <GuideLink href="https://music.apple.com">music.apple.com</GuideLink> }} />
       </>,
       <>
-        Open your browser’s dev tools (<Code>F12</Code>, or <Code>⌥⌘I</Code> on Mac) and pick the <strong>Network</strong>{' '}
-        tab.
+        <Trans i18nKey={"Open your browser’s dev tools (<code1/>, or <code2/> on Mac) and pick the <strong3>Network</strong3> tab."} components={{ code1: <Code>F12</Code>, code2: <Code>⌥⌘I</Code>, strong3: <strong /> }} />
       </>,
       <>
-        Click any playlist or song, then filter the Network list for <Code>amp-api</Code>.
+        <Trans i18nKey={"Click any playlist or song, then filter the Network list for <code1/>."} components={{ code1: <Code>amp-api</Code> }} />
       </>,
       <>
-        Click any <Code>amp-api.music.apple.com</Code> request and find its <strong>Request Headers</strong>.
+        <Trans i18nKey={"Click any <code1/> request and find its <strong2>Request Headers</strong2>."} components={{ code1: <Code>amp-api.music.apple.com</Code>, strong2: <strong /> }} />
       </>,
       <>
-        <strong>Bearer token</strong> = the <Code>authorization</Code> header value (the <Code>Bearer </Code> prefix is
-        optional).
+        <Trans i18nKey={"<strong1>Bearer token</strong1> = the <code2/> header value (the <code3/> prefix is optional)."} components={{ strong1: <strong />, code2: <Code>authorization</Code>, code3: <Code>Bearer </Code> }} />
       </>,
       <>
-        <strong>Media-User-Token</strong> = the <Code>media-user-token</Code> header value.
+        <Trans i18nKey={"<strong1>Media-User-Token</strong1> = the <code2/> header value."} components={{ strong1: <strong />, code2: <Code>media-user-token</Code> }} />
       </>,
       <>
-        <strong>Storefront</strong> = your country code (<Code>us</Code>, <Code>gb</Code>, …), optional.
+        <Trans i18nKey={"<strong1>Storefront</strong1> = your country code (<code2/>, <code3/>, …), optional."} components={{ strong1: <strong />, code2: <Code>us</Code>, code3: <Code>gb</Code> }} />
       </>,
     ],
-    note: 'These tokens expire periodically. If Apple later shows “expired”, just re-paste them.',
+    note: t("These tokens expire periodically. If Apple later shows “expired”, just re-paste them."),
   },
   ytmusic: {
-    intro: 'YouTube Music uses a free Google Cloud OAuth client you set up once.',
+    intro: t("YouTube Music uses a free Google Cloud OAuth client you set up once."),
     steps: [
-      <>Open the Google Cloud Console and create or pick a project.</>,
+      <>{t("Open the Google Cloud Console and create or pick a project.")}</>,
       <>
-        In <strong>APIs &amp; Services → Library</strong>, enable the <strong>YouTube Data API v3</strong>.
+        <Trans i18nKey={"In <strong1>APIs & Services → Library</strong1>, enable the <strong2>YouTube Data API v3</strong2>."} components={{ strong1: <strong />, strong2: <strong /> }} />
       </>,
       <>
-        Go to <strong>APIs &amp; Services → Credentials → Create credentials → OAuth client ID</strong>.
+        <Trans i18nKey={"Go to <strong1>APIs & Services → Credentials → Create credentials → OAuth client ID</strong1>."} components={{ strong1: <strong /> }} />
       </>,
-      <>If prompted, set up the consent screen (External; add your own Google account as a test user).</>,
+      <>{t("If prompted, set up the consent screen (External; add your own Google account as a test user).")}</>,
       <>
-        For <strong>Application type</strong>, choose <strong>TVs and Limited Input devices</strong>.
+        <Trans i18nKey={"For <strong1>Application type</strong1>, choose <strong2>TVs and Limited Input devices</strong2>."} components={{ strong1: <strong />, strong2: <strong /> }} />
       </>,
       <>
-        Copy the <strong>Client ID</strong> and <strong>Client secret</strong> and paste them below.
+        <Trans i18nKey={"Copy the <strong1>Client ID</strong1> and <strong2>Client secret</strong2> and paste them below."} components={{ strong1: <strong />, strong2: <strong /> }} />
       </>,
     ],
-    note: 'Next you’ll enter a short code at google.com/device to authorize.',
-    link: { href: 'https://console.cloud.google.com/apis/credentials', label: 'Open Google Cloud credentials' },
+    note: t("Next you’ll enter a short code at google.com/device to authorize."),
+    link: { href: 'https://console.cloud.google.com/apis/credentials', label: t("Open Google Cloud credentials") },
   },
   jellyfin: {
-    intro: 'Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key.',
+    intro: t("Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key."),
     steps: [
       <>
-        <strong>Server URL</strong>: where Jellyfin runs, e.g. <Code>http://localhost:8096</Code>. If this
-        app runs in Docker, use <Code>http://host.docker.internal:8096</Code> — inside the container{' '}
-        <Code>localhost</Code> is the container itself, not your host.
+        <Trans i18nKey={"<strong1>Server URL</strong1>: where Jellyfin runs, e.g. <code2/>. If this app runs in Docker, use <code3/> — inside the container <code4/> is the container itself, not your host."} components={{ strong1: <strong />, code2: <Code>http://localhost:8096</Code>, code3: <Code>http://host.docker.internal:8096</Code>, code4: <Code>localhost</Code> }} />
       </>,
       <>
-        In Jellyfin, open <strong>Dashboard → API Keys</strong> (under Advanced).
+        <Trans i18nKey={"In Jellyfin, open <strong1>Dashboard → API Keys</strong1> (under Advanced)."} components={{ strong1: <strong /> }} />
       </>,
       <>
-        Click <strong>+</strong>, name the key “SongMirror”, and copy it.
+        <Trans i18nKey={"Click <strong1>+</strong1>, name the key “SongMirror”, and copy it."} components={{ strong1: <strong /> }} />
       </>,
       <>
-        Paste the URL and key below; <strong>User ID</strong> is optional.
+        <Trans i18nKey={"Paste the URL and key below; <strong1>User ID</strong1> is optional."} components={{ strong1: <strong /> }} />
       </>,
     ],
   },
+}
+
 }
 
 // Which raw request-header line fills which field, and how to clean the
@@ -252,11 +238,11 @@ const HEADER_PASTE_SOURCES: Record<string, { headerName: string; clean?: (value:
 
 const RAW_SESSION_PLACEHOLDERS: Record<string, string> = {
   TIDAL_WEB_HEADERS: '{\n  "access_token": "…",\n  "refresh_token": "…",\n  "expires_in": 86400,\n  "scope": "r_usr w_usr"\n}',
-  QOBUZ_WEB_REQUEST: 'X-App-Id: …\nX-User-Auth-Token: …\n—or paste Copy as cURL—',
-  DEEZER_WEB_HEADERS: 'authorization: Bearer …\n—or paste Copy as cURL—',
-  DEEZER_REFRESH_TOKEN: 'Cookie: refresh-token=…\n—or paste the auth.deezer.com request as cURL—',
+  get QOBUZ_WEB_REQUEST() { return t('{{headers}}\n—or paste Copy as cURL—', { headers: 'X-App-Id: …\nX-User-Auth-Token: …' }) },
+  get DEEZER_WEB_HEADERS() { return t('{{headers}}\n—or paste Copy as cURL—', { headers: 'authorization: Bearer …' }) },
+  get DEEZER_REFRESH_TOKEN() { return t('{{headers}}\n—or paste the auth.deezer.com request as cURL—', { headers: 'Cookie: refresh-token=…' }) },
   AMAZON_MUSIC_WEB_HEADERS: '{\n  "accessToken": "…",\n  "deviceId": "…",\n  "deviceType": "…"\n}',
-  AMAZON_MUSIC_RENEWAL_REQUEST: 'User-Agent: Mozilla/5.0 …\nCookie: at-main-music=…; session-id=…\n—or paste config.json Copy as cURL—',
+  get AMAZON_MUSIC_RENEWAL_REQUEST() { return t('{{headers}}\n—or paste config.json Copy as cURL—', { headers: 'User-Agent: Mozilla/5.0 …\nCookie: at-main-music=…; session-id=…' }) },
 }
 
 /** Parses a raw "copy request headers" block (case-insensitive, line-based
@@ -292,6 +278,7 @@ const REDIRECT_POLL_INTERVAL_MS = 2500
 const REDIRECT_POLL_TIMEOUT_MS = 5 * 60 * 1000
 
 export function ConnectWizardModal({ account, open, onClose, onConnected, onChanged }: Props) {
+  useTranslation()
   const [values, setValues] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -430,7 +417,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
       const res = await api.connectAccount(account.id)
       if (res.kind === 'redirect') setRedirectInfo(res)
       else if (res.kind === 'device') setDeviceInfo(res)
-      else setError('Unexpected response from the server.')
+      else setError(t("Unexpected response from the server."))
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -445,7 +432,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     try {
       const res = await api.connectAccount(account.id, values)
       if (res.kind === 'redirect' || res.kind === 'device') {
-        setError('Unexpected response from the server.')
+        setError(t("Unexpected response from the server."))
         return
       }
       setDirectResult({ state: res.state, detail: res.detail })
@@ -461,7 +448,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     <Modal
       open={open}
       onClose={onClose}
-      title={`Connect ${account.name}`}
+      title={t("Connect {{accountName}}", { accountName: account.name })}
       description={AUTH_KIND_TITLES[account.auth_kind]}
     >
       <div className="flex flex-col gap-5">
@@ -482,7 +469,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
                   disabled={saving || requiredMissing}
                   loading={saving}
                   onSubmit={() => void saveAndConnect()}
-                  submitLabel="Save and continue"
+                  submitLabel={t("Save and continue")}
                 />
               ))}
 
@@ -497,7 +484,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
                   disabled={saving || requiredMissing}
                   loading={saving}
                   onSubmit={() => void saveAndConnect()}
-                  submitLabel="Save and continue"
+                  submitLabel={t("Save and continue")}
                 />
               ))}
 
@@ -505,7 +492,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
               <>
                 {directResult && directResult.state !== 'connected' && (
                   <p className="rounded-control bg-warning-soft px-3 py-2 text-sm text-warning">
-                    {directResult.detail || 'Could not connect with those values. Double-check them and try again.'}
+                    {directResult.detail || t("Could not connect with those values. Double-check them and try again.")}
                   </p>
                 )}
                 <FieldsStep
@@ -515,7 +502,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
                   disabled={saving || requiredMissing}
                   loading={saving}
                   onSubmit={() => void submitDirect()}
-                  submitLabel="Connect"
+                  submitLabel={t("Connect")}
                 />
               </>
             )}
@@ -545,7 +532,8 @@ function FieldsStep({
   onSubmit: () => void
   submitLabel: string
 }) {
-  const guide = CONNECT_GUIDES[account.provider]
+  useTranslation()
+  const guide = connectGuides()[account.provider]
   const canKeepBlank = account.auth_kind === 'oauth_redirect' || account.auth_kind === 'oauth_device'
   return (
     <form
@@ -569,11 +557,11 @@ function FieldsStep({
           return (
             <div key={field.key} className="flex flex-col gap-1.5">
               <label htmlFor={`browser-session-${field.key}`} className="text-[12.5px] font-semibold text-text-2">
-                {field.label}
+                {t(field.label)}
                 {required && (
                   <>
                     {' '}<span className="text-danger" aria-hidden="true">*</span>
-                    <span className="sr-only"> (required)</span>
+                    <span className="sr-only"> {t("(required)")}</span>
                   </>
                 )}
               </label>
@@ -582,23 +570,24 @@ function FieldsStep({
                 required={required}
                 rows={8}
                 autoComplete="off"
+                dir="ltr"
                 value={values[field.key] ?? ''}
                 onChange={(e) => onChange(field.key, e.target.value)}
                 placeholder={RAW_SESSION_PLACEHOLDERS[field.key]}
                 className="w-full resize-y rounded-control border border-border-strong bg-field px-3 py-2 font-mono text-xs text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
               />
-              {field.help && <p className="text-xs text-text-3">{field.help}</p>}
+              {field.help && <p className="text-xs text-text-3">{t(field.help)}</p>}
             </div>
           )
         }
         return (
           <TextField
             key={field.key}
-            label={field.label}
-            help={field.help || undefined}
-            type={field.secret ? 'password' : 'text'}
+            label={t(field.label)}
+            help={field.help ? t(field.help) : undefined}
+            type={field.secret ? "password" : "text"}
             required={required}
-            placeholder={keepable && field.secret ? 'saved — leave blank to keep' : undefined}
+            placeholder={keepable && field.secret ? t("saved — leave blank to keep") : undefined}
             autoComplete="off"
             value={values[field.key] ?? ''}
             onChange={(e) => onChange(field.key, e.target.value)}
@@ -615,21 +604,22 @@ function FieldsStep({
 }
 
 function ConnectGuide({ content }: { content: ConnectGuideContent }) {
+  useTranslation()
   return (
     <details open className="group rounded-control border border-border bg-surface-2/40">
       <summary className="flex cursor-pointer select-none items-center gap-2 px-3.5 py-2.5 text-sm font-medium text-text-2">
         <LuCircleHelp className="size-4 shrink-0 text-text-3" aria-hidden="true" />
-        How to get these
+        {t("How to get these")}
         <LuChevronDown
-          className="ml-auto size-4 shrink-0 text-text-3 transition-transform duration-fast group-open:rotate-180"
+          className="ms-auto size-4 shrink-0 text-text-3 transition-transform duration-fast group-open:rotate-180"
           aria-hidden="true"
         />
       </summary>
       <div className="flex flex-col gap-2.5 border-t border-border px-3.5 py-3 text-[13px] leading-relaxed text-text-2">
         <p className="text-text-3">{content.intro}</p>
-        <ol className="flex list-decimal flex-col gap-1.5 pl-5 marker:font-mono marker:text-xs marker:text-text-3">
+        <ol className="flex list-decimal flex-col gap-1.5 ps-5 marker:font-mono marker:text-xs marker:text-text-3">
           {content.steps.map((step, i) => (
-            <li key={i} className="pl-1">
+            <li key={i} className="ps-1">
               {step}
             </li>
           ))}
@@ -658,6 +648,7 @@ function ConnectGuide({ content }: { content: ConnectGuideContent }) {
  * include any header-sourced key — manual entry (below) always still works
  * either way. Collapsed by default: it's a shortcut, not the primary flow. */
 function HeaderPasteBox({ fields, onFilled }: { fields: AccountField[]; onFilled: (values: Record<string, string>) => void }) {
+  useTranslation()
   const [raw, setRaw] = useState('')
   const [result, setResult] = useState<string[] | null>(null)
 
@@ -676,42 +667,42 @@ function HeaderPasteBox({ fields, onFilled }: { fields: AccountField[]; onFilled
   }
 
   function fieldLabel(key: string): string {
-    return fields.find((f) => f.key === key)?.label ?? key
+    const label = fields.find((f) => f.key === key)?.label
+    return label ? t(label) : key
   }
 
   return (
     <details className="group rounded-control border border-border bg-surface-2/40">
       <summary className="flex cursor-pointer select-none items-center gap-2 px-3.5 py-2.5 text-sm font-medium text-text-2">
         <LuClipboardPaste className="size-4 shrink-0 text-text-3" aria-hidden="true" />
-        Paste raw headers instead
+        {t("Paste raw headers instead")}
         <LuChevronDown
-          className="ml-auto size-4 shrink-0 text-text-3 transition-transform duration-fast group-open:rotate-180"
+          className="ms-auto size-4 shrink-0 text-text-3 transition-transform duration-fast group-open:rotate-180"
           aria-hidden="true"
         />
       </summary>
       <div className="flex flex-col gap-2.5 border-t border-border px-3.5 py-3">
         <p className="text-xs leading-relaxed text-text-3">
-          Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the
-          matching fields below fill themselves in.
+          {t("Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.")}
         </p>
         <textarea
           value={raw}
           onChange={(e) => handleChange(e.target.value)}
-          placeholder={'authorization: Bearer …\nmedia-user-token: …'}
+          placeholder={t("authorization: Bearer …\nmedia-user-token: …")}
           rows={4}
-          aria-label="Raw request headers"
+          aria-label={t("Raw request headers")}
           className="w-full resize-y rounded-control border border-border-strong bg-field px-3 py-2 font-mono text-xs text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
         />
         {result &&
           (result.length > 0 ? (
             <p className="flex items-start gap-1.5 text-xs text-success">
               <LuCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              Filled {result.map(fieldLabel).join(' and ')} from your paste.
+              {t("Filled {{fields}} from your paste.", { fields: new Intl.ListFormat(i18n.resolvedLanguage, { type: 'conjunction' }).format(result.map(fieldLabel)) })}
             </p>
           ) : (
             <p className="flex items-start gap-1.5 text-xs text-text-3">
               <LuCircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              Couldn't find those headers in the paste.
+              {t("Couldn't find those headers in the paste.")}
             </p>
           ))}
       </div>
@@ -727,6 +718,7 @@ function HeaderPasteBox({ fields, onFilled }: { fields: AccountField[]; onFilled
  * than replacing it. Collapsed by default, matching HeaderPasteBox: it's an
  * optional enhancement, not required to connect. */
 function NoQuotaModeSection({ account, onChanged }: { account: Account; onChanged: () => void }) {
+  useTranslation()
   const active = account.detail === YTMUSIC_BROWSER_MODE_DETAIL
   const [headers, setHeaders] = useState('')
   const [saving, setSaving] = useState(false)
@@ -745,7 +737,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     try {
       const res = await api.enableYtmusicBrowserMode(account.id, headers)
       if (res.state === 'connected') onChanged()
-      else setError(res.detail || 'Could not enable no-quota mode with those headers.')
+      else setError(res.detail || t("Could not enable no-quota mode with those headers."))
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -770,27 +762,25 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     <details className="group rounded-control border border-border bg-surface-2/40">
       <summary className="flex cursor-pointer select-none items-center gap-2 px-3.5 py-2.5 text-sm font-medium text-text-2">
         <LuInfinity className="size-4 shrink-0 text-text-3" aria-hidden="true" />
-        No-quota mode
+        {t("No-quota mode")}
         {active && (
           <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-success-soft px-2 text-[10.5px] font-semibold text-success">
-            On
+            {t("On")}
           </span>
         )}
         <LuChevronDown
-          className="ml-auto size-4 shrink-0 text-text-3 transition-transform duration-fast group-open:rotate-180"
+          className="ms-auto size-4 shrink-0 text-text-3 transition-transform duration-fast group-open:rotate-180"
           aria-hidden="true"
         />
       </summary>
       <div className="flex flex-col gap-3 border-t border-border px-3.5 py-3">
         <p className="text-xs leading-relaxed text-text-3">
-          Routes reads and writes through your YT Music browser session instead of the Data API, so large syncs
-          aren't capped by its daily quota. Each pass refreshes the session, so a paste keeps working on its own —
-          you'll only be asked for fresh headers if syncs stop running for several days.
+          {t("Routes reads and writes through your YT Music browser session instead of the Data API, so large syncs aren't capped by its daily quota. Each pass refreshes the session, so a paste keeps working on its own — you'll only be asked for fresh headers if syncs stop running for several days.")}
         </p>
 
         {account.state === 'expired' && (
           <p className="text-xs leading-relaxed text-warning">
-            The pasted session expired — no-quota mode stays selected, it just needs fresh headers below.
+            {t("The pasted session expired — no-quota mode stays selected, it just needs fresh headers below.")}
           </p>
         )}
 
@@ -800,40 +790,38 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
           <>
             <p className="flex items-center gap-1.5 text-xs text-success">
               <LuCheck className="size-3.5 shrink-0" aria-hidden="true" />
-              No-quota mode is on.
+              {t("No-quota mode is on.")}
             </p>
             <Button variant="secondary" size="sm" onClick={() => void disable()} loading={saving} className="w-fit">
-              Switch back to OAuth
+              {t("Switch back to OAuth")}
             </Button>
           </>
         ) : (
           <>
-            <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-[13px] leading-relaxed text-text-2 marker:font-mono marker:text-xs marker:text-text-3">
-              <li className="pl-1">
-                Open <GuideLink href="https://music.youtube.com">music.youtube.com</GuideLink> and sign in.
+            <ol className="flex list-decimal flex-col gap-1.5 ps-5 text-[13px] leading-relaxed text-text-2 marker:font-mono marker:text-xs marker:text-text-3">
+              <li className="ps-1">
+                <Trans i18nKey={"Open <link1/> and sign in."} components={{ link1: <GuideLink href="https://music.youtube.com">music.youtube.com</GuideLink> }} />
               </li>
-              <li className="pl-1">
-                Open your browser's dev tools (<Code>F12</Code>) and pick the <strong>Network</strong> tab.
+              <li className="ps-1">
+                <Trans i18nKey={"Open your browser's dev tools (<code1/>) and pick the <strong2>Network</strong2> tab."} components={{ code1: <Code>F12</Code>, strong2: <strong /> }} />
               </li>
-              <li className="pl-1">
-                Click any playlist or song, then click any <Code>POST</Code> request to{' '}
-                <Code>music.youtube.com/youtubei/…</Code>.
+              <li className="ps-1">
+                <Trans i18nKey={"Click any playlist or song, then click any <code1/> request to <code2/>."} components={{ code1: <Code>POST</Code>, code2: <Code>music.youtube.com/youtubei/…</Code> }} />
               </li>
-              <li className="pl-1">
-                Copy its <strong>Request Headers</strong> (your browser's "Copy request headers" action) and paste
-                them below.
+              <li className="ps-1">
+                <Trans i18nKey={"Copy its <strong1>Request Headers</strong1> (your browser's \"Copy request headers\" action) and paste them below."} components={{ strong1: <strong /> }} />
               </li>
             </ol>
             <textarea
               value={headers}
               onChange={(e) => setHeaders(e.target.value)}
-              placeholder={'authority: music.youtube.com\ncookie: …\nauthorization: SAPISIDHASH …'}
+              placeholder={t("authority: music.youtube.com\ncookie: …\nauthorization: SAPISIDHASH …")}
               rows={4}
-              aria-label="Raw request headers"
+              aria-label={t("Raw request headers")}
               className="w-full resize-y rounded-control border border-border-strong bg-field px-3 py-2 font-mono text-xs text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
             />
             <Button size="sm" onClick={() => void enable()} loading={saving} disabled={!headers.trim()} className="w-fit">
-              Enable no-quota mode
+              {t("Enable no-quota mode")}
             </Button>
           </>
         )}
@@ -843,10 +831,11 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
 }
 
 function RedirectStep({ info }: { info: ConnectRedirectResponse }) {
+  useTranslation()
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-control border border-border p-3">
-        <p className="text-sm font-medium text-text-2">First, whitelist this exact redirect URI in your app's dashboard:</p>
+        <p className="text-sm font-medium text-text-2">{t("First, whitelist this exact redirect URI in your app's dashboard:")}</p>
         <div className="mt-2 flex items-center gap-2">
           <code className="min-w-0 flex-1 truncate rounded-chip bg-inset px-2 py-1.5 font-mono text-xs text-text-2">
             {info.redirect_uri}
@@ -855,12 +844,11 @@ function RedirectStep({ info }: { info: ConnectRedirectResponse }) {
         </div>
       </div>
       <p className="text-sm text-text-3">
-        Once that's saved on their side, continue to sign in. It opens in a new tab, so come back to this one when
-        you're done; it picks up the connection automatically.
+        {t("Once that's saved on their side, continue to sign in. It opens in a new tab, so come back to this one when you're done; it picks up the connection automatically.")}
       </p>
       <div className="flex justify-end">
         <LinkButton href={info.url} target="_blank" rel="noopener noreferrer">
-          Continue to sign in
+          {t("Continue to sign in")}
         </LinkButton>
       </div>
     </div>
@@ -868,9 +856,10 @@ function RedirectStep({ info }: { info: ConnectRedirectResponse }) {
 }
 
 function DeviceStep({ info }: { info: ConnectDeviceResponse }) {
+  useTranslation()
   return (
     <div className="flex flex-col items-center gap-4 text-center">
-      <p className="text-sm text-text-2">Open the link below on any device and enter this code:</p>
+      <p className="text-sm text-text-2">{t("Open the link below on any device and enter this code:")}</p>
       <div className="flex w-full flex-col items-center gap-2 rounded-control border border-border bg-inset p-4">
         <span className="break-all font-mono text-[26px] font-semibold tracking-[0.18em] text-text sm:text-[30px] sm:tracking-[0.22em]">
           {info.user_code}
@@ -878,23 +867,25 @@ function DeviceStep({ info }: { info: ConnectDeviceResponse }) {
         <CopyButton value={info.user_code} />
       </div>
       <LinkButton href={info.verification_url} target="_blank" rel="noopener noreferrer">
-        Open the sign-in page
+        {t("Open the sign-in page")}
       </LinkButton>
       <p className="flex items-center gap-2 text-xs text-text-3">
         <Spinner className="size-3.5 shrink-0" />
-        Waiting for authorization, checking automatically every {info.interval}s.
+        {t('Waiting for authorization, checking automatically every {{count, number}} second.', {
+          count: info.interval,
+          defaultValue_one: 'Waiting for authorization, checking automatically every {{count, number}} second.',
+          defaultValue_other: 'Waiting for authorization, checking automatically every {{count, number}} seconds.',
+        })}
       </p>
     </div>
   )
 }
 
 function SuccessStep({ accountName }: { accountName: string }) {
+  useTranslation()
   return (
     <p role="status" className="flex items-center gap-2 rounded-control bg-success-soft px-3 py-2.5 text-sm text-success">
-      <span className="font-mono font-semibold" aria-hidden="true">
-        ✓
-      </span>
-      {accountName} is connected.
+      <Trans i18nKey={"<span1> ✓ </span1> {{accountName}} is connected."} values={{ accountName: accountName }} components={{ span1: <span className="font-mono font-semibold" aria-hidden="true" /> }} />
     </p>
   )
 }

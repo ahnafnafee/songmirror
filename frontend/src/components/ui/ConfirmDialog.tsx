@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { Button } from './Button'
 import { Modal } from './Modal'
 
@@ -21,13 +22,14 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  confirmLabel = t("Confirm"),
+  cancelLabel = t("Cancel"),
   danger = false,
   loading = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  useTranslation()
   return (
     <Modal
       open={open}
@@ -39,7 +41,7 @@ export function ConfirmDialog({
           <Button variant="secondary" onClick={onCancel} disabled={loading}>
             {cancelLabel}
           </Button>
-          <Button variant={danger ? 'danger-ghost' : 'primary'} onClick={onConfirm} loading={loading}>
+          <Button variant={danger ? "danger-ghost" : "primary"} onClick={onConfirm} loading={loading}>
             {confirmLabel}
           </Button>
         </>

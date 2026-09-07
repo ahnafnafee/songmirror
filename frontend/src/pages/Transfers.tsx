@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useMemo, useState } from 'react'
 
 import { api } from '@/api'
@@ -14,6 +15,7 @@ import { useTransfer } from '@/hooks/useTransfer'
 import { capabilitiesOf } from '@/lib/accountCapabilities'
 
 export default function Transfers() {
+  useTranslation()
   const { accounts, loading: accountsLoading, error: accountsError } = useAccounts()
   const connectedAccounts = useMemo(() => accounts?.filter((a) => a.state === 'connected') ?? [], [accounts])
   const connectedIds = useMemo(
@@ -38,18 +40,18 @@ export default function Transfers() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Transfers</h1>
+        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">{t("Transfers")}</h1>
         <p className="mt-1 text-sm text-text-3">
-          Copy a single playlist from one connected service to another, one time. No ongoing sync.
+          {t("Copy a single playlist from one connected service to another, one time. No ongoing sync.")}
         </p>
       </div>
 
       {accountsError && (
-        <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not load accounts: {accountsError}</p>
+        <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{t("Could not load accounts: {{accountsError}}", { accountsError: accountsError })}</p>
       )}
 
       {accountsLoading && !accounts ? (
-        <LoadingStatus label="Loading accounts…">
+        <LoadingStatus label={t("Loading accounts…")}>
           <Skeleton className="h-72 w-full rounded-card" />
         </LoadingStatus>
       ) : (

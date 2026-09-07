@@ -7,12 +7,16 @@
 
 # SongMirror
 
+<!-- LANGUAGE NAVIGATION -->
+<p align="center"><a href="./README.md" lang="en">English</a> · <a href="docs/i18n/README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="docs/i18n/README.tr.md" lang="tr">Türkçe</a> · <a href="docs/i18n/README.es.md" lang="es">Español</a> · <a href="docs/i18n/README.zh.md" lang="zh">简体中文</a> · <a href="docs/i18n/README.fr.md" lang="fr">Français</a> · <a href="docs/i18n/README.pt.md" lang="pt">Português</a> · <a href="docs/i18n/README.de.md" lang="de">Deutsch</a> · <a href="docs/i18n/README.ja.md" lang="ja">日本語</a> · <a href="docs/i18n/README.hi.md" lang="hi">हिन्दी</a> · <a href="docs/i18n/README.bn.md" lang="bn">বাংলা</a> · <a href="docs/i18n/README.id.md" lang="id">Bahasa Indonesia</a> · <a href="docs/i18n/README.ko.md" lang="ko">한국어</a> · <a href="docs/i18n/README.it.md" lang="it">Italiano</a> · <a href="docs/i18n/README.vi.md" lang="vi">Tiếng Việt</a></p>
+<!-- /LANGUAGE NAVIGATION -->
+
 Self-hosted, always-on **playlist sync for Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, and YouTube Music** — plus a local, Jellyfin-ready audio mirror.<br/>
 A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and FreeYourMusic** that _you_ own and run.
 
 **One-way, multi-source merge, authoritative-group, or full bidirectional (N-way) sync · one-off playlist transfers · ISRC-accurate matching · all from your browser**
 
-[Quick Start](#-quick-start) · [Features](#-features) · [Screenshots](#-screenshots) · [Docker](#-always-running-docker) · [How it works](#-how-it-works) · [Report Bug][github-issues-link] · [Request Feature][github-issues-link]
+[Quick Start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [Docker](#always-running-docker) · [How it works](#how-it-works) · [Report Bug][github-issues-link] · [Request Feature][github-issues-link]
 
 <!-- SHIELD GROUP -->
 
@@ -47,18 +51,19 @@ A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and Fre
 
 #### TOC
 
-- [✨ Features](#-features)
-- [📸 Screenshots](#-screenshots)
-- [🚀 Quick Start](#-quick-start)
-- [🐳 Always running: Docker](#-always-running-docker)
-- [⚙️ How it works](#-how-it-works)
+- [✨ Features](#features)
+- [📸 Screenshots](#screenshots)
+- [🚀 Quick Start](#quick-start)
+  - [App language](#app-language)
+- [🐳 Always running: Docker](#always-running-docker)
+- [⚙️ How it works](#how-it-works)
   - [Matching](#matching)
   - [Multi-source merge sync](#multi-source-merge-sync)
   - [Authoritative groups](#authoritative-groups)
   - [Bidirectional (N-way) sync](#bidirectional-n-way-sync)
-- [📦 Playlist metadata backups](#-playlist-metadata-backups)
-- [💿 Local download mirror (Jellyfin)](#-local-download-mirror-jellyfin)
-- [🔌 Connecting each service](#-connecting-each-service)
+- [📦 Playlist metadata backups](#playlist-metadata-backups)
+- [💿 Local download mirror (Jellyfin)](#local-download-mirror-jellyfin)
+- [🔌 Connecting each service](#connecting-each-service)
   - [Credential renewal](#credential-renewal)
   - [Spotify](#spotify)
   - [TIDAL](#tidal)
@@ -67,19 +72,21 @@ A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and Fre
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
-- [🖥️ Headless CLI](#️-headless-cli)
-- [🛡️ Safety rails](#️-safety-rails)
-- [🗃️ Caching &amp; song archive](#️-caching--song-archive)
+- [🖥️ Headless CLI](#headless-cli)
+- [🛡️ Safety rails](#safety-rails)
+- [🗃️ Caching &amp; song archive](#caching-song-archive)
   - [Resolve mappings](#resolve-mappings)
-- [🧱 Project layout](#-project-layout)
-- [🩺 Troubleshooting](#-troubleshooting)
-- [📄 License](#-license)
+- [🧱 Project layout](#project-layout)
+- [🩺 Troubleshooting](#troubleshooting)
+- [📄 License](#license)
 
 ####
 
 <br/>
 
 </details>
+
+<a id="features"></a>
 
 ## ✨ Features
 
@@ -112,6 +119,8 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 
 </div>
 
+<a id="screenshots"></a>
+
 ## 📸 Screenshots
 
 <div align="center">
@@ -139,6 +148,8 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 [![][back-to-top]](#readme-top)
 
 </div>
+
+<a id="quick-start"></a>
 
 ## 🚀 Quick Start
 
@@ -171,11 +182,19 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 > Requires [`uv`](https://docs.astral.sh/uv/) (Python 3.13+). For the local download mirror, also `uv tool install spotdl` and have `ffmpeg` on PATH.
 
+<a id="app-language"></a>
+
+### App language
+
+SongMirror supports English, Arabic, Turkish, Spanish, Simplified Chinese, French, Portuguese, German, Japanese, Hindi, Bengali, Indonesian, Korean, Italian, and Vietnamese. On first launch, it uses the first supported language in your browser's language preferences, including regional variants, and falls back to English. Change the language at **Settings → General → Language**; your choice is saved in this browser and survives reloads. Choose **Automatic (browser)** to follow your browser preferences again. Arabic uses a right-to-left interface. Playlist names, artist names, provider names, credentials, and diagnostic logs keep their original values.
+
 <div align="right">
 
 [![][back-to-top]](#readme-top)
 
 </div>
+
+<a id="always-running-docker"></a>
 
 ## 🐳 Always running: Docker
 
@@ -216,6 +235,8 @@ SongMirror will then advertise `https://music.example.com/oauth/spotify/callback
 
 </div>
 
+<a id="how-it-works"></a>
+
 ## ⚙️ How it works
 
 Every pass, for each selected playlist name that exists on the source:
@@ -226,6 +247,8 @@ Every pass, for each selected playlist name that exists on the source:
 4. Optionally, [spotDL](https://github.com/spotDL/spotify-downloader) syncs a local audio folder per playlist.
 
 The default source of truth is Spotify, but **one-way mode is provider-agnostic** — any connected playlist peer can be the source instead.
+
+<a id="matching"></a>
 
 ### Matching
 
@@ -241,6 +264,8 @@ Same hierarchy the cross-service tools use ([TuneLink](https://tommcfarlin.com/c
 
 The **duration anchor** unlocks the looser title match, so a different version (`Runaway - Piano Version`) or a wrong-artist cover isn't accepted when its length disagrees. Tracks with no confident match are reported and skipped.
 
+<a id="multi-source-merge-sync"></a>
+
 ### Multi-source merge sync
 
 A **Merge sources** job combines one or more explicit playlists into one chosen destination. Each source can come from a connected account's library or a pasted public provider URL; the latter is resolved to a provider and playlist id once, so the playlist does not need to be saved or followed and scheduled runs do not replay an arbitrary URL.
@@ -251,6 +276,8 @@ A **Merge sources** job combines one or more explicit playlists into one chosen 
 - **Append-only by default** — leave **Remove tracks absent from every source** off to keep all destination-only tracks. Turning it on opts into the normal per-pass removal cap after the complete-read guard passes.
 
 Merge jobs currently target one provider playlist; the separate Spotify-led local download/Jellyfin mirror is not available for an aggregate job.
+
+<a id="authoritative-groups"></a>
 
 ### Authoritative groups
 
@@ -265,6 +292,8 @@ Use an **authoritative group** when you actively curate the same logical playlis
 
 Removal writes remain opt-in and capped. Enable **Mirror removals** for the job (or set `MAX_REMOVALS` in headless mode) if mirrors should be pruned to match the authoritative set.
 
+<a id="bidirectional-n-way-sync"></a>
+
 ### Bidirectional (N-way) sync
 
 By default one provider is the source of truth and edits flow one way. In **N-way mode** every selected provider is a peer: add or remove a track on any one and the change propagates to the others.
@@ -278,6 +307,8 @@ Bidirectional sync is impossible statelessly, so each logical playlist's canonic
 - **Removals are opt-in** — `MAX_REMOVALS` defaults to 0, so a track that disappears from one provider (deleted there, or silently pulled by licensing) is kept on the others and only logged. Set a cap (or the UI's "Mirror removals" toggle) to propagate deletions.
 
 > **Always dry-run first.** Run without `--execute` (or use **Preview** in the UI) and read the plan — it prints every proposed add/remove on every provider before anything is written.
+
+<a id="liked-and-favorite-tracks"></a>
 
 ### Liked and favorite tracks
 
@@ -295,6 +326,8 @@ Some of these integrations use the providers' first-party web interfaces and can
 
 </div>
 
+<a id="playlist-metadata-backups"></a>
+
 ## 📦 Playlist metadata backups
 
 Backups do not require a second provider or a sync job:
@@ -310,6 +343,8 @@ Backups do not require a second provider or a sync job:
 
 Manual exports are downloaded by the browser to the device running the UI. Scheduled exports use the existing application-data volume, so no second host path or container mount is required. Backup reads queue behind syncs and transfers instead of accessing provider clients concurrently. The `schema_version` field lets future releases evolve the lossless format without making old snapshots ambiguous.
 
+<a id="built-in-folder-picker"></a>
+
 ### Built-in folder picker
 
 Click a folder field or **Browse…** to open the built-in picker. Use **Locations**, clickable breadcrumbs, **Back**, **Forward**, and **Up one folder** to navigate. Click a folder to select it; double-click, press Enter, or use its arrow to open it. Search filters the current folder. **Enter a folder path** accepts a full address. **Select folder** updates the draft; save the settings or schedule to apply it. Cancel leaves the draft unchanged. No desktop helper or additional process is required.
@@ -321,6 +356,8 @@ Click a folder field or **Browse…** to open the built-in picker. Use **Locatio
 [![][back-to-top]](#readme-top)
 
 </div>
+
+<a id="local-download-mirror-jellyfin"></a>
 
 ## 💿 Local download mirror (Jellyfin)
 
@@ -356,9 +393,13 @@ Monochrome's current FLAC path uses browser-gated, single-use playback resources
 
 </div>
 
+<a id="connecting-each-service"></a>
+
 ## 🔌 Connecting each service
 
 In the web app, the **Accounts** page walks you through each service and shows the exact values to paste. Nothing is proxied through a third party.
+
+<a id="credential-renewal"></a>
 
 ### Credential renewal
 
@@ -375,6 +416,8 @@ SongMirror refreshes credentials **just in time**, not with a separate token-ref
 | **YouTube Music** | Data API OAuth refreshes automatically within 60 seconds of expiry. Browser mode attempts Google's cookie rotation whenever a sync target is built; an already-expired browser session must be exported again. |
 | **Jellyfin** | The API key has no access-token refresh cycle; replace it only if it is revoked or deleted. |
 
+<a id="spotify"></a>
+
 ### Spotify
 
 1. Sign in at <https://open.spotify.com>.
@@ -382,6 +425,8 @@ SongMirror refreshes credentials **just in time**, not with a separate token-ref
 3. Copy the value of the `sp_dc` cookie and paste it into Accounts → Spotify.
 
 That single signed-in web session handles library browsing, playlist reads and writes, and catalog search. It does not require a Spotify developer app, API key, or Premium account. Treat `sp_dc` like a password: SongMirror stores it in its private data directory, but the integration uses Spotify's internal web-player operations and can need maintenance if Spotify changes them. Existing developer-app OAuth credentials remain a compatible fallback.
+
+<a id="tidal"></a>
 
 ### TIDAL
 
@@ -393,15 +438,21 @@ That single signed-in web session handles library browsing, playlist reads and w
 
 The OAuth client ID is request metadata and is not the numeric `cid` claim inside TIDAL's access token. SongMirror extracts only the access token, refresh token, client ID, scopes, expiry, and catalog country; unrelated response data is discarded. It renews just before expiry and once after an authentication rejection through `https://auth.tidal.com/v1/oauth2/token`, preserving refresh-token rotation. The older OpenAPI request-header paste remains compatible, but because it contains no refresh token it still needs to be re-pasted after expiry. Only catalog metadata and the signed-in user's playlists are used—playback assets stay outside this integration.
 
+<a id="qobuz"></a>
+
 ### Qobuz
 
 Sign in at <https://play.qobuz.com>, open DevTools → **Network**, and filter for `api.json/0.2`. Choose any request containing `X-App-Id` and `X-User-Auth-Token`—including an authenticated `album/story` request—then copy its request headers or copy it as cURL and paste it into the wizard. SongMirror persists only those two values, sends them using the same header-based flow as the web player, and discards cookies and unrelated browser metadata. No business API approval or user id is required; existing partner credentials remain a compatible environment fallback.
 
 The adapter uses catalog search and playlist endpoints only—it does not request stream or file URLs.
 
+<a id="deezer"></a>
+
 ### Deezer
 
 Sign in at <https://www.deezer.com>, open DevTools → **Network**, and reload the page. Filter for `auth.deezer.com/login/renew`, copy that request's headers (or copy it as cURL), and paste it into the renewal field. Firefox may instead copy the request cookies as a bare semicolon-delimited block; that shape is accepted too. SongMirror retains only the dedicated `refresh-token` cookie and uses it to renew Deezer's short-lived Pipe JWT automatically. You may also paste a current `pipe.deezer.com/api` request as an immediate bootstrap, but it is not required when renewal is configured. Playlist additions and removals both use the renewable Pipe session; no `arl` cookie is needed. Existing developer OAuth tokens remain a compatible environment fallback.
+
+<a id="amazon-music"></a>
 
 ### Amazon Music
 
@@ -416,6 +467,8 @@ SongMirror derives the same `AmznMusic` authorization value locally and refreshe
 
 This is an unsupported first-party web-client interface and Amazon can change it without notice. The documented [Amazon Music Web API](https://developer.amazon.com/docs/music/API_web_overview.html) is still a closed beta; approved partner credentials remain an optional fallback when configured through environment variables.
 
+<a id="apple-music"></a>
+
 ### Apple Music
 
 No Apple Developer account needed — two headers from `music.apple.com` are enough. Open <https://music.apple.com>, sign in, open DevTools → **Network**, play a song, filter for `amp-api.music.apple.com`, and from any request's headers copy:
@@ -426,6 +479,8 @@ No Apple Developer account needed — two headers from `music.apple.com` are eno
 The connect wizard lets you paste the raw headers and parses the values for you. Tokens last months; re-paste them on the Accounts page when they expire.
 
 An Apple ID without an active Apple Music subscription can still connect in **Catalog-only** mode. In that mode, paste a public Apple Music playlist link on Transfers to copy it into another connected service. Apple library browsing, scheduled syncing, and using Apple Music as a transfer destination still require the paid CloudLibrary privilege; SongMirror shows those operations as unavailable instead of treating the valid catalog credentials as expired.
+
+<a id="youtube-music"></a>
 
 ### YouTube Music
 
@@ -442,6 +497,8 @@ Talks to the **official [YouTube Data API v3](https://developers.google.com/yout
 [![][back-to-top]](#readme-top)
 
 </div>
+
+<a id="headless-cli"></a>
 
 ## 🖥️ Headless CLI
 
@@ -472,6 +529,8 @@ Key env vars (see `.env.example`): the credentials for whichever providers you u
 
 </div>
 
+<a id="safety-rails"></a>
+
 ## 🛡️ Safety rails
 
 Removals are destructive, so they're guarded:
@@ -491,6 +550,8 @@ Removals are destructive, so they're guarded:
 
 </div>
 
+<a id="caching-song-archive"></a>
+
 ## 🗃️ Caching &amp; song archive
 
 Everything resolvable is cached so steady-state passes are near-instant: per-service resolve caches (ISRC + search, including misses), a `snapshot_id`-keyed track-list cache, hard identifier links in SQLite, and a per-pair snapshot-skip (`unchanged since last clean sync`).
@@ -500,6 +561,8 @@ Every pass also archives the metadata of every track it sees into `song_cache.db
 ```bash
 sqlite3 song_cache.db "SELECT name, artist, album, first_seen FROM songs ORDER BY first_seen DESC LIMIT 20"
 ```
+
+<a id="resolve-mappings"></a>
 
 ### Resolve mappings
 
@@ -528,6 +591,8 @@ whole duration and would overwrite them on completion.
 
 </div>
 
+<a id="project-layout"></a>
+
 ## 🧱 Project layout
 
 CLI entry: `uv run main.py` (thin shim) or `python -m songmirror`. Web entry: `songmirror.web:app`.
@@ -548,6 +613,8 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 
 </div>
 
+<a id="troubleshooting"></a>
+
 ## 🩺 Troubleshooting
 
 - **`Missing required environment variable`** — fill in `.env` (CLI) or connect the service in the UI.
@@ -566,6 +633,8 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 [![][back-to-top]](#readme-top)
 
 </div>
+
+<a id="license"></a>
 
 ## 📄 License
 

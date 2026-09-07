@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useState } from 'react'
 
 import { api, errorMessage } from '@/api'
@@ -18,6 +19,7 @@ interface ConflictListProps {
  * service. A search-picker is a future refinement — for now each conflict
  * resolves by pasting the destination track's id/URL directly. */
 export function ConflictList({ jobId, conflicts, onResolved }: ConflictListProps) {
+  useTranslation()
   if (conflicts.length === 0) return null
 
   const unresolvedCount = conflicts.filter((c) => !c.resolved).length
@@ -28,22 +30,21 @@ export function ConflictList({ jobId, conflicts, onResolved }: ConflictListProps
       <div className="flex flex-wrap items-start gap-3 p-4 sm:p-6">
         <div>
           <h2 className="text-sm font-bold text-text">
-            {conflicts.length} track{conflicts.length === 1 ? '' : 's'} need{conflicts.length === 1 ? 's' : ''} a hand
+            {t("{{count, number}} track needs a hand", { count: conflicts.length, defaultValue_one: "{{count, number}} track needs a hand", defaultValue_other: "{{count, number}} tracks need a hand" })}
           </h2>
           <p className="mt-1 text-xs text-text-3">
-            These tracks couldn't be automatically matched on the destination service. Find the matching track there
-            and paste its link (or raw id) to resolve one.
+            {t("These tracks couldn't be automatically matched on the destination service. Find the matching track there and paste its link (or raw id) to resolve one.")}
           </p>
         </div>
-        <div className="ml-auto flex shrink-0 gap-1.5">
+        <div className="ms-auto flex shrink-0 gap-1.5">
           {unresolvedCount > 0 && (
             <span className="inline-flex h-6 items-center rounded-full bg-warning-soft px-2.5 text-xs font-semibold text-warning">
-              {unresolvedCount} unresolved
+              {t("{{unresolvedCount, number}} unresolved", { unresolvedCount: unresolvedCount })}
             </span>
           )}
           {resolvedCount > 0 && (
             <span className="inline-flex h-6 items-center rounded-full bg-success-soft px-2.5 text-xs font-semibold text-success">
-              {resolvedCount} resolved
+              {t("{{resolvedCount, number}} resolved", { resolvedCount: resolvedCount })}
             </span>
           )}
         </div>
@@ -58,6 +59,7 @@ export function ConflictList({ jobId, conflicts, onResolved }: ConflictListProps
 }
 
 function ConflictRow({ jobId, conflict, onResolved }: { jobId: string; conflict: TransferConflict; onResolved: () => void }) {
+  useTranslation()
   const [destId, setDestId] = useState('')
   const [resolving, setResolving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -99,13 +101,13 @@ function ConflictRow({ jobId, conflict, onResolved }: { jobId: string; conflict:
             conflict.resolved ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning',
           )}
         >
-          {conflict.resolved ? 'resolved' : 'unresolved'}
+          {conflict.resolved ? t("resolved") : t("unresolved")}
         </span>
       </div>
 
       {!conflict.resolved && (
         <form
-          className="flex flex-col gap-3 pl-[34px] sm:flex-row sm:items-end"
+          className="flex flex-col gap-3 ps-[34px] sm:flex-row sm:items-end"
           onSubmit={(e) => {
             e.preventDefault()
             void handleResolve()
@@ -113,18 +115,18 @@ function ConflictRow({ jobId, conflict, onResolved }: { jobId: string; conflict:
         >
           <div className="flex-1">
             <TextField
-              label="Destination track link or id"
-              placeholder="e.g. https://open.spotify.com/track/..."
+              label={t("Destination track link or id")}
+              placeholder={t("e.g. https://open.spotify.com/track/...")}
               value={destId}
               onChange={(e) => setDestId(e.target.value)}
             />
           </div>
           <Button type="submit" loading={resolving} disabled={!destId.trim()}>
-            Resolve
+            {t("Resolve")}
           </Button>
         </form>
       )}
-      {error && <p className="pl-[34px] text-xs text-danger">{error}</p>}
+      {error && <p className="ps-[34px] text-xs text-danger">{error}</p>}
     </li>
   )
 }

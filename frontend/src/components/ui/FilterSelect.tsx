@@ -1,3 +1,4 @@
+import { useTranslation } from '@/i18n'
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -48,6 +49,7 @@ export function FilterSelect<T extends string>({
   icon,
   className,
 }: FilterSelectProps<T>) {
+  useTranslation()
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const [panelPosition, setPanelPosition] = useState<PanelPosition | null>(null)
@@ -197,7 +199,7 @@ export function FilterSelect<T extends string>({
         onClick={() => (open ? closeMenu(true) : openMenu())}
         onKeyDown={onTriggerKeyDown}
         className={cn(
-          'group flex h-11 w-full min-w-0 items-center gap-2.5 rounded-control border border-border-strong bg-field px-3 text-left text-text-2',
+          'group flex h-11 w-full min-w-0 items-center gap-2.5 rounded-control border border-border-strong bg-field px-3 text-start text-text-2',
           'transition-[background-color,border-color,color,box-shadow] duration-fast hover:border-text-3 hover:bg-surface hover:text-text',
           'focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20',
           open && 'border-text-3 bg-surface text-text shadow-sm',
@@ -260,7 +262,7 @@ export function FilterSelect<T extends string>({
                   onPointerMove={() => setActiveIndex(index)}
                   onClick={() => choose(index)}
                   className={cn(
-                    'flex min-h-8 w-full items-center gap-2 rounded-control px-2 py-1.5 text-left text-xs text-text-2 transition-colors duration-fast',
+                    'flex min-h-8 w-full items-center gap-2 rounded-control px-2 py-1.5 text-start text-xs text-text-2 transition-colors duration-fast',
                     isActive && 'bg-surface-2 text-text',
                     isSelected && 'font-semibold text-text',
                   )}

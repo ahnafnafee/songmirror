@@ -16,8 +16,8 @@
      face as "Archivo Variable" (distinct from the static @fontsource/archivo
      package's plain "Archivo") — list it first so the bundled font is what
      actually renders, not a system fallback. */
-  --font-sans: 'Archivo Variable', 'Archivo', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Space Mono', ui-monospace, Menlo, monospace;
+  --font-sans: 'Archivo Variable', 'Archivo', ui-sans-serif, system-ui, 'Noto Sans Arabic', 'Noto Sans Devanagari', 'Noto Sans Bengali', 'Nirmala UI', 'Microsoft YaHei', 'Yu Gothic', 'Malgun Gothic', sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, Menlo, 'Noto Sans Arabic', 'Nirmala UI', 'Microsoft YaHei', 'Yu Gothic', 'Malgun Gothic', monospace;
   /* display voice = --font-sans at font-weight 850-900, font-stretch
      115-125%, uppercase — see the .text-display utility below. For
      mastheads, big states ("RUNNING…"), empty rooms — never controls. */
@@ -157,9 +157,26 @@
     font-family: var(--font-sans);
     color-scheme: light dark;
   }
+  html[dir='rtl'] {
+    --progress-start: 100%;
+    --progress-end: -400%;
+  }
   body {
     background: var(--color-bg);
     color: var(--color-text);
+  }
+  /* Commands and addresses keep their reading order inside Arabic text.
+     Isolation prevents their punctuation from reordering nearby labels. */
+  code {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+  pre,
+  input[type='url'],
+  input[type='email'] {
+    direction: ltr;
+    text-align: left;
+    unicode-bidi: isolate;
   }
   :focus-visible {
     outline: none;
@@ -191,6 +208,12 @@
     text-transform: uppercase;
     letter-spacing: 0.02em;
   }
+  /* Extra tracking interrupts connected Arabic letters and adds noise to
+     Indic scripts. Keep their native shaping in display and utility text. */
+  :is(:lang(ar), :lang(hi), :lang(bn)) :is(.text-display, [class*='tracking-']) {
+    letter-spacing: normal;
+    font-stretch: normal;
+  }
 }
 
 /* A sliding indicator for genuinely-indeterminate progress (a transfer in
@@ -200,10 +223,10 @@
    so this needs no separate reduced-motion handling. */
 @keyframes indeterminate-bar {
   0% {
-    transform: translateX(-100%);
+    transform: translateX(var(--progress-start, -100%));
   }
   100% {
-    transform: translateX(400%);
+    transform: translateX(var(--progress-end, 400%));
   }
 }
 

@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { LuChevronDown, LuChevronUp } from 'react-icons/lu'
 
 import { useStickToBottom } from '@/hooks/useStickToBottom'
@@ -22,6 +23,7 @@ interface EventFeedListProps {
  * scrolled up to read older lines, surfacing a floating "jump to newest"
  * button instead of yanking them back down. */
 export function EventFeedList({ events, emptyTitle, emptyDescription, ariaLabel, newestFirst = false, accounts }: EventFeedListProps) {
+  useTranslation()
   const { containerRef, isAtBottom, newCount, scrollToBottom } = useStickToBottom<HTMLUListElement>(
     events.length,
     newestFirst ? 'top' : 'bottom',
@@ -55,10 +57,10 @@ export function EventFeedList({ events, emptyTitle, emptyDescription, ariaLabel,
         <button
           type="button"
           onClick={() => scrollToBottom()}
-          aria-label={newCount > 0 ? `Jump to newest, ${newCount} new` : 'Jump to newest'}
-          className="absolute bottom-2.5 right-2.5 inline-flex h-8 items-center gap-1.5 rounded-full bg-accent px-3 text-xs font-semibold text-on-accent shadow-(--shadow-key) transition-colors duration-fast hover:bg-accent-hover active:bg-accent-active"
+          aria-label={newCount > 0 ? t("Jump to newest, {{newCount, number}} new", { newCount: newCount }) : t("Jump to newest")}
+          className="absolute bottom-2.5 end-2.5 inline-flex h-8 items-center gap-1.5 rounded-full bg-accent px-3 text-xs font-semibold text-on-accent shadow-(--shadow-key) transition-colors duration-fast hover:bg-accent-hover active:bg-accent-active"
         >
-          {newCount > 0 && <span className="tabular-nums">{newCount > 99 ? '99+' : newCount} new</span>}
+          {newCount > 0 && <span className="tabular-nums">{t("{{newCount}} new", { newCount: newCount > 99 ? '99+' : newCount })}</span>}
           {newestFirst
             ? <LuChevronUp className="size-4" aria-hidden="true" />
             : <LuChevronDown className="size-4" aria-hidden="true" />}

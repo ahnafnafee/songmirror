@@ -8,14 +8,18 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:e2e": "node e2e/verify.cjs && node e2e/backup-folder-edit.cjs",
-    "test:e2e:ci": "vite build && node e2e/verify.cjs && node e2e/backup-folder-edit.cjs"
+    "i18n:extract": "node scripts/extract-i18n.mjs",
+    "i18n:check": "node scripts/check-i18n.mjs && node scripts/check-readmes.mjs",
+    "test:e2e": "node e2e/verify.cjs && node e2e/backup-folder-edit.cjs && node e2e/i18n.cjs",
+    "test:e2e:ci": "pnpm build && pnpm test:e2e"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.2.8",
     "@fontsource/space-mono": "^5.2.9",
+    "i18next": "^26.4.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-i18next": "^17.0.13",
     "react-icons": "^5.7.0",
     "react-router-dom": "^7.18.1",
     "swr": "^2.5.1"

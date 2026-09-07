@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { Link, Route, Routes } from 'react-router-dom'
 
 import { AppShell } from './components/layout/AppShell'
@@ -11,6 +12,7 @@ import Sync from './pages/Sync'
 import Transfers from './pages/Transfers'
 
 export default function App() {
+  useTranslation()
   return (
     <AppShell>
       <Routes>
@@ -28,12 +30,13 @@ export default function App() {
 }
 
 function NotFound() {
+  useTranslation()
   return (
     <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
-      <p className="text-display text-xl text-text">Page not found</p>
-      <p className="text-sm text-text-3">That page doesn't exist in SongMirror.</p>
+      <p className="text-display text-xl text-text">{t("Page not found")}</p>
+      <p className="text-sm text-text-3">{t("That page doesn't exist in SongMirror.")}</p>
       <Link to="/" className={`${BUTTON_BASE_CLASSES} ${BUTTON_SIZE_CLASSES.md} ${BUTTON_VARIANT_CLASSES.primary}`}>
-        Back to Dashboard
+        {t("Back to Dashboard")}
       </Link>
     </div>
   )

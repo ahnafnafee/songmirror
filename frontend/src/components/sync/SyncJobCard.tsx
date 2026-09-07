@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useState } from 'react'
 import { LuClock, LuPencil, LuTrash2 } from 'react-icons/lu'
 
@@ -42,13 +43,14 @@ interface Props {
  * place the job's actual config fields are changed; this card is for
  * at-a-glance management. */
 export function SyncJobCard({ job, peers, running, queued, paused, pending, onEdit, onChanged }: Props) {
+  useTranslation()
   const [togglingEnabled, setTogglingEnabled] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const summary = buildSyncSummaryRows(job, peers)
-    .filter((r) => r.label !== 'Schedule')
+    .filter((r) => r.id !== 'schedule')
     .map((r) => r.value)
     .join(' · ')
 
@@ -93,30 +95,30 @@ export function SyncJobCard({ job, peers, running, queued, paused, pending, onEd
             {running && (
               <span className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-full bg-accent-soft px-2 text-[11px] font-semibold text-accent">
                 <Spinner className="size-3 shrink-0" aria-hidden="true" />
-                Running
+                {t("Running")}
               </span>
             )}
             {queued && !running && (
               <span className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-full bg-neutral-soft px-2 text-[11px] font-semibold text-neutral">
                 <LuClock className="size-3 shrink-0" aria-hidden="true" />
-                Queued
+                {t("Queued")}
               </span>
             )}
             {!job.enabled && (
               <span className="inline-flex h-[22px] shrink-0 items-center rounded-full bg-neutral-soft px-2.5 text-[11.5px] font-semibold text-neutral">
-                paused
+                {t("paused")}
               </span>
             )}
           </div>
           <p className="mt-1 text-[13px] leading-relaxed text-text-2">{summary}</p>
           <p className="mt-1.5 font-mono text-[10.5px] tracking-wide text-text-3">
-            {job.enabled ? `every ${describeInterval(job.interval)}` : 'manual only'}
+            {job.enabled ? t("every {{describeInterval}}", { describeInterval: describeInterval(job.interval) }) : t("manual only")}
           </p>
         </div>
         <Toggle
           checked={job.enabled}
           onChange={() => void toggleEnabled()}
-          label={job.enabled ? `Pause "${job.name}"` : `Resume "${job.name}"`}
+          label={job.enabled ? t("Pause \"{{jobName}}\"", { jobName: job.name }) : t("Resume \"{{jobName}}\"", { jobName: job.name })}
           hideLabel
           disabled={togglingEnabled}
         />
@@ -128,24 +130,24 @@ export function SyncJobCard({ job, peers, running, queued, paused, pending, onEd
         <SyncRunButtons job={job} disabled={running || queued} onChanged={onChanged} />
         <SyncControls jobId={job.id} running={running} paused={paused} pending={pending} onChanged={onChanged} onError={setError} />
         <Button variant="secondary" size="sm" icon={<LuPencil className="size-3.5" aria-hidden="true" />} onClick={onEdit}>
-          Edit
+          {t("Edit")}
         </Button>
         <Button
           variant="ghost"
           size="sm"
-          className="ml-auto"
+          className="ms-auto"
           icon={<LuTrash2 className="size-3.5" aria-hidden="true" />}
           onClick={() => setConfirmingDelete(true)}
         >
-          Delete
+          {t("Delete")}
         </Button>
       </div>
 
       <ConfirmDialog
         open={confirmingDelete}
-        title={`Delete "${job.name}"?`}
-        description="This removes the sync configuration. Playlists and tracks already on each service are untouched."
-        confirmLabel="Delete"
+        title={t("Delete \"{{jobName}}\"?", { jobName: job.name })}
+        description={t("This removes the sync configuration. Playlists and tracks already on each service are untouched.")}
+        confirmLabel={t("Delete")}
         danger
         loading={deleting}
         onConfirm={() => void handleDelete()}

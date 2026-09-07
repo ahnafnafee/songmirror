@@ -36,3 +36,8 @@ apple_spotify_uri_cache.json
 # Remotion promo project
 promo/node_modules
 promo/out
+
+# Local task verification state
+.unlazy/
+.unlazy-hook-state.json
+.claude/settings.local.json

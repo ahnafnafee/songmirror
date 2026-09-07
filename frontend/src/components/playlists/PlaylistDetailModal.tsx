@@ -1,3 +1,5 @@
+import { formatDateTime, formatNumber } from '@/lib/format'
+import { t, useTranslation } from '@/i18n'
 import { useDeferredValue, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import {
   LuArrowDownUp,
@@ -31,14 +33,9 @@ type TrackOrder = 'latest' | 'playlist'
 
 const PAGE_SIZE = 50
 const TRACK_ORDER_OPTIONS = [
-  { value: 'latest' as const, label: 'Latest added' },
-  { value: 'playlist' as const, label: 'Playlist order' },
+  { value: 'latest' as const, get label() { return t("Latest added") } },
+  { value: 'playlist' as const, get label() { return t("Playlist order") } },
 ]
-const ADDED_DATE = new Intl.DateTimeFormat(undefined, {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric',
-})
 
 function addedTimestamp(value: string): number | null {
   const text = value.trim()
@@ -66,7 +63,7 @@ function addedTimestamp(value: string): number | null {
 
 function addedLabel(value: string): string {
   const timestamp = addedTimestamp(value)
-  return timestamp === null ? '' : `Added ${ADDED_DATE.format(timestamp)}`
+  return timestamp === null ? '' : t("Added {{value}}", { value: formatDateTime(timestamp, { dateStyle: 'medium' }) })
 }
 
 function trackKey(track: ProviderPlaylistTrack): string {
@@ -83,6 +80,7 @@ interface PlaylistDetailModalProps {
 /** Provider-backed playlist inspector/editor. Track lists are fetched only
  * when opened; search is deferred so thousand-track playlists stay responsive. */
 export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: PlaylistDetailModalProps) {
+  useTranslation()
   const provider = account?.id ?? null
   const playlistId = playlist?.id ?? null
   const { detail, loading, refreshing, loadingMore, error, refresh } = usePlaylistDetail(
@@ -250,7 +248,7 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
     <Modal
       open={Boolean(account && playlist)}
       onClose={onClose}
-      title={detail?.name || playlist?.name || 'Playlist'}
+      title={detail?.name || playlist?.name || t("Playlist")}
       description={[account?.name, trackCount].filter(Boolean).join(' · ')}
       widthClassName="max-w-5xl"
     >
@@ -271,7 +269,7 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
               onClick={() => void refresh()}
               disabled={refreshing}
             >
-              Refresh
+              {t("Refresh")}
             </Button>
             {externalUrl ? (
               <a
@@ -280,7 +278,7 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
                 rel="noreferrer"
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-control px-3 text-xs font-medium text-text-2 transition-colors hover:bg-surface-2 hover:text-text md:h-8 md:px-2.5"
               >
-                Open in {account?.name}
+                {t("Open in {{accountName}}", { accountName: account?.name })}
                 <LuExternalLink className="size-3.5" aria-hidden="true" />
               </a>
             ) : null}
@@ -291,10 +289,10 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
           <div className="flex flex-col gap-3 rounded-control border border-border bg-inset px-3.5 py-3 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
               <p className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-text-3">
-                Portable snapshot
+                {t("Portable snapshot")}
               </p>
               <p className="mt-1 text-xs leading-relaxed text-text-2">
-                JSON and XML retain SongMirror metadata. Soundiiz creates an import-ready track list.
+                {t("JSON and XML retain SongMirror metadata. Soundiiz creates an import-ready track list.")}
               </p>
             </div>
             <PlaylistExportActions
@@ -311,13 +309,13 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
             <span className="font-mono font-bold text-warning" aria-hidden="true">~</span>
             <p>
               {account?.provider === 'spotify'
-                ? 'Spotify is authoritative for your one-way syncs. Manual edits here flow to mirrors on the next run.'
-                : `This changes ${account?.name} directly. If Spotify owns this mirror, make the same edit in Spotify or the next sync will restore it.`}
+                ? t("Spotify is authoritative for your one-way syncs. Manual edits here flow to mirrors on the next run.")
+                : t("This changes {{accountName}} directly. If Spotify owns this mirror, make the same edit in Spotify or the next sync will restore it.", { accountName: account?.name })}
             </p>
           </div>
         ) : detail ? (
           <p className="rounded-control bg-neutral-soft px-3.5 py-3 text-xs text-text-2">
-            This playlist is read-only on {account?.name}. You can inspect it here or open it on the service.
+            {t("This playlist is read-only on {{accountName}}. You can inspect it here or open it on the service.", { accountName: account?.name })}
           </p>
         ) : null}
 
@@ -325,10 +323,17 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
           <div className="flex items-start gap-2.5 rounded-control border border-warning/30 bg-warning-soft px-3.5 py-3 text-xs leading-relaxed text-text-2">
             <span className="font-mono font-bold text-warning" aria-hidden="true">!</span>
             <p>
-              {unavailableCount} {unavailableCount === 1 ? 'entry is' : 'entries are'} no longer available in the TIDAL catalog.
               {detail?.editable
-                ? ' You can select and remove the placeholder entries here; transfers skip them.'
-                : ' Transfers skip these entries.'}
+                ? t('{{count, number}} unavailable TIDAL entry can be removed.', {
+                    count: unavailableCount,
+                    defaultValue_one: '{{count, number}} entry is no longer available in the TIDAL catalog. You can select and remove the placeholder entry here; transfers skip it.',
+                    defaultValue_other: '{{count, number}} entries are no longer available in the TIDAL catalog. You can select and remove the placeholder entries here; transfers skip them.',
+                  })
+                : t('{{count, number}} unavailable TIDAL entry is skipped.', {
+                    count: unavailableCount,
+                    defaultValue_one: '{{count, number}} entry is no longer available in the TIDAL catalog. Transfers skip this entry.',
+                    defaultValue_other: '{{count, number}} entries are no longer available in the TIDAL catalog. Transfers skip these entries.',
+                  })}
             </p>
           </div>
         ) : null}
@@ -336,19 +341,21 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
         {detail && detail.tracks.length > 0 ? (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_12rem]">
             <label className="relative block">
-              <span className="sr-only">Search this playlist</span>
-              <LuSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-3" aria-hidden="true" />
+              <span className="sr-only">{t("Search this playlist")}</span>
+              <LuSearch className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-text-3" aria-hidden="true" />
               <input
                 type="search"
                 value={query}
                 onChange={(event) => changeQuery(event.target.value)}
-                placeholder={`Search ${detail.tracks.length}${loadingMore ? ' loaded' : ''} tracks`}
-                className={cn(FIELD_INPUT_CLASSES, 'pl-9')}
+                placeholder={loadingMore
+                  ? t('Search {{count, number}} loaded track', { count: detail.tracks.length, defaultValue_one: 'Search {{count, number}} loaded track', defaultValue_other: 'Search {{count, number}} loaded tracks' })
+                  : t('Search {{count, number}} track', { count: detail.tracks.length, defaultValue_one: 'Search {{count, number}} track', defaultValue_other: 'Search {{count, number}} tracks' })}
+                className={cn(FIELD_INPUT_CLASSES, 'ps-9')}
               />
             </label>
             <FilterSelect
-              ariaLabel="Sort playlist tracks"
-              caption="Order"
+              ariaLabel={t("Sort playlist tracks")}
+              caption={t("Order")}
               value={order}
               options={TRACK_ORDER_OPTIONS}
               onChange={changeOrder}
@@ -362,13 +369,13 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-text">
-                  {selectedTracks.length} {selectedTracks.length === 1 ? 'track' : 'tracks'} selected
+                  {t("{{count, number}} track selected", { count: selectedTracks.length, defaultValue_one: "{{count, number}} track selected", defaultValue_other: "{{count, number}} tracks selected" })}
                 </p>
-                <p className="mt-0.5 text-xs text-text-3">Shift-click another track to select a range.</p>
+                <p className="mt-0.5 text-xs text-text-3">{t("Shift-click another track to select a range.")}</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="ghost" size="sm" onClick={clearSelection} disabled={bulkRemoving}>
-                  Clear
+                  {t("Clear")}
                 </Button>
                 <Button
                   variant="danger-ghost"
@@ -377,20 +384,20 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
                   onClick={() => setBulkConfirming(true)}
                   disabled={bulkRemoving}
                 >
-                  Remove selected
+                  {t("Remove selected")}
                 </Button>
               </div>
             </div>
             {bulkConfirming ? (
               <div className="mt-3 flex flex-col gap-2 border-t border-danger/20 pt-3 sm:flex-row sm:items-center">
-                <p className="mr-auto text-xs text-text-2">
-                  Remove {selectedTracks.length} selected {selectedTracks.length === 1 ? 'track' : 'tracks'} from {account?.name}?
+                <p className="me-auto text-xs text-text-2">
+                  {t("Remove {{count, number}} selected track from {{accountName}}?", { count: selectedTracks.length, accountName: account?.name, defaultValue_one: "Remove {{count, number}} selected track from {{accountName}}?", defaultValue_other: "Remove {{count, number}} selected tracks from {{accountName}}?" })}
                 </p>
                 <Button variant="ghost" size="sm" onClick={() => setBulkConfirming(false)} disabled={bulkRemoving}>
-                  Keep selected
+                  {t("Keep selected")}
                 </Button>
                 <Button variant="danger-ghost" size="sm" loading={bulkRemoving} onClick={() => void removeSelectedTracks()}>
-                  {bulkRemoving ? 'Removing…' : `Remove ${selectedTracks.length} ${selectedTracks.length === 1 ? 'track' : 'tracks'}`}
+                  {bulkRemoving ? t("Removing…") : t("Remove {{count, number}} track", { count: selectedTracks.length, defaultValue_one: "Remove {{count, number}} track", defaultValue_other: "Remove {{count, number}} tracks" })}
                 </Button>
               </div>
             ) : null}
@@ -405,19 +412,19 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
 
         {error && detail ? (
           <p role="alert" className="rounded-control bg-danger-soft px-3.5 py-2.5 text-sm text-danger">
-            More tracks could not be loaded: {error}
+            {t("More tracks could not be loaded: {{error}}", { error: error })}
           </p>
         ) : null}
 
         {loadingMore && detail ? (
           <p aria-live="polite" className="flex items-center gap-2 text-xs text-text-3">
             <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
-            Loaded {detail.tracks.length} of {detail.count} tracks from {account?.name ?? 'the provider'}…
+            {t("Loaded {{loaded, number}} of {{total, number}} tracks from {{provider}}…", { loaded: detail.tracks.length, total: detail.count, provider: account?.name ?? t('the provider') })}
           </p>
         ) : null}
 
         {loading && !detail ? (
-          <LoadingStatus label={`Loading ${playlist?.name ?? 'playlist'} tracks…`}>
+          <LoadingStatus label={playlist?.name ? t('Loading tracks from {{playlist}}…', { playlist: playlist.name }) : t('Loading playlist tracks…')}>
             <div className="flex flex-col gap-2">
               {[0, 1, 2, 3, 4, 5].map((index) => (
                 <Skeleton key={index} className="h-14 w-full" />
@@ -426,14 +433,14 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
           </LoadingStatus>
         ) : error && !detail ? (
           <EmptyState
-            title="Playlist couldn't be opened"
+            title={t("Playlist couldn't be opened")}
             description={error}
-            action={<Button onClick={() => void refresh()}>Retry</Button>}
+            action={<Button onClick={() => void refresh()}>{t("Retry")}</Button>}
           />
         ) : detail && detail.tracks.length === 0 ? (
-          <EmptyState title="This playlist is empty" description={`Add tracks in ${account?.name}, then refresh this view.`} />
+          <EmptyState title={t("This playlist is empty")} description={t("Add tracks in {{accountName}}, then refresh this view.", { accountName: account?.name })} />
         ) : detail && orderedTracks.length === 0 ? (
-          <EmptyState title="No matching tracks" description={`Nothing in this playlist matches “${query.trim()}”.`} />
+          <EmptyState title={t("No matching tracks")} description={t("Nothing in this playlist matches “{{queryTrim}}”.", { queryTrim: query.trim() })} />
         ) : detail ? (
           <div className="flex flex-col gap-2">
             <ol className="thin-scrollbar max-h-[52vh] overflow-y-auto rounded-card border border-border bg-inset">
@@ -452,17 +459,17 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
                     )}
                   >
                     <div className="flex min-h-14 items-center gap-3 px-3 py-2 sm:px-4">
-                      <span className="w-8 shrink-0 text-right font-mono text-[10px] text-text-3" aria-hidden="true">
-                        {String(pageStart + rowIndex + 1).padStart(2, '0')}
+                      <span className="w-8 shrink-0 text-end font-mono text-[10px] text-text-3" aria-hidden="true">
+                        {formatNumber(pageStart + rowIndex + 1, { minimumIntegerDigits: 2, useGrouping: false })}
                       </span>
                       {detail.editable ? (
                         <button
                           type="button"
                           onClick={(event) => toggleSelection(track, event)}
-                          aria-label={`${selected ? 'Unselect' : 'Select'} ${track.name}`}
+                          aria-label={selected ? t('Unselect {{track}}', { track: track.name }) : t('Select {{track}}', { track: track.name })}
                           aria-pressed={selected}
-                          title="Click to select; Shift-click to select a range"
-                          className="group flex min-w-0 flex-1 items-center gap-3 rounded-control text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                          title={t("Click to select; Shift-click to select a range")}
+                          className="group flex min-w-0 flex-1 items-center gap-3 rounded-control text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
                         >
                           <span className={cn('shrink-0 text-text-3 transition-colors group-hover:text-accent', selected && 'text-accent')}>
                             {selected
@@ -475,7 +482,7 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
                               {track.name}
                             </span>
                             <span className="block truncate text-xs text-text-3">
-                              {[track.artist, track.album, dateAdded].filter(Boolean).join(' · ') || 'Unknown artist'}
+                              {[track.artist, track.album, dateAdded].filter(Boolean).join(' · ') || t("Unknown artist")}
                             </span>
                           </span>
                         </button>
@@ -487,12 +494,12 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
                               {track.name}
                             </p>
                             <p className="truncate text-xs text-text-3">
-                              {[track.artist, track.album, dateAdded].filter(Boolean).join(' · ') || 'Unknown artist'}
+                              {[track.artist, track.album, dateAdded].filter(Boolean).join(' · ') || t("Unknown artist")}
                             </p>
                           </div>
                         </div>
                       )}
-                      <span className="hidden w-14 shrink-0 text-right font-mono text-[11px] text-text-3 sm:block">
+                      <span className="hidden w-14 shrink-0 text-end font-mono text-[11px] text-text-3 sm:block">
                         {formatDuration(track.duration_ms ? track.duration_ms / 1000 : null) ?? '—'}
                       </span>
                       {track.external_url ? (
@@ -500,8 +507,8 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
                           href={track.external_url}
                           target="_blank"
                           rel="noreferrer"
-                          aria-label={`Open ${track.name} in ${account?.name}`}
-                          title={`Open in ${account?.name}`}
+                          aria-label={t("Open {{trackName}} in {{accountName}}", { trackName: track.name, accountName: account?.name })}
+                          title={t("Open in {{accountName}}", { accountName: account?.name })}
                           className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-2 hover:text-text md:size-8"
                         >
                           <LuExternalLink className="size-4" aria-hidden="true" />
@@ -511,7 +518,7 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
                         <button
                           type="button"
                           onClick={() => { setConfirming(asking ? null : key); setBulkConfirming(false) }}
-                          aria-label={`Remove ${track.name} from this playlist`}
+                          aria-label={t("Remove {{trackName}} from this playlist", { trackName: track.name })}
                           aria-expanded={asking}
                           disabled={bulkRemoving}
                           className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-danger-soft hover:text-danger md:size-8"
@@ -522,12 +529,12 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
                     </div>
                     {asking ? (
                       <div className="flex flex-col gap-2 border-t border-danger/20 bg-danger-soft px-4 py-3 sm:flex-row sm:items-center sm:justify-end">
-                        <p className="mr-auto text-xs text-text-2">Remove “{track.name}” from {account?.name}?</p>
+                        <p className="me-auto text-xs text-text-2">{t("Remove “{{trackName}}” from {{accountName}}?", { trackName: track.name, accountName: account?.name })}</p>
                         <Button variant="ghost" size="sm" onClick={() => setConfirming(null)} disabled={removing === key}>
-                          Keep track
+                          {t("Keep track")}
                         </Button>
                         <Button variant="danger-ghost" size="sm" loading={removing === key} onClick={() => void removeTrack(track)}>
-                          {removing === key ? 'Removing…' : 'Remove track'}
+                          {removing === key ? t("Removing…") : t("Remove track")}
                         </Button>
                       </div>
                     ) : null}
@@ -537,29 +544,34 @@ export function PlaylistDetailModal({ account, playlist, onClose, onChanged }: P
             </ol>
             <div className="flex flex-col gap-2 px-0.5 text-xs text-text-3 sm:flex-row sm:items-center sm:justify-between">
               <p aria-live="polite">
-                Showing {pageStart + 1}–{pageStart + pageTracks.length} of {orderedTracks.length}
-                {loadingMore ? ` loaded · ${detail.count} total` : ' tracks'} · {PAGE_SIZE} per page
+                {loadingMore
+                  ? t('Showing {{start, number}}–{{end, number}} of {{loaded, number}} loaded · {{total, number}} total · {{perPage, number}} per page', {
+                      start: pageStart + 1, end: pageStart + pageTracks.length, loaded: orderedTracks.length, total: detail.count, perPage: PAGE_SIZE,
+                    })
+                  : t('Showing {{start, number}}–{{end, number}} of {{total, number}} tracks · {{perPage, number}} per page', {
+                      start: pageStart + 1, end: pageStart + pageTracks.length, total: orderedTracks.length, perPage: PAGE_SIZE,
+                    })}
               </p>
               {pageCount > 1 ? (
                 <div className="flex items-center gap-1.5">
                   <Button
                     variant="ghost"
                     size="sm"
-                    icon={<LuChevronLeft className="size-3.5" aria-hidden="true" />}
+                    icon={<LuChevronLeft className="size-3.5 rtl:-scale-x-100" aria-hidden="true" />}
                     onClick={() => { setPage(Math.max(1, safePage - 1)); setConfirming(null) }}
                     disabled={safePage === 1}
                   >
-                    Previous
+                    {t("Previous")}
                   </Button>
-                  <span className="min-w-20 text-center font-mono text-[10.5px]">Page {safePage} / {pageCount}</span>
+                  <span className="min-w-20 text-center font-mono text-[10.5px]">{t("Page {{safePage, number}} / {{pageCount, number}}", { safePage: safePage, pageCount: pageCount })}</span>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => { setPage(Math.min(pageCount, safePage + 1)); setConfirming(null) }}
                     disabled={safePage === pageCount}
                   >
-                    Next
-                    <LuChevronRight className="size-3.5" aria-hidden="true" />
+                    {t("Next")}
+                    <LuChevronRight className="size-3.5 rtl:-scale-x-100" aria-hidden="true" />
                   </Button>
                 </div>
               ) : null}

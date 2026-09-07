@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useState } from 'react'
 import { LuCircleHelp, LuExternalLink } from 'react-icons/lu'
 
@@ -22,6 +23,7 @@ interface MappingRowProps {
  * holds and what a future match is compared against.
  */
 export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
+  useTranslation()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(entry.target_id)
   const [busy, setBusy] = useState(false)
@@ -47,8 +49,8 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
         {/* Phone rows have three deliberate rails: identity, mapping state,
             and touch actions. Wider rows collapse those rails back together. */}
         <div className="w-full min-w-0 sm:w-auto sm:flex-1 sm:basis-0">
-          <p className="truncate text-sm font-semibold text-text">{entry.name || '(no title)'}</p>
-          <p className="truncate text-xs text-text-3">{entry.artist || '(no artist)'}</p>
+          <p className="truncate text-sm font-semibold text-text">{entry.name || t("(no title)")}</p>
+          <p className="truncate text-xs text-text-3">{entry.artist || t("(no artist)")}</p>
         </div>
 
         {/* Fixed-width status column so every row's id chip starts on the same
@@ -58,19 +60,18 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
             <Tooltip
               content={
                 <>
-                  <span className="font-semibold text-text">Set by hand.</span>{' '}
-                  You supplied this mapping, so SongMirror uses this exact track instead of searching
-                  until you edit or delete it.
+                  <span className="font-semibold text-text">{t("Set by hand.")}</span>{' '}
+                  {t('You supplied this mapping, so SongMirror uses this exact track instead of searching until you edit or delete it.')}
                 </>
               }
             >
               <button
                 type="button"
-                aria-label="About hand-set mappings"
+                aria-label={t("About hand-set mappings")}
                 className="inline-flex h-11 shrink-0 cursor-help items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:h-6"
               >
                 <span className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full bg-accent-soft px-2.5 text-xs font-semibold text-accent">
-                  set by hand
+                  {t("set by hand")}
                   <LuCircleHelp className="size-3" aria-hidden="true" />
                 </span>
               </button>
@@ -78,7 +79,7 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
           )}
           {entry.target_id ? (
             <>
-              {/* A fixed box, not max-width: with the column right-aligned and
+              {/* A fixed box, not max-width: with the column end-aligned and
                   the link slot a fixed size, this is what puts every row's id
                   on the same left edge regardless of how long the id is. */}
               <code className="w-[14ch] shrink-0 truncate rounded bg-inset px-1.5 py-0.5 font-mono text-xs text-text-2">
@@ -92,7 +93,7 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
                     href={entry.url}
                     target="_blank"
                     rel="noreferrer"
-                    aria-label={`Open ${entry.name} on the provider`}
+                    aria-label={t("Open {{entryName}} on the provider", { entryName: entry.name })}
                     className="inline-flex size-6 items-center justify-center rounded-chip text-text-3 hover:text-text"
                   >
                     <LuExternalLink className="size-3.5" />
@@ -104,19 +105,18 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
             <Tooltip
               content={
                 <>
-                  <span className="font-semibold text-text">No match.</span>{' '}
-                  SongMirror searched this service but could not confidently identify a track. Select
-                  Edit to supply it, or Delete so the next sync or transfer searches again.
+                  <span className="font-semibold text-text">{t("No match.")}</span>{' '}
+                  {t('SongMirror searched this service but could not confidently identify a track. Select Edit to supply it, or Delete so the next sync or transfer searches again.')}
                 </>
               }
             >
               <button
                 type="button"
-                aria-label="About no-match mappings"
+                aria-label={t("About no-match mappings")}
                 className="inline-flex h-11 shrink-0 cursor-help items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning sm:h-6"
               >
                 <span className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full bg-warning-soft px-2.5 text-xs font-semibold text-warning">
-                  no match
+                  {t("no match")}
                   <LuCircleHelp className="size-3" aria-hidden="true" />
                 </span>
               </button>
@@ -128,7 +128,7 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
             pair does not shift when a row opens for editing. */}
         <div className="grid w-full shrink-0 grid-cols-2 gap-1.5 sm:w-[148px]">
           <Button size="sm" variant="secondary" onClick={() => setEditing((open) => !open)} disabled={busy}>
-            {editing ? 'Cancel' : 'Edit'}
+            {editing ? t("Cancel") : t("Edit")}
           </Button>
           <Button
             size="sm"
@@ -136,7 +136,7 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
             disabled={busy}
             onClick={() => void run(() => api.deleteResolveCacheEntry(provider, entry.key))}
           >
-            Delete
+            {t("Delete")}
           </Button>
         </div>
       </div>
@@ -149,7 +149,7 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
           <div className="flex flex-col items-stretch gap-2.5 sm:flex-row sm:items-end">
             <div className="w-full min-w-0 flex-1 sm:min-w-[240px]">
               <TextField
-                label="Track link or id"
+                label={t("Track link or id")}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
@@ -165,11 +165,11 @@ export function MappingRow({ provider, entry, onChanged }: MappingRowProps) {
               disabled={busy || !draft.trim()}
               onClick={() => void run(() => api.setResolveCacheEntry(provider, entry.key, draft))}
             >
-              {busy ? 'Saving…' : 'Save'}
+              {busy ? t("Saving…") : t("Save")}
             </Button>
           </div>
           <p className="text-xs text-text-3">
-            Find the right track on the service and paste its link. A raw id works too.
+            {t("Find the right track on the service and paste its link. A raw id works too.")}
           </p>
         </div>
       )}

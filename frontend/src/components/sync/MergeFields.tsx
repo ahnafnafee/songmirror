@@ -1,3 +1,5 @@
+import { formatNumber } from '@/lib/format'
+import { t, useTranslation } from '@/i18n'
 import { useMemo, useState } from 'react'
 import { LuArrowDown, LuArrowUp, LuLink, LuPlus, LuX } from 'react-icons/lu'
 
@@ -14,13 +16,13 @@ import { SelectField } from '../ui/SelectField'
 import { TextField } from '../ui/TextField'
 
 const DESTINATION_MODES = [
-  { value: 'existing', label: 'Existing playlist' },
-  { value: 'create', label: 'Create new' },
+  { value: 'existing', get label() { return t("Existing playlist") } },
+  { value: 'create', get label() { return t("Create new") } },
 ]
 
 const SOURCE_MODES = [
-  { value: 'library', label: 'Your library' },
-  { value: 'link', label: 'Paste a link' },
+  { value: 'library', get label() { return t("Your library") } },
+  { value: 'link', get label() { return t("Paste a link") } },
 ]
 
 function peers(accounts: Account[]) {
@@ -36,6 +38,7 @@ export function MergeDestinationFields({
   destination: SyncDestination | null
   onChange: (destination: SyncDestination | null) => void
 }) {
+  useTranslation()
   const connected = useMemo(
     () => peers(accounts).filter((account) => capabilitiesOf(account).library_write),
     [accounts],
@@ -55,21 +58,21 @@ export function MergeDestinationFields({
   return (
     <div className="flex flex-col gap-3.5">
       <p className="text-xs leading-relaxed text-text-3">
-        The combined membership is reconciled once against this one writable playlist.
+        {t("The combined membership is reconciled once against this one writable playlist.")}
       </p>
       <SelectField
-        label="Destination service"
+        label={t("Destination service")}
         options={[
-          { value: '', label: 'Choose a service…' },
+          { value: '', label: t("Choose a service…") },
           ...connected.map((account) => ({ value: account.id, label: account.name })),
         ]}
         value={provider}
         onChange={(event) => setProvider(event.target.value)}
       />
       <div className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-semibold text-text-2">Destination playlist</span>
+        <span className="text-[12.5px] font-semibold text-text-2">{t("Destination playlist")}</span>
         <Segmented
-          ariaLabel="Merge destination playlist"
+          ariaLabel={t("Merge destination playlist")}
           options={DESTINATION_MODES}
           value={mode}
           onChange={(value) => {
@@ -81,7 +84,7 @@ export function MergeDestinationFields({
       </div>
       {mode === 'existing' ? (
         <PlaylistPickerField
-          label="Existing destination playlist"
+          label={t("Existing destination playlist")}
           playlists={writable}
           loading={entries[provider]?.loading}
           value={destination?.playlist_id ?? ''}
@@ -93,12 +96,12 @@ export function MergeDestinationFields({
         />
       ) : (
         <TextField
-          label="New destination playlist name"
+          label={t("New destination playlist name")}
           required
           disabled={!provider}
           value={destination?.name ?? ''}
           onChange={(event) => onChange({ provider, playlist_id: '', name: event.target.value })}
-          help="Created on the first real run; its provider id is then saved into this job."
+          help={t("Created on the first real run; its provider id is then saved into this job.")}
         />
       )}
     </div>
@@ -116,6 +119,7 @@ export function MergeSourcesFields({
   destination: SyncDestination | null
   onChange: (sources: SyncSource[]) => void
 }) {
+  useTranslation()
   const connected = useMemo(() => peers(accounts), [accounts])
   const librarySources = useMemo(
     () => connected.filter((account) => capabilitiesOf(account).library_read),
@@ -141,11 +145,11 @@ export function MergeSourcesFields({
 
   function append(source: SyncSource) {
     if (sources.some((item) => item.provider === source.provider && item.playlist_id === source.playlist_id)) {
-      setError('That playlist is already a source.')
+      setError(t("That playlist is already a source."))
       return false
     }
     if (destination?.provider === source.provider && destination.playlist_id === source.playlist_id) {
-      setError('The destination cannot also be a source.')
+      setError(t("The destination cannot also be a source."))
       return false
     }
     onChange([...sources, source])
@@ -201,14 +205,13 @@ export function MergeSourcesFields({
     <div className="flex flex-col gap-4">
       <div>
         <p className="text-xs leading-relaxed text-text-3">
-          Add one or more library playlists or public links. Priority order is stable: each source keeps its provider
-          order, and the first occurrence of an overlapping track wins.
+          {t("Add one or more library playlists or public links. Priority order is stable: each source keeps its provider order, and the first occurrence of an overlapping track wins.")}
         </p>
       </div>
 
       <div className="flex flex-col gap-3 rounded-control border border-border bg-surface-2/40 p-3.5">
         <Segmented
-          ariaLabel="Merge source type"
+          ariaLabel={t("Merge source type")}
           options={SOURCE_MODES}
           value={mode}
           onChange={(value) => {
@@ -223,9 +226,9 @@ export function MergeSourcesFields({
         {mode === 'library' ? (
           <>
             <SelectField
-              label="Source service"
+              label={t("Source service")}
               options={[
-                { value: '', label: 'Choose a service…' },
+                { value: '', label: t("Choose a service…") },
                 ...librarySources.map((account) => ({ value: account.id, label: account.name })),
               ]}
               value={provider}
@@ -235,7 +238,7 @@ export function MergeSourcesFields({
               }}
             />
             <PlaylistPickerField
-              label="Source playlist"
+              label={t("Source playlist")}
               playlists={entries[provider]?.playlists ?? []}
               loading={entries[provider]?.loading}
               value={playlistId}
@@ -249,16 +252,16 @@ export function MergeSourcesFields({
               disabled={!selectedPlaylist}
               onClick={addLibrarySource}
             >
-              Add source
+              {t("Add source")}
             </Button>
           </>
         ) : (
           <>
             <SelectField
-              label="Open with account"
-              help="The link must belong to the selected account's service."
+              label={t("Open with account")}
+              help={t("The link must belong to the selected account's service.")}
               options={[
-                { value: '', label: 'Choose an account…' },
+                { value: '', label: t("Choose an account…") },
                 ...publicSources.map((account) => ({ value: account.id, label: account.name })),
               ]}
               value={provider}
@@ -269,9 +272,9 @@ export function MergeSourcesFields({
               }}
             />
             <TextField
-              label="Public playlist link"
-              help="It must be readable through a connected service, but does not need to be saved or followed."
-              placeholder="https://open.spotify.com/playlist/…"
+              label={t("Public playlist link")}
+              help={t("It must be readable through a connected service, but does not need to be saved or followed.")}
+              placeholder={t("https://open.spotify.com/playlist/…")}
               value={link}
               onChange={(event) => {
                 setLink(event.target.value)
@@ -292,7 +295,7 @@ export function MergeSourcesFields({
               disabled={!provider || !link.trim() || opening}
               onClick={() => void addPublicSource()}
             >
-              Open and add source
+              {t("Open and add source")}
             </Button>
           </>
         )}
@@ -301,27 +304,27 @@ export function MergeSourcesFields({
 
       {sources.length === 0 ? (
         <p className="rounded-control border border-dashed border-border-strong px-3 py-2.5 text-xs text-text-3">
-          Add at least one source playlist.
+          {t("Add at least one source playlist.")}
         </p>
       ) : (
-        <ol aria-label="Merge sources in priority order" className="flex flex-col gap-2">
+        <ol aria-label={t("Merge sources in priority order")} className="flex flex-col gap-2">
           {sources.map((source, index) => (
             <li key={`${source.provider}:${source.playlist_id}`} className="flex items-center gap-2 rounded-control border border-border px-3 py-2.5">
               <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent-soft font-mono text-[10px] font-bold text-accent">
-                {index + 1}
+                {formatNumber(index + 1)}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] font-semibold text-text">{source.name || source.playlist_id}</span>
                 <span className="block font-mono text-[10px] text-text-3">
                   {connected.find((account) => account.id === source.provider)?.name ?? tagLabel(source.provider)} ·{' '}
-                  {source.kind === 'public' ? 'public link' : 'library'}
+                  {source.kind === 'public' ? t("public link") : t("library")}
                 </span>
               </span>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                aria-label={`Move ${source.name || source.playlist_id} up`}
+                aria-label={t("Move {{sourceName}} up", { sourceName: source.name || source.playlist_id })}
                 disabled={index === 0}
                 onClick={() => move(index, -1)}
                 icon={<LuArrowUp className="size-3.5" aria-hidden="true" />}
@@ -330,7 +333,7 @@ export function MergeSourcesFields({
                 type="button"
                 variant="ghost"
                 size="sm"
-                aria-label={`Move ${source.name || source.playlist_id} down`}
+                aria-label={t("Move {{sourceName}} down", { sourceName: source.name || source.playlist_id })}
                 disabled={index === sources.length - 1}
                 onClick={() => move(index, 1)}
                 icon={<LuArrowDown className="size-3.5" aria-hidden="true" />}
@@ -339,7 +342,7 @@ export function MergeSourcesFields({
                 type="button"
                 variant="ghost"
                 size="sm"
-                aria-label={`Remove ${source.name || source.playlist_id}`}
+                aria-label={t("Remove {{sourceName}}", { sourceName: source.name || source.playlist_id })}
                 onClick={() => onChange(sources.filter((_, itemIndex) => itemIndex !== index))}
                 icon={<LuX className="size-3.5" aria-hidden="true" />}
               />
@@ -349,8 +352,7 @@ export function MergeSourcesFields({
       )}
       {destinationConflict && (
         <p className="text-xs leading-relaxed text-danger">
-          The destination cannot also be one of the source playlists. Choose a different destination or remove it
-          from this list.
+          {t("The destination cannot also be one of the source playlists. Choose a different destination or remove it from this list.")}
         </p>
       )}
     </div>

@@ -1,3 +1,4 @@
+import { t, Trans, useTranslation } from '@/i18n'
 import { Fragment, useLayoutEffect, useState } from 'react'
 import { LuArrowLeft, LuArrowRight, LuCheck, LuInfo } from 'react-icons/lu'
 
@@ -136,11 +137,11 @@ function normalizedLikedRoutes(
 // The wizard's five steps, in order. `intro` is the one friendly sentence
 // shown above each step's fields; `label` is what the stepper shows.
 const STEPS = [
-  { label: 'Direction', intro: 'Which way changes flow between your services.' },
-  { label: 'Services', intro: 'Which services to keep in sync.' },
-  { label: 'Playlists', intro: 'Limit syncing to specific playlists, or leave empty to sync every same-named pair.' },
-  { label: 'Schedule', intro: 'Run this sync on its own schedule, or only when you trigger it yourself.' },
-  { label: 'Limits & downloads', intro: "Guardrails so one pass can't make a huge change, plus an optional offline copy of what's synced." },
+  { get label() { return t("Direction") }, get intro() { return t("Which way changes flow between your services.") } },
+  { get label() { return t("Services") }, get intro() { return t("Which services to keep in sync.") } },
+  { get label() { return t("Playlists") }, get intro() { return t("Limit syncing to specific playlists, or leave empty to sync every same-named pair.") } },
+  { get label() { return t("Schedule") }, get intro() { return t("Run this sync on its own schedule, or only when you trigger it yourself.") } },
+  { get label() { return t("Limits & downloads") }, get intro() { return t("Guardrails so one pass can't make a huge change, plus an optional offline copy of what's synced.") } },
 ] as const
 
 /** A followers/services toggle chip — `locked` marks whichever service is
@@ -159,8 +160,9 @@ function ProviderChip({
   role?: 'source' | 'order' | 'authority' | 'mirror'
   onToggle: () => void
 }) {
+  useTranslation()
   const connected = canSyncAccount(account)
-  const unavailableLabel = account.state === 'connected' ? 'catalog only' : 'not connected'
+  const unavailableLabel = account.state === 'connected' ? t("catalog only") : t("not connected")
   const logoId = serviceLogoId(account.provider)
 
   return (
@@ -172,10 +174,14 @@ function ProviderChip({
       title={
         !connected
           ? account.state === 'connected'
-            ? `${account.name} has catalog-only access and cannot participate in syncing.`
-            : `Connect ${account.name} on the Accounts page to include it in syncing.`
+            ? t("{{accountName}} has catalog-only access and cannot participate in syncing.", { accountName: account.name })
+            : t("Connect {{accountName}} on the Accounts page to include it in syncing.", { accountName: account.name })
           : locked
-            ? `${account.name} is ${role === 'order' ? 'the order authority' : role === 'authority' ? 'an authority' : 'the sync source'} and is always included.`
+            ? role === 'order'
+              ? t('{{accountName}} is the order authority and is always included.', { accountName: account.name })
+              : role === 'authority'
+                ? t('{{accountName}} is an authority and is always included.', { accountName: account.name })
+                : t('{{accountName}} is the sync source and is always included.', { accountName: account.name })
             : undefined
       }
       className={cn(
@@ -195,7 +201,7 @@ function ProviderChip({
       {account.name}
       {role && connected && checked && (
         <span className="rounded-full bg-accent px-1.5 py-[1px] font-mono text-[9px] font-bold uppercase tracking-wide text-on-accent">
-          {role}
+          {{ source: t('source'), order: t('order'), authority: t('authority'), mirror: t('mirror') }[role]}
         </span>
       )}
       {!connected && <span className="font-normal text-text-3">{unavailableLabel}</span>}
@@ -207,8 +213,9 @@ function ProviderChip({
  * source of truth" picker — same visual language as ProviderChip, but
  * exclusive-choice (radio) rather than a toggle set. */
 function SourceChip({ account, selected, onSelect }: { account: Account; selected: boolean; onSelect: () => void }) {
+  useTranslation()
   const connected = canSyncAccount(account)
-  const unavailableLabel = account.state === 'connected' ? 'catalog only' : 'not connected'
+  const unavailableLabel = account.state === 'connected' ? t("catalog only") : t("not connected")
   const logoId = serviceLogoId(account.provider)
 
   return (
@@ -221,8 +228,8 @@ function SourceChip({ account, selected, onSelect }: { account: Account; selecte
       title={
         !connected
           ? account.state === 'connected'
-            ? `${account.name} has catalog-only access and cannot be a sync source.`
-            : `Connect ${account.name} on the Accounts page to choose it as the source.`
+            ? t("{{accountName}} has catalog-only access and cannot be a sync source.", { accountName: account.name })
+            : t("Connect {{accountName}} on the Accounts page to choose it as the source.", { accountName: account.name })
           : undefined
       }
       className={cn(
@@ -252,9 +259,10 @@ function SourceChip({ account, selected, onSelect }: { account: Account; selecte
  * revisit, not a linear onboarding wizard, so every marker stays clickable
  * regardless of visited state. */
 function StepTabs({ current, visited, onJump }: { current: number; visited: Set<number>; onJump: (i: number) => void }) {
+  useTranslation()
   return (
     <div className="flex flex-col gap-2">
-      <div role="radiogroup" aria-label="Sync setup steps" className="flex items-center">
+      <div role="radiogroup" aria-label={t("Sync setup steps")} className="flex items-center">
         {STEPS.map((s, i) => {
           const isCurrent = i === current
           const isVisited = visited.has(i) && !isCurrent
@@ -286,7 +294,7 @@ function StepTabs({ current, visited, onJump }: { current: number; visited: Set<
         })}
       </div>
       <p className="text-center font-mono text-[11px] font-semibold tracking-wide text-text-2">
-        Step {current + 1} of {STEPS.length} · {STEPS[current].label}
+        {t("Step {{current, number}} of {{value, number}} · {{value2}}", { current: current + 1, value: STEPS.length, value2: STEPS[current].label })}
       </p>
     </div>
   )
@@ -311,6 +319,7 @@ const FORM_ID = 'sync-wizard-form'
  * read-only fetch of the global download folder, purely to show it in the
  * review's Downloads row. */
 export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
+  useTranslation()
   const { settings } = useSettings()
   const [form, setForm] = useState<JobFormState>(NEW_JOB_DEFAULTS)
   const [step, setStep] = useState(0)
@@ -585,7 +594,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
 
   const previewJob: SyncJob = {
     id: job?.id ?? '',
-    name: form.name.trim() || 'This sync',
+    name: form.name.trim() || t("This sync"),
     enabled: form.enabled,
     mode: form.mode,
     source: form.source,
@@ -654,15 +663,15 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     <Modal
       open={open}
       onClose={onClose}
-      title={job ? `Edit "${job.name}"` : 'New sync'}
-      description="A self-contained sync configuration: direction, services, playlists, schedule, and limits."
+      title={job ? t("Edit \"{{jobName}}\"", { jobName: job.name }) : t("New sync")}
+      description={t("A self-contained sync configuration: direction, services, playlists, schedule, and limits.")}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button type="submit" form={FORM_ID} loading={saving} disabled={!formValid}>
-            {job ? 'Save changes' : 'Create sync'}
+            {job ? t("Save changes") : t("Create sync")}
           </Button>
         </>
       }
@@ -678,9 +687,9 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
         {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
         <TextField
-          label="Name"
-          help='Shown in your list of syncs, e.g. "Workout playlists" or "Family Spotify".'
-          placeholder="e.g. Default"
+          label={t("Name")}
+          help={t("Shown in your list of syncs, e.g. \"Workout playlists\" or \"Family Spotify\".")}
+          placeholder={t("e.g. Default")}
           required
           value={form.name}
           onChange={(e) => setField('name', e.target.value)}
@@ -699,45 +708,44 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                   value="oneway"
                   checked={form.mode === 'oneway'}
                   onChange={() => selectMode('oneway')}
-                  title="One-way →"
-                  description="One provider is the source of truth. Everyone else follows it, and it's never modified."
+                  title={t("One-way →")}
+                  description={t("One provider is the source of truth. Everyone else follows it, and it's never modified.")}
                 />
                 <RadioCard
                   name="sync-mode"
                   value="nway"
                   checked={form.mode === 'nway'}
                   onChange={() => selectMode('nway')}
-                  title="Bidirectional (N-way) ⇄"
-                  description="A track added or removed on any connected service propagates to all the others."
+                  title={t("Bidirectional (N-way) ⇄")}
+                  description={t("A track added or removed on any connected service propagates to all the others.")}
                 />
                 <RadioCard
                   name="sync-mode"
                   value="group"
                   checked={form.mode === 'group'}
                   onChange={() => selectMode('group')}
-                  title="Authority group ⇆"
-                  description="Two or more trusted services contribute changes; every other selected service only mirrors them."
+                  title={t("Authority group ⇆")}
+                  description={t("Two or more trusted services contribute changes; every other selected service only mirrors them.")}
                 />
                 <RadioCard
                   name="sync-mode"
                   value="merge"
                   checked={form.mode === 'merge'}
                   onChange={() => selectMode('merge')}
-                  title="Merge sources →"
-                  description="Combine multiple library playlists or public links into one scheduled destination playlist."
+                  title={t("Merge sources →")}
+                  description={t("Combine multiple library playlists or public links into one scheduled destination playlist.")}
                 />
               </div>
 
               {form.mode === 'oneway' && (
                 <div className="flex flex-col gap-2.5 border-t border-border pt-3.5">
                   <div>
-                    <span className="text-[12.5px] font-semibold text-text-2">Source of truth</span>
+                    <span className="text-[12.5px] font-semibold text-text-2">{t("Source of truth")}</span>
                     <p className="mt-1 text-xs leading-relaxed text-text-3">
-                      This provider's playlists are the source of truth. Every other service follows it, and it's
-                      never modified.
+                      {t("This provider's playlists are the source of truth. Every other service follows it, and it's never modified.")}
                     </p>
                   </div>
-                  <div role="radiogroup" aria-label="Source of truth" className="flex flex-wrap gap-2">
+                  <div role="radiogroup" aria-label={t("Source of truth")} className="flex flex-wrap gap-2">
                     {syncPeers.map((account) => (
                       <SourceChip
                         key={account.id}
@@ -750,8 +758,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                   {nonSpotifySourceConflict && (
                     <p className="flex items-start gap-1.5 text-xs leading-relaxed text-text-3">
                       <LuInfo className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                      Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be
-                      skipped.
+                      {t("Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.")}
                     </p>
                   )}
                 </div>
@@ -761,13 +768,12 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                 <div className="flex flex-col gap-4 border-t border-border pt-3.5">
                   <div className="flex flex-col gap-2.5">
                     <div>
-                      <span className="text-[12.5px] font-semibold text-text-2">Order authority</span>
+                      <span className="text-[12.5px] font-semibold text-text-2">{t("Order authority")}</span>
                       <p className="mt-1 text-xs leading-relaxed text-text-3">
-                        Playlist names and track sequence follow this service. New membership can still come from
-                        any authority below.
+                        {t("Playlist names and track sequence follow this service. New membership can still come from any authority below.")}
                       </p>
                     </div>
-                    <div role="radiogroup" aria-label="Order authority" className="flex flex-wrap gap-2">
+                    <div role="radiogroup" aria-label={t("Order authority")} className="flex flex-wrap gap-2">
                       {syncPeers.map((account) => (
                         <SourceChip
                           key={account.id}
@@ -781,10 +787,9 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
 
                   <div className="flex flex-col gap-2.5">
                     <div>
-                      <span className="text-[12.5px] font-semibold text-text-2">Membership authorities</span>
+                      <span className="text-[12.5px] font-semibold text-text-2">{t("Membership authorities")}</span>
                       <p className="mt-1 text-xs leading-relaxed text-text-3">
-                        Additions and confirmed removals on any selected authority flow to the full group. Choose at
-                        least two; the order authority is always included.
+                        {t("Additions and confirmed removals on any selected authority flow to the full group. Choose at least two; the order authority is always included.")}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -797,7 +802,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                             account={account}
                             checked={selected}
                             locked={isOrder}
-                            role={isOrder && selected ? 'order' : selected ? 'authority' : undefined}
+                            role={isOrder && selected ? "order" : selected ? "authority" : undefined}
                             onToggle={() => toggleAuthority(account.id)}
                           />
                         )
@@ -805,7 +810,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                     </div>
                     {!groupValid && (
                       <p className="text-xs leading-relaxed text-danger">
-                        Select at least two connected authorities, including the order authority.
+                        {t("Select at least two connected authorities, including the order authority.")}
                       </p>
                     )}
                   </div>
@@ -813,8 +818,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                   {nonSpotifySourceConflict && (
                     <p className="flex items-start gap-1.5 text-xs leading-relaxed text-text-3">
                       <LuInfo className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                      Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll
-                      be skipped.
+                      {t("Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.")}
                     </p>
                   )}
                 </div>
@@ -889,21 +893,20 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                     <Toggle
                       checked={form.sync_playlists}
                       onChange={(selected) => setField('sync_playlists', selected)}
-                      label="Also sync every regular playlist"
-                      description="Leave this off for a liked-tracks-only sync."
+                      label={t("Also sync every regular playlist")}
+                      description={t("Leave this off for a liked-tracks-only sync.")}
                     />
                   )}
                   <div>
-                    <h3 className="text-[12.5px] font-semibold text-text-2">Where should liked tracks go?</h3>
+                    <h3 className="text-[12.5px] font-semibold text-text-2">{t("Where should liked tracks go?")}</h3>
                     <p className="mt-1 text-xs leading-relaxed text-text-3">
-                      Choose each destination's built-in collection or create a regular playlist from{' '}
-                      {likedPlaylistSuggestion}.
+                      {t("Choose each destination's built-in collection or create a regular playlist from {{likedPlaylistSuggestion}}.", { likedPlaylistSuggestion: likedPlaylistSuggestion })}
                     </p>
                   </div>
 
                   {likedDestinations.length === 0 ? (
                     <p className="rounded-control border border-dashed border-border-strong px-3 py-2.5 text-xs text-text-3">
-                      Add another service on the Services step to sync these liked tracks anywhere.
+                      {t("Add another service on the Services step to sync these liked tracks anywhere.")}
                     </p>
                   ) : (
                     <div className="flex flex-col gap-4">
@@ -922,7 +925,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                             </div>
                             <div
                               role="radiogroup"
-                              aria-label={`${account.name} liked-track destination`}
+                              aria-label={t("{{accountName}} liked-track destination", { accountName: account.name })}
                               className="grid gap-2 sm:grid-cols-2"
                             >
                               <RadioCard
@@ -930,25 +933,25 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                                 value="native"
                                 checked={route.kind === 'native'}
                                 onChange={() => setLikedRoute(account.id, { kind: 'native' })}
-                                title={`Use ${account.name} ${nativeLikedTracksName(account.provider)}`}
-                                description="Sync directly into this service's built-in liked collection."
+                                title={t("Use {{accountName}} {{nativeLikedTracksName}}", { accountName: account.name, nativeLikedTracksName: nativeLikedTracksName(account.provider) })}
+                                description={t("Sync directly into this service's built-in liked collection.")}
                               />
                               <RadioCard
                                 name={`liked-route-${account.id}`}
                                 value="playlist"
                                 checked={route.kind === 'playlist'}
                                 onChange={() => setLikedRoute(account.id, { kind: 'playlist', name: likedPlaylistSuggestion })}
-                                title={`Create a new playlist on ${account.name}`}
-                                description="Use a regular playlist with a name you can edit."
+                                title={t("Create a new playlist on {{accountName}}", { accountName: account.name })}
+                                description={t("Use a regular playlist with a name you can edit.")}
                               />
                             </div>
                             {route.kind === 'playlist' && (
                               <TextField
-                                label={`${account.name} playlist name`}
+                                label={t("{{accountName}} playlist name", { accountName: account.name })}
                                 value={playlistName}
                                 aria-required="true"
                                 onChange={(event) => setLikedRoute(account.id, { kind: 'playlist', name: event.target.value })}
-                                error={!playlistName.trim() ? 'Enter a playlist name.' : undefined}
+                                error={!playlistName.trim() ? t("Enter a playlist name.") : undefined}
                               />
                             )}
                           </div>
@@ -967,19 +970,19 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
               <Toggle
                 checked={form.enabled}
                 onChange={(v) => setField('enabled', v)}
-                label="Active"
+                label={t("Active")}
                 description={
                   form.enabled
-                    ? 'Runs on its own schedule, and is included in "Run all enabled".'
-                    : 'Paused, skipped by its schedule and by "Run all enabled". You can still sync it manually.'
+                    ? t("Runs on its own schedule, and is included in \"Run all enabled\".")
+                    : t("Paused, skipped by its schedule and by \"Run all enabled\". You can still sync it manually.")
                 }
               />
               <IntervalField
-                label="Interval"
-                help="How often this sync runs automatically."
+                label={t("Interval")}
+                help={t("How often this sync runs automatically.")}
                 value={form.interval}
                 onChange={(value) => setField('interval', value)}
-                error={intervalValid ? undefined : 'Enter a positive whole-number interval.'}
+                error={intervalValid ? undefined : t("Enter a positive whole-number interval.")}
               />
             </>
           )}
@@ -987,24 +990,24 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
           {step === 4 && (
             <>
               <div className="flex flex-col gap-3.5">
-                <span className="text-[12.5px] font-semibold text-text-2">Safety caps</span>
+                <span className="text-[12.5px] font-semibold text-text-2">{t("Safety caps")}</span>
                 <div className="grid grid-cols-2 gap-3">
                   <TextField
-                    label="Max additions / pass"
+                    label={t("Max additions / pass")}
                     type="number"
                     min={1}
                     value={form.max_adds}
                     onChange={(e) => setField('max_adds', e.target.value)}
-                    error={!maxAddsValid ? 'Enter a whole number of 1 or more.' : undefined}
+                    error={!maxAddsValid ? t("Enter a whole number of 1 or more.") : undefined}
                   />
                   {form.mirror_removals && (
                     <TextField
-                      label="Max removals / pass"
+                      label={t("Max removals / pass")}
                       type="number"
                       min={1}
                       value={form.max_removals}
                       onChange={(e) => setField('max_removals', e.target.value)}
-                      error={!maxRemovalsValid ? 'Enter a whole number of 1 or more.' : undefined}
+                      error={!maxRemovalsValid ? t("Enter a whole number of 1 or more.") : undefined}
                     />
                   )}
                 </div>
@@ -1013,8 +1016,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                     ~
                   </span>
                   <p className="text-[12px] leading-relaxed text-text-2">
-                    A pass that would exceed a cap <span className="font-semibold text-text">holds</span> the excess
-                    instead of writing it. You'll see held rows in the feed and can review before anything is lost.
+                    <Trans i18nKey={"A pass that would exceed a cap <span1>holds</span1> the excess instead of writing it. You'll see held rows in the feed and can review before anything is lost."} components={{ span1: <span className="font-semibold text-text" /> }} />
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1022,15 +1024,15 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                     className="flex-1"
                     checked={form.mirror_removals}
                     onChange={(v) => setField('mirror_removals', v)}
-                    label={form.mode === 'merge' ? 'Remove tracks absent from every source' : 'Mirror removals'}
+                    label={form.mode === 'merge' ? t("Remove tracks absent from every source") : t("Mirror removals")}
                     description={
                       form.mode === 'merge'
-                        ? 'Off: append-only; destination-only tracks are always kept. On: remove a track only after a complete pass confirms it is absent from every source.'
+                        ? t("Off: append-only; destination-only tracks are always kept. On: remove a track only after a complete pass confirms it is absent from every source.")
                         : form.mode === 'group'
-                        ? 'Off (default): removals and mirror-only tracks are kept. On: confirmed removals from either authority—and tracks found only on mirrors—are pruned everywhere, capped per pass.'
+                        ? t("Off (default): removals and mirror-only tracks are kept. On: confirmed removals from either authority—and tracks found only on mirrors—are pruned everywhere, capped per pass.")
                         : form.mode === 'nway'
-                          ? 'Off (default): a track removed on one service is kept on the others. On: confirmed removals from any service sync too, capped per pass.'
-                          : 'Off (default): tracks missing from the source are kept on mirrors. On: source removals sync too, capped per pass.'
+                          ? t("Off (default): a track removed on one service is kept on the others. On: confirmed removals from any service sync too, capped per pass.")
+                          : t("Off (default): tracks missing from the source are kept on mirrors. On: source removals sync too, capped per pass.")
                     }
                   />
                   <Tooltip
@@ -1038,30 +1040,26 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                       <>
                         {form.mode === 'merge' ? (
                           <>
-                            Every source must be read completely before a removal is allowed. Any failed or partial
-                            source read disables all removals for that pass.
+                            {t("Every source must be read completely before a removal is allowed. Any failed or partial source read disables all removals for that pass.")}
                           </>
                         ) : form.mode === 'group' ? (
                           <>
-                            A confirmed removal on <span className="font-semibold text-text">either authority</span>, or
-                            a track added only to a mirror, is removed across the group. Mirror edits never become
-                            authoritative.
+                            <Trans i18nKey={"A confirmed removal on <span1>either authority</span1>, or a track added only to a mirror, is removed across the group. Mirror edits never become authoritative."} components={{ span1: <span className="font-semibold text-text" /> }} />
                           </>
                         ) : form.mode === 'nway' ? (
                           <>
-                            A track removed on <span className="font-semibold text-text">any</span> service is deleted
-                            from all the others after confirmation.
+                            <Trans i18nKey={"A track removed on <span1>any</span1> service is deleted from all the others after confirmation."} components={{ span1: <span className="font-semibold text-text" /> }} />
                           </>
                         ) : (
-                          <>A track absent from the source is removed from every selected mirror.</>
+                          <>{t("A track absent from the source is removed from every selected mirror.")}</>
                         )}{' '}
-                        Removals under the cap apply without review.
+                        {t('Removals under the cap apply without review.')}
                       </>
                     }
                   >
                     <button
                       type="button"
-                      aria-label={form.mode === 'merge' ? 'About aggregate removals' : 'About mirroring removals'}
+                      aria-label={form.mode === 'merge' ? t("About aggregate removals") : t("About mirroring removals")}
                       className="cursor-help rounded-full p-1 text-text-3 transition-colors duration-fast hover:text-warning focus-visible:text-warning"
                     >
                       <LuInfo size={15} />
@@ -1072,8 +1070,8 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                   <Toggle
                     checked={form.apply_large_removals}
                     onChange={(v) => setField('apply_large_removals', v)}
-                    label="Apply large removals"
-                    description="Off (default): removals beyond the cap are held back for safety. On: they're deleted in capped batches over successive passes until cleared."
+                    label={t("Apply large removals")}
+                    description={t("Off (default): removals beyond the cap are held back for safety. On: they're deleted in capped batches over successive passes until cleared.")}
                   />
                 )}
               </div>
@@ -1081,21 +1079,20 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
               <div className="border-t border-border pt-3.5">
                 {form.mode === 'merge' ? (
                   <p className="text-xs leading-relaxed text-text-3">
-                    Aggregate jobs write one provider playlist. The separate download mirror currently follows
-                    ordinary Spotify-led playlist jobs and is unavailable here.
+                    {t("Aggregate jobs write one provider playlist. The separate download mirror currently follows ordinary Spotify-led playlist jobs and is unavailable here.")}
                   </p>
                 ) : (
                   <Toggle
                     checked={form.download}
                     onChange={(v) => setField('download', v)}
-                    label="Download this sync's playlists"
-                    description="Uses the folder and format configured in Settings → Download mirror."
+                    label={t("Download this sync's playlists")}
+                    description={t("Uses the folder and format configured in Settings → Download mirror.")}
                   />
                 )}
               </div>
 
               <div className="flex flex-col gap-2.5 rounded-control border border-border bg-surface-2/40 p-3.5">
-                <span className="font-mono text-[10px] font-semibold tracking-[0.1em] text-text-3">REVIEW</span>
+                <span className="font-mono text-[10px] font-semibold tracking-[0.1em] text-text-3">{t("REVIEW")}</span>
                 <dl className="grid grid-cols-[5rem_1fr] gap-x-3 gap-y-2">
                   {summaryRows.map((row) => (
                     <Fragment key={row.label}>
@@ -1114,16 +1111,16 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
             <Button
               type="button"
               variant="secondary"
-              icon={<LuArrowLeft className="size-4" aria-hidden="true" />}
+              icon={<LuArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden="true" />}
               onClick={() => goToStep(step - 1)}
             >
-              Back
+              {t("Back")}
             </Button>
           )}
           {!isLastStep && (
-            <Button type="button" onClick={() => goToStep(step + 1)} disabled={!stepValid[step]} className="ml-auto">
-              Next
-              <LuArrowRight className="size-4" aria-hidden="true" />
+            <Button type="button" onClick={() => goToStep(step + 1)} disabled={!stepValid[step]} className="ms-auto">
+              {t("Next")}
+              <LuArrowRight className="size-4 rtl:-scale-x-100" aria-hidden="true" />
             </Button>
           )}
         </div>

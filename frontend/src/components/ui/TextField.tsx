@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useId, useState } from 'react'
 import type { InputHTMLAttributes, ReactNode } from 'react'
 
@@ -14,6 +15,7 @@ interface TextFieldProps extends InputHTMLAttributes<HTMLInputElement> {
 /** `type="password"` fields get an inline reveal toggle (masked by default,
  * never logged) — matches the design's TextField "secret" state. */
 export function TextField({ label, help, error, className, id, required, type, ...rest }: TextFieldProps) {
+  useTranslation()
   const autoId = useId()
   const fieldId = id ?? autoId
   const helpId = help ? `${fieldId}-help` : undefined
@@ -31,18 +33,19 @@ export function TextField({ label, help, error, className, id, required, type, .
             <span className="text-danger" aria-hidden="true">
               *
             </span>
-            <span className="sr-only"> (required)</span>
+            <span className="sr-only"> {t("(required)")}</span>
           </>
         )}
       </label>
       <div className="relative">
         <input
           id={fieldId}
-          type={isSecret && revealed ? 'text' : type}
+          type={isSecret && revealed ? "text" : type}
+          dir={isSecret ? 'ltr' : undefined}
           required={required}
           className={cn(
             FIELD_INPUT_CLASSES,
-            isSecret && 'pr-16',
+            isSecret && 'pe-16',
             error && 'border-danger focus:border-danger',
             className,
           )}
@@ -55,10 +58,10 @@ export function TextField({ label, help, error, className, id, required, type, .
             type="button"
             onClick={() => setRevealed((r) => !r)}
             aria-pressed={revealed}
-            aria-label={revealed ? 'Hide value' : 'Show value'}
-            className="absolute right-1.5 top-1/2 inline-flex h-[30px] -translate-y-1/2 items-center rounded-chip bg-surface-2 px-2.5 text-xs font-semibold text-text-3 hover:text-text-2"
+            aria-label={revealed ? t("Hide value") : t("Show value")}
+            className="absolute end-1.5 top-1/2 inline-flex h-[30px] -translate-y-1/2 items-center rounded-chip bg-surface-2 px-2.5 text-xs font-semibold text-text-3 hover:text-text-2"
           >
-            {revealed ? 'hide' : 'show'}
+            {revealed ? t("hide") : t("show")}
           </button>
         )}
       </div>

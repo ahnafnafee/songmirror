@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useState } from 'react'
 
 import { api, errorMessage } from '@/api'
@@ -17,6 +18,7 @@ const PROVIDERS = [
 ] as const
 
 export default function Accounts() {
+  useTranslation()
   const { accounts, loading, error, refresh } = useAccounts()
   const [adding, setAdding] = useState(false)
   const [provider, setProvider] = useState('spotify')
@@ -40,37 +42,37 @@ export default function Accounts() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Accounts</h1>
+        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">{t("Accounts")}</h1>
         <p className="text-[13.5px] text-text-3">
-          Credentials never leave this machine. They're stored in SongMirror's own data folder.
+          {t("Credentials never leave this machine. They're stored in SongMirror's own data folder.")}
         </p>
       </div>
 
       <Card className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto]">
         <SelectField
-          label="Provider"
+          label={t("Provider")}
           value={provider}
           onChange={(event) => setProvider(event.target.value)}
           options={PROVIDERS.map(([value, name]) => ({ value, label: name }))}
         />
         <TextField
-          label="New profile label"
+          label={t("New profile label")}
           aria-describedby="profile-label-help"
-          placeholder="e.g. Alex"
+          placeholder={t("e.g. Alex")}
           value={label}
           onChange={(event) => setLabel(event.target.value)}
         />
         <Button className="h-11 md:h-[42px]" loading={adding} onClick={() => void addProfile()}>
-          Add profile
+          {t("Add profile")}
         </Button>
-        <p id="profile-label-help" className="text-xs text-text-3 sm:col-span-3">Use a household member or purpose, such as Alex or Work.</p>
+        <p id="profile-label-help" className="text-xs text-text-3 sm:col-span-3">{t("Use a household member or purpose, such as Alex or Work.")}</p>
       </Card>
-      {addError && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not add profile: {addError}</p>}
+      {addError && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{t("Could not add profile: {{addError}}", { addError: addError })}</p>}
 
-      {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not load accounts: {error}</p>}
+      {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{t("Could not load accounts: {{error}}", { error: error })}</p>}
 
       {loading && !accounts ? (
-        <LoadingStatus label="Loading accounts…">
+        <LoadingStatus label={t("Loading accounts…")}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {[0, 1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-40 w-full rounded-card" />
@@ -84,7 +86,7 @@ export default function Accounts() {
           ))}
         </div>
       ) : (
-        <EmptyState title="No connectors available" description="This installation has no configured services." />
+        <EmptyState title={t("No connectors available")} description={t("This installation has no configured services.")} />
       )}
     </div>
   )

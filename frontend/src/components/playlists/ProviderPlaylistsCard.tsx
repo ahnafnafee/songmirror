@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { Link } from 'react-router-dom'
 import { LuExternalLink, LuListMusic } from 'react-icons/lu'
 
@@ -31,6 +32,7 @@ export function ProviderPlaylistsCard({
   onOpenPlaylist: (playlist: ProviderPlaylist) => void
   onRetry: () => void
 }) {
+  useTranslation()
   const connected = account.state === 'connected'
   const libraryReadable = capabilitiesOf(account).library_read
   const logoId = serviceLogoId(account.provider)
@@ -49,7 +51,7 @@ export function ProviderPlaylistsCard({
           <h3 className="min-w-0 flex-1 truncate text-base font-bold text-text">{account.name}</h3>
           {connected && entry && entry.playlists.length > 0 && (
             <span className="shrink-0 font-mono text-[11px] text-text-3">
-              {entry.playlists.length} playlist{entry.playlists.length === 1 ? '' : 's'}
+              {t("{{count, number}} playlist", { count: entry.playlists.length, defaultValue_one: "{{count, number}} playlist", defaultValue_other: "{{count, number}} playlists" })}
             </span>
           )}
         </div>
@@ -62,7 +64,7 @@ export function ProviderPlaylistsCard({
               rel="noreferrer"
               className="inline-flex min-h-8 items-center gap-1.5 rounded-control px-2 text-[11.5px] font-semibold text-text-3 hover:bg-surface-2 hover:text-text-2"
             >
-              Open service
+              {t("Open service")}
               <LuExternalLink className="size-3" aria-hidden="true" />
             </a>
           ) : null}
@@ -71,29 +73,29 @@ export function ProviderPlaylistsCard({
 
       {entry?.error && entry.playlists.length > 0 && (
         <p className="rounded-control bg-warning-soft px-3 py-2 text-xs text-text-2">
-          Showing the saved list. Refresh failed: {entry.error}
+          {t("Showing the saved list. Refresh failed: {{entryError}}", { entryError: entry.error })}
         </p>
       )}
 
       {!connected ? (
         <EmptyState
           className="py-6"
-          title="Nothing to browse yet."
-          description="Connect this service and its playlists appear here, ready for pairing."
+          title={t("Nothing to browse yet.")}
+          description={t("Connect this service and its playlists appear here, ready for pairing.")}
           action={
             <Link to="/accounts" className={cn(BUTTON_BASE_CLASSES, BUTTON_SIZE_CLASSES.sm, BUTTON_VARIANT_CLASSES.primary)}>
-              Connect
+              {t("Connect")}
             </Link>
           }
         />
       ) : !libraryReadable ? (
         <EmptyState
           className="py-6"
-          title="Catalog access only"
-          description={account.detail || 'Paste a public playlist link on Transfers. Library browsing and writes are unavailable.'}
+          title={t("Catalog access only")}
+          description={account.detail || t("Paste a public playlist link on Transfers. Library browsing and writes are unavailable.")}
         />
       ) : !entry || (entry.loading && entry.playlists.length === 0) ? (
-        <LoadingStatus label={`Loading ${account.name} playlists…`}>
+        <LoadingStatus label={t("Loading {{accountName}} playlists…", { accountName: account.name })}>
           <div className="flex flex-col gap-2">
             <Skeleton className="h-9 w-full" />
             <Skeleton className="h-9 w-full" />
@@ -102,8 +104,8 @@ export function ProviderPlaylistsCard({
         </LoadingStatus>
       ) : entry.error && entry.playlists.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-control bg-danger-soft p-3">
-          <p className="text-sm text-danger">Could not load playlists: {entry.error}</p>
-          <Button variant="secondary" size="sm" onClick={onRetry}>Retry</Button>
+          <p className="text-sm text-danger">{t("Could not load playlists: {{entryError}}", { entryError: entry.error })}</p>
+          <Button variant="secondary" size="sm" onClick={onRetry}>{t("Retry")}</Button>
         </div>
       ) : entry.playlists.length > 0 ? (
         <ul className="thin-scrollbar flex max-h-80 flex-col divide-y divide-border overflow-y-auto">
@@ -112,8 +114,8 @@ export function ProviderPlaylistsCard({
               <button
                 type="button"
                 onClick={() => onOpenPlaylist(p)}
-                className="group flex min-w-0 flex-1 items-center gap-3 rounded-control text-left hover:text-accent"
-                aria-label={`Open ${p.name} inside SongMirror`}
+                className="group flex min-w-0 flex-1 items-center gap-3 rounded-control text-start hover:text-accent"
+                aria-label={t("Open {{pName}} inside SongMirror", { pName: p.name })}
               >
                 <span className="shrink-0 font-mono text-[10px] text-text-3" aria-hidden="true">
                   {String(i + 1).padStart(2, '0')}
@@ -130,8 +132,8 @@ export function ProviderPlaylistsCard({
                   href={p.external_url}
                   target="_blank"
                   rel="noreferrer"
-                  aria-label={`Open ${p.name} in ${account.name}`}
-                  title={`Open in ${account.name}`}
+                  aria-label={t("Open {{pName}} in {{accountName}}", { pName: p.name, accountName: account.name })}
+                  title={t("Open in {{accountName}}", { accountName: account.name })}
                   className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-text-3 hover:bg-surface-2 hover:text-text md:size-8"
                 >
                   <LuExternalLink className="size-3.5" aria-hidden="true" />
@@ -143,19 +145,19 @@ export function ProviderPlaylistsCard({
       ) : (
         <EmptyState
           className="py-6"
-          title="No playlists found"
-          description="No playlists were returned. Refresh once before creating a new one."
-          action={<Button variant="secondary" size="sm" onClick={onRetry}>Refresh</Button>}
+          title={t("No playlists found")}
+          description={t("No playlists were returned. Refresh once before creating a new one.")}
+          action={<Button variant="secondary" size="sm" onClick={onRetry}>{t("Refresh")}</Button>}
         />
       )}
 
       {connected && libraryReadable && account.transferable && entry && entry.playlists.length > 0 ? (
         <div className="border-t border-border pt-3">
           <p className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-text-3">
-            Local backup
+            {t("Local backup")}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-text-3">
-            Export every playlist with its ordered track metadata.
+            {t("Export every playlist with its ordered track metadata.")}
           </p>
           <PlaylistExportActions
             provider={account.id}

@@ -1,3 +1,5 @@
+import { formatNumber } from '@/lib/format'
+import { t, useTranslation } from '@/i18n'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LuCircleAlert, LuTriangleAlert, LuX } from 'react-icons/lu'
@@ -18,10 +20,10 @@ const HELD_REMOVAL_PREVIEW = 6
  * same reason, which the first few already name. */
 const FAILURE_PREVIEW = 4
 
-const COUNT_FORMATTER = new Intl.NumberFormat('en-US')
+
 
 function formatCount(value: number): string {
-  return COUNT_FORMATTER.format(value)
+  return formatNumber(value)
 }
 
 interface NeedsLookItem {
@@ -38,7 +40,7 @@ function diagnosticDetails(rows: ChangeDiagnostic[]): string[] {
   const lines = rows
     .slice(0, HELD_REMOVAL_PREVIEW)
     .map((row) => `${row.provider} · ${row.playlist}: ${formatCount(row.count)} — ${row.evidence}`)
-  if (rows.length > lines.length) lines.push(`+${rows.length - lines.length} more evidence records`)
+  if (rows.length > lines.length) lines.push(t("+{{rowsLength, number}} more evidence records", { rowsLength: rows.length - lines.length }))
   return lines
 }
 
@@ -68,25 +70,25 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
       items.push({
         key: `acct-${a.id}`,
         icon: LuTriangleAlert,
-        title: `${a.name} sign-in expired`,
-        description: a.detail || 'Reconnect to resume the syncs that touch it.',
-        action: { label: 'Reconnect', to: '/accounts' },
+        title: t("{{aName}} sign-in expired", { aName: a.name }),
+        description: a.detail || t("Reconnect to resume the syncs that touch it."),
+        action: { label: t("Reconnect"), to: '/accounts' },
       })
     } else if (a.state === 'error') {
       items.push({
         key: `acct-${a.id}`,
         icon: LuCircleAlert,
-        title: `${a.name} connection error`,
-        description: a.detail || 'Passes skip this service until the error clears.',
-        action: { label: 'Fix', to: '/accounts' },
+        title: t("{{aName}} connection error", { aName: a.name }),
+        description: a.detail || t("Passes skip this service until the error clears."),
+        action: { label: t("Fix"), to: '/accounts' },
       })
     } else if (a.state === 'unconfigured') {
       items.push({
         key: `acct-${a.id}`,
         icon: LuTriangleAlert,
-        title: `${a.name} isn't set up`,
-        description: a.detail || "Connect it to include it in syncs. It's skipped until then.",
-        action: { label: 'Connect', to: '/accounts' },
+        title: t("{{aName}} isn't set up", { aName: a.name }),
+        description: a.detail || t("Connect it to include it in syncs. It's skipped until then."),
+        action: { label: t("Connect"), to: '/accounts' },
       })
     }
   }
@@ -95,8 +97,8 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     items.push({
       key: 'last-pass-error',
       icon: LuCircleAlert,
-      title: 'The last pass failed',
-      description: status.last.error || "It didn't complete successfully. The services it reached are unaffected.",
+      title: t("The last pass failed"),
+      description: status.last.error || t("It didn't complete successfully. The services it reached are unaffected."),
     })
   }
 
@@ -105,9 +107,9 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     items.push({
       key: `target-directory-${target.name}`,
       icon: LuCircleAlert,
-      title: `${target.name} library was incomplete`,
+      title: t("{{targetName}} library was incomplete", { targetName: target.name }),
       description: target.error,
-      details: [`No ${target.name} playlists were changed. SongMirror will retry on the next pass.`],
+      details: [t("No {{targetName}} playlists were changed. SongMirror will retry on the next pass.", { targetName: target.name })],
     })
   }
 
@@ -119,10 +121,10 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     items.push({
       key: `target-auth-${target.name}`,
       icon: LuTriangleAlert,
-      title: `${target.name} was skipped`,
+      title: t("{{targetName}} was skipped", { targetName: target.name }),
       description: target.error,
-      details: ['Other destinations and post-sync work continued.'],
-      action: { label: 'Reconnect', to: '/accounts' },
+      details: [t("Other destinations and post-sync work continued.")],
+      action: { label: t("Reconnect"), to: '/accounts' },
     })
   }
 
@@ -133,13 +135,13 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     const listed = status?.last?.per_target.flatMap((t) => t.failures ?? []) ?? []
     const details = listed.slice(0, FAILURE_PREVIEW).map((f) => `${f.playlist}: ${f.error}`)
     if (listed.length > details.length) {
-      details.push(`+${listed.length - details.length} more`)
+      details.push(t("+{{listedLength, number}} more", { listedLength: listed.length - details.length }))
     }
     items.push({
       key: 'playlists-failed',
       icon: LuCircleAlert,
-      title: `${failedTotal} playlist${failedTotal === 1 ? '' : 's'} failed to sync`,
-      description: 'The rest of the pass finished. These were left exactly as they were and are retried next pass.',
+      title: t("{{count, number}} playlist failed to sync", { count: failedTotal, defaultValue_one: "{{count, number}} playlist failed to sync", defaultValue_other: "{{count, number}} playlists failed to sync" }),
+      description: t("The rest of the pass finished. These were left exactly as they were and are retried next pass."),
       details,
     })
   }
@@ -152,10 +154,9 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     items.push({
       key: 'authority-baseline',
       icon: LuTriangleAlert,
-      title: 'An authoritative baseline is being established',
+      title: t("An authoritative baseline is being established"),
       description:
-        'This authority set has not completed a trusted pass before. Additions may proceed, but SongMirror held ' +
-        'every removal until the next complete pass can compare against this baseline.',
+        t("This authority set has not completed a trusted pass before. Additions may proceed, but SongMirror held every removal until the next complete pass can compare against this baseline."),
       details: diagnosticDetails(authorityBaselineRows),
     })
   }
@@ -165,10 +166,9 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     items.push({
       key: 'playlist-recreated',
       icon: LuTriangleAlert,
-      title: `${recreatedRows.length} provider playlist${recreatedRows.length === 1 ? '' : 's'} recreated`,
+      title: t("{{count, number}} provider playlist recreated", { count: recreatedRows.length, defaultValue_one: "{{count, number}} provider playlist recreated", defaultValue_other: "{{count, number}} provider playlists recreated" }),
       description:
-        'The playlist kept its name but received a new provider ID. SongMirror discarded that side’s stale ' +
-        'baseline and rebuilt it from the replacement instead of treating the smaller read as a deletion.',
+        t("The playlist kept its name but received a new provider ID. SongMirror discarded that side’s stale baseline and rebuilt it from the replacement instead of treating the smaller read as a deletion."),
       details: diagnosticDetails(recreatedRows),
     })
   }
@@ -178,11 +178,10 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     items.push({
       key: 'isrc-fallback',
       icon: LuTriangleAlert,
-      title: `${isrcFallback} Spotify lookup${isrcFallback === 1 ? '' : 's'} used the legacy API path`,
+      title: t("{{count, number}} Spotify lookup used the legacy API path", { count: isrcFallback, defaultValue_one: "{{count, number}} Spotify lookup used the legacy API path", defaultValue_other: "{{count, number}} Spotify lookups used the legacy API path" }),
       description:
-        'This summary came from the older developer-app connection. Reconnect Spotify with its signed-in web ' +
-        'session to remove the API-key and Premium dependency.',
-      action: { label: 'Use web session', to: '/accounts' },
+        t("This summary came from the older developer-app connection. Reconnect Spotify with its signed-in web session to remove the API-key and Premium dependency."),
+      action: { label: t("Use web session"), to: '/accounts' },
     })
   }
 
@@ -195,10 +194,9 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     items.push({
       key: 'unconfirmed-absence',
       icon: LuTriangleAlert,
-      title: `${formatCount(firstSeenTotal)} playlist absence${firstSeenTotal === 1 ? '' : 's'} awaiting verification`,
+      title: t("{{count, number}} playlist absence awaiting verification", { count: firstSeenTotal, defaultValue_one: "{{count, number}} playlist absence awaiting verification", defaultValue_other: "{{count, number}} playlist absences awaiting verification" }),
       description:
-        'Each track was missing from one complete provider read. That is not treated as a deletion: SongMirror ' +
-        'kept it everywhere, froze the baseline, and requires the same source-local absence on a second trusted pass.',
+        t("Each track was missing from one complete provider read. That is not treated as a deletion: SongMirror kept it everywhere, froze the baseline, and requires the same source-local absence on a second trusted pass."),
       details: diagnosticDetails(firstSeenRows),
     })
   }
@@ -212,10 +210,9 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     items.push({
       key: 'read-anomaly',
       icon: LuCircleAlert,
-      title: `${formatCount(readAnomalyTotal)} provider read signal${readAnomalyTotal === 1 ? '' : 's'} rejected as unsafe`,
+      title: t("{{count, number}} provider read signal rejected as unsafe", { count: readAnomalyTotal, defaultValue_one: "{{count, number}} provider read signal rejected as unsafe", defaultValue_other: "{{count, number}} provider read signals rejected as unsafe" }),
       description:
-        'The read was incomplete or one old identity split ambiguously. Its apparent removals were excluded from ' +
-        'the merge, no baseline advanced, and the next pass will read the provider again.',
+        t("The read was incomplete or one old identity split ambiguously. Its apparent removals were excluded from the merge, no baseline advanced, and the next pass will read the provider again."),
       details: diagnosticDetails(readAnomalyRows),
     })
   }
@@ -226,10 +223,9 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     items.push({
       key: 'replacement-blocked',
       icon: LuTriangleAlert,
-      title: `${formatCount(blockedReplacementTotal)} replacement${blockedReplacementTotal === 1 ? '' : 's'} could not be completed safely`,
+      title: t("{{count, number}} replacement could not be completed safely", { count: blockedReplacementTotal, defaultValue_one: "{{count, number}} replacement could not be completed safely", defaultValue_other: "{{count, number}} replacements could not be completed safely" }),
       description:
-        'SongMirror could not prove or apply every required addition first, so it performed no related removals ' +
-        'and kept the baseline unchanged for a safe retry.',
+        t("SongMirror could not prove or apply every required addition first, so it performed no related removals and kept the baseline unchanged for a safe retry."),
       details: diagnosticDetails(blockedReplacementRows),
     })
   }
@@ -251,14 +247,13 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     const details = structuredHeldTotal > 0
       ? diagnosticDetails(uncertainRows)
       : targets.filter((target) => target.held > 0)
-        .map((target) => `${target.name}: ${formatCount(target.held)} kept`)
+        .map((target) => t("{{targetName}}: {{formatCount}} kept", { targetName: target.name, formatCount: formatCount(target.held) }))
     items.push({
       key: 'uncertain-match',
       icon: LuTriangleAlert,
-      title: `${formatCount(total)} destination match${total === 1 ? '' : 'es'} remained uncertain`,
+      title: t("{{count, number}} destination match remained uncertain", { count: total, defaultValue_one: "{{count, number}} destination match remained uncertain", defaultValue_other: "{{count, number}} destination matches remained uncertain" }),
       description:
-        'The catalog evidence was not strong enough to call two releases the same recording. SongMirror kept the ' +
-        'existing copy and made no destructive change.',
+        t("The catalog evidence was not strong enough to call two releases the same recording. SongMirror kept the existing copy and made no destructive change."),
       details,
     })
   }
@@ -267,16 +262,15 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
   if (deferredTotal > 0) {
     const details = targets
       .filter((target) => target.deferred > 0)
-      .map((target) => `${target.name}: ${formatCount(target.deferred)} waiting`)
+      .map((target) => t("{{targetName}}: {{formatCount}} waiting", { targetName: target.name, formatCount: formatCount(target.deferred) }))
     items.push({
       key: 'deferred-additions',
       icon: LuTriangleAlert,
-      title: `${formatCount(deferredTotal)} addition${deferredTotal === 1 ? '' : 's'} deferred by the cap`,
+      title: t("{{count, number}} addition deferred by the cap", { count: deferredTotal, defaultValue_one: "{{count, number}} addition deferred by the cap", defaultValue_other: "{{count, number}} additions deferred by the cap" }),
       description:
-        "These tracks weren't skipped. SongMirror will continue adding them in later passes, " +
-        "up to each playlist's configured limit per pass.",
+        t("These tracks weren't skipped. SongMirror will continue adding them in later passes, up to each playlist's configured limit per pass."),
       details,
-      action: { label: 'Review caps', to: '/sync' },
+      action: { label: t("Review caps"), to: '/sync' },
     })
   }
 
@@ -290,19 +284,18 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
       .filter((held) => held.category === 'confirmed_removal_disabled' || held.category === 'removal_cap')
     const details = listed
       .slice(0, HELD_REMOVAL_PREVIEW)
-      .map((h) => `${h.track}${h.artist ? ` — ${h.artist}` : ''} · ${h.playlist} on ${h.target}`)
+      .map((h) => t("{{hTrack}}{{hArtist}} · {{hPlaylist}} on {{hTarget}}", { hTrack: h.track, hArtist: h.artist ? ` — ${h.artist}` : '', hPlaylist: h.playlist, hTarget: h.target }))
     if (listed.length > details.length) {
-      details.push(`+${listed.length - details.length} more`)
+      details.push(t("+{{listedLength, number}} more", { listedLength: listed.length - details.length }))
     }
     items.push({
       key: 'removals-skipped',
       icon: LuTriangleAlert,
-      title: `${formatCount(confirmedHeldTotal)} confirmed removal candidate${confirmedHeldTotal === 1 ? '' : 's'} kept`,
+      title: t("{{count, number}} confirmed removal candidate kept", { count: confirmedHeldTotal, defaultValue_one: "{{count, number}} confirmed removal candidate kept", defaultValue_other: "{{count, number}} confirmed removal candidates kept" }),
       description:
-        'The same source-local absence appeared in two consecutive complete reads, so it is now a removal ' +
-        'candidate—not an identity repair. It still was not deleted because removal mirroring is off or the cap held it.',
+        t("The same source-local absence appeared in two consecutive complete reads, so it is now a removal candidate—not an identity repair. It still was not deleted because removal mirroring is off or the cap held it."),
       details,
-      action: { label: 'Open sync', to: '/sync' },
+      action: { label: t("Open sync"), to: '/sync' },
     })
   } else if (removalsSkipped > 0 && diagnostics.length === 0) {
     // Compatibility for summaries recorded before evidence categories existed.
@@ -310,17 +303,17 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     const reasons = [...new Set(listed.map((held) => held.reason))]
     const details = listed
       .slice(0, HELD_REMOVAL_PREVIEW)
-      .map((held) => `${held.track}${held.artist ? ` — ${held.artist}` : ''} · ${held.playlist} on ${held.target}`)
-    if (listed.length > details.length) details.push(`+${listed.length - details.length} more`)
+      .map((held) => t("{{heldTrack}}{{heldArtist}} · {{heldPlaylist}} on {{heldTarget}}", { heldTrack: held.track, heldArtist: held.artist ? ` — ${held.artist}` : '', heldPlaylist: held.playlist, heldTarget: held.target }))
+    if (listed.length > details.length) details.push(t("+{{listedLength, number}} more", { listedLength: listed.length - details.length }))
     items.push({
       key: 'removals-skipped-legacy',
       icon: LuTriangleAlert,
-      title: `${formatCount(removalsSkipped)} removal${removalsSkipped === 1 ? '' : 's'} held back for safety`,
+      title: t("{{count, number}} removal held back for safety", { count: removalsSkipped, defaultValue_one: "{{count, number}} removal held back for safety", defaultValue_other: "{{count, number}} removals held back for safety" }),
       description: reasons.length
-        ? `These are still on the services below. Held because ${reasons.join('; and ')}.`
-        : 'The older pass summary did not record enough evidence to classify these holds more precisely.',
+        ? t("These are still on the services below. Held because {{reasonsJoin}}.", { reasonsJoin: reasons.join('; and ') })
+        : t("The older pass summary did not record enough evidence to classify these holds more precisely."),
       details,
-      action: { label: 'Open sync', to: '/sync' },
+      action: { label: t("Open sync"), to: '/sync' },
     })
   }
 
@@ -356,6 +349,7 @@ function loadDismissed(): string[] {
  * flag rather than showing an empty section. Each card can be dismissed; the
  * dismissal persists across reloads until that situation changes or clears. */
 export function NeedsALook({ accounts, status }: { accounts: Account[] | null; status: SyncStatus | null }) {
+  useTranslation()
   const [dismissed, setDismissed] = useState<string[]>(loadDismissed)
   const items = buildItems(accounts, status)
   const live = items.map(signature).join('\n')
@@ -390,16 +384,16 @@ export function NeedsALook({ accounts, status }: { accounts: Account[] | null; s
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center gap-2.5">
-        <h2 className="text-base font-extrabold tracking-tight text-text">Needs a look</h2>
+        <h2 className="text-base font-extrabold tracking-tight text-text">{t("Needs a look")}</h2>
         <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-chip bg-warning-soft px-1.5 font-mono text-xs font-bold text-warning">
-          {visible.length}
+          {formatNumber(visible.length)}
         </span>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {visible.map((item) => (
           <div
             key={item.key}
-            className="flex items-center gap-3 rounded-card border border-border border-l-[3px] border-l-warning bg-surface p-4 shadow-sm"
+            className="flex items-center gap-3 rounded-card border border-border border-s-[3px] border-s-warning bg-surface p-4 shadow-sm"
           >
             {/* Solid bg-warning + text-surface (not the soft-tinted bg-warning-soft
                 text-warning used elsewhere), matching the app's other solid chips
@@ -436,8 +430,8 @@ export function NeedsALook({ accounts, status }: { accounts: Account[] | null; s
             <button
               type="button"
               onClick={() => setDismissed((prev) => [...prev, signature(item)])}
-              title="Dismiss"
-              aria-label={`Dismiss: ${item.title}`}
+              title={t("Dismiss")}
+              aria-label={t("Dismiss: {{itemTitle}}", { itemTitle: item.title })}
               className="flex size-7 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-fast hover:bg-surface-2 hover:text-text"
             >
               <LuX className="size-4" aria-hidden="true" />

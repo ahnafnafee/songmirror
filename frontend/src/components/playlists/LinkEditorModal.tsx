@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useEffect, useMemo, useState } from 'react'
 
 import { api, errorMessage } from '@/api'
@@ -33,6 +34,7 @@ interface Props {
 }
 
 export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries, onSaved }: Props) {
+  useTranslation()
   const [name, setName] = useState('')
   const [direction, setDirection] = useState<LinkDirection>('oneway')
   const [source, setSource] = useState<string | null>(null)
@@ -124,15 +126,15 @@ export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries
     <Modal
       open={open}
       onClose={onClose}
-      title={link ? `Edit "${link.name}"` : 'New pairing'}
-      description="Link playlists across services that don't share a name, or limit a sync to only specific services."
+      title={link ? t("Edit \"{{linkName}}\"", { linkName: link.name }) : t("New pairing")}
+      description={t("Link playlists across services that don't share a name, or limit a sync to only specific services.")}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button type="submit" form="link-editor-form" loading={saving} disabled={!formValid}>
-            {link ? 'Save changes' : 'Create pairing'}
+            {link ? t("Save changes") : t("Create pairing")}
           </Button>
         </>
       }
@@ -148,38 +150,38 @@ export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries
         {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
         <TextField
-          label="Pairing name"
-          help="Used as the display name, and as the playlist name for any service where you choose “create new”."
+          label={t("Pairing name")}
+          help={t("Used as the display name, and as the playlist name for any service where you choose “create new”.")}
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
 
         <div className="flex flex-col gap-3">
-          <p className="text-[12.5px] font-semibold text-text-2">Services</p>
+          <p className="text-[12.5px] font-semibold text-text-2">{t("Services")}</p>
           {rowIds.length === 0 ? (
-            <p className="text-sm text-text-3">Connect at least two services on the Accounts page to create a pairing.</p>
+            <p className="text-sm text-text-3">{t("Connect at least two services on the Accounts page to create a pairing.")}</p>
           ) : (
             rowIds.map((id) => {
               const connected = connectedIds.has(id)
               const currentRaw = link?.members[id]
               const options = connected
                 ? [
-                    { value: OMIT, label: 'Not included in this pairing' },
-                    { value: CREATE, label: 'Create new (same name as pairing)' },
+                    { value: OMIT, label: t("Not included in this pairing") },
+                    { value: CREATE, label: t("Create new (same name as pairing)") },
                     ...(playlistEntries[id]?.playlists.map((p) => ({ value: p.id, label: p.name })) ?? []),
                   ]
                 : [
-                    { value: OMIT, label: 'Not included in this pairing' },
-                    { value: KEEP, label: `Keep current (${currentRaw === null ? 'create new' : currentRaw})` },
+                    { value: OMIT, label: t("Not included in this pairing") },
+                    { value: KEEP, label: currentRaw === null ? t('Keep current (create new)') : t('Keep current ({{playlist}})', { playlist: currentRaw }) },
                   ]
               const provider = accounts.find((account) => account.id === id)?.provider ?? id
               const logoId = serviceLogoId(provider)
               return (
                 <SelectField
                   key={id}
-                  label={connected ? accountName(id) : `${accountName(id)} (not connected)`}
-                  help={connected ? undefined : 'Reconnect this service on the Accounts page to change its playlist.'}
+                  label={connected ? accountName(id) : t("{{accountName}} (not connected)", { accountName: accountName(id) })}
+                  help={connected ? undefined : t("Reconnect this service on the Accounts page to change its playlist.")}
                   icon={logoId ? <ServiceLogo service={logoId} className={`size-4 ${tagText(provider)}`} /> : undefined}
                   options={options}
                   value={memberChoices[id] ?? OMIT}
@@ -189,39 +191,39 @@ export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries
             })
           )}
           {rowIds.length > 0 && !hasEnoughMembers && (
-            <p className="text-xs text-warning">Include at least 2 services to form a pairing.</p>
+            <p className="text-xs text-warning">{t("Include at least 2 services to form a pairing.")}</p>
           )}
         </div>
 
         <div className="flex flex-col gap-3">
-          <p className="text-[12.5px] font-semibold text-text-2">Sync direction</p>
+          <p className="text-[12.5px] font-semibold text-text-2">{t("Sync direction")}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <RadioCard
               name="link-direction"
               value="oneway"
               checked={direction === 'oneway'}
               onChange={() => setDirection('oneway')}
-              title="One-way"
-              description="One service is the source; the others follow it."
+              title={t("One-way")}
+              description={t("One service is the source; the others follow it.")}
             />
             <RadioCard
               name="link-direction"
               value="nway"
               checked={direction === 'nway'}
               onChange={() => setDirection('nway')}
-              title="Bidirectional (N-way)"
-              description="A change on any included service propagates to the others."
+              title={t("Bidirectional (N-way)")}
+              description={t("A change on any included service propagates to the others.")}
             />
           </div>
         </div>
 
         {direction === 'oneway' && (
           <SelectField
-            label="Source service"
-            help="The service every other included service follows."
-            error={includedIds.length > 0 && !sourceValid ? 'Pick which service is the source.' : undefined}
+            label={t("Source service")}
+            help={t("The service every other included service follows.")}
+            error={includedIds.length > 0 && !sourceValid ? t("Pick which service is the source.") : undefined}
             options={[
-              { value: '', label: includedIds.length ? 'Choose one…' : 'Include at least 2 services first' },
+              { value: '', label: includedIds.length ? t("Choose one…") : t("Include at least 2 services first") },
               ...includedIds.map((id) => ({ value: id, label: accountName(id) })),
             ]}
             value={source ?? ''}
@@ -233,8 +235,8 @@ export function LinkEditorModal({ open, onClose, link, accounts, playlistEntries
         <Toggle
           checked={enabled}
           onChange={setEnabled}
-          label="Enabled"
-          description="Paused pairings are kept but skipped during sync passes."
+          label={t("Enabled")}
+          description={t("Paused pairings are kept but skipped during sync passes.")}
         />
       </form>
     </Modal>

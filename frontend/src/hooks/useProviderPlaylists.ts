@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api, errorMessage } from '../api'
@@ -57,7 +58,7 @@ function fetchProviderPlaylists(providerId: string): Promise<ProviderPlaylist[]>
     .getPlaylists(providerId)
     .then((playlists) => {
       if (!isProviderPlaylistArray(playlists)) {
-        throw new Error(`The server returned invalid ${providerId} playlist data.`)
+        throw new Error(t("The server returned invalid {{providerId}} playlist data.", { providerId: providerId }))
       }
       playlistMemory.set(providerId, playlists)
       writePersistedResource(playlistResource(providerId), playlists)

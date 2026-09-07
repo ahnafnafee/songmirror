@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useState } from 'react'
 
 import { api, errorMessage } from '@/api'
@@ -19,7 +20,7 @@ function providerName(accounts: Account[], id: string): string {
  * data; falls back to the raw id if that provider's playlists haven't
  * loaded (or the playlist has since been removed on the service). */
 function playlistLabel(entries: Record<string, ProviderPlaylistsEntry>, providerId: string, playlistId: string | null): string {
-  if (playlistId === null) return 'Create new (same name)'
+  if (playlistId === null) return t("Create new (same name)")
   return entries[providerId]?.playlists.find((p) => p.id === playlistId)?.name ?? playlistId
 }
 
@@ -34,6 +35,7 @@ interface LinkCardProps {
 /** Pairing rows lead with the enable toggle — flips inline without opening
  * the editor — per the design's Playlists layout. */
 export function LinkCard({ link, accounts, playlistEntries, onEdit, onChanged }: LinkCardProps) {
+  useTranslation()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [togglingEnabled, setTogglingEnabled] = useState(false)
@@ -83,7 +85,7 @@ export function LinkCard({ link, accounts, playlistEntries, onEdit, onChanged }:
             checked={link.enabled}
             onChange={(next) => void handleToggleEnabled(next)}
             disabled={togglingEnabled}
-            label={`${link.enabled ? 'Disable' : 'Enable'} pairing "${link.name}"`}
+            label={link.enabled ? t('Disable pairing "{{name}}"', { name: link.name }) : t('Enable pairing "{{name}}"', { name: link.name })}
             hideLabel
           />
         </span>
@@ -91,11 +93,11 @@ export function LinkCard({ link, accounts, playlistEntries, onEdit, onChanged }:
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-[14.5px] font-bold text-text">{link.name}</h3>
             <span className="inline-flex h-[22px] items-center rounded-chip border border-border-strong px-2 font-mono text-[10.5px] font-semibold text-text-2">
-              {link.direction === 'nway' ? '⇄ N-WAY' : '→ ONE-WAY'}
+              {link.direction === 'nway' ? t("⇄ N-WAY") : t("→ ONE-WAY")}
             </span>
             {!link.enabled && (
               <span className="inline-flex h-[22px] items-center rounded-full bg-neutral-soft px-2.5 text-[11.5px] font-semibold text-neutral">
-                paused
+                {t("paused")}
               </span>
             )}
           </div>
@@ -103,7 +105,7 @@ export function LinkCard({ link, accounts, playlistEntries, onEdit, onChanged }:
       </div>
 
       {memberEntries.length > 0 ? (
-        <ul className="flex flex-wrap gap-x-3.5 gap-y-1.5 pl-[54px] text-[12.5px] text-text-2 sm:pl-[62px]">
+        <ul className="flex flex-wrap gap-x-3.5 gap-y-1.5 ps-[54px] text-[12.5px] text-text-2 sm:ps-[62px]">
           {memberEntries.map(([providerId, playlistId]) => {
             const isSource = link.direction === 'oneway' && link.source === providerId
             const provider = accounts.find((account) => account.id === providerId)?.provider ?? providerId
@@ -115,31 +117,31 @@ export function LinkCard({ link, accounts, playlistEntries, onEdit, onChanged }:
                 <span className={cn('size-[7px] shrink-0 rounded-full', tagDot(provider))} aria-hidden="true" />
                 <span className="sr-only">{providerName(accounts, providerId)}: </span>
                 {playlistLabel(playlistEntries, providerId, playlistId)}
-                {isSource && <span className="font-mono text-[10px] text-text-3">SOURCE</span>}
+                {isSource && <span className="font-mono text-[10px] text-text-3">{t("SOURCE")}</span>}
               </li>
             )
           })}
         </ul>
       ) : (
-        <p className="pl-[54px] text-sm text-text-3 sm:pl-[62px]">No services included yet.</p>
+        <p className="ps-[54px] text-sm text-text-3 sm:ps-[62px]">{t("No services included yet.")}</p>
       )}
 
-      {error && <p className="pl-[54px] text-xs text-danger sm:pl-[62px]">{error}</p>}
+      {error && <p className="ps-[54px] text-xs text-danger sm:ps-[62px]">{error}</p>}
 
       <div className="mt-auto flex flex-wrap gap-2 border-t border-border pt-3">
         <Button variant="secondary" size="sm" onClick={onEdit}>
-          Edit
+          {t("Edit")}
         </Button>
         <Button variant="ghost" size="sm" onClick={() => setConfirmingDelete(true)}>
-          Delete
+          {t("Delete")}
         </Button>
       </div>
 
       <ConfirmDialog
         open={confirmingDelete}
-        title={`Delete "${link.name}"?`}
-        description="This removes the pairing. Playlists and tracks already on each service are untouched."
-        confirmLabel="Delete"
+        title={t("Delete \"{{linkName}}\"?", { linkName: link.name })}
+        description={t("This removes the pairing. Playlists and tracks already on each service are untouched.")}
+        confirmLabel={t("Delete")}
         danger
         loading={deleting}
         onConfirm={() => void handleDelete()}

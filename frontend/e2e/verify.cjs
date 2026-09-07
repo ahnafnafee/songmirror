@@ -2050,12 +2050,12 @@ async function main() {
       // 700/1180 = 59.32...% -> rounds to 59%.
       const runningOk =
         (runningWidthStyle ?? '').includes('59%') &&
-        runningText.includes('700 / 1180') &&
+        runningText.includes('700 / 1,180') &&
         runningText.includes('SCANNED') &&
         runningText.includes('+640') &&
         runningText.includes('ADDED SO FAR')
       console.log(
-        `${runningOk ? 'ok        ' : 'FAIL      '} running job card shows the determinate bar + "700 / 1180 SCANNED" + "+640 ADDED SO FAR" (width style="${runningWidthStyle}")`,
+        `${runningOk ? 'ok        ' : 'FAIL      '} running job card shows the determinate bar + "700 / 1,180 SCANNED" + "+640 ADDED SO FAR" (width style="${runningWidthStyle}")`,
       )
       if (!runningOk) results.push({ label: 'ongoing transfers running card', overflow: true })
 
@@ -2463,7 +2463,7 @@ async function main() {
       await spotifyBackup.getByLabel('Backup frequency: every', { exact: true }).fill('2')
       await spotifyBackup.getByLabel('Keep backups', { exact: true }).selectOption('0')
       await spotifyBackup.getByLabel('Backup folder', { exact: true }).click()
-      let folderDialog = page.getByRole('dialog', { name: 'Choose backup folder' })
+      let folderDialog = page.getByRole('dialog', { name: 'Choose folder: Backup folder' })
       await folderDialog.getByRole('button', { name: 'App data', exact: true }).click()
       await folderDialog.getByRole('button', { name: 'Backups', exact: true }).click()
       await folderDialog.getByRole('button', { name: 'Select folder', exact: true }).click()
@@ -2481,7 +2481,7 @@ async function main() {
       console.log(`${hostPathShown ? 'ok        ' : 'FAIL      '} Download folder displays the original Windows host path (${downloadDirValue})`)
       if (!hostPathShown) results.push({ label: 'settings host download path', overflow: true })
       await page.getByLabel('Download folder', { exact: true }).click()
-      folderDialog = page.getByRole('dialog', { name: 'Choose download folder' })
+      folderDialog = page.getByRole('dialog', { name: 'Choose folder: Download folder' })
       await folderDialog.getByRole('button', { name: 'Open Jellyfin', exact: true }).click()
       await folderDialog.getByText('No subfolders. You can select this folder.').waitFor()
       await folderDialog.getByRole('button', { name: 'Back', exact: true }).click()
@@ -3965,8 +3965,8 @@ async function main() {
       // DECK A: the real (non-null) count from /api/playlists, not
       // "TRACK COUNT UNAVAILABLE".
       const deckAText = (await page.locator('body').innerText()).replace(/\s+/g, ' ')
-      const deckAOk = deckAText.includes('2389') && deckAText.includes('TRACKS · SNAPSHOT AT COPY TIME') && !deckAText.includes('TRACK COUNT UNAVAILABLE')
-      console.log(`${deckAOk ? 'ok        ' : 'FAIL      '} DECK A shows the real source count "2389" (TRACKS · SNAPSHOT AT COPY TIME), not "TRACK COUNT UNAVAILABLE"`)
+      const deckAOk = deckAText.includes('2,389') && deckAText.includes('TRACKS · SNAPSHOT AT COPY TIME') && !deckAText.includes('TRACK COUNT UNAVAILABLE')
+      console.log(`${deckAOk ? 'ok        ' : 'FAIL      '} DECK A shows the real source count "2,389" (TRACKS · SNAPSHOT AT COPY TIME), not "TRACK COUNT UNAVAILABLE"`)
       if (!deckAOk) results.push({ label: 'deck a real count', overflow: true })
 
       await page.getByLabel('Service', { exact: true }).nth(1).selectOption('apple')
@@ -3991,12 +3991,12 @@ async function main() {
       if (!barOk) results.push({ label: 'transfer determinate bar', overflow: true })
 
       const runningText = (await page.locator('body').innerText()).replace(/\s+/g, ' ')
-      const scannedOk = runningText.includes('1450 / 2389') && runningText.includes('SCANNED')
-      console.log(`${scannedOk ? 'ok        ' : 'FAIL      '} "1450 / 2389" + "SCANNED" readout is visible`)
+      const scannedOk = runningText.includes('1,450 / 2,389') && runningText.includes('SCANNED')
+      console.log(`${scannedOk ? 'ok        ' : 'FAIL      '} "1,450 / 2,389" + "SCANNED" readout is visible`)
       if (!scannedOk) results.push({ label: 'transfer scanned readout', overflow: true })
 
-      const addedOk = runningText.includes('+1320') && runningText.includes('ADDED SO FAR')
-      console.log(`${addedOk ? 'ok        ' : 'FAIL      '} "+1320" + "ADDED SO FAR" headline is visible`)
+      const addedOk = runningText.includes('+1,320') && runningText.includes('ADDED SO FAR')
+      console.log(`${addedOk ? 'ok        ' : 'FAIL      '} "+1,320" + "ADDED SO FAR" headline is visible`)
       if (!addedOk) results.push({ label: 'transfer added so far', overflow: true })
 
       await checkOverflow(page, 'TransferProgress determinate bar (1450/2389) @ 1280', results)

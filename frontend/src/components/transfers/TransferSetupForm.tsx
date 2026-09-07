@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useEffect, useMemo, useState } from 'react'
 
 import { api, errorMessage } from '@/api'
@@ -26,13 +27,13 @@ interface Props {
 }
 
 const DEST_MODE_OPTIONS = [
-  { value: 'existing', label: 'Existing playlist' },
-  { value: 'create', label: 'Create new' },
+  { value: 'existing', get label() { return t("Existing playlist") } },
+  { value: 'create', get label() { return t("Create new") } },
 ]
 
 const SOURCE_MODE_OPTIONS = [
-  { value: 'library', label: 'Your library' },
-  { value: 'link', label: 'Paste a link' },
+  { value: 'library', get label() { return t("Your library") } },
+  { value: 'link', get label() { return t("Paste a link") } },
 ]
 
 /** A profile's provider brand mark, tinted with its provider identity color. */
@@ -43,6 +44,7 @@ function serviceIcon(account: Account | undefined) {
 }
 
 export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
+  useTranslation()
   const [sourceMode, setSourceMode] = useState<'library' | 'link'>('library')
   const [sourceProvider, setSourceProvider] = useState('')
   const [sourcePlaylistId, setSourcePlaylistId] = useState('')
@@ -113,12 +115,12 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   const destSupportsOrder = accounts.find((a) => a.id === destProvider)?.preserves_order ?? false
   const canPreserveOrder = destMode === 'existing' && destSupportsOrder
   const preserveOrderHelp = !destProvider
-    ? 'Pick a destination service first.'
+    ? t("Pick a destination service first.")
     : destMode === 'create'
-      ? 'A new playlist has nothing to reorder — copies land in source order.'
+      ? t("A new playlist has nothing to reorder — copies land in source order.")
       : !destSupportsOrder
-        ? `${destAccount?.name ?? 'This account'} can't replay order safely, so copies land at the end of the playlist.`
-        : 'Slower, and writes every track after the oldest new one again. Off: copies land at the end.'
+        ? t("{{destAccountName}} can't replay order safely, so copies land at the end of the playlist.", { destAccountName: destAccount?.name ?? t('This account') })
+        : t("Slower, and writes every track after the oldest new one again. Off: copies land at the end.")
 
   // Copying a playlist into itself is a no-op — block only the exact same-provider,
   // same-id case; same-provider "Create new" (or a different existing list) is fine.
@@ -195,16 +197,15 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
   return (
     <Card className="flex flex-col gap-5 p-4 sm:p-6">
       <div>
-        <h2 className="text-sm font-bold text-text">Set up a transfer</h2>
+        <h2 className="text-sm font-bold text-text">{t("Set up a transfer")}</h2>
         <p className="mt-1 text-xs text-text-3">
-          A one-off copy. Existing tracks on the destination are kept, this only adds.
+          {t("A one-off copy. Existing tracks on the destination are kept, this only adds.")}
         </p>
       </div>
 
       {!canConfigureTransfer ? (
         <p className="text-sm text-text-3">
-          Connect a readable source and a writable destination on the Accounts page to copy a playlist
-          between them. Catalog-only accounts can supply a public link, but cannot be destinations.
+          {t("Connect a readable source and a writable destination on the Accounts page to copy a playlist between them. Catalog-only accounts can supply a public link, but cannot be destinations.")}
         </p>
       ) : (
         <>
@@ -218,14 +219,14 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                 style={{ backgroundImage: 'radial-gradient(var(--color-border) 1px, transparent 1px)', backgroundSize: '9px 9px' }}
               >
                 <span className="rounded bg-inset px-2 py-0.5 font-mono text-[10px] font-bold tracking-[0.14em] text-text-2">
-                  DECK A · SOURCE
+                  {t("DECK A · SOURCE")}
                 </span>
               </div>
               <div className="flex flex-1 flex-col gap-3.5 p-4">
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-[12.5px] font-semibold text-text-2">Source</span>
+                  <span className="text-[12.5px] font-semibold text-text-2">{t("Source")}</span>
                   <Segmented
-                    ariaLabel="Source playlist"
+                    ariaLabel={t("Source playlist")}
                     options={SOURCE_MODE_OPTIONS}
                     value={sourceMode}
                     onChange={(v) => switchSourceMode(v as 'library' | 'link')}
@@ -235,9 +236,9 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                 {sourceMode === 'library' ? (
                   <>
                     <SelectField
-                      label="Service"
+                      label={t("Service")}
                       icon={serviceIcon(sourceAccount)}
-                      options={[{ value: '', label: 'Choose a service…' }, ...librarySources.map((a) => ({ value: a.id, label: a.name }))]}
+                      options={[{ value: '', label: t("Choose a service…") }, ...librarySources.map((a) => ({ value: a.id, label: a.name }))]}
                       value={sourceProvider}
                       onChange={(e) => {
                         setSourceProvider(e.target.value)
@@ -245,7 +246,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                       }}
                     />
                     <PlaylistPickerField
-                      label="Playlist"
+                      label={t("Playlist")}
                       playlists={entries[sourceProvider]?.playlists ?? []}
                       loading={entries[sourceProvider]?.loading}
                       value={sourcePlaylistId}
@@ -256,10 +257,10 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                 ) : (
                   <>
                     <SelectField
-                      label="Open with account"
-                      help="The link must belong to the selected account's service."
+                      label={t("Open with account")}
+                      help={t("The link must belong to the selected account's service.")}
                       icon={serviceIcon(sourceAccount)}
-                      options={[{ value: '', label: 'Choose an account…' }, ...publicSources.map((a) => ({ value: a.id, label: a.name }))]}
+                      options={[{ value: '', label: t("Choose an account…") }, ...publicSources.map((a) => ({ value: a.id, label: a.name }))]}
                       value={sourceProvider}
                       onChange={(e) => {
                         setSourceProvider(e.target.value)
@@ -269,9 +270,9 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                       }}
                     />
                     <TextField
-                      label="Playlist link"
-                      help="A public playlist URL from a connected service with public-link access. It does not have to be saved in your library."
-                      placeholder="https://open.spotify.com/playlist/…"
+                      label={t("Playlist link")}
+                      help={t("A public playlist URL from a connected service with public-link access. It does not have to be saved in your library.")}
+                      placeholder={t("https://open.spotify.com/playlist/…")}
                       value={sourceLink}
                       onChange={(e) => clearLink(e.target.value)}
                       onKeyDown={(e) => {
@@ -287,7 +288,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                         onClick={() => void handlePreview()}
                         disabled={!sourceProvider || !sourceLink.trim() || previewing}
                       >
-                        {previewing ? 'Opening…' : 'Open link'}
+                        {previewing ? t("Opening…") : t("Open link")}
                       </Button>
                       {preview && (
                         <span className="flex min-w-0 items-center gap-1.5 text-xs text-text-3">
@@ -306,7 +307,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                     {sourcePlaylist.count ?? '?'}
                   </span>
                   <span className="font-mono text-[9px] tracking-[0.1em] text-text-3">
-                    {sourcePlaylist.count === null ? 'TRACK COUNT UNAVAILABLE' : 'TRACKS · SNAPSHOT AT COPY TIME'}
+                    {sourcePlaylist.count === null ? t("TRACK COUNT UNAVAILABLE") : t("TRACKS · SNAPSHOT AT COPY TIME")}
                   </span>
                 </div>
               )}
@@ -331,22 +332,22 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                 style={{ backgroundImage: 'radial-gradient(var(--color-border) 1px, transparent 1px)', backgroundSize: '9px 9px' }}
               >
                 <span className="rounded bg-inset px-2 py-0.5 font-mono text-[10px] font-bold tracking-[0.14em] text-text-2">
-                  DECK B · DESTINATION
+                  {t("DECK B · DESTINATION")}
                 </span>
               </div>
               <div className="flex flex-1 flex-col gap-3.5 p-4">
                 <SelectField
-                  label="Service"
+                  label={t("Service")}
                   help={
                     !sourceProvider
                       ? sourceMode === 'link'
-                        ? 'Open a playlist link first.'
-                        : 'Pick a source service first.'
+                        ? t("Open a playlist link first.")
+                        : t("Pick a source service first.")
                       : undefined
                   }
                   icon={serviceIcon(destAccount)}
                   options={[
-                    { value: '', label: 'Choose a service…' },
+                    { value: '', label: t("Choose a service…") },
                     ...destProviderOptions.map((a) => ({ value: a.id, label: a.name })),
                   ]}
                   value={destProvider}
@@ -358,9 +359,9 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                 />
 
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-[12.5px] font-semibold text-text-2">Playlist</span>
+                  <span className="text-[12.5px] font-semibold text-text-2">{t("Playlist")}</span>
                   <Segmented
-                    ariaLabel="Destination playlist"
+                    ariaLabel={t("Destination playlist")}
                     options={DEST_MODE_OPTIONS}
                     value={destMode}
                     onChange={(v) => setDestMode(v as 'existing' | 'create')}
@@ -369,8 +370,8 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
 
                 {destMode === 'existing' ? (
                   <PlaylistPickerField
-                    label="Existing playlist"
-                    placeholder={destProvider ? 'Choose a playlist…' : 'Choose a destination service first'}
+                    label={t("Existing playlist")}
+                    placeholder={destProvider ? t("Choose a playlist…") : t("Choose a destination service first")}
                     playlists={destPlaylists}
                     loading={entries[destProvider]?.loading}
                     value={destPlaylistId}
@@ -379,8 +380,8 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                   />
                 ) : (
                   <TextField
-                    label="New playlist name"
-                    help="Defaults to the source playlist's name. Feel free to change it."
+                    label={t("New playlist name")}
+                    help={t("Defaults to the source playlist's name. Feel free to change it.")}
                     required
                     value={destName}
                     onChange={(e) => setDestName(e.target.value)}
@@ -388,7 +389,7 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                 )}
 
                 <Toggle
-                  label="Preserve Recently Added order"
+                  label={t("Preserve Recently Added order")}
                   description={preserveOrderHelp}
                   checked={canPreserveOrder && preserveOrder}
                   disabled={!canPreserveOrder}
@@ -403,10 +404,10 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
                 />
                 <span className="font-mono text-[9px] tracking-[0.1em] text-text-3">
                   {destMode === 'create'
-                    ? 'WRITE MODE · CREATE NEW · NAME FROM DECK A'
+                    ? t("WRITE MODE · CREATE NEW · NAME FROM DECK A")
                     : canPreserveOrder && preserveOrder
-                      ? 'WRITE MODE · ADD TO EXISTING · REPLAY ORDER'
-                      : 'WRITE MODE · ADD TO EXISTING · APPEND'}
+                      ? t("WRITE MODE · ADD TO EXISTING · REPLAY ORDER")
+                      : t("WRITE MODE · ADD TO EXISTING · APPEND")}
                 </span>
               </div>
             </div>
@@ -415,13 +416,13 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
           {error && <p className="text-sm text-danger">{error}</p>}
           {sameTarget && (
             <p className="text-sm text-text-3">
-              That's the same playlist as the source. Pick a different destination, or choose "Create new".
+              {t("That's the same playlist as the source. Pick a different destination, or choose \"Create new\".")}
             </p>
           )}
 
           <div>
             <Button onClick={() => setConfirming(true)} disabled={!formValid}>
-              Copy playlist
+              {t("Copy playlist")}
             </Button>
           </div>
         </>
@@ -429,21 +430,24 @@ export function TransferSetupForm({ accounts, entries, onStarted }: Props) {
 
       <ConfirmDialog
         open={confirming}
-        title="Copy this playlist?"
+        title={t("Copy this playlist?")}
         description={
           sourcePlaylist
-            ? `"${sourcePlaylist.name}" will be copied from ${sourceAccount?.name ?? 'the source account'} to ${
+            ? [
                 destMode === 'create'
-                  ? `a new playlist named "${destName.trim()}"`
-                  : `"${destPlaylist?.name ?? ''}"`
-              } on ${destAccount?.name ?? 'the destination account'}. Existing tracks on the destination are kept, this only adds.${
+                  ? t('"{{source}}" will be copied from {{sourceAccount}} to a new playlist named "{{destination}}" on {{destinationAccount}}. Existing tracks on the destination are kept, this only adds.', {
+                      source: sourcePlaylist.name, sourceAccount: sourceAccount?.name ?? t('the source account'), destination: destName.trim(), destinationAccount: destAccount?.name ?? t('the destination account'),
+                    })
+                  : t('"{{source}}" will be copied from {{sourceAccount}} to "{{destination}}" on {{destinationAccount}}. Existing tracks on the destination are kept, this only adds.', {
+                      source: sourcePlaylist.name, sourceAccount: sourceAccount?.name ?? t('the source account'), destination: destPlaylist?.name ?? '', destinationAccount: destAccount?.name ?? t('the destination account'),
+                    }),
                 canPreserveOrder && preserveOrder
-                  ? ' Tracks already there will be rewritten to keep Recently Added order, which takes longer.'
-                  : ''
-              }`
-            : 'This will start copying the selected playlist.'
+                  ? t('Tracks already there will be rewritten to keep Recently Added order, which takes longer.')
+                  : '',
+              ].filter(Boolean).join(' ')
+            : t("This will start copying the selected playlist.")
         }
-        confirmLabel="Copy playlist"
+        confirmLabel={t("Copy playlist")}
         loading={starting}
         onConfirm={() => void handleStart()}
         onCancel={() => setConfirming(false)}

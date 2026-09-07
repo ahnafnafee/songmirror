@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useMemo, useState } from 'react'
 import { LuCheck, LuChevronDown, LuChevronUp, LuHeart, LuInfo, LuSearch, LuX } from 'react-icons/lu'
 
@@ -53,6 +54,7 @@ interface PickerSource {
  * union of whatever else is connected, deduped by casefolded name (the same
  * playlist can legitimately exist on more than one service). */
 function usePickerSource(preferredProviderId?: string | null): PickerSource {
+  const { i18n, t } = useTranslation()
   const { accounts } = useAccounts()
   const connected = useMemo(
     () => accounts?.filter((account: Account) => (
@@ -100,16 +102,17 @@ function usePickerSource(preferredProviderId?: string | null): PickerSource {
     return {
       providerId: null,
       provider: null,
-      providerLabel: 'your connected services',
-      playlists: [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)),
+      providerLabel: t('your connected services'),
+      playlists: [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, i18n.resolvedLanguage)),
       loading: !allSettled && seen.size === 0,
-      error: allSettled && seen.size === 0 ? 'Could not load playlists from any connected service.' : null,
+      error: allSettled && seen.size === 0 ? t("Could not load playlists from any connected service.") : null,
       hasConnectedAccounts,
     }
-  }, [connected, entries, pinned])
+  }, [connected, entries, pinned, i18n.resolvedLanguage, t])
 }
 
 function PlaylistOptionRow({ playlist, selected, onToggle }: { playlist: ProviderPlaylist; selected: boolean; onToggle: () => void }) {
+  useTranslation()
   return (
     <label
       className={cn(
@@ -143,6 +146,7 @@ function PlaylistOptionRow({ playlist, selected, onToggle }: { playlist: Provide
 }
 
 function LikedTracksOptionRow({ label, selected, onToggle }: { label: string; selected: boolean; onToggle: () => void }) {
+  useTranslation()
   return (
     <label
       className={cn(
@@ -171,20 +175,21 @@ function LikedTracksOptionRow({ label, selected, onToggle }: { label: string; se
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-semibold text-text">{label}</span>
-        <span className="block text-[11.5px] text-text-3">Built-in liked collection</span>
+        <span className="block text-[11.5px] text-text-3">{t("Built-in liked collection")}</span>
       </span>
     </label>
   )
 }
 
 function ManualChip({ name, onRemove }: { name: string; onRemove: () => void }) {
+  useTranslation()
   return (
-    <span className="inline-flex h-7 items-center gap-1.5 rounded-chip border border-dashed border-border-strong bg-surface-2 py-1 pl-2.5 pr-1.5 text-[12.5px] font-medium text-text-2">
+    <span className="inline-flex h-7 items-center gap-1.5 rounded-chip border border-dashed border-border-strong bg-surface-2 py-1 ps-2.5 pe-1.5 text-[12.5px] font-medium text-text-2">
       {name}
       <button
         type="button"
         onClick={onRemove}
-        aria-label={`Remove "${name}" from the filter`}
+        aria-label={t("Remove \"{{name}}\" from the filter", { name: name })}
         className="flex size-4 shrink-0 items-center justify-center rounded-full text-text-3 hover:bg-surface hover:text-text"
       >
         <LuX className="size-3" aria-hidden="true" />
@@ -226,6 +231,7 @@ export function PlaylistFilterField({
   syncAllRegularPlaylists = false,
   onLikedTracksChange,
 }: PlaylistFilterFieldProps) {
+  useTranslation()
   const source = usePickerSource(preferredProviderId)
   const [search, setSearch] = useState('')
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -259,11 +265,11 @@ export function PlaylistFilterField({
   const selectedCount = selectedNames.length + (likedTracksSelected ? 1 : 0)
   const helpText = likedTracksSelected
     ? syncingAllWithLiked
-      ? 'The liked collection and every regular playlist will sync.'
+      ? t("The liked collection and every regular playlist will sync.")
       : selectedNames.length > 0
-      ? 'The liked collection and selected playlists will sync.'
-      : 'Only the liked collection will sync. Select playlists to include them too.'
-    : 'Comma-separated playlist names. Leave empty to sync every same-named pair.'
+      ? t("The liked collection and selected playlists will sync.")
+      : t("Only the liked collection will sync. Select playlists to include them too.")
+    : t("Comma-separated playlist names. Leave empty to sync every same-named pair.")
 
   // No usable picker source — manual entry is the only option, with a hint
   // about why.
@@ -279,13 +285,13 @@ export function PlaylistFilterField({
           />
         )}
         <TextField
-          label="Playlists to sync"
+          label={t("Playlists to sync")}
           help={
             !source.hasConnectedAccounts
-              ? 'Connect an account on the Accounts page to pick playlists here, or enter names manually.'
-              : `Couldn't load playlists from ${source.providerLabel}. Enter names manually.`
+              ? t("Connect an account on the Accounts page to pick playlists here, or enter names manually.")
+              : t("Couldn't load playlists from {{sourceProviderLabel}}. Enter names manually.", { sourceProviderLabel: source.providerLabel })
           }
-          placeholder="e.g. Discover Weekly, Roadtrip"
+          placeholder={t("e.g. Discover Weekly, Roadtrip")}
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -297,18 +303,18 @@ export function PlaylistFilterField({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[12.5px] font-semibold text-text-2">
-          {source.providerId ? `${source.providerLabel} playlists` : 'Playlists to sync'}
+          {source.providerId ? t("{{sourceProviderLabel}} playlists", { sourceProviderLabel: source.providerLabel }) : t("Playlists to sync")}
         </span>
         {isEmpty ? (
           <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-chip bg-accent-soft px-2 text-[11px] font-semibold text-accent">
             <LuInfo className="size-3" aria-hidden="true" />
-            Syncing all playlists
+            {t("Syncing all playlists")}
           </span>
         ) : syncingAllWithLiked ? (
-          <span className="shrink-0 text-[11.5px] font-medium text-text-3">All + liked tracks</span>
+          <span className="shrink-0 text-[11.5px] font-medium text-text-3">{t("All + liked tracks")}</span>
         ) : (
           <span className="shrink-0 text-[11.5px] font-medium text-text-3">
-            {selectedCount} selected
+            {t("{{selectedCount, number}} selected", { selectedCount: selectedCount })}
           </span>
         )}
       </div>
@@ -331,20 +337,20 @@ export function PlaylistFilterField({
         </div>
       ) : source.playlists.length === 0 ? (
         <p className="rounded-control border border-dashed border-border-strong px-3 py-2.5 text-xs text-text-3">
-          No playlists found on {source.providerLabel}.
+          {t("No playlists found on {{sourceProviderLabel}}.", { sourceProviderLabel: source.providerLabel })}
         </p>
       ) : (
         <>
           {source.playlists.length > SEARCH_THRESHOLD && (
             <div className="relative">
-              <LuSearch className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-text-3" aria-hidden="true" />
+              <LuSearch className="pointer-events-none absolute start-3 top-1/2 size-3.5 -translate-y-1/2 text-text-3" aria-hidden="true" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search playlists…"
-                aria-label="Search playlists"
-                className="h-11 w-full rounded-control border border-border-strong bg-field pl-9 pr-3 text-base text-text placeholder:text-text-3 focus:border-accent focus:outline-none md:h-[42px] md:text-sm"
+                placeholder={t("Search playlists…")}
+                aria-label={t("Search playlists")}
+                className="h-11 w-full rounded-control border border-border-strong bg-field ps-9 pe-3 text-base text-text placeholder:text-text-3 focus:border-accent focus:outline-none md:h-[42px] md:text-sm"
               />
             </div>
           )}
@@ -358,7 +364,7 @@ export function PlaylistFilterField({
               />
             )}
             {filteredPlaylists.length === 0 ? (
-              <p className="px-2 py-3 text-center text-xs text-text-3">No playlists match "{search}".</p>
+              <p className="px-2 py-3 text-center text-xs text-text-3">{t("No playlists match \"{{search}}\".", { search: search })}</p>
             ) : (
               filteredPlaylists.map((p) => (
                 <PlaylistOptionRow key={p.id} playlist={p} selected={selectedKeySet.has(casefold(p.name))} onToggle={() => toggle(p.name)} />
@@ -371,7 +377,9 @@ export function PlaylistFilterField({
       {manualNames.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <span className="text-[11.5px] text-text-3">
-            Also included, not found on {source.providerId ? source.providerLabel : 'a connected service'}:
+            {source.providerId
+              ? t('Also included, not found on {{provider}}:', { provider: source.providerLabel })
+              : t('Also included, not found on a connected service:')}
           </span>
           <div className="flex flex-wrap gap-1.5">
             {manualNames.map((name) => (
@@ -389,13 +397,13 @@ export function PlaylistFilterField({
           className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-3 hover:text-text-2"
         >
           {advancedOpen ? <LuChevronUp className="size-3.5" aria-hidden="true" /> : <LuChevronDown className="size-3.5" aria-hidden="true" />}
-          Advanced: edit manually
+          {t("Advanced: edit manually")}
         </button>
         {advancedOpen && (
           <div className="mt-2.5">
             <TextField
-              label="Comma-separated names"
-              placeholder="e.g. Discover Weekly, Roadtrip"
+              label={t("Comma-separated names")}
+              placeholder={t("e.g. Discover Weekly, Roadtrip")}
               value={value}
               onChange={(e) => onChange(e.target.value)}
             />

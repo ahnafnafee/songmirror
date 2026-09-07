@@ -1,3 +1,5 @@
+import { formatNumber } from '@/lib/format'
+import { t, useTranslation } from '@/i18n'
 import { useEffect, useState } from 'react'
 import { LuCircleHelp } from 'react-icons/lu'
 
@@ -21,12 +23,13 @@ import type { ResolveCacheKind, ResolveCacheProvider } from '@/types'
 const PAGE_SIZE = 25
 
 const KIND_OPTIONS = [
-  { value: 'all', label: 'All' },
-  { value: 'manual', label: 'Set by hand' },
-  { value: 'unmatched', label: 'No match' },
+  { value: 'all', get label() { return t("All") } },
+  { value: 'manual', get label() { return t("Set by hand") } },
+  { value: 'unmatched', get label() { return t("No match") } },
 ]
 
 export default function ResolveMappings() {
+  useTranslation()
   const { providers, error: providersError, refresh: refreshProviders } = useResolveCacheProviders()
   const [provider, setProvider] = useState('')
   const [search, setSearch] = useState('')
@@ -75,10 +78,9 @@ export default function ResolveMappings() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Mappings</h1>
+        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">{t("Mappings")}</h1>
         <p className="mt-1 max-w-2xl text-sm text-text-3">
-          Review how SongMirror pairs tracks with each service. Use this page when a track is missing
-          or linked to the wrong result.
+          {t("Review how SongMirror pairs tracks with each service. Use this page when a track is missing or linked to the wrong result.")}
         </p>
       </div>
 
@@ -88,22 +90,22 @@ export default function ResolveMappings() {
             <LuCircleHelp className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
             <div>
               <h2 id="mapping-guide-heading" className="text-sm font-bold text-text">
-                How to use mappings
+                {t("How to use mappings")}
               </h2>
               <p className="mt-0.5 text-xs leading-relaxed text-text-3">
-                A saved mapping lets SongMirror reuse the same provider track without guessing again.
+                {t("A saved mapping lets SongMirror reuse the same provider track without guessing again.")}
               </p>
             </div>
           </div>
           <ol className="grid gap-px bg-border sm:grid-cols-3">
-            <GuideStep number="1" title="Choose a service">
-              Use the tabs below, then search by title, artist, or provider ID.
+            <GuideStep number="1" title={t("Choose a service")}>
+              {t("Use the tabs below, then search by title, artist, or provider ID.")}
             </GuideStep>
-            <GuideStep number="2" title="Review the result">
-              “No match” means SongMirror could not confidently identify a track on that service.
+            <GuideStep number="2" title={t("Review the result")}>
+              {t("“No match” means SongMirror could not confidently identify a track on that service.")}
             </GuideStep>
-            <GuideStep number="3" title="Correct or retry">
-              Select Edit and paste the correct track link or ID. Delete a result to search again.
+            <GuideStep number="3" title={t("Correct or retry")}>
+              {t("Select Edit and paste the correct track link or ID. Delete a result to search again.")}
             </GuideStep>
           </ol>
         </Card>
@@ -111,18 +113,18 @@ export default function ResolveMappings() {
 
       {providersError && (
         <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">
-          Could not load mappings: {providersError}
+          {t("Could not load mappings: {{providersError}}", { providersError: providersError })}
         </p>
       )}
 
       {!providers ? (
-        <LoadingStatus label="Loading mappings…">
+        <LoadingStatus label={t("Loading mappings…")}>
           <Skeleton className="h-40 w-full" />
         </LoadingStatus>
       ) : providers.length === 0 ? (
         <EmptyState
-          title="Nothing cached yet"
-          description="Mappings appear here once a sync or a transfer has looked up tracks on a service."
+          title={t("Nothing cached yet")}
+          description={t("Mappings appear here once a sync or a transfer has looked up tracks on a service.")}
         />
       ) : (
         <>
@@ -141,16 +143,16 @@ export default function ResolveMappings() {
             <div className="flex flex-wrap items-end gap-3 p-4 sm:p-6">
               <div className="min-w-[220px] flex-1">
                 <TextField
-                  label="Search"
-                  placeholder="Title, artist, or resolved id…"
+                  label={t("Search")}
+                  placeholder={t("Title, artist, or resolved id…")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <span className="text-[12.5px] font-semibold text-text-2">Show</span>
+                <span className="text-[12.5px] font-semibold text-text-2">{t("Show")}</span>
                 <Segmented
-                  ariaLabel="Which mappings to show"
+                  ariaLabel={t("Which mappings to show")}
                   options={KIND_OPTIONS}
                   value={kind}
                   onChange={(v) => setKind(v as ResolveCacheKind)}
@@ -158,7 +160,7 @@ export default function ResolveMappings() {
               </div>
               {current && current.unmatched > 0 && (
                 <Button variant="danger-ghost" onClick={() => setConfirmingClear(true)}>
-                  Clear {current.unmatched} no-match {current.unmatched === 1 ? 'entry' : 'entries'}
+                  {t("Clear {{count, number}} no-match entry", { count: current.unmatched, defaultValue_one: "Clear {{count, number}} no-match entry", defaultValue_other: "Clear {{count, number}} no-match entries" })}
                 </Button>
               )}
             </div>
@@ -168,15 +170,15 @@ export default function ResolveMappings() {
 
             {loading && entries.length === 0 ? (
               <div className="border-t border-border p-4 sm:p-6">
-                <LoadingStatus label="Loading mappings…">
+                <LoadingStatus label={t("Loading mappings…")}>
                   <Skeleton className="h-24 w-full" />
                 </LoadingStatus>
               </div>
             ) : entries.length === 0 ? (
               <div className="border-t border-border p-4 sm:p-6">
                 <EmptyState
-                  title="No mappings match"
-                  description={search ? 'Try a different search, or switch the filter.' : 'Nothing cached under this filter.'}
+                  title={t("No mappings match")}
+                  description={search ? t("Try a different search, or switch the filter.") : t("Nothing cached under this filter.")}
                 />
               </div>
             ) : (
@@ -195,7 +197,7 @@ export default function ResolveMappings() {
             {total > PAGE_SIZE && (
               <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
                 <span className="font-mono text-xs text-text-3">
-                  {offset + 1}-{Math.min(offset + PAGE_SIZE, total)} of {total}
+                  {t("{{offset, number}}-{{value, number}} of {{total, number}}", { offset: offset + 1, value: Math.min(offset + PAGE_SIZE, total), total: total })}
                 </span>
                 <div className="flex gap-1.5">
                   <Button
@@ -204,7 +206,7 @@ export default function ResolveMappings() {
                     disabled={offset === 0}
                     onClick={() => setOffset((n) => Math.max(0, n - PAGE_SIZE))}
                   >
-                    Previous
+                    {t("Previous")}
                   </Button>
                   <Button
                     size="sm"
@@ -212,7 +214,7 @@ export default function ResolveMappings() {
                     disabled={offset + PAGE_SIZE >= total}
                     onClick={() => setOffset((n) => n + PAGE_SIZE)}
                   >
-                    Next
+                    {t("Next")}
                   </Button>
                 </div>
               </div>
@@ -223,13 +225,16 @@ export default function ResolveMappings() {
 
       <ConfirmDialog
         open={confirmingClear}
-        title="Clear every no-match entry?"
+        title={t("Clear every no-match entry?")}
         description={
-          `This forgets ${current?.unmatched ?? 0} "searched, found nothing" results on ${current?.name ?? ''}. ` +
-          'The next sync or transfer will search for those tracks again, which takes longer and can hit the ' +
-          'service’s rate limits. Matches you have already made are kept.'
+          t('Clear stored no-match results on {{provider}}.', {
+            count: current?.unmatched ?? 0,
+            provider: current?.name ?? '',
+            defaultValue_one: 'This forgets {{count, number}} "searched, found nothing" result on {{provider}}. The next sync or transfer will search for that track again, which takes longer and can hit the service’s rate limits. Matches you have already made are kept.',
+            defaultValue_other: 'This forgets {{count, number}} "searched, found nothing" results on {{provider}}. The next sync or transfer will search for those tracks again, which takes longer and can hit the service’s rate limits. Matches you have already made are kept.',
+          })
         }
-        confirmLabel="Clear entries"
+        confirmLabel={t("Clear entries")}
         loading={clearing}
         onConfirm={() => void clearUnmatched()}
         onCancel={() => setConfirmingClear(false)}
@@ -239,6 +244,7 @@ export default function ResolveMappings() {
 }
 
 function GuideStep({ number, title, children }: { number: string; title: string; children: string }) {
+  useTranslation()
   return (
     <li className="flex gap-3 bg-surface px-4 py-3.5 sm:px-5">
       <span
@@ -256,6 +262,7 @@ function GuideStep({ number, title, children }: { number: string; title: string;
 }
 
 function ProviderTab({ row, active, onSelect }: { row: ResolveCacheProvider; active: boolean; onSelect: () => void }) {
+  useTranslation()
   const provider = row.provider ?? row.id
   const logoId = serviceLogoId(provider)
   return (
@@ -266,7 +273,7 @@ function ProviderTab({ row, active, onSelect }: { row: ResolveCacheProvider; act
       className={cn(
         // Selected reads as the app's active-nav language (accent fill + rule),
         // not a one-step-darker surface, which is invisible on a dark theme.
-        'inline-flex items-center gap-2 rounded-card border px-3 py-2 text-left transition-colors duration-fast',
+        'inline-flex items-center gap-2 rounded-card border px-3 py-2 text-start transition-colors duration-fast',
         active
           ? 'border-accent bg-accent-soft text-text shadow-[inset_0_-2px_0_var(--color-accent)]'
           : 'border-border bg-surface text-text-3 hover:bg-surface-2 hover:text-text-2',
@@ -274,7 +281,7 @@ function ProviderTab({ row, active, onSelect }: { row: ResolveCacheProvider; act
     >
       {logoId && <ServiceLogo service={logoId} className={`size-4 ${tagText(provider)}`} />}
       <span className={cn('text-sm', active ? 'font-bold' : 'font-semibold')}>{row.name}</span>
-      <span className={cn('font-mono text-xs', active ? 'text-accent' : 'text-text-3')}>{row.total}</span>
+      <span className={cn('font-mono text-xs', active ? 'text-accent' : 'text-text-3')}>{formatNumber(row.total)}</span>
     </button>
   )
 }

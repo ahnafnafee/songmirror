@@ -1,3 +1,5 @@
+import { formatNumber } from '@/lib/format'
+import { t, useTranslation } from '@/i18n'
 import { useDeferredValue, useMemo, useState } from 'react'
 import type { IconType } from 'react-icons'
 import {
@@ -41,58 +43,58 @@ const COUNTER_META: Array<{
   tone: CountChipTone
 }> = [
   {
-    key: 'added', label: 'added', title: 'Added this pass',
-    description: 'Playlist entries written to a service.', icon: LuListPlus, tone: 'success',
+    key: 'added', get label() { return t("added") }, get title() { return t("Added this pass") },
+    get description() { return t("Playlist entries written to a service.") }, icon: LuListPlus, tone: 'success',
   },
   {
-    key: 'removed', label: 'removed', title: 'Removed this pass',
-    description: 'Confirmed playlist removals that were actually applied.', icon: LuListMinus, tone: 'danger',
+    key: 'removed', get label() { return t("removed") }, get title() { return t("Removed this pass") },
+    get description() { return t("Confirmed playlist removals that were actually applied.") }, icon: LuListMinus, tone: 'danger',
   },
   {
-    key: 'held', label: 'held', title: 'Protected this pass',
-    description: 'Changes SongMirror did not apply because the evidence or replacement was not safe yet.',
+    key: 'held', get label() { return t("held") }, get title() { return t("Protected this pass") },
+    get description() { return t("Changes SongMirror did not apply because the evidence or replacement was not safe yet.") },
     icon: LuClockAlert, tone: 'warning',
   },
   {
-    key: 'repaired', label: 'repaired', title: 'Identity drift repaired',
-    description: 'The physical provider entry stayed put while its canonical metadata changed. No playlist write.',
+    key: 'repaired', get label() { return t("repaired") }, get title() { return t("Identity drift repaired") },
+    get description() { return t("The physical provider entry stayed put while its canonical metadata changed. No playlist write.") },
     icon: LuRefreshCw, tone: 'neutral',
   },
   {
-    key: 'missing', label: 'missing', title: 'Catalog matches missing',
-    description: 'Tracks that could not be found safely on a destination service.', icon: LuSearchX, tone: 'neutral',
+    key: 'missing', get label() { return t("missing") }, get title() { return t("Catalog matches missing") },
+    get description() { return t("Tracks that could not be found safely on a destination service.") }, icon: LuSearchX, tone: 'neutral',
   },
 ]
 
 const HOLD_REASON_LABELS: Record<string, string> = {
-  authority_baseline: 'Waiting for the authority baseline',
-  unconfirmed_absence: 'Awaiting a second trusted read',
-  confirmed_removal_disabled: 'Confirmed; removal mirroring is off',
-  removal_cap: 'Confirmed; over the removal cap',
-  replacement_blocked: 'Replacement could not be completed safely',
-  uncertain_match: 'Catalog match was uncertain',
+  get authority_baseline() { return t("Waiting for the authority baseline") },
+  get unconfirmed_absence() { return t("Awaiting a second trusted read") },
+  get confirmed_removal_disabled() { return t("Confirmed; removal mirroring is off") },
+  get removal_cap() { return t("Confirmed; over the removal cap") },
+  get replacement_blocked() { return t("Replacement could not be completed safely") },
+  get uncertain_match() { return t("Catalog match was uncertain") },
 }
 
 type KindFilter = 'all' | EventKind | 'system'
 type SortOrder = 'oldest' | 'newest'
 
 const KIND_OPTIONS: Array<FilterSelectOption<KindFilter>> = [
-  { value: 'all', label: 'All events', leading: <LuLayers3 className="size-3.5 text-text-3" /> },
-  { value: 'add', label: 'Tracks added', leading: <LuListPlus className="size-3.5 text-success" /> },
-  { value: 'remove', label: 'Tracks removed', leading: <LuListMinus className="size-3.5 text-danger" /> },
-  { value: 'hold', label: 'Protected changes', leading: <LuClockAlert className="size-3.5 text-warning" /> },
-  { value: 'repair', label: 'Identity repairs', leading: <LuRefreshCw className="size-3.5 text-info" /> },
-  { value: 'miss', label: 'Missing matches', leading: <LuSearchX className="size-3.5 text-text-3" /> },
-  { value: 'warn', label: 'Warnings', leading: <LuTriangleAlert className="size-3.5 text-warning" /> },
-  { value: 'system', label: 'Run summaries', leading: <LuInfo className="size-3.5 text-text-3" /> },
+  { value: 'all', get label() { return t("All events") }, leading: <LuLayers3 className="size-3.5 text-text-3" /> },
+  { value: 'add', get label() { return t("Tracks added") }, leading: <LuListPlus className="size-3.5 text-success" /> },
+  { value: 'remove', get label() { return t("Tracks removed") }, leading: <LuListMinus className="size-3.5 text-danger" /> },
+  { value: 'hold', get label() { return t("Protected changes") }, leading: <LuClockAlert className="size-3.5 text-warning" /> },
+  { value: 'repair', get label() { return t("Identity repairs") }, leading: <LuRefreshCw className="size-3.5 text-info" /> },
+  { value: 'miss', get label() { return t("Missing matches") }, leading: <LuSearchX className="size-3.5 text-text-3" /> },
+  { value: 'warn', get label() { return t("Warnings") }, leading: <LuTriangleAlert className="size-3.5 text-warning" /> },
+  { value: 'system', get label() { return t("Run summaries") }, leading: <LuInfo className="size-3.5 text-text-3" /> },
 ]
 
 const SORT_OPTIONS: Array<FilterSelectOption<SortOrder>> = [
-  { value: 'oldest', label: 'Oldest first', leading: <LuHistory className="size-3.5 text-text-3" /> },
-  { value: 'newest', label: 'Newest first', leading: <LuArrowDownUp className="size-3.5 text-text-3" /> },
+  { value: 'oldest', get label() { return t("Oldest first") }, leading: <LuHistory className="size-3.5 text-text-3" /> },
+  { value: 'newest', get label() { return t("Newest first") }, leading: <LuArrowDownUp className="size-3.5 text-text-3" /> },
 ]
 
-const COUNT_FORMATTER = new Intl.NumberFormat('en-US')
+
 
 function CounterDetails({
   title,
@@ -109,18 +111,19 @@ function CounterDetails({
   reasons?: Record<string, number>
   accounts?: Account[] | null
 }) {
+  useTranslation()
   const providerRows = Object.entries(providers).sort((a, b) => b[1] - a[1] || tagLabel(a[0]).localeCompare(tagLabel(b[0])))
   const reasonRows = Object.entries(reasons ?? {}).sort((a, b) => b[1] - a[1])
   return (
     <div className="flex flex-col gap-2.5">
       <div>
         <p className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-text-3">{title}</p>
-        <p className="mt-0.5 text-[13px] font-bold tabular-nums text-text">{COUNT_FORMATTER.format(value)}</p>
+        <p className="mt-0.5 text-[13px] font-bold tabular-nums text-text">{formatNumber(value)}</p>
         <p className="mt-1 text-[11.5px] leading-relaxed text-text-2">{description}</p>
       </div>
       {providerRows.length > 0 ? (
         <div className="border-t border-border pt-2">
-          <p className="mb-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wide text-text-3">By service</p>
+          <p className="mb-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wide text-text-3">{t("By service")}</p>
           <div className="flex flex-col gap-1.5">
             {providerRows.map(([tag, count]) => {
               const account = accounts?.find((candidate) => candidate.id === tag)
@@ -134,23 +137,23 @@ function CounterDetails({
                     <span className={cn('size-2 shrink-0 rounded-full', tagDot(brand))} aria-hidden="true" />
                   )}
                   <span className="min-w-0 flex-1 truncate text-[11.5px] text-text-2">{account?.name ?? tagLabel(tag)}</span>
-                  <span className="font-mono text-[11px] font-bold tabular-nums text-text">{COUNT_FORMATTER.format(count)}</span>
+                  <span className="font-mono text-[11px] font-bold tabular-nums text-text">{formatNumber(count)}</span>
                 </div>
               )
             })}
           </div>
         </div>
       ) : (
-        <p className="border-t border-border pt-2 text-[11.5px] text-text-3">No events in this class yet.</p>
+        <p className="border-t border-border pt-2 text-[11.5px] text-text-3">{t("No events in this class yet.")}</p>
       )}
       {reasonRows.length > 0 && (
         <div className="border-t border-border pt-2">
-          <p className="mb-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wide text-text-3">Why held</p>
+          <p className="mb-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wide text-text-3">{t("Why held")}</p>
           <div className="flex flex-col gap-1.5">
             {reasonRows.map(([reason, count]) => (
               <div key={reason} className="flex items-start justify-between gap-3 text-[11.5px]">
-                <span className="leading-snug text-text-2">{HOLD_REASON_LABELS[reason] ?? 'Other safety hold'}</span>
-                <span className="shrink-0 font-mono font-bold tabular-nums text-text">{COUNT_FORMATTER.format(count)}</span>
+                <span className="leading-snug text-text-2">{HOLD_REASON_LABELS[reason] ?? t("Other safety hold")}</span>
+                <span className="shrink-0 font-mono font-bold tabular-nums text-text">{formatNumber(count)}</span>
               </div>
             ))}
           </div>
@@ -167,6 +170,7 @@ function matchesKind(event: SyncEvent, filter: KindFilter): boolean {
 }
 
 function ServiceOptionMark({ tag, account }: { tag: string; account?: Account }) {
+  useTranslation()
   if (tag === 'sync') return <LuRefreshCw className="size-3.5 text-accent" />
   if (tag === 'local') return <LuDownload className="size-3.5 text-info" />
   if (tag === 'transfer') return <LuArrowRightLeft className="size-3.5 text-info" />
@@ -180,9 +184,9 @@ function ServiceOptionMark({ tag, account }: { tag: string; account?: Account })
 }
 
 const INTERNAL_SOURCE_HINTS: Record<string, string> = {
-  sync: 'Run status and safety messages',
-  local: 'Music files saved on this server',
-  transfer: 'One-time playlist copy jobs',
+  get sync() { return t("Run status and safety messages") },
+  get local() { return t("Music files saved on this server") },
+  get transfer() { return t("One-time playlist copy jobs") },
 }
 
 interface LiveFeedProps {
@@ -194,12 +198,13 @@ interface LiveFeedProps {
  * ledger, while the persisted event stream can be searched, sliced and sorted
  * without changing what the sync engine records. */
 export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) {
+  const { i18n, t } = useTranslation()
   const { events, counters, breakdown, holdReasons, connected } = useEventStream()
   const [query, setQuery] = useState('')
   const [source, setSource] = useState('all')
   const [kind, setKind] = useState<KindFilter>('all')
   const [sort, setSort] = useState<SortOrder>('oldest')
-  const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase())
+  const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase(i18n.resolvedLanguage))
 
   const sources = useMemo(() => {
     const ids = new Set(events.map((event) => activitySourceId(event.tag)).filter(Boolean))
@@ -212,29 +217,29 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
       if (account.state !== 'unconfigured') ids.add(activitySourceId(account.id))
     }
     const label = (id: string) => accounts?.find((account) => account.id === id)?.name ?? tagLabel(id)
-    return [...ids].sort((a, b) => label(a).localeCompare(label(b)))
-  }, [accounts, events, syncs])
+    return [...ids].sort((a, b) => label(a).localeCompare(label(b), i18n.resolvedLanguage))
+  }, [accounts, events, syncs, i18n.resolvedLanguage])
   const sourceOptions = useMemo<Array<FilterSelectOption<string>>>(() => {
     const accountFor = (tag: string) => accounts?.find((account) => account.id === tag)
     const services = sources.filter((tag) => serviceLogoId(accountFor(tag)?.provider ?? tag) !== null)
     const internal = sources.filter((tag) => serviceLogoId(accountFor(tag)?.provider ?? tag) === null)
     return [
-      { value: 'all', label: 'All sources', leading: <LuLayers3 className="size-3.5 text-text-3" /> },
+      { value: 'all', label: t("All sources"), leading: <LuLayers3 className="size-3.5 text-text-3" /> },
       ...services.map((tag) => ({
         value: tag,
         label: accountFor(tag)?.name ?? tagLabel(tag),
-        group: 'Music services',
+        group: t("Music services"),
         leading: <ServiceOptionMark tag={tag} account={accountFor(tag)} />,
       })),
       ...internal.map((tag) => ({
         value: tag,
         label: tagLabel(tag),
-        group: 'SongMirror activity',
+        group: t("SongMirror activity"),
         hint: INTERNAL_SOURCE_HINTS[tag],
         leading: <ServiceOptionMark tag={tag} />,
       })),
     ]
-  }, [accounts, sources])
+  }, [accounts, sources, t])
 
   const visibleEvents = useMemo(() => {
     const filtered = events.filter((event) => {
@@ -242,10 +247,10 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
       if (!matchesKind(event, kind)) return false
       if (!deferredQuery) return true
       const label = accounts?.find((account) => account.id === event.tag)?.name ?? tagLabel(event.tag)
-      return `${event.message} ${label} ${event.kind}`.toLocaleLowerCase().includes(deferredQuery)
+      return `${event.message} ${label} ${event.kind}`.toLocaleLowerCase(i18n.resolvedLanguage).includes(deferredQuery)
     })
     return sort === 'newest' ? filtered.slice().reverse() : filtered
-  }, [accounts, deferredQuery, events, kind, sort, source])
+  }, [accounts, deferredQuery, events, kind, sort, source, i18n.resolvedLanguage])
 
   const filtered = query.trim() !== '' || source !== 'all' || kind !== 'all'
 
@@ -257,10 +262,10 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
             className={cn('size-2 rounded-full', connected ? 'bg-success' : 'bg-neutral')}
             aria-hidden="true"
           />
-          <span className="font-mono text-[10.5px] font-semibold tracking-wide text-text-3">LIVE FEED</span>
+          <span className="font-mono text-[10.5px] font-semibold tracking-wide text-text-3">{t("LIVE FEED")}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 font-mono text-[10.5px] tracking-wide text-text-3">THIS PASS</span>
+          <span className="me-1 font-mono text-[10.5px] tracking-wide text-text-3">{t("THIS PASS")}</span>
           {COUNTER_META.map((counter) => (
             <CountChip
               key={counter.key}
@@ -288,21 +293,21 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
         className="rounded-card border border-border bg-surface-2/45 p-2.5"
       >
         <label className="relative min-w-0 flex-1">
-          <span className="sr-only">Search activity</span>
-          <LuSearch className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-text-3" aria-hidden="true" />
+          <span className="sr-only">{t("Search activity")}</span>
+          <LuSearch className="pointer-events-none absolute start-3 top-1/2 size-3.5 -translate-y-1/2 text-text-3" aria-hidden="true" />
           <input
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search activity…"
-            className="h-9 w-full rounded-control border border-border-strong bg-field pl-9 pr-9 text-xs text-text placeholder:text-text-3 transition-[background-color,border-color,box-shadow] duration-fast hover:border-text-3 hover:bg-surface focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
+            placeholder={t("Search activity…")}
+            className="h-9 w-full rounded-control border border-border-strong bg-field ps-9 pe-9 text-xs text-text placeholder:text-text-3 transition-[background-color,border-color,box-shadow] duration-fast hover:border-text-3 hover:bg-surface focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
           />
           {query && (
             <button
               type="button"
               onClick={() => setQuery('')}
-              aria-label="Clear activity search"
-              className="absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-chip text-text-3 hover:bg-surface-2 hover:text-text"
+              aria-label={t("Clear activity search")}
+              className="absolute end-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-chip text-text-3 hover:bg-surface-2 hover:text-text"
             >
               <LuX className="size-3.5" aria-hidden="true" />
             </button>
@@ -311,24 +316,24 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
 
         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <FilterSelect
-            ariaLabel="Filter by source"
-            caption="Source"
+            ariaLabel={t("Filter by source")}
+            caption={t("Source")}
             value={source}
             options={sourceOptions}
             onChange={setSource}
             icon={<LuSlidersHorizontal className="size-3.5" />}
           />
           <FilterSelect
-            ariaLabel="Filter by activity type"
-            caption="Activity"
+            ariaLabel={t("Filter by activity type")}
+            caption={t("Activity")}
             value={kind}
             options={KIND_OPTIONS}
             onChange={setKind}
             icon={<LuListFilter className="size-3.5" />}
           />
           <FilterSelect
-            ariaLabel="Sort activity"
-            caption="Order"
+            ariaLabel={t("Sort activity")}
+            caption={t("Order")}
             value={sort}
             options={SORT_OPTIONS}
             onChange={setSort}
@@ -339,8 +344,8 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
         <div className="mt-2 flex min-h-6 items-center justify-between gap-3 px-0.5">
           <p className="font-mono text-[10.5px] text-text-3" aria-live="polite">
             {filtered
-              ? `Showing ${COUNT_FORMATTER.format(visibleEvents.length)} of ${COUNT_FORMATTER.format(events.length)} events`
-              : `${COUNT_FORMATTER.format(events.length)} event${events.length === 1 ? '' : 's'} in feed`}
+              ? t("Showing {{value}} of {{value2}} events", { value: formatNumber(visibleEvents.length), value2: formatNumber(events.length) })
+              : t("{{count, number}} event in feed", { count: events.length, defaultValue_one: "{{count, number}} event in feed", defaultValue_other: "{{count, number}} events in feed" })}
           </p>
           {filtered ? (
             <button
@@ -349,7 +354,7 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
               className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-control px-2 text-[11px] font-semibold text-text-3 transition-colors duration-fast hover:bg-surface hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
             >
               <LuRotateCcw className="size-3" aria-hidden="true" />
-              Reset
+              {t("Reset")}
             </button>
           ) : null}
         </div>
@@ -359,11 +364,11 @@ export function LiveFeed({ accounts = null, syncs = null }: LiveFeedProps = {}) 
         events={visibleEvents}
         accounts={accounts}
         newestFirst={sort === 'newest'}
-        emptyTitle={filtered ? 'No matching activity' : 'No activity yet'}
+        emptyTitle={filtered ? t("No matching activity") : t("No activity yet")}
         emptyDescription={filtered
-          ? 'Try a different service, event type, or search term.'
-          : 'Start a sync to see live progress here. Every track added, removed, protected, or repaired will show up in real time.'}
-        ariaLabel="Live sync activity"
+          ? t("Try a different service, event type, or search term.")
+          : t("Start a sync to see live progress here. Every track added, removed, protected, or repaired will show up in real time.")}
+        ariaLabel={t("Live sync activity")}
       />
     </div>
   )

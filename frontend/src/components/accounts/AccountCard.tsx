@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useState } from 'react'
 
 import { api, errorMessage } from '@/api'
@@ -15,21 +16,21 @@ import { TextField } from '../ui/TextField'
 import { ConnectWizardModal } from './ConnectWizardModal'
 
 const SERVICE_BLURBS: Record<string, string> = {
-  spotify: 'Syncs playlists through Spotify OAuth as either a source or destination.',
-  tidal: 'Syncs playlists using an auto-renewing session from your signed-in TIDAL web player.',
-  qobuz: 'Syncs playlists using the minimized API context from your signed-in Qobuz web player.',
-  deezer: 'Syncs playlists using an auto-renewing session from your signed-in Deezer web player.',
-  amazon: 'Syncs playlists using an auto-renewing session from your signed-in Amazon Music web player.',
-  apple: 'Paste a couple of tokens from the Apple Music web player. No developer account needed.',
-  ytmusic: 'Sign in with a Google account using a short code. Approve it from your phone or another tab.',
-  jellyfin: 'Optional. Pushes real playlist cover art to your Jellyfin server.',
+  get spotify() { return t("Syncs playlists through Spotify OAuth as either a source or destination.") },
+  get tidal() { return t("Syncs playlists using an auto-renewing session from your signed-in TIDAL web player.") },
+  get qobuz() { return t("Syncs playlists using the minimized API context from your signed-in Qobuz web player.") },
+  get deezer() { return t("Syncs playlists using an auto-renewing session from your signed-in Deezer web player.") },
+  get amazon() { return t("Syncs playlists using an auto-renewing session from your signed-in Amazon Music web player.") },
+  get apple() { return t("Paste a couple of tokens from the Apple Music web player. No developer account needed.") },
+  get ytmusic() { return t("Sign in with a Google account using a short code. Approve it from your phone or another tab.") },
+  get jellyfin() { return t("Optional. Pushes real playlist cover art to your Jellyfin server.") },
 }
 
 const AUTH_KIND_LABELS: Record<AuthKind, string> = {
   oauth_redirect: 'OAUTH',
-  oauth_device: 'DEVICE CODE',
-  token_paste: 'TOKEN PASTE',
-  api_key: 'API KEY',
+  get oauth_device() { return t("DEVICE CODE") },
+  get token_paste() { return t("TOKEN PASTE") },
+  get api_key() { return t("API KEY") },
 }
 
 /** Card border echoes severity: hairline for healthy, dashed for "nothing
@@ -41,6 +42,7 @@ function borderClass(state: Account['state']): string {
 }
 
 export function AccountCard({ account, onChanged }: { account: Account; onChanged: () => void }) {
+  useTranslation()
   const [wizardOpen, setWizardOpen] = useState(false)
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
   const [confirmingRemove, setConfirmingRemove] = useState(false)
@@ -113,19 +115,19 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
         )}
         <h3 className="text-base font-bold text-text">{account.name}</h3>
         <span className="font-mono text-[10px] tracking-wide text-text-3">{AUTH_KIND_LABELS[account.auth_kind]}</span>
-        <StatusPill state={account.state} className="ml-auto" />
+        <StatusPill state={account.state} className="ms-auto" />
       </div>
 
       <p className="text-[13px] leading-relaxed text-text-2">{SERVICE_BLURBS[account.provider] ?? ''}</p>
 
       {editingLabel && (
         <div className="flex items-end gap-2">
-          <TextField label="Profile label" value={label} onChange={(event) => setLabel(event.target.value)} />
+          <TextField label={t("Profile label")} value={label} onChange={(event) => setLabel(event.target.value)} />
           <Button size="sm" loading={savingLabel} disabled={!label.trim()} onClick={() => void rename()}>
-            Save
+            {t("Save")}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => { setLabel(account.label); setEditingLabel(false) }}>
-            Cancel
+            {t("Cancel")}
           </Button>
         </div>
       )}
@@ -152,22 +154,22 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
       {error && <p className="text-xs text-danger">{error}</p>}
 
       <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <Button variant={isConnected ? 'secondary' : 'primary'} size="sm" onClick={() => setWizardOpen(true)}>
-          {isConnected ? 'Reconnect' : 'Connect'}
+        <Button variant={isConnected ? "secondary" : "primary"} size="sm" onClick={() => setWizardOpen(true)}>
+          {isConnected ? t("Reconnect") : t("Connect")}
         </Button>
         {isConnected && (
           <Button variant="ghost" size="sm" onClick={() => setConfirmingDisconnect(true)}>
-            Disconnect
+            {t("Disconnect")}
           </Button>
         )}
         {!editingLabel && (
           <Button variant="ghost" size="sm" onClick={() => setEditingLabel(true)}>
-            Rename
+            {t("Rename")}
           </Button>
         )}
         {account.removable && (
           <Button variant="ghost" size="sm" onClick={() => setConfirmingRemove(true)}>
-            Remove
+            {t("Remove")}
           </Button>
         )}
       </div>
@@ -185,9 +187,9 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
 
       <ConfirmDialog
         open={confirmingDisconnect}
-        title={`Disconnect ${account.name}?`}
-        description="You can reconnect at any time. Existing playlists on this service won't be deleted."
-        confirmLabel="Disconnect"
+        title={t("Disconnect {{accountName}}?", { accountName: account.name })}
+        description={t("You can reconnect at any time. Existing playlists on this service won't be deleted.")}
+        confirmLabel={t("Disconnect")}
         danger
         loading={disconnecting}
         onConfirm={() => void disconnect()}
@@ -196,9 +198,9 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
 
       <ConfirmDialog
         open={confirmingRemove}
-        title={`Remove ${account.name}?`}
-        description="This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account."
-        confirmLabel="Remove profile"
+        title={t("Remove {{accountName}}?", { accountName: account.name })}
+        description={t("This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account.")}
+        confirmLabel={t("Remove profile")}
         danger
         loading={disconnecting}
         onConfirm={() => void remove()}

@@ -11,7 +11,7 @@ interface LinkButtonProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
 
 /** A real `<a>` styled like `Button`, for actions that are actually
  * navigation (e.g. "Continue to Spotify", "Open Google") — keeps
- * middle-click/open-in-new-tab/right-click-copy-link working. */
+ * middle-click/open-in-new-tab/end-click-copy-link working. */
 export function LinkButton({ variant = 'primary', size = 'md', className, children, ...rest }: LinkButtonProps) {
   return (
     <a className={cn(BUTTON_BASE_CLASSES, BUTTON_SIZE_CLASSES[size], BUTTON_VARIANT_CLASSES[variant], className)} {...rest}>

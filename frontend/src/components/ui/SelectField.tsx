@@ -28,7 +28,7 @@ export function SelectField({ label, help, error, options, icon, className, id, 
       </label>
       <div className="relative">
         {icon && (
-          <span aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
+          <span aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2">
             {icon}
           </span>
         )}
@@ -36,8 +36,8 @@ export function SelectField({ label, help, error, options, icon, className, id, 
           id={fieldId}
           className={cn(
             FIELD_INPUT_CLASSES,
-            'appearance-none bg-field pr-9',
-            icon ? 'pl-9' : undefined,
+            'appearance-none bg-field pe-9',
+            icon ? 'ps-9' : undefined,
             error && 'border-danger focus:border-danger',
             className,
           )}
@@ -53,7 +53,7 @@ export function SelectField({ label, help, error, options, icon, className, id, 
         </select>
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-3"
+          className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs text-text-3"
         >
           ▾
         </span>

@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { LuCheck, LuChevronDown, LuSearch } from 'react-icons/lu'
@@ -51,9 +52,10 @@ export function PlaylistPickerField({
   value,
   onChange,
   disabled,
-  placeholder = 'Choose a playlist…',
+  placeholder = t("Choose a playlist…"),
   optionDisabledReason,
 }: PlaylistPickerFieldProps) {
+  useTranslation()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [panelPos, setPanelPos] = useState<PanelPosition | null>(null)
@@ -137,7 +139,7 @@ export function PlaylistPickerField({
         title={reason}
         onClick={() => select(p.id)}
         className={cn(
-          'flex items-center gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors duration-fast',
+          'flex items-center gap-2.5 rounded-control px-2 py-1.5 text-start transition-colors duration-fast',
           reason ? 'cursor-not-allowed opacity-50' : p.id === value ? 'bg-accent-soft' : 'hover:bg-surface-2',
         )}
       >
@@ -170,7 +172,7 @@ export function PlaylistPickerField({
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
         className={cn(
-          'flex h-11 w-full items-center gap-2.5 rounded-control border border-border-strong bg-field px-2.5 text-left text-base text-text',
+          'flex h-11 w-full items-center gap-2.5 rounded-control border border-border-strong bg-field px-2.5 text-start text-base text-text',
           'focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-text-3',
           'md:h-[42px] md:text-sm',
           open && 'border-accent',
@@ -185,7 +187,7 @@ export function PlaylistPickerField({
             )}
           </>
         ) : (
-          <span className="min-w-0 flex-1 truncate text-text-3">{loading ? 'Loading…' : placeholder}</span>
+          <span className="min-w-0 flex-1 truncate text-text-3">{loading ? t("Loading…") : placeholder}</span>
         )}
         <LuChevronDown
           className={cn('size-4 shrink-0 text-text-3 transition-transform duration-fast', open && 'rotate-180')}
@@ -204,29 +206,29 @@ export function PlaylistPickerField({
           >
             {playlists.length > SEARCH_THRESHOLD && (
               <div className="relative">
-                <LuSearch className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-text-3" aria-hidden="true" />
+                <LuSearch className="pointer-events-none absolute start-3 top-1/2 size-3.5 -translate-y-1/2 text-text-3" aria-hidden="true" />
                 <input
                   type="text"
                   autoFocus
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search playlists…"
-                  aria-label="Search playlists"
-                  className="h-10 w-full rounded-control border border-border-strong bg-field pl-9 pr-3 text-sm text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
+                  placeholder={t("Search playlists…")}
+                  aria-label={t("Search playlists")}
+                  className="h-10 w-full rounded-control border border-border-strong bg-field ps-9 pe-3 text-sm text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
                 />
               </div>
             )}
             <div id={listboxId} role="listbox" aria-label={label} className="thin-scrollbar flex max-h-56 flex-col gap-0.5 overflow-y-auto">
               {filtered.length === 0 ? (
-                <p className="px-2 py-3 text-center text-xs text-text-3">No playlists match "{search}".</p>
+                <p className="px-2 py-3 text-center text-xs text-text-3">{t("No playlists match \"{{search}}\".", { search: search })}</p>
               ) : grouped ? (
                 <>
                   <div className="px-2 pb-0.5 pt-1 font-mono text-[9.5px] font-bold uppercase tracking-[0.12em] text-text-3">
-                    Created
+                    {t("Created")}
                   </div>
                   {ownedPlaylists.map(renderOption)}
                   <div className="mt-1 border-t border-border px-2 pb-0.5 pt-2 font-mono text-[9.5px] font-bold uppercase tracking-[0.12em] text-text-3">
-                    Followed
+                    {t("Followed")}
                   </div>
                   {followedPlaylists.map(renderOption)}
                 </>

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { AccountState, EventKind, TransferStatus } from '../types'
 
 interface StateStyle {
@@ -11,20 +12,20 @@ interface StateStyle {
  * per the design spec's StatusPill map. Each pairs a mono glyph with the
  * word — color is never the only signal. */
 export const ACCOUNT_STATE_STYLES: Record<AccountState, StateStyle> = {
-  connected: { label: 'Connected', glyph: '✓', badge: 'bg-success-soft text-success', text: 'text-success' },
-  expired: { label: 'Expired, reconnect', glyph: '~', badge: 'bg-warning-soft text-warning', text: 'text-warning' },
-  error: { label: 'Error', glyph: '!', badge: 'bg-danger-soft text-danger', text: 'text-danger' },
-  unconfigured: { label: 'Not configured', glyph: '·', badge: 'bg-neutral-soft text-neutral', text: 'text-neutral' },
+  connected: { get label() { return t("Connected") }, glyph: '✓', badge: 'bg-success-soft text-success', text: 'text-success' },
+  expired: { get label() { return t("Expired, reconnect") }, glyph: '~', badge: 'bg-warning-soft text-warning', text: 'text-warning' },
+  error: { get label() { return t("Error") }, glyph: '!', badge: 'bg-danger-soft text-danger', text: 'text-danger' },
+  unconfigured: { get label() { return t("Not configured") }, glyph: '·', badge: 'bg-neutral-soft text-neutral', text: 'text-neutral' },
 }
 
 export const TRANSFER_STATUS_STYLES: Record<TransferStatus, StateStyle> = {
-  queued: { label: 'Queued', glyph: '·', badge: 'bg-neutral-soft text-neutral', text: 'text-neutral' },
-  busy: { label: 'Waiting for the sync engine…', glyph: '~', badge: 'bg-warning-soft text-warning', text: 'text-warning' },
-  running: { label: 'Running…', glyph: '…', badge: 'bg-accent-soft text-accent', text: 'text-accent' },
-  paused: { label: 'Paused', glyph: '‖', badge: 'bg-neutral-soft text-neutral', text: 'text-neutral' },
-  done: { label: 'Done', glyph: '✓', badge: 'bg-success-soft text-success', text: 'text-success' },
-  stopped: { label: 'Stopped', glyph: '■', badge: 'bg-neutral-soft text-neutral', text: 'text-neutral' },
-  error: { label: 'Error', glyph: '!', badge: 'bg-danger-soft text-danger', text: 'text-danger' },
+  queued: { get label() { return t("Queued") }, glyph: '·', badge: 'bg-neutral-soft text-neutral', text: 'text-neutral' },
+  busy: { get label() { return t("Waiting for the sync engine…") }, glyph: '~', badge: 'bg-warning-soft text-warning', text: 'text-warning' },
+  running: { get label() { return t("Running…") }, glyph: '…', badge: 'bg-accent-soft text-accent', text: 'text-accent' },
+  paused: { get label() { return t("Paused") }, glyph: '‖', badge: 'bg-neutral-soft text-neutral', text: 'text-neutral' },
+  done: { get label() { return t("Done") }, glyph: '✓', badge: 'bg-success-soft text-success', text: 'text-success' },
+  stopped: { get label() { return t("Stopped") }, glyph: '■', badge: 'bg-neutral-soft text-neutral', text: 'text-neutral' },
+  error: { get label() { return t("Error") }, glyph: '!', badge: 'bg-danger-soft text-danger', text: 'text-danger' },
 }
 
 interface ServiceStyle {
@@ -46,9 +47,9 @@ const SERVICE_STYLES: Record<string, ServiceStyle> = {
   apple: { label: 'Apple Music', dot: 'bg-svc-apple', soft: 'bg-svc-apple-soft', text: 'text-svc-apple' },
   ytmusic: { label: 'YouTube Music', dot: 'bg-svc-ytmusic', soft: 'bg-svc-ytmusic-soft', text: 'text-svc-ytmusic' },
   jellyfin: { label: 'Jellyfin', dot: 'bg-svc-jellyfin', soft: 'bg-svc-jellyfin-soft', text: 'text-svc-jellyfin' },
-  sync: { label: 'Sync engine', dot: 'bg-accent', soft: 'bg-accent-soft', text: 'text-accent' },
-  local: { label: 'Download mirror', dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },
-  transfer: { label: 'Playlist transfers', dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },
+  sync: { get label() { return t("Sync engine") }, dot: 'bg-accent', soft: 'bg-accent-soft', text: 'text-accent' },
+  local: { get label() { return t("Download mirror") }, dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },
+  transfer: { get label() { return t("Playlist transfers") }, dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },
 }
 const SOURCE_ALIASES: Record<string, string> = {
   jelly: 'jellyfin',
@@ -127,36 +128,36 @@ interface KindStyle {
 }
 
 export const KIND_STYLES: Record<EventKind, KindStyle> = {
-  add: { label: 'Addition', tileBg: 'bg-success-soft', tileText: 'text-success', text: 'text-text' },
-  remove: { label: 'Removal', tileBg: 'bg-danger-soft', tileText: 'text-danger', text: 'text-text' },
-  hold: { label: 'Held', tileBg: 'bg-warning-soft', tileText: 'text-warning', text: 'text-text' },
-  repair: { label: 'Identity repaired', tileBg: 'bg-info-soft', tileText: 'text-info', text: 'text-text' },
-  miss: { label: 'Missing match', tileBg: 'bg-neutral-soft', tileText: 'text-neutral', text: 'text-text-2' },
-  download: { label: 'Download', tileBg: 'bg-info-soft', tileText: 'text-info', text: 'text-text' },
-  note: { label: 'Note', tileBg: 'bg-neutral-soft', tileText: 'text-neutral', text: 'text-text-2' },
+  add: { get label() { return t("Addition") }, tileBg: 'bg-success-soft', tileText: 'text-success', text: 'text-text' },
+  remove: { get label() { return t("Removal") }, tileBg: 'bg-danger-soft', tileText: 'text-danger', text: 'text-text' },
+  hold: { get label() { return t("Held") }, tileBg: 'bg-warning-soft', tileText: 'text-warning', text: 'text-text' },
+  repair: { get label() { return t("Identity repaired") }, tileBg: 'bg-info-soft', tileText: 'text-info', text: 'text-text' },
+  miss: { get label() { return t("Missing match") }, tileBg: 'bg-neutral-soft', tileText: 'text-neutral', text: 'text-text-2' },
+  download: { get label() { return t("Download") }, tileBg: 'bg-info-soft', tileText: 'text-info', text: 'text-text' },
+  note: { get label() { return t("Note") }, tileBg: 'bg-neutral-soft', tileText: 'text-neutral', text: 'text-text-2' },
   warn: {
-    label: 'Warning',
+    get label() { return t("Warning") },
     tileBg: 'bg-warning-soft',
     tileText: 'text-warning',
     text: 'font-semibold text-text',
     row: 'bg-warning-soft/40',
   },
   summary: {
-    label: 'Pass complete',
+    get label() { return t("Pass complete") },
     tileBg: 'bg-accent-soft',
     tileText: 'text-accent',
     text: 'font-semibold text-text',
     row: 'bg-surface-2',
   },
-  section: { label: 'Section', tileBg: '', tileText: '', text: 'text-text-3' },
+  section: { get label() { return t("Section") }, tileBg: '', tileText: '', text: 'text-text-3' },
 }
 
 export const DOWNLOAD_FORMAT_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: '', label: 'Default (MP3)' },
+  { value: '', get label() { return t("Default (MP3)") } },
   { value: 'mp3', label: 'MP3' },
-  { value: 'flac', label: 'FLAC (lossless)' },
+  { value: 'flac', get label() { return t("FLAC (lossless)") } },
   { value: 'ogg', label: 'OGG Vorbis' },
-  { value: 'opus', label: 'Opus (no re-encode from YouTube)' },
+  { value: 'opus', get label() { return t("Opus (no re-encode from YouTube)") } },
   { value: 'm4a', label: 'M4A / AAC' },
-  { value: 'wav', label: 'WAV (uncompressed)' },
+  { value: 'wav', get label() { return t("WAV (uncompressed)") } },
 ]

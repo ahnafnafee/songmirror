@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
@@ -13,9 +14,9 @@ import { Spinner } from '../ui/Spinner'
 const NATIVE_FORMATS: PlaylistExportFormat[] = ['json', 'xml']
 const PLAYLIST_FORMATS: PlaylistExportFormat[] = ['json', 'xml', 'soundiiz']
 const FORMAT_HINTS: Record<PlaylistExportFormat, string> = {
-  json: 'Complete SongMirror metadata',
-  xml: 'Metadata for XML tools',
-  soundiiz: 'Import-ready track list',
+  get json() { return t("Complete SongMirror metadata") },
+  get xml() { return t("Metadata for XML tools") },
+  get soundiiz() { return t("Import-ready track list") },
 }
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -46,6 +47,7 @@ export function PlaylistExportActions({
   disabled?: boolean
   className?: string
 }) {
+  useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null)
@@ -57,8 +59,7 @@ export function PlaylistExportActions({
   const menuRef = useRef<HTMLDivElement>(null)
   const exportMenuId = useId()
   const formats = playlistId ? PLAYLIST_FORMATS : NATIVE_FORMATS
-  const subject = playlistId ? 'this playlist' : `all ${providerName} playlists`
-  const menuLabel = `Export ${subject}`
+  const menuLabel = playlistId ? t('Export this playlist') : t('Export all {{providerName}} playlists', { providerName })
 
   function measureMenu() {
     const trigger = triggerRef.current
@@ -209,7 +210,7 @@ export function PlaylistExportActions({
     try {
       await api.exportPlaylists(provider, format, playlistId)
       setCompleted(format)
-      setAnnouncement(`${formatLabel(format)} backup downloaded`)
+      setAnnouncement(t("{{formatLabel}} backup downloaded", { formatLabel: formatLabel(format) }))
     } catch (err) {
       setExportError(errorMessage(err))
     } finally {
@@ -228,7 +229,7 @@ export function PlaylistExportActions({
         aria-controls={menuOpen ? exportMenuId : undefined}
         aria-busy={exporting !== null || undefined}
         disabled={disabled || exporting !== null}
-        title={completed ? `${formatLabel(completed)} backup downloaded` : undefined}
+        title={completed ? t("{{formatLabel}} backup downloaded", { formatLabel: formatLabel(completed) }) : undefined}
         onClick={() => (menuOpen ? closeMenu(true) : openMenu())}
         onKeyDown={onTriggerKeyDown}
         className={cn(
@@ -246,7 +247,7 @@ export function PlaylistExportActions({
         ) : (
           <LuDownload className="size-3.5" aria-hidden="true" />
         )}
-        <span>Export</span>
+        <span>{t("Export")}</span>
         <LuChevronDown
           className={cn('size-3.5 transition-transform duration-fast', menuOpen && 'rotate-180')}
           aria-hidden="true"
@@ -277,11 +278,13 @@ export function PlaylistExportActions({
               type="button"
               role="menuitem"
               tabIndex={-1}
-              aria-label={`Export ${subject} as ${formatLabel(format)}`}
+              aria-label={playlistId
+                ? t('Export this playlist as {{format}}', { format: formatLabel(format) })
+                : t('Export all {{providerName}} playlists as {{format}}', { providerName, format: formatLabel(format) })}
               onPointerMove={() => setActiveIndex(index)}
               onClick={() => chooseFormat(format)}
               className={cn(
-                'flex min-h-11 w-full items-center gap-3 rounded-control px-2.5 py-2 text-left text-text-2 transition-colors duration-fast',
+                'flex min-h-11 w-full items-center gap-3 rounded-control px-2.5 py-2 text-start text-text-2 transition-colors duration-fast',
                 index === activeIndex && 'bg-surface-2 text-text',
               )}
             >

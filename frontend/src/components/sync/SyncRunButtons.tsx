@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useState } from 'react'
 import { LuEye, LuZap } from 'react-icons/lu'
 
@@ -24,6 +25,7 @@ interface Props {
  * way. Owns its own async/confirm state; `onChanged` just triggers the
  * caller's refresh. */
 export function SyncRunButtons({ job, disabled, onChanged, size = 'sm' }: Props) {
+  useTranslation()
   const [previewing, setPreviewing] = useState(false)
   const [runningNow, setRunningNow] = useState(false)
   const [confirmingRun, setConfirmingRun] = useState(false)
@@ -65,7 +67,7 @@ export function SyncRunButtons({ job, disabled, onChanged, size = 'sm' }: Props)
           onClick={() => setConfirmingRun(true)}
           disabled={disabled || previewing}
         >
-          Sync now
+          {t("Sync now")}
         </Button>
         <Button
           variant="secondary"
@@ -75,16 +77,16 @@ export function SyncRunButtons({ job, disabled, onChanged, size = 'sm' }: Props)
           loading={previewing}
           disabled={disabled || runningNow}
         >
-          Preview
+          {t("Preview")}
         </Button>
       </div>
       {error && <p className="text-xs text-danger">{error}</p>}
 
       <ConfirmDialog
         open={confirmingRun}
-        title={`Sync "${job.name}" now?`}
-        description="This applies real changes to your connected services right away, outside its normal schedule. Removals are still capped per pass."
-        confirmLabel="Sync now"
+        title={t("Sync \"{{jobName}}\" now?", { jobName: job.name })}
+        description={t("This applies real changes to your connected services right away, outside its normal schedule. Removals are still capped per pass.")}
+        confirmLabel={t("Sync now")}
         danger
         loading={runningNow}
         onConfirm={() => void runNow()}

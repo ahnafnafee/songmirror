@@ -1,8 +1,10 @@
+import { t, useTranslation } from '@/i18n'
 import { useState } from 'react'
 
 import { Button } from './Button'
 
-export function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }) {
+export function CopyButton({ value, label = t("Copy") }: { value: string; label?: string }) {
+  useTranslation()
   const [copied, setCopied] = useState(false)
 
   async function handleCopy() {
@@ -18,7 +20,7 @@ export function CopyButton({ value, label = 'Copy' }: { value: string; label?: s
 
   return (
     <Button variant="secondary" onClick={() => void handleCopy()} className="shrink-0">
-      {copied ? 'Copied!' : label}
+      {copied ? t("Copied!") : label}
     </Button>
   )
 }

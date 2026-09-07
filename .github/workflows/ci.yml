@@ -81,6 +81,9 @@ jobs:
       - name: Lint
         run: pnpm -C frontend lint
 
+      - name: Check translation catalogs and localized READMEs
+        run: pnpm -C frontend i18n:check
+
       - name: Build (typecheck + bundle)
         run: pnpm -C frontend build
 

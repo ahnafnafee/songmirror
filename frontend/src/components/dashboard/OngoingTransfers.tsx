@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { api } from '@/api'
 import { TransferProgress } from '@/components/transfers/TransferProgress'
 import { useTransfers } from '@/hooks/useTransfers'
@@ -7,13 +8,14 @@ import { useTransfers } from '@/hooks/useTransfers'
  * Pause/Resume/Stop controls as the Transfers page. Hidden entirely (not an
  * empty state) when nothing's active, so an idle dashboard stays calm. */
 export function OngoingTransfers() {
+  useTranslation()
   const { jobs, refresh } = useTransfers()
 
   if (!jobs || jobs.length === 0) return null
 
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-[15px] font-extrabold text-text">Ongoing transfers</h2>
+      <h2 className="text-[15px] font-extrabold text-text">{t("Ongoing transfers")}</h2>
       {jobs.map((job) => (
         <TransferProgress
           key={job.id}

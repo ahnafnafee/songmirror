@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 
@@ -59,7 +60,7 @@ export function usePlaylistDetail(
       const seen = new Set<string>()
 
       while (cursor && generation.current === currentGeneration) {
-        if (seen.has(cursor)) throw new Error('The provider returned a repeated playlist cursor')
+        if (seen.has(cursor)) throw new Error(t("The provider returned a repeated playlist cursor"))
         seen.add(cursor)
         const page = await api.getPlaylistDetail(provider, playlistId, {
           expectedCount,

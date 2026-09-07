@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { providerLikedTracksLabel } from '@/lib/likedTracks'
 import { describeInterval } from '@/lib/format'
 import type { Account, SyncJob } from '@/types'
@@ -48,6 +49,7 @@ export function enabledProvidersOf(job: Pick<SyncJob, 'providers'>, peers: Accou
 }
 
 export interface SyncSummaryRow {
+  id: 'schedule' | 'direction' | 'sources' | 'limits' | 'downloads' | 'playlists' | 'liked-tracks'
   label: string
   value: string
 }
@@ -62,34 +64,38 @@ export interface SyncSummaryRow {
 export function buildSyncSummaryRows(job: SyncJob, peers: Account[], downloadDir?: string): SyncSummaryRow[] {
   const rows: SyncSummaryRow[] = []
 
-  rows.push({ label: 'Schedule', value: job.enabled ? `Every ${describeInterval(job.interval || '?')}` : 'Manual' })
+  rows.push({ id: 'schedule', label: t("Schedule"), value: job.enabled ? t("Every {{describeInterval}}", { describeInterval: describeInterval(job.interval || '?') }) : t("Manual") })
 
   if (job.mode === 'merge') {
     const providerName = (id: string) => peers.find((peer) => peer.id === id)?.name ?? id
     const sources = job.sources ?? []
-    const sourceNames = sources.map((source) => source.name || `${providerName(source.provider)} playlist`)
+    const sourceNames = sources.map((source) => source.name || t("{{providerName}} playlist", { providerName: providerName(source.provider) }))
     const sourceLabel =
       sourceNames.length === 0
-        ? 'no sources selected'
+        ? t("no sources selected")
         : sourceNames.length <= 3
           ? sourceNames.join(' + ')
-          : `${sourceNames.slice(0, 3).join(' + ')} +${sourceNames.length - 3} more`
+          : t("{{sourceNamesSliceJoin}} +{{sourceNamesLength}} more", { sourceNamesSliceJoin: sourceNames.slice(0, 3).join(' + '), sourceNamesLength: sourceNames.length - 3 })
     const destination = job.destination
     const destinationLabel = destination
-      ? `${destination.name || 'chosen playlist'} on ${providerName(destination.provider)}`
-      : 'no destination selected'
-    rows.push({ label: 'Direction', value: `Merge · ${sources.length} source${sources.length === 1 ? '' : 's'} → ${destinationLabel}` })
-    rows.push({ label: 'Sources', value: sourceLabel })
+      ? t("{{destinationName}} on {{providerName}}", { destinationName: destination.name || t('chosen playlist'), providerName: providerName(destination.provider) })
+      : t("no destination selected")
+    rows.push({ id: 'direction', label: t("Direction"), value: t('Merge · {{count, number}} source → {{destination}}', {
+      count: sources.length, destination: destinationLabel,
+      defaultValue_one: 'Merge · {{count, number}} source → {{destination}}',
+      defaultValue_other: 'Merge · {{count, number}} sources → {{destination}}',
+    }) })
+    rows.push({ id: 'sources', label: t("Sources"), value: sourceLabel })
 
-    const removalNote = job.apply_large_removals ? ' (large removals drained in batches)' : ''
+    const removalNote = job.apply_large_removals ? t(" (large removals drained in batches)") : ''
     rows.push({
-      label: 'Limits',
+      id: 'limits', label: t("Limits"),
       value:
         job.removal_strategy === 'mirror'
-          ? `≤${job.max_adds} adds, ≤${job.max_removals} removals / pass${removalNote}`
-          : `≤${job.max_adds} adds / pass · append-only`,
+          ? t("≤{{jobMax}} adds, ≤{{jobMax2}} removals / pass{{removalNote}}", { jobMax: job.max_adds, jobMax2: job.max_removals, removalNote: removalNote })
+          : t("≤{{jobMax}} adds / pass · append-only", { jobMax: job.max_adds }),
     })
-    rows.push({ label: 'Downloads', value: 'Off for aggregate playlists' })
+    rows.push({ id: 'downloads', label: t("Downloads"), value: t('Off for aggregate playlists') })
     return rows
   }
 
@@ -100,8 +106,8 @@ export function buildSyncSummaryRows(job: SyncJob, peers: Account[], downloadDir
   const enabledNames = peers.filter((a) => included.has(a.id)).map((a) => a.name)
   if (job.mode === 'nway') {
     // No single source in N-way — just list who's included.
-    const who = enabledNames.length > 0 ? enabledNames.join(' ⇄ ') : 'no services selected'
-    rows.push({ label: 'Direction', value: `Bidirectional (N-way) · ${who}` })
+    const who = enabledNames.length > 0 ? enabledNames.join(' ⇄ ') : t("no services selected")
+    rows.push({ id: 'direction', label: t("Direction"), value: t('Bidirectional (N-way) · {{services}}', { services: who }) })
   } else if (job.mode === 'group') {
     const sourceId = job.source || 'spotify'
     const orderedAuthorities = [
@@ -110,23 +116,23 @@ export function buildSyncSummaryRows(job: SyncJob, peers: Account[], downloadDir
     ]
     const authorityNames = orderedAuthorities.map((a) => a.name)
     const mirrorNames = peers.filter((a) => included.has(a.id) && !authorities.has(a.id)).map((a) => a.name)
-    const authorityLabel = authorityNames.length > 0 ? authorityNames.join(' + ') : 'no authorities selected'
-    const who = mirrorNames.length > 0 ? `${authorityLabel} → ${mirrorNames.join(', ')}` : `${authorityLabel} only`
-    rows.push({ label: 'Direction', value: `Authoritative group · ${who}` })
+    const authorityLabel = authorityNames.length > 0 ? authorityNames.join(' + ') : t("no authorities selected")
+    const who = mirrorNames.length > 0 ? `${authorityLabel} → ${mirrorNames.join(', ')}` : t("{{authorityLabel}} only", { authorityLabel: authorityLabel })
+    rows.push({ id: 'direction', label: t("Direction"), value: t('Authoritative group · {{services}}', { services: who }) })
   } else {
     const sourceName = peers.find((a) => a.id === (job.source || 'spotify'))?.name ?? 'Spotify'
     const others = enabledNames.filter((n) => n !== sourceName)
-    const who = others.length > 0 ? `${sourceName} → ${others.join(', ')}` : `${sourceName} only`
-    rows.push({ label: 'Direction', value: `One-way · ${who}` })
+    const who = others.length > 0 ? `${sourceName} → ${others.join(', ')}` : t("{{sourceName}} only", { sourceName: sourceName })
+    rows.push({ id: 'direction', label: t("Direction"), value: t('One-way · {{services}}', { services: who }) })
   }
 
   const playlistNames = parseCsv(job.playlists)
   let playlistsValue: string
-  if (job.sync_playlists === false) playlistsValue = 'No regular playlists'
-  else if (playlistNames.length === 0) playlistsValue = 'All playlists'
+  if (job.sync_playlists === false) playlistsValue = t("No regular playlists")
+  else if (playlistNames.length === 0) playlistsValue = t("All playlists")
   else if (playlistNames.length <= 3) playlistsValue = playlistNames.join(', ')
-  else playlistsValue = `${playlistNames.slice(0, 3).join(', ')} +${playlistNames.length - 3} more`
-  rows.push({ label: 'Playlists', value: playlistsValue })
+  else playlistsValue = t("{{playlistNamesSliceJoin}} +{{playlistNamesLength}} more", { playlistNamesSliceJoin: playlistNames.slice(0, 3).join(', '), playlistNamesLength: playlistNames.length - 3 })
+  rows.push({ id: 'playlists', label: t("Playlists"), value: playlistsValue })
 
   if (job.liked_tracks) {
     const sourceId = job.source || 'spotify'
@@ -143,23 +149,23 @@ export function buildSyncSummaryRows(job: SyncJob, peers: Account[], downloadDir
       })
     const arrow = job.mode === 'oneway' ? '→' : '⇄'
     rows.push({
-      label: 'Liked tracks',
+      id: 'liked-tracks', label: t("Liked tracks"),
       value: destinations.length > 0 ? `${sourceLabel} ${arrow} ${destinations.join(', ')}` : sourceLabel,
     })
   }
 
-  const removalNote = job.apply_large_removals ? ' (large removals drained in batches)' : ''
+  const removalNote = job.apply_large_removals ? t(" (large removals drained in batches)") : ''
   rows.push({
-    label: 'Limits',
+    id: 'limits', label: t("Limits"),
     value:
       job.max_removals > 0
-        ? `≤${job.max_adds} adds, ≤${job.max_removals} removals / pass${removalNote}`
-        : `≤${job.max_adds} adds / pass · removals not mirrored`,
+        ? t("≤{{jobMax}} adds, ≤{{jobMax2}} removals / pass{{removalNote}}", { jobMax: job.max_adds, jobMax2: job.max_removals, removalNote: removalNote })
+        : t("≤{{jobMax}} adds / pass · removals not mirrored", { jobMax: job.max_adds }),
   })
 
   rows.push({
-    label: 'Downloads',
-    value: job.download ? (downloadDir?.trim() ? `On (${downloadDir.trim()})` : 'On') : 'Off',
+    id: 'downloads', label: t("Downloads"),
+    value: job.download ? (downloadDir?.trim() ? t("On ({{downloadDirTrim}})", { downloadDirTrim: downloadDir.trim() }) : t("On")) : t("Off"),
   })
 
   return rows

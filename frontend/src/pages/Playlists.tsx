@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useMemo, useState } from 'react'
 
 import { LinkCard } from '@/components/playlists/LinkCard'
@@ -14,6 +15,7 @@ import { canSyncAccount, capabilitiesOf } from '@/lib/accountCapabilities'
 import type { Account, PlaylistLink, ProviderPlaylist } from '@/types'
 
 export default function Playlists() {
+  useTranslation()
   const { accounts, loading: accountsLoading, error: accountsError } = useAccounts()
   const connectedAccounts = useMemo(
     () => accounts?.filter((account) => account.state === 'connected' && capabilitiesOf(account).library_read) ?? [],
@@ -33,19 +35,19 @@ export default function Playlists() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Playlists</h1>
-        <p className="mt-1 text-sm text-text-3">Browse what's on each connected service, and pair up playlists that don't share a name.</p>
+        <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">{t("Playlists")}</h1>
+        <p className="mt-1 text-sm text-text-3">{t("Browse what's on each connected service, and pair up playlists that don't share a name.")}</p>
       </div>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-[17px] font-bold text-text">Browse</h2>
+        <h2 className="text-[17px] font-bold text-text">{t("Browse")}</h2>
 
         {accountsError && (
-          <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not load accounts: {accountsError}</p>
+          <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{t("Could not load accounts: {{accountsError}}", { accountsError: accountsError })}</p>
         )}
 
         {accountsLoading && !accounts ? (
-          <LoadingStatus label="Loading accounts…">
+          <LoadingStatus label={t("Loading accounts…")}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {[0, 1, 2, 3].map((i) => (
                 <Skeleton key={i} className="h-40 w-full rounded-card" />
@@ -65,39 +67,38 @@ export default function Playlists() {
             ))}
           </div>
         ) : (
-          <EmptyState title="No connectors available" description="This installation has no configured services." />
+          <EmptyState title={t("No connectors available")} description={t("This installation has no configured services.")} />
         )}
       </section>
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-baseline gap-2.5">
-            <h2 className="text-[17px] font-bold text-text">Pairings</h2>
+            <h2 className="text-[17px] font-bold text-text">{t("Pairings")}</h2>
             {links && (
               <span className="font-mono text-[11.5px] text-text-3">
-                {links.length} link{links.length === 1 ? '' : 's'} · {links.filter((l) => l.enabled).length} active
+                {t("{{count, number}} link · {{linksFilter, number}} active", { count: links.length, linksFilter: links.filter((l) => l.enabled).length, defaultValue_one: "{{count, number}} link · {{linksFilter, number}} active", defaultValue_other: "{{count, number}} links · {{linksFilter, number}} active" })}
               </span>
             )}
           </div>
           <Button
             onClick={() => setEditorTarget('new')}
             disabled={syncAccounts.length < 2}
-            title={syncAccounts.length < 2 ? 'Connect at least 2 full-library services first' : undefined}
+            title={syncAccounts.length < 2 ? t("Connect at least 2 full-library services first") : undefined}
           >
-            + New pairing
+            {t("+ New pairing")}
           </Button>
         </div>
         <p className="text-sm text-text-3">
-          Playlists that already share a name sync automatically. Add a pairing here to link differently-named
-          playlists, or to scope a sync to only specific services.
+          {t("Playlists that already share a name sync automatically. Add a pairing here to link differently-named playlists, or to scope a sync to only specific services.")}
         </p>
 
         {linksError && (
-          <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not load pairings: {linksError}</p>
+          <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{t("Could not load pairings: {{linksError}}", { linksError: linksError })}</p>
         )}
 
         {linksLoading && !links ? (
-          <LoadingStatus label="Loading pairings…">
+          <LoadingStatus label={t("Loading pairings…")}>
             <div className="flex flex-col gap-3">
               {[0, 1].map((i) => (
                 <Skeleton key={i} className="h-24 w-full rounded-card" />
@@ -119,8 +120,8 @@ export default function Playlists() {
           </div>
         ) : (
           <EmptyState
-            title="No pairings yet"
-            description="Playlists with the same name already sync automatically. Pairings are for everything else."
+            title={t("No pairings yet")}
+            description={t("Playlists with the same name already sync automatically. Pairings are for everything else.")}
           />
         )}
       </section>

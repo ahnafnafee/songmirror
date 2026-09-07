@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { useMemo, useState } from 'react'
 import { LuPlus } from 'react-icons/lu'
 
@@ -18,6 +19,7 @@ import type { SyncJob } from '@/types'
  * self-contained configuration edited via the SyncWizard modal. The global
  * download mirror folder/format live on Settings; a job only opts in. */
 export default function Sync() {
+  useTranslation()
   const { syncs, loading, error, refresh } = useSyncs()
   const { accounts } = useAccounts()
   const { status, refresh: refreshStatus } = useSyncStatus()
@@ -46,21 +48,20 @@ export default function Sync() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">Sync</h1>
+          <h1 className="text-xl font-bold tracking-tight text-text sm:text-[22px]">{t("Sync")}</h1>
           <p className="mt-1 text-sm text-text-3">
-            Independent sync configurations, each running on its own schedule. The download folder is shared, set
-            on the Settings page.
+            {t("Independent sync configurations, each running on its own schedule. The download folder is shared, set on the Settings page.")}
           </p>
         </div>
         <Button icon={<LuPlus className="size-4" aria-hidden="true" />} onClick={openNew}>
-          New sync
+          {t("New sync")}
         </Button>
       </div>
 
-      {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not load syncs: {error}</p>}
+      {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{t("Could not load syncs: {{error}}", { error: error })}</p>}
 
       {loading && !syncs ? (
-        <LoadingStatus label="Loading syncs…">
+        <LoadingStatus label={t("Loading syncs…")}>
           <div className="flex flex-col gap-3">
             <Skeleton className="h-32 w-full rounded-card" />
             <Skeleton className="h-32 w-full rounded-card" />
@@ -84,11 +85,11 @@ export default function Sync() {
         </div>
       ) : (
         <EmptyState
-          title="No syncs yet"
-          description="Create a sync to start mirroring playlists between your connected services."
+          title={t("No syncs yet")}
+          description={t("Create a sync to start mirroring playlists between your connected services.")}
           action={
             <Button icon={<LuPlus className="size-4" aria-hidden="true" />} onClick={openNew}>
-              New sync
+              {t("New sync")}
             </Button>
           }
         />

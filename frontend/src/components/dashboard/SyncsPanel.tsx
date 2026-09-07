@@ -1,3 +1,4 @@
+import { t, useTranslation } from '@/i18n'
 import { Link } from 'react-router-dom'
 import { LuArrowRight } from 'react-icons/lu'
 
@@ -15,9 +16,9 @@ import { EmptyState } from '../ui/EmptyState'
  * is the honest answer, regardless of whatever `next_run_at` the backend
  * last computed for it. */
 function nextRunText(job: SyncJob, status: SyncStatus | null): string {
-  if (!job.enabled || !status?.master) return 'Manual'
+  if (!job.enabled || !status?.master) return t("Manual")
   const jobStatus = status.jobs.find((j) => j.id === job.id)
-  return jobStatus?.next_run_at ? formatClockTime(jobStatus.next_run_at) : 'Not scheduled'
+  return jobStatus?.next_run_at ? formatClockTime(jobStatus.next_run_at) : t("Not scheduled")
 }
 
 /** The dashboard's "what's configured to sync" panel — every job, its recap,
@@ -35,22 +36,23 @@ export function SyncsPanel({
   accounts: Account[] | null
   onChanged: () => void
 }) {
+  useTranslation()
   const peers = syncPeersOf(accounts ?? [])
 
   return (
     <Card className="flex flex-col overflow-hidden">
       <div className="flex items-center justify-between p-4">
-        <h2 className="text-[15px] font-extrabold text-text">Syncs</h2>
+        <h2 className="text-[15px] font-extrabold text-text">{t("Syncs")}</h2>
         <Link to="/sync" className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-accent hover:text-accent-hover">
-          Manage
-          <LuArrowRight className="size-3.5" aria-hidden="true" />
+          {t("Manage")}
+          <LuArrowRight className="size-3.5 rtl:-scale-x-100" aria-hidden="true" />
         </Link>
       </div>
       {syncs && syncs.length > 0 ? (
         <ul className="flex flex-col divide-y divide-border border-t border-border">
           {syncs.map((job) => {
             const summary = buildSyncSummaryRows(job, peers)
-              .filter((r) => r.label !== 'Schedule')
+              .filter((r) => r.id !== 'schedule')
               .map((r) => r.value)
               .join(' · ')
             const jobStatus = status?.jobs.find((j) => j.id === job.id)
@@ -65,17 +67,17 @@ export function SyncsPanel({
                     <span className="truncate text-[13.5px] font-semibold text-text">{job.name}</span>
                     {queued && !running && (
                       <span className="inline-flex h-[18px] shrink-0 items-center rounded-full bg-neutral-soft px-1.5 text-[10px] font-semibold text-neutral">
-                        queued
+                        {t("queued")}
                       </span>
                     )}
                     {!job.enabled && (
                       <span className="inline-flex h-[18px] shrink-0 items-center rounded-full bg-neutral-soft px-1.5 text-[10px] font-semibold text-neutral">
-                        paused
+                        {t("paused")}
                       </span>
                     )}
                   </div>
                   <p className="mt-0.5 truncate text-xs text-text-3">{summary}</p>
-                  <p className="mt-0.5 font-mono text-[10px] tracking-wide text-text-3">Next run: {nextRunText(job, status)}</p>
+                  <p className="mt-0.5 font-mono text-[10px] tracking-wide text-text-3">{t("Next run: {{nextRunText}}", { nextRunText: nextRunText(job, status) })}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <SyncRunButtons job={job} disabled={running || queued} onChanged={onChanged} />
@@ -87,7 +89,7 @@ export function SyncsPanel({
         </ul>
       ) : (
         <div className="px-4 pb-4">
-          <EmptyState title="No syncs yet" description="Create a sync on the Sync page to start mirroring playlists." />
+          <EmptyState title={t("No syncs yet")} description={t("Create a sync on the Sync page to start mirroring playlists.")} />
         </div>
       )}
     </Card>
