@@ -23,6 +23,7 @@ from pathlib import Path
 
 from ..engine import logs
 from ..engine.config import parse_interval
+from .folders import writable_directory
 from .playlists import PlaylistService, provider_label
 
 
@@ -92,6 +93,7 @@ class PlaylistBackupJob:
     interval: str = DEFAULT_BACKUP_INTERVAL
     format: str = DEFAULT_BACKUP_FORMAT
     retention: int = DEFAULT_BACKUP_RETENTION
+    storage_dir: str = ""
 
 
 def validate_backup_job(job):
@@ -99,6 +101,11 @@ def validate_backup_job(job):
     job.account_id = str(job.account_id or "").strip().casefold()
     job.interval = str(job.interval or "").strip().casefold()
     job.format = str(job.format or "").strip().casefold()
+    if not isinstance(job.storage_dir, str):
+        raise ValueError("backup folder must be a path")
+    job.storage_dir = job.storage_dir.strip()
+    if job.storage_dir and ("\0" in job.storage_dir or not Path(job.storage_dir).expanduser().is_absolute()):
+        raise ValueError("Use a full backup folder path on the computer running SongMirror.")
     if not re.fullmatch(r"[a-z0-9_-]+", job.account_id):
         raise ValueError("account is required")
     if type(job.enabled) is not bool:
@@ -146,8 +153,17 @@ class PlaylistBackupStore:
     def snapshots_dir(self):
         return self._snapshots_dir
 
-    def account_dir(self, account_id):
-        return self._snapshots_dir / self._account(account_id)
+    def storage_root(self, account_id, storage_dir=None):
+        if storage_dir is None:
+            job = self.get(account_id)
+            storage_dir = job.storage_dir if job else ""
+        return Path(storage_dir).expanduser() if storage_dir else self._snapshots_dir
+
+    def account_dir(self, account_id, storage_dir=None):
+        account_id = self._account(account_id)
+        if not re.fullmatch(r"[a-z0-9_-]+", account_id):
+            raise ValueError("invalid backup account")
+        return self.storage_root(account_id, storage_dir) / account_id
 
     @staticmethod
     def _read_json(path, default):
@@ -277,9 +293,11 @@ class PlaylistBackupStore:
     def record_failure(self, account_id, value):
         self._record(account_id, "last_failure", value)
 
-    def snapshots(self, account_id):
+    def snapshots(self, account_id, storage_dir=None):
         account_id = self._account(account_id)
-        directory = self.account_dir(account_id)
+        directory = self.account_dir(account_id, storage_dir)
+        if directory.is_symlink():
+            return []
         try:
             candidates = [
                 path for path in directory.iterdir()
@@ -299,16 +317,21 @@ class PlaylistBackupStore:
 
         return sorted(candidates, key=sort_key, reverse=True)
 
-    def write_snapshot(self, account_id, export, retention):
+    def write_snapshot(self, account_id, export, retention, storage_dir=None):
         account_id = self._account(account_id)
-        directory = self.account_dir(account_id)
+        root = self.storage_root(account_id, storage_dir)
+        if root != self._snapshots_dir:
+            writable_directory(str(root))
+        directory = self.account_dir(account_id, storage_dir)
         directory.mkdir(parents=True, exist_ok=True)
         if (
             directory.is_symlink()
-            or directory.resolve().parent != self._snapshots_dir.resolve()
+            or directory.resolve().parent != root.resolve()
         ):
-            raise ValueError("playlist backup directory escapes application data")
-        for private_directory in (self._snapshots_dir, directory):
+            raise ValueError("playlist backup directory escapes the selected folder")
+        # Never change permissions on a user-selected parent folder.
+        private_directories = (root, directory) if root == self._snapshots_dir else (directory,)
+        for private_directory in private_directories:
             try:
                 os.chmod(private_directory, 0o700)
             except OSError:
@@ -359,7 +382,7 @@ class PlaylistBackupStore:
 
         removed = 0
         if retention > 0:
-            for stale in self.snapshots(account_id)[retention:]:
+            for stale in self.snapshots(account_id, storage_dir)[retention:]:
                 stale.unlink()
                 removed += 1
         return destination, removed
@@ -523,6 +546,7 @@ class PlaylistBackupService:
                 account_id,
                 export,
                 job.retention,
+                job.storage_dir,
             )
             success = {
                 "at": _utc_timestamp(),
@@ -569,6 +593,7 @@ class PlaylistBackupService:
             "next_run_at": self._next_run.get(account_id) if job.enabled else None,
             "snapshot_count": len(self.store.snapshots(account_id)),
             "storage_path": str(self.store.account_dir(account_id).resolve()),
+            "default_storage_dir": str(self.store.snapshots_dir.resolve()),
             "last_success": history.get("last_success"),
             "last_failure": history.get("last_failure"),
         }

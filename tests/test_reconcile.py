@@ -1366,6 +1366,41 @@ def test_two_additions_resolving_to_one_new_track_hold_all_removals(tmp_path):
     conn.close()
 
 
+@pytest.mark.parametrize("max_adds, expected", [(200, ["reverse", "self"]), (1, ["reverse"])])
+def test_unrelated_catalog_collision_does_not_block_valid_new_songs(max_adds, expected):
+    def track(tid, name, isrc, date, artist="Temper City"):
+        return dict(id=tid, name=name, isrc=isrc, artist=artist, artists=[artist],
+                    duration_ms=180000, added_at=date)
+
+    old = track("old", "Existing unrelated track", "OLD", "2020", "Other artist")
+    conflict = track("conflict", "Another recording", "CONFLICT", "2021", "Different artist")
+    new = [track("reverse", "Reverse Psychology", "NEW1", "2026-09-04T13:09:42Z"),
+           track("self", "Self Aware", "NEW2", "2026-09-04T13:09:49Z")]
+
+    class Mirror(_ManyPeer):
+        def replay_chronology(self, playlist, ordered_entries):
+            pytest.fail("A collision must not rewrite existing playlist entries")
+
+    conn = archive.connect(":memory:")
+    spotify = _ManyPeer("spotify", [old, conflict, *new], lambda norm: norm["_raw"]["id"])
+    destinations = [Mirror(source, [old], lambda norm:
+                           "old" if norm["isrc"] == "CONFLICT" else norm["_raw"]["id"])
+                    for source in ("apple", "ytmusic", "tidal", "deezer", "amazon", "qobuz")]
+    peers = [spotify, *destinations]
+
+    stats = reconcile(peers, "Aurora", {p.source: {"id": p.source} for p in peers},
+                      _caches(*(p.source for p in peers)), conn, execute=True,
+                      max_removals=200, max_adds=max_adds,
+                      authority_sources={"spotify", "apple"})
+
+    assert all(peer.added == expected for peer in destinations)
+    assert all(peer.removed == [] for peer in peers)
+    assert stats["added"] == len(expected) * 6
+    assert stats["deferred"] == (3 - len(expected)) * 6
+    assert stats["clean"] is False
+    conn.close()
+
+
 def test_same_key_queued_additions_stay_distinct_when_audio_differs(tmp_path):
     conn = archive.connect(str(tmp_path / "queued-key-collision.db"))
     for src in ("spotify", "tidal"):

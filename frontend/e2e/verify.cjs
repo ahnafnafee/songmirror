@@ -159,6 +159,8 @@ function initialPlaylistBackups() {
     next_run_at: Math.floor(now / 1000) + 6 * 3600,
     snapshot_count: 3,
     storage_path: '/data/playlist_backups/spotify',
+    storage_dir: '',
+    default_storage_dir: '/data/playlist_backups',
     last_success: {
       at: new Date(now - 24 * 3600 * 1000).toISOString(),
       filename: 'songmirror-spotify-all-playlists-20260903T120000Z.json',
@@ -509,7 +511,7 @@ async function installMocks(page, opts = {}) {
   // one test never leak into another.
   let syncsData = opts.syncs ?? initialSyncs()
   let accountsData = [...(opts.accounts ?? ACCOUNTS)]
-  const settingsData = opts.settings ?? SETTINGS
+  const settingsData = { ...(opts.settings ?? SETTINGS) }
   const playlistsData = opts.playlists ?? PLAYLISTS
   const delays = opts.delays ?? {}
   let playlistBackupsData = opts.playlistBackups ?? initialPlaylistBackups()
@@ -582,7 +584,23 @@ async function installMocks(page, opts = {}) {
       await delay('settings')
       return json(settingsData)
     }
-    if (p === '/api/settings' && method === 'PUT') return json({ ok: true })
+    if (p === '/api/settings' && method === 'PUT') {
+      Object.assign(settingsData, req.postDataJSON())
+      return json({ ok: true })
+    }
+
+    if (p === '/api/folders/config') {
+      return json({ scope: 'container', locations: [{ name: 'App data', path: '/data' }, { name: 'Music downloads', path: '/music/playlists' }], mounts: [{ host: 'F:\\Torrent\\Music', server: '/music' }] })
+    }
+    if (p === '/api/folders' && method === 'GET') {
+      const folderPath = url.searchParams.get('path') || '/data'
+      if (folderPath === '/missing') return json({ detail: 'Folder not found. Choose another path.' }, 422)
+      const directories = folderPath === '/data' ? [{ name: 'Backups', path: '/data/Backups' }, { name: 'playlist_backups', path: '/data/playlist_backups' }]
+        : folderPath === '/music/playlists' ? [{ name: 'Jellyfin', path: '/music/playlists/Jellyfin' }, { name: 'Aurora', path: '/music/playlists/Aurora' }] : []
+      const parts = folderPath.split('/').filter(Boolean)
+      return json({ path: folderPath, parent: folderPath === '/' ? null : folderPath.slice(0, folderPath.lastIndexOf('/')) || '/',
+        breadcrumbs: [{ name: '/', path: '/' }, ...parts.map((name, i) => ({ name, path: '/' + parts.slice(0, i + 1).join('/') }))], directories, writable: true })
+    }
 
     if (p === '/api/playlist-backups' && method === 'GET') return json(playlistBackupsData)
     if (/^\/api\/playlist-backups\/[^/]+$/.test(p) && method === 'PUT') {
@@ -603,11 +621,14 @@ async function installMocks(page, opts = {}) {
         next_run_at: Math.floor(Date.now() / 1000) + 24 * 3600,
         snapshot_count: 0,
         storage_path: `/data/playlist_backups/${accountId}`,
+        storage_dir: '',
+        default_storage_dir: '/data/playlist_backups',
         last_success: null,
         last_failure: null,
         ...existing,
         ...body,
       }
+      updated.storage_path = `${updated.storage_dir || updated.default_storage_dir}/${accountId}`
       playlistBackupsData = [
         ...playlistBackupsData.filter((item) => item.account_id !== accountId),
         updated,
@@ -2399,23 +2420,25 @@ async function main() {
       const settingsShapeOk =
         settingsBodyText.includes('PROFILE') &&
         settingsBodyText.includes('APPEARANCE') &&
-        settingsBodyText.includes('DOWNLOAD MIRROR') &&
-        settingsBodyText.includes('PLAYLIST ARCHIVE') &&
-        settingsBodyText.includes('/data/playlist_backups/spotify') &&
-        settingsBodyText.includes('Last success') &&
-        settingsBodyText.includes('Last failure') &&
+        !settingsBodyText.includes('DOWNLOAD MIRROR') &&
+        !settingsBodyText.includes('PLAYLIST ARCHIVE') &&
         !settingsBodyText.includes('SYNC BEHAVIOR') &&
         !settingsBodyText.includes('SAFETY CAPS')
-      console.log(`${settingsShapeOk ? 'ok        ' : 'FAIL      '} Settings shows Profile + Appearance + Download mirror + persistent playlist archive`)
+      console.log(`${settingsShapeOk ? 'ok        ' : 'FAIL      '} General settings stays focused on Profile and Appearance`)
       if (!settingsShapeOk) results.push({ label: 'settings shape', overflow: true })
-      const downloadDirValue = await page.getByLabel('Download folder', { exact: true }).inputValue()
-      console.log(`${downloadDirValue === '/music/playlists' ? 'ok        ' : 'FAIL      '} Settings' Download folder is pre-filled from SETTINGS (got "${downloadDirValue}")`)
-      if (downloadDirValue !== '/music/playlists') results.push({ label: 'settings download dir prefill', overflow: true })
       const syncPointer = page.getByRole('link', { name: 'Manage your syncs on the Sync tab', exact: true })
       const syncPointerHref = await syncPointer.getAttribute('href')
       console.log(`${syncPointerHref === '/sync' ? 'ok        ' : 'FAIL      '} Settings has a pointer link to the Sync tab (href="${syncPointerHref}")`)
       if (syncPointerHref !== '/sync') results.push({ label: 'settings sync pointer', overflow: true })
 
+      await page.getByRole('link', { name: 'Playlist backups', exact: true }).click()
+      const addBox = await page.getByRole('button', { name: 'Add backup', exact: true }).boundingBox()
+      const cardBox = await page.getByRole('heading', { name: 'Spotify', exact: true }).boundingBox()
+      const addFirst = addBox.y < cardBox.y
+      console.log(`${addFirst ? 'ok        ' : 'FAIL      '} Add backup appears above existing schedules`)
+      if (!addFirst) results.push({ label: 'backup add first', overflow: true })
+      await checkOverflow(page, `Backup settings @ ${width}`, results)
+      await shot(page, `settings-backups-${width}`)
       await page.getByRole('button', { name: 'Back up Spotify now', exact: true }).click()
       await page.waitForTimeout(100)
       const manualBackupRecorded = (await page.locator('body').innerText()).includes('4 stored snapshots')
@@ -2423,11 +2446,76 @@ async function main() {
       if (!manualBackupRecorded) results.push({ label: 'playlist backup run now', overflow: true })
 
       await page.getByLabel('Add a connected account', { exact: true }).selectOption('apple')
-      await page.getByRole('button', { name: 'Add daily backup', exact: true }).click()
+      await page.getByRole('button', { name: 'Add backup', exact: true }).click()
       await page.waitForSelector('h3:has-text("Apple Music")')
       const appleScheduleAdded = (await page.locator('body').innerText()).includes('/data/playlist_backups/apple')
       console.log(`${appleScheduleAdded ? 'ok        ' : 'FAIL      '} a connected account gets its own persisted backup schedule`)
       if (!appleScheduleAdded) results.push({ label: 'playlist backup schedule create', overflow: true })
+
+      // Frequency presets, custom units, retention, folder browsing, and manual
+      // paths must all persist through the existing Save schedule flow.
+      const spotifyBackup = page.locator('div.rounded-control').filter({ has: page.getByRole('heading', { name: 'Spotify', exact: true }) }).first()
+      await spotifyBackup.getByLabel('Backup frequency', { exact: true }).selectOption('168h')
+      await page.getByRole('button', { name: 'Save Spotify backup schedule' }).click()
+      await page.waitForResponse((response) => response.url().endsWith('/api/playlist-backups') && response.request().method() === 'GET')
+      await spotifyBackup.getByLabel('Backup frequency', { exact: true }).selectOption('custom')
+      await spotifyBackup.getByLabel('Backup frequency: unit', { exact: true }).selectOption('d')
+      await spotifyBackup.getByLabel('Backup frequency: every', { exact: true }).fill('2')
+      await spotifyBackup.getByLabel('Keep backups', { exact: true }).selectOption('0')
+      await spotifyBackup.getByLabel('Backup folder', { exact: true }).click()
+      let folderDialog = page.getByRole('dialog', { name: 'Choose backup folder' })
+      await folderDialog.getByRole('button', { name: 'App data', exact: true }).click()
+      await folderDialog.getByRole('button', { name: 'Backups', exact: true }).click()
+      await folderDialog.getByRole('button', { name: 'Select folder', exact: true }).click()
+      await spotifyBackup.getByLabel('Backup folder', { exact: true }).filter({ hasText: '/data/Backups' }).waitFor()
+      const saveBackupRequest = page.waitForRequest((request) => request.url().endsWith('/api/playlist-backups/spotify') && request.method() === 'PUT')
+      await page.getByRole('button', { name: 'Save Spotify backup schedule' }).click()
+      const savedBackup = (await saveBackupRequest).postDataJSON()
+      const friendlyBackupOk = savedBackup.interval === '172800s' && savedBackup.retention === 0 && savedBackup.storage_dir === '/data/Backups'
+      console.log(`${friendlyBackupOk ? 'ok        ' : 'FAIL      '} friendly backup frequency, retention, and selected folder persist`)
+      if (!friendlyBackupOk) results.push({ label: 'backup frequency and location', overflow: true })
+
+      await page.getByRole('link', { name: 'Downloads & Jellyfin', exact: true }).click()
+      const downloadDirValue = (await page.getByLabel('Download folder', { exact: true }).innerText()).trim()
+      const hostPathShown = downloadDirValue === 'F:\\Torrent\\Music\\playlists'
+      console.log(`${hostPathShown ? 'ok        ' : 'FAIL      '} Download folder displays the original Windows host path (${downloadDirValue})`)
+      if (!hostPathShown) results.push({ label: 'settings host download path', overflow: true })
+      await page.getByLabel('Download folder', { exact: true }).click()
+      folderDialog = page.getByRole('dialog', { name: 'Choose download folder' })
+      await folderDialog.getByRole('button', { name: 'Open Jellyfin', exact: true }).click()
+      await folderDialog.getByText('No subfolders. You can select this folder.').waitFor()
+      await folderDialog.getByRole('button', { name: 'Back', exact: true }).click()
+      await folderDialog.getByRole('button', { name: 'Jellyfin', exact: true }).waitFor()
+      await folderDialog.getByRole('button', { name: 'Forward', exact: true }).click()
+      await folderDialog.getByText('No subfolders. You can select this folder.').waitFor()
+      await folderDialog.getByRole('button', { name: 'Up one folder', exact: true }).click()
+      await folderDialog.getByRole('button', { name: 'Aurora', exact: true }).waitFor()
+      await folderDialog.getByLabel('Search folders').fill('jelly')
+      await folderDialog.getByRole('button', { name: 'Aurora', exact: true }).waitFor({ state: 'hidden' })
+      await folderDialog.getByRole('button', { name: 'Jellyfin', exact: true }).click()
+      await checkOverflow(page, `Explorer folder picker @ ${width}`, results)
+      await shot(page, `folder-picker-${width}`)
+      await folderDialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+      if ((await page.getByLabel('Download folder', { exact: true }).innerText()).trim() !== downloadDirValue) results.push({ label: 'picker cancel preserves path', overflow: true })
+      await page.getByLabel('Download folder', { exact: true }).click()
+      await folderDialog.getByRole('button', { name: 'Enter a folder path', exact: true }).click()
+      await folderDialog.getByLabel('Folder address').fill('/missing')
+      await folderDialog.getByLabel('Folder address').press('Enter')
+      await folderDialog.getByRole('alert').filter({ hasText: 'Folder not found' }).waitFor()
+      if (await folderDialog.getByRole('button', { name: 'Select folder', exact: true }).isEnabled()) results.push({ label: 'invalid path prevents selection', overflow: true })
+      await folderDialog.getByRole('button', { name: 'Music downloads', exact: true }).click()
+      await folderDialog.getByRole('button', { name: 'Jellyfin', exact: true }).dblclick()
+      await folderDialog.getByText('No subfolders. You can select this folder.').waitFor()
+      await folderDialog.getByRole('button', { name: 'Select folder', exact: true }).click()
+      await page.getByLabel('Download folder', { exact: true }).filter({ hasText: 'Jellyfin' }).waitFor()
+      const downloadGroup = page.locator('div').filter({ has: page.getByLabel('Download folder', { exact: true }) }).filter({ has: page.getByRole('button', { name: 'Enter path manually', exact: true }) }).last()
+      await downloadGroup.getByRole('button', { name: 'Enter path manually', exact: true }).click()
+      await page.getByLabel('Download folder', { exact: true }).fill('/music/custom')
+      const settingsRequest = page.waitForRequest((request) => request.url().endsWith('/api/settings') && request.method() === 'PUT')
+      await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+      const folderSaved = (await settingsRequest).postDataJSON().DOWNLOAD_DIR === '/music/custom'
+      console.log(`${folderSaved ? 'ok        ' : 'FAIL      '} download folder supports browsing and manual input`)
+      if (!folderSaved) results.push({ label: 'download folder picker and manual input', overflow: true })
       await checkOverflow(page, `Settings shape @ ${width}`, results)
       await shot(page, `settings-${width}`)
 
@@ -2603,7 +2691,7 @@ async function main() {
       const summaryOk =
         summaryText.includes('Bidirectional (N-way)') &&
         summaryText.includes('Spotify ⇄ Apple Music') &&
-        summaryText.includes('30m')
+        summaryText.includes('30 minutes')
       console.log(`${summaryOk ? 'ok        ' : 'FAIL      '} Wizard review reflects Direction + Services + Schedule choices (got "${summaryText.replace(/\n/g, ' ')}")`)
       if (!summaryOk) results.push({ label: 'wizard review summary', overflow: true })
       await checkOverflow(page, `Wizard step 5 Limits + review @ ${width}`, results)
@@ -2614,7 +2702,7 @@ async function main() {
       await page.getByRole('button', { name: 'Save changes', exact: true }).click()
       await page.waitForSelector('text=Edit "Default"', { state: 'hidden' })
       const listAfterSaveText = await page.locator('body').innerText()
-      const saveRoundTripOk = listAfterSaveText.includes('Spotify ⇄ Apple Music') && listAfterSaveText.includes('every 30m')
+      const saveRoundTripOk = listAfterSaveText.includes('Spotify ⇄ Apple Music') && listAfterSaveText.includes('every 30 minutes')
       console.log(`${saveRoundTripOk ? 'ok        ' : 'FAIL      '} Saving the wizard updates the list card (PUT round trip)`)
       if (!saveRoundTripOk) results.push({ label: 'wizard save round trip', overflow: true })
       await checkOverflow(page, `Sync list after save @ ${width}`, results)
@@ -2923,7 +3011,7 @@ async function main() {
       // wizard involved.
       const workoutCard = page.locator('h3', { hasText: 'Workout' }).locator('xpath=ancestor::div[contains(@class,"rounded-card")][1]')
       await workoutCard.getByRole('switch', { name: /Resume "Workout"/, exact: false }).click()
-      await page.waitForSelector('text=every 1h') // "manual only" -> "every 1h" once enabled
+      await page.waitForSelector('text=every 1 hour') // "manual only" -> scheduled once enabled
       const workoutPausedGone = (await workoutCard.getByText('paused', { exact: true }).count()) === 0
       console.log(`${workoutPausedGone ? 'ok        ' : 'FAIL      '} Toggling a job's switch flips it live (paused badge clears)`)
       if (!workoutPausedGone) results.push({ label: 'sync card toggle', overflow: true })
@@ -4114,7 +4202,7 @@ async function main() {
       })
 
       await page.setViewportSize({ width: 1280, height: 900 })
-      await page.goto(BASE_URL + '/settings', { waitUntil: 'networkidle' })
+      await page.goto(BASE_URL + '/settings?section=backups', { waitUntil: 'networkidle' })
       const accountSelect = page.getByLabel('Add a connected account', { exact: true })
       const availableAccountIds = await accountSelect.locator('option').evaluateAll(
         (options) => options.map((option) => option.value),
@@ -4123,7 +4211,7 @@ async function main() {
         availableAccountIds.includes(alexSpotify.id)
         && !availableAccountIds.includes(defaultSpotify.id)
       await accountSelect.selectOption(alexSpotify.id)
-      await page.getByRole('button', { name: 'Add daily backup', exact: true }).click()
+      await page.getByRole('button', { name: 'Add backup', exact: true }).click()
       await page.getByRole('heading', { name: 'Spotify · Alex', exact: true }).waitFor()
       const body = await page.locator('body').innerText()
       const profilesStaySeparate =

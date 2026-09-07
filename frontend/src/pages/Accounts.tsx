@@ -46,7 +46,7 @@ export default function Accounts() {
         </p>
       </div>
 
-      <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
+      <Card className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto]">
         <SelectField
           label="Provider"
           value={provider}
@@ -55,14 +55,15 @@ export default function Accounts() {
         />
         <TextField
           label="New profile label"
-          help="Use a household member or purpose, such as Alex or Work."
+          aria-describedby="profile-label-help"
           placeholder="e.g. Alex"
           value={label}
           onChange={(event) => setLabel(event.target.value)}
         />
-        <Button loading={adding} onClick={() => void addProfile()}>
+        <Button className="h-11 md:h-[42px]" loading={adding} onClick={() => void addProfile()}>
           Add profile
         </Button>
+        <p id="profile-label-help" className="text-xs text-text-3 sm:col-span-3">Use a household member or purpose, such as Alex or Work.</p>
       </Card>
       {addError && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not add profile: {addError}</p>}
 

@@ -1,4 +1,5 @@
 import { providerLikedTracksLabel } from '@/lib/likedTracks'
+import { describeInterval } from '@/lib/format'
 import type { Account, SyncJob } from '@/types'
 
 export function parseCsv(value: string | null | undefined): string[] {
@@ -61,7 +62,7 @@ export interface SyncSummaryRow {
 export function buildSyncSummaryRows(job: SyncJob, peers: Account[], downloadDir?: string): SyncSummaryRow[] {
   const rows: SyncSummaryRow[] = []
 
-  rows.push({ label: 'Schedule', value: job.enabled ? `Every ${job.interval || '?'}` : 'Manual' })
+  rows.push({ label: 'Schedule', value: job.enabled ? `Every ${describeInterval(job.interval || '?')}` : 'Manual' })
 
   if (job.mode === 'merge') {
     const providerName = (id: string) => peers.find((peer) => peer.id === id)?.name ?? id

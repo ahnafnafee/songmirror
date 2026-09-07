@@ -8,8 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:e2e": "node e2e/verify.cjs",
-    "test:e2e:ci": "vite build && node e2e/verify.cjs"
+    "test:e2e": "node e2e/verify.cjs && node e2e/backup-folder-edit.cjs",
+    "test:e2e:ci": "vite build && node e2e/verify.cjs && node e2e/backup-folder-edit.cjs"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.2.8",

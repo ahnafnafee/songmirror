@@ -74,6 +74,25 @@ export function isValidIntervalText(value: string): boolean {
   return /^\d+\s*[smh]?$/i.test(value.trim())
 }
 
+export function intervalSeconds(value: string): number | null {
+  const match = value.trim().match(/^(\d+)\s*([smh]?)$/i)
+  if (!match) return null
+  const seconds = Number(match[1]) * (match[2].toLowerCase() === 'h' ? 3600 : match[2].toLowerCase() === 'm' ? 60 : 1)
+  return Number.isSafeInteger(seconds) ? seconds : null
+}
+
+export function describeInterval(value: string): string {
+  const seconds = intervalSeconds(value)
+  if (!seconds) return value
+  for (const [unit, size] of [['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60], ['second', 1]] as const) {
+    if (seconds % size === 0) {
+      const amount = seconds / size
+      return `${amount} ${unit}${amount === 1 ? '' : 's'}`
+    }
+  }
+  return value
+}
+
 /** Matches the backend's `--max-adds` validation (config.py: must be >= 1). */
 export function isValidPositiveInt(value: string): boolean {
   return /^\d+$/.test(value.trim()) && Number(value) >= 1

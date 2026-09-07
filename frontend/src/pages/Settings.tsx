@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { LuArrowRight } from 'react-icons/lu'
 
 import { api, errorMessage } from '@/api'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { ScheduledPlaylistBackups } from '@/components/settings/ScheduledPlaylistBackups'
 import { Button } from '@/components/ui/Button'
+import { FolderField } from '@/components/ui/FolderField'
 import { SelectField } from '@/components/ui/SelectField'
 import { LoadingStatus, Skeleton } from '@/components/ui/Skeleton'
 import { SettingsGroup } from '@/components/ui/SettingsGroup'
@@ -33,10 +34,12 @@ function sameSettings(left: SettingsMap, right: SettingsMap): boolean {
 }
 
 function settingsForm(settings: SettingsMap): SettingsMap {
-  return { ...DEFAULTS, ...settings }
+  return Object.fromEntries(Object.entries(DEFAULTS).map(([key, fallback]) => [key, settings[key] ?? fallback]))
 }
 
 export default function Settings() {
+  const [params] = useSearchParams()
+  const section = ['backups', 'downloads'].includes(params.get('section') ?? '') ? params.get('section')! : 'general'
   const { settings, loading, error, refresh } = useSettings()
   const initialServerForm = settings ? settingsForm(settings) : null
   const [form, setForm] = useState<SettingsMap | null>(() => initialServerForm)
@@ -66,18 +69,26 @@ export default function Settings() {
   }
 
   function discard() {
-    if (settings) setForm({ ...DEFAULTS, ...settings })
+    if (settings) setForm((current) => current && {
+      ...current, ...Object.fromEntries(sectionKeys.map((key) => [key, settingsForm(settings)[key]])),
+    })
     setSaveError(null)
   }
 
-  const dirty = Boolean(form && settings && !sameSettings(settingsForm(settings), form))
+  const sectionKeys = section === 'downloads' ? ['DOWNLOAD_DIR', 'LOCAL_MIRROR_FORMAT'] : ['DISPLAY_NAME']
+  const dirty = Boolean(form && settings && sectionKeys.some((key) => form[key] !== settingsForm(settings)[key]))
 
   async function save() {
     if (!form) return
     setSaving(true)
     setSaveError(null)
     try {
-      await api.saveSettings(form)
+      await api.saveSettings(Object.fromEntries(sectionKeys.map((key) => [key, form[key]])))
+      const saved = settingsForm(await api.getSettings())
+      setForm((current) => current && {
+        ...current,
+        ...Object.fromEntries(sectionKeys.filter((key) => current[key] === form[key]).map((key) => [key, saved[key]])),
+      })
       setJustSaved(true)
       await refresh()
     } catch (err) {
@@ -105,18 +116,33 @@ export default function Settings() {
 
       {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">Could not load settings: {error}</p>}
 
+      <nav aria-label="Settings sections" className="flex flex-wrap gap-1 rounded-card border border-border bg-surface p-1.5">
+        {[['general', 'General'], ['backups', 'Playlist backups'], ['downloads', 'Downloads & Jellyfin']].map(([key, title]) => (
+          <Link key={key} to={key === 'general' ? '/settings' : `/settings?section=${key}`}
+            aria-current={section === key ? 'page' : undefined}
+            className={cn('flex min-h-11 items-center rounded-control px-4 text-sm font-semibold',
+              section === key ? 'bg-accent-soft text-accent' : 'text-text-3 hover:bg-surface-2 hover:text-text')}>
+            {title}
+          </Link>
+        ))}
+      </nav>
+
+      {section === 'general' && (
       <SettingsGroup label="APPEARANCE">
         <ThemeToggle />
         <p className="text-xs leading-relaxed text-text-3">
           Applies instantly and is remembered on this device, separate from your account settings.
         </p>
       </SettingsGroup>
+      )}
 
+      {section === 'backups' && (
       <SettingsGroup label="PLAYLIST ARCHIVE">
         <ScheduledPlaylistBackups />
       </SettingsGroup>
+      )}
 
-      {loading && !form ? (
+      {section !== 'backups' && (loading && !form ? (
         <LoadingStatus label="Loading settings…">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Skeleton className="h-32 w-full rounded-card" />
@@ -131,7 +157,8 @@ export default function Settings() {
             void save()
           }}
         >
-          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-4">
+            {section === 'general' && (
             <SettingsGroup label="PROFILE">
               <TextField
                 label="Display name"
@@ -141,19 +168,20 @@ export default function Settings() {
                 onChange={(e) => setField('DISPLAY_NAME', e.target.value)}
               />
             </SettingsGroup>
+            )}
 
+            {section === 'downloads' && (
             <SettingsGroup label="DOWNLOAD MIRROR">
               <p className="text-xs leading-relaxed text-text-3">
                 Optional: where offline audio copies land for any sync that opts in ("Download this sync's
                 playlists", on the Sync tab).
               </p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <TextField
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                <FolderField
                   label="Download folder"
-                  help="Leave empty to disable local downloads for every sync."
-                  placeholder="e.g. /music or D:\Music"
+                  help="Use a folder your Jellyfin music library can access. Enter an empty path to disable downloads."
                   value={form.DOWNLOAD_DIR ?? ''}
-                  onChange={(e) => setField('DOWNLOAD_DIR', e.target.value)}
+                  onChange={(value) => setField('DOWNLOAD_DIR', value)}
                 />
                 <SelectField
                   label="Audio format"
@@ -163,10 +191,12 @@ export default function Settings() {
                   onChange={(e) => setField('LOCAL_MIRROR_FORMAT', e.target.value)}
                 />
               </div>
+              <p className="text-xs text-text-3">Downloads follow each sync's schedule. Choose its frequency on the Sync tab.</p>
             </SettingsGroup>
+            )}
           </div>
 
-          <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 rounded-card border border-border bg-surface p-3.5 shadow-lg sm:p-4">
+          <div className="flex flex-wrap items-center gap-3 rounded-card border border-border bg-surface p-3.5 sm:p-4">
             <span
               className={cn('size-2 shrink-0 rounded-full', dirty ? 'bg-warning' : 'bg-success')}
               aria-hidden="true"
@@ -185,7 +215,7 @@ export default function Settings() {
             </div>
           </div>
         </form>
-      ) : null}
+      ) : null)}
     </div>
   )
 }

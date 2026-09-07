@@ -3,9 +3,9 @@ import { LuArrowLeft, LuArrowRight, LuCheck, LuInfo } from 'react-icons/lu'
 
 import { api, errorMessage } from '@/api'
 import { Button } from '@/components/ui/Button'
+import { IntervalField } from '@/components/ui/IntervalField'
 import { Modal } from '@/components/ui/Modal'
 import { RadioCard } from '@/components/ui/RadioCard'
-import { SelectField } from '@/components/ui/SelectField'
 import { ServiceLogo } from '@/components/ui/ServiceLogo'
 import { SettingsGroup } from '@/components/ui/SettingsGroup'
 import { TextField } from '@/components/ui/TextField'
@@ -15,7 +15,7 @@ import { useSettings } from '@/hooks/useSettings'
 import { canSyncAccount } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { serviceLogoId, tagDot, tagText } from '@/lib/constants'
-import { isValidIntervalText, isValidPositiveInt } from '@/lib/format'
+import { intervalSeconds, isValidIntervalText, isValidPositiveInt } from '@/lib/format'
 import { nativeLikedTracksName, providerLikedTracksLabel } from '@/lib/likedTracks'
 import {
   authorityProvidersOf,
@@ -132,17 +132,6 @@ function normalizedLikedRoutes(
   }
   return normalized
 }
-
-const INTERVAL_PRESETS: Array<{ value: string; label: string }> = [
-  { value: '15m', label: 'Every 15 minutes' },
-  { value: '30m', label: 'Every 30 minutes' },
-  { value: '1h', label: 'Every hour' },
-  { value: '2h', label: 'Every 2 hours' },
-  { value: '3h', label: 'Every 3 hours' },
-  { value: '6h', label: 'Every 6 hours' },
-  { value: '12h', label: 'Every 12 hours' },
-  { value: '24h', label: 'Once a day' },
-]
 
 // The wizard's five steps, in order. `intro` is the one friendly sentence
 // shown above each step's fields; `label` is what the stepper shows.
@@ -552,7 +541,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
   }
 
   const nameValid = form.name.trim().length > 0
-  const intervalValid = isValidIntervalText(form.interval)
+  const intervalValid = isValidIntervalText(form.interval) && (intervalSeconds(form.interval) ?? 0) > 0
   const maxAddsValid = isValidPositiveInt(form.max_adds)
   const maxRemovalsValid = !form.mirror_removals || isValidPositiveInt(form.max_removals)
   const groupValid =
@@ -985,16 +974,12 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                     : 'Paused, skipped by its schedule and by "Run all enabled". You can still sync it manually.'
                 }
               />
-              <SelectField
+              <IntervalField
                 label="Interval"
                 help="How often this sync runs automatically."
                 value={form.interval}
-                onChange={(e) => setField('interval', e.target.value)}
-                options={
-                  INTERVAL_PRESETS.some((o) => o.value === form.interval)
-                    ? INTERVAL_PRESETS
-                    : [{ value: form.interval, label: form.interval || '(unset)' }, ...INTERVAL_PRESETS]
-                }
+                onChange={(value) => setField('interval', value)}
+                error={intervalValid ? undefined : 'Enter a positive whole-number interval.'}
               />
             </>
           )}

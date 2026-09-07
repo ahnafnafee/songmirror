@@ -26,7 +26,7 @@ from ..services.syncs import SyncStore
 from ..services.transfers import TransferService
 from .access_log import install_oauth_access_log_filter
 from .routers import (
-    accounts, events, playlist_backups as playlist_backups_router, playlists,
+    accounts, events, folders, playlist_backups as playlist_backups_router, playlists,
     resolve_cache as resolve_cache_router, settings as settings_router, sync,
     syncs as syncs_router,
     transfers as transfers_router,
@@ -90,6 +90,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
 
     app.include_router(accounts.router)
     app.include_router(settings_router.router)
+    app.include_router(folders.router)
     app.include_router(sync.router)
     app.include_router(syncs_router.router)
     app.include_router(events.router)

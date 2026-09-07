@@ -2,6 +2,8 @@
 // production (FastAPI serves the built SPA); proxied through Vite in dev
 // (see vite.config.ts). No client-side base URL needed either way.
 import type {
+  FolderPickerConfig,
+  FolderListing,
   Account,
   ClearUnmatchedResponse,
   ConnectResponse,
@@ -147,6 +149,9 @@ export const api = {
 
   // Settings
   getSettings: () => request<Settings>('/api/settings'),
+  folderPickerConfig: () => request<FolderPickerConfig>('/api/folders/config'),
+  browseFolders: (path = '') => request<FolderListing>(`/api/folders?path=${encodeURIComponent(path)}`),
+  createFolder: (parent: string, name: string) => request<{ path: string }>('/api/folders', { method: 'POST', body: JSON.stringify({ parent, name }) }),
   saveSettings: (values: Settings) => request<OkResponse>('/api/settings', { method: 'PUT', body: JSON.stringify(values) }),
 
   // Persistent scheduled playlist-metadata backups

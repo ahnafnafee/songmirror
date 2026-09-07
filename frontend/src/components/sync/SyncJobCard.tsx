@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Spinner } from '@/components/ui/Spinner'
 import { Toggle } from '@/components/ui/Toggle'
 import { cn } from '@/lib/cn'
+import { describeInterval } from '@/lib/format'
 import { buildSyncSummaryRows } from '@/lib/syncSummary'
 import type { Account, SyncJob } from '@/types'
 
@@ -109,7 +110,7 @@ export function SyncJobCard({ job, peers, running, queued, paused, pending, onEd
           </div>
           <p className="mt-1 text-[13px] leading-relaxed text-text-2">{summary}</p>
           <p className="mt-1.5 font-mono text-[10.5px] tracking-wide text-text-3">
-            {job.enabled ? `every ${job.interval}` : 'manual only'}
+            {job.enabled ? `every ${describeInterval(job.interval)}` : 'manual only'}
           </p>
         </div>
         <Toggle

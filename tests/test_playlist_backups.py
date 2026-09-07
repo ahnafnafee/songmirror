@@ -60,6 +60,52 @@ def test_backup_job_validation_rejects_unsafe_schedules(changes, message):
         validate_backup_job(job)
 
 
+def test_custom_folder_is_persisted_scoped_and_does_not_prune_old_location(tmp_path):
+    data = tmp_path / "data"
+    custom = tmp_path / "My backups"
+    custom.mkdir()
+    store = PlaylistBackupStore(data)
+    store.upsert(PlaylistBackupJob(account_id="spotify", retention=1))
+    original, _ = store.write_snapshot("spotify", _export(1), 1)
+    store.upsert(PlaylistBackupJob(account_id="spotify", retention=1, storage_dir=str(custom)))
+    # Another account and unrelated files in the chosen root must be untouched.
+    store.upsert(PlaylistBackupJob(account_id="apple", storage_dir=str(custom)))
+    other, _ = store.write_snapshot("apple", _export(1), 1)
+    unrelated = custom / "keep.txt"
+    unrelated.write_text("keep", encoding="utf-8")
+    reloaded = PlaylistBackupStore(data)
+    first, _ = reloaded.write_snapshot("spotify", _export(2), 1)
+    latest, removed = reloaded.write_snapshot("spotify", _export(3), 1)
+    assert latest.parent == custom / "spotify"
+    assert removed == 1 and not first.exists()
+    assert reloaded.latest_snapshot("spotify") == latest
+    assert latest.read_bytes() == _export(3).content
+    assert original.exists() and other.exists() and unrelated.exists()
+    reloaded.upsert(PlaylistBackupJob(account_id="spotify", storage_dir=""))
+    assert reloaded.latest_snapshot("spotify") == original
+    assert latest.exists()
+
+
+def test_backup_api_custom_folder_validation_and_latest(tmp_path):
+    settings = SettingsStore(dir=tmp_path / "data", project_env=False)
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    custom = tmp_path / "Backups"
+    custom.mkdir()
+    url = "/api/playlist-backups/spotify"
+    response = client.put(url, json={"storage_dir": str(custom), "enabled": False})
+    assert response.status_code == 200
+    job = response.json()
+    assert job["storage_dir"] == str(custom.resolve())
+    assert job["default_storage_dir"] == str((settings.data_dir / "playlist_backups").resolve())
+    assert Path(job["storage_path"]) == custom / job["account_id"]
+    app.state.playlist_backups.store.write_snapshot(job["account_id"], _export(1), 30)
+    assert client.get(url + "/latest").content == _export(1).content
+    for invalid in ("relative/path", str(tmp_path / "missing"), 123, None):
+        assert client.put(url, json={"storage_dir": invalid}).status_code == 422
+    assert app.state.playlist_backups.store.get("spotify").storage_dir == str(custom.resolve())
+
+
 def test_backup_run_persists_status_and_prunes_only_managed_snapshots(
     tmp_path,
     monkeypatch,
