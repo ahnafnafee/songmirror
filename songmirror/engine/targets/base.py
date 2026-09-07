@@ -1678,6 +1678,12 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 if not equivalent:
                     add_blockers.add("a resolved addition collided with a different current track")
                     chronology_collision = True
+                    deferred += 1
+                    log_warn(
+                        f"{p.name}/{name}: deferring {norm['name']} - {norm['artist']}: "
+                        "its catalog match belongs to a different current track",
+                        tag=p.tag,
+                    )
                 else:
                     current_candidates_by_cid[cid] = [
                         (
@@ -1743,6 +1749,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 claimed_positions.add(candidate[1][0])
             else:
                 chronology_collision = True
+                deferred += 1
                 add_blockers.add("one current occurrence matched multiple desired tracks")
         favorite_check = getattr(p, "is_favorite_tracks_resource", None)
         resource = playlists[p.source]
@@ -1753,33 +1760,29 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
         can_replay = callable(getattr(p, "replay_chronology", None)) and not is_favorite_resource
         replay_write_cost = getattr(p, "chronology_replay_write_cost", len)
         if chronology_collision and additions:
-            # A provider returned an id belonging to a demonstrably different
-            # current row. Its place in the desired chronology is ambiguous, so
-            # appending around it would recreate the ordering bug this repair is
-            # designed to prevent. Hold the batch for manual/cache correction.
-            cap_deferred = len(additions)
-            deferred += cap_deferred
-            full_write_cost = len(additions)
-            additions, chronology_replay = [], []
+            # Only the ambiguous entries are blocked. Replaying existing rows
+            # would rely on their disputed identities, but independently resolved
+            # additions can safely append in source order. A later pass can
+            # recover older gaps once the conflicting matches are corrected.
             log_warn(
-                f"{p.name}/{name}: deferring {cap_deferred} addition(s) because a resolved "
-                "catalog id collides with a different current track",
+                f"{p.name}/{name}: appending valid additions without reordering existing "
+                "tracks while conflicting matches are held",
                 tag=p.tag,
             )
-        else:
-            additions, chronology_replay, cap_deferred, full_write_cost = _fit_chronology_writes(
-                ordered_desired,
-                current_by_cid,
-                additions,
-                lambda item: item[0],
-                max_adds,
-                addition_target_id=lambda item: item[1],
-                replay_write_cost=replay_write_cost,
-                can_replay=can_replay,
-            )
+        can_replay = can_replay and not chronology_collision
+        additions, chronology_replay, cap_deferred, full_write_cost = _fit_chronology_writes(
+            ordered_desired,
+            current_by_cid,
+            additions,
+            lambda item: item[0],
+            max_adds,
+            addition_target_id=lambda item: item[1],
+            replay_write_cost=replay_write_cost,
+            can_replay=can_replay,
+        )
         chronology_replayed = sum(1 for _target_id, original in chronology_replay
                                   if original is not None)
-        if cap_deferred and not chronology_collision:
+        if cap_deferred:
             deferred += cap_deferred
             if full_write_cost > max_adds and can_replay:
                 log_warn(
