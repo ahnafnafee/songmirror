@@ -299,14 +299,22 @@ Some of these integrations use the providers' first-party web interfaces and can
 
 Backups do not require a second provider or a sync job:
 
-- On **Settings → Playlist archive**, add any connected playlist account, choose JSON or XML, set its interval and how many snapshots to retain, then leave SongMirror running. Set retention to `0` to keep every snapshot.
-- Scheduled files are written under `data/playlist_backups/<account-profile-id>/` (or `/data/playlist_backups/<account-profile-id>/` in Docker), alongside the rest of SongMirror's persistent data. Each account keeps its own schedule, including multiple accounts on the same service. Removing a schedule never deletes snapshots already on disk.
+- On **Settings → Playlist backups**, use **Add backup** at the top to add a connected account. Choose JSON or XML, then select a frequency such as daily or weekly. Custom intervals use a number and a unit. **Keep backups** offers retention presets, a custom count, or **All backups**.
+- Backups default to `data/playlist_backups/<account-profile-id>/` (or `/data/playlist_backups/<account-profile-id>/` in Docker). Click **Backup folder** for the built-in folder picker, or choose **Enter path manually**. A custom folder still gets a separate subfolder for each account. **Use default backup folder** restores the default. Changing locations affects future backups; old files stay where they are. Retention and **Download latest** apply to the selected location. Removing a schedule never deletes saved files.
+- **Settings → Downloads & Jellyfin → Download folder** uses the same built-in picker and manual entry. Choose a folder accessible to your Jellyfin library. Downloads follow each opted-in sync's schedule on the Sync tab. The picker displays configured host paths (for example, `F:\Torrent\Music`) while retaining their Docker mapping (`/music`) internally. Existing download mounts are unchanged. Additional host folders must first be shared as Docker bind mounts; choosing an unmounted folder shows an error and leaves the current setting unchanged.
+
 - The same Settings card shows the next run, stored snapshot count, last successful file and counts, and the most recent failure. **Back up now** queues a safe on-demand run; **Download latest** retrieves the newest persisted snapshot.
 - On the **Playlists** page, use **Export** on a service card to download every playlist from that service in one versioned JSON or XML file.
 - Open a playlist to export only that playlist. Its **Soundiiz** option follows [Soundiiz's documented JSON import shape](https://soundiiz.com/data/fileExamples/playlistExport.json), so the downloaded track list can be uploaded through Soundiiz's **Import Playlist → From File** flow.
 - SongMirror JSON/XML preserves playlist order and names plus provider track/occurrence IDs, available ISRCs, artists, albums, album track positions, durations, added dates, artwork links, and unavailable-entry markers. ID-less catalog ghosts remain in the backup instead of disappearing. Files contain no cookies, tokens, request headers, previews, or streaming-file URLs.
 
 Manual exports are downloaded by the browser to the device running the UI. Scheduled exports use the existing application-data volume, so no second host path or container mount is required. Backup reads queue behind syncs and transfers instead of accessing provider clients concurrently. The `schema_version` field lets future releases evolve the lossless format without making old snapshots ambiguous.
+
+### Built-in folder picker
+
+Click a folder field or **Browse…** to open the built-in picker. Use **Locations**, clickable breadcrumbs, **Back**, **Forward**, and **Up one folder** to navigate. Click a folder to select it; double-click, press Enter, or use its arrow to open it. Search filters the current folder. **Enter a folder path** accepts a full address. **Select folder** updates the draft; save the settings or schedule to apply it. Cancel leaves the draft unchanged. No desktop helper or additional process is required.
+
+**New folder** creates a named subfolder in the currently open location, then opens it. Existing items are never overwritten. Cancelling name entry creates nothing; cancelling the picker after creation leaves the new folder on disk. Your saved backup or download location changes only after selecting and saving. In Docker, the picker explains which paths are shared and shows both the container path and its configured computer path when available.
 
 <div align="right">
 

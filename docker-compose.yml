@@ -49,11 +49,14 @@ services:
       SPOTIFY_OAUTH_OPEN_BROWSER: "0"
       # Container-internal download path (the host music dir is bind-mounted to
       # it below). SONGMIRROR_DOWNLOAD_DIR is authoritative over any UI-saved
-      # DOWNLOAD_DIR — that value can be a host path (e.g. F:\Torrent\Music) the
+      # legacy DOWNLOAD_DIR — that value can be a host path (e.g. F:\Torrent\Music) the
       # container's Linux filesystem doesn't have, which would send spotDL into
       # the ephemeral container instead of the mount. Set the HOST location via
-      # DOWNLOAD_DIR in .env (it drives the mount below), not the in-app field.
+      # DOWNLOAD_DIR in .env (it drives the mount below). New folder choices in
+      # the UI are validated inside the container and can select another mount.
       SONGMIRROR_DOWNLOAD_DIR: /music
+      # Display the host music path in the built-in folder picker.
+      SONGMIRROR_HOST_DOWNLOAD_DIR: "${DOWNLOAD_DIR:-}"
     volumes:
       - ./data:/data
       - "${DOWNLOAD_DIR:-./downloads}:/music"

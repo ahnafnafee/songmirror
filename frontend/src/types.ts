@@ -438,6 +438,8 @@ export interface PlaylistBackupJob {
   next_run_at: number | null
   snapshot_count: number
   storage_path: string
+  storage_dir: string
+  default_storage_dir: string
   last_success: PlaylistBackupSuccess | null
   last_failure: PlaylistBackupFailure | null
 }
@@ -447,6 +449,21 @@ export interface PlaylistBackupUpdate {
   interval?: string
   format?: PlaylistBackupFormat
   retention?: number
+  storage_dir?: string
+}
+
+export interface FolderPickerConfig {
+  scope?: 'container' | 'computer'
+  locations: Array<{ name: string; path: string }>
+  mounts: Array<{ host: string; server: string }>
+}
+
+export interface FolderListing {
+  path: string
+  parent: string | null
+  breadcrumbs: Array<{ name: string; path: string }>
+  directories: Array<{ name: string; path: string }>
+  writable: boolean
 }
 
 export interface QueueResponse {

@@ -6,7 +6,7 @@ import { useAccounts } from '@/hooks/useAccounts'
 import { useNow } from '@/hooks/useNow'
 import { usePlaylistBackups } from '@/hooks/usePlaylistBackups'
 import { capabilitiesOf } from '@/lib/accountCapabilities'
-import { formatClockTime, formatCountdown, isValidIntervalText } from '@/lib/format'
+import { formatCountdown, intervalSeconds } from '@/lib/format'
 import type {
   Account,
   PlaylistBackupFormat,
@@ -16,13 +16,15 @@ import type {
 
 import { Button } from '../ui/Button'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { FolderField } from '../ui/FolderField'
+import { IntervalField } from '../ui/IntervalField'
 import { SelectField } from '../ui/SelectField'
 import { ServiceLogo } from '../ui/ServiceLogo'
 import { TextField } from '../ui/TextField'
 import { Toggle } from '../ui/Toggle'
 
 const FORMAT_OPTIONS = [
-  { value: 'json', label: 'JSON' },
+  { value: 'json', label: 'JSON (recommended)' },
   { value: 'xml', label: 'XML' },
 ]
 
@@ -31,6 +33,7 @@ const DEFAULT_UPDATE: Required<PlaylistBackupUpdate> = {
   interval: '24h',
   format: 'json',
   retention: 30,
+  storage_dir: '',
 }
 
 interface Draft {
@@ -38,6 +41,7 @@ interface Draft {
   interval: string
   format: PlaylistBackupFormat
   retention: string
+  storage_dir: string
 }
 
 function draftFrom(job: PlaylistBackupJob): Draft {
@@ -46,18 +50,11 @@ function draftFrom(job: PlaylistBackupJob): Draft {
     interval: job.interval,
     format: job.format,
     retention: String(job.retention),
+    storage_dir: job.storage_dir ?? '',
   }
 }
 
-function intervalSeconds(value: string): number | null {
-  const match = value.trim().toLocaleLowerCase().match(/^(\d+)\s*([smh]?)$/)
-  if (!match) return null
-  const multiplier = match[2] === 'h' ? 3600 : match[2] === 'm' ? 60 : 1
-  return Number(match[1]) * multiplier
-}
-
 function validInterval(value: string): boolean {
-  if (!isValidIntervalText(value)) return false
   const seconds = intervalSeconds(value)
   return seconds !== null && seconds >= 60 && seconds <= 365 * 24 * 60 * 60
 }
@@ -92,23 +89,26 @@ function BackupScheduleCard({
   const [busy, setBusy] = useState<'save' | 'run' | 'download' | 'delete' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [customRetention, setCustomRetention] = useState(false)
   const now = useNow()
-  const { enabled, format, interval, retention } = job
+  const { enabled, format, interval, retention, storage_dir = '' } = job
 
   useEffect(() => {
-    setDraft({ enabled, format, interval, retention: String(retention) })
-  }, [enabled, format, interval, retention])
+    setDraft({ enabled, format, interval, retention: String(retention), storage_dir })
+  }, [enabled, format, interval, retention, storage_dir])
 
   const dirty = draft.enabled !== job.enabled
     || draft.interval !== job.interval
     || draft.format !== job.format
     || draft.retention !== String(job.retention)
+    || draft.storage_dir !== storage_dir
   const intervalOk = validInterval(draft.interval)
   const retentionOk = validRetention(draft.retention)
   const latestFailed = resultIsFailure(job)
+  const folderSaveBlocked = job.running && draft.storage_dir !== storage_dir
 
   async function save() {
-    if (!intervalOk || !retentionOk) return
+    if (!intervalOk || !retentionOk || folderSaveBlocked) return
     setBusy('save')
     setActionError(null)
     try {
@@ -117,6 +117,7 @@ function BackupScheduleCard({
         interval: draft.interval.trim(),
         format: draft.format,
         retention: Number(draft.retention),
+        storage_dir: draft.storage_dir,
       })
       await refresh()
     } catch (err) {
@@ -208,16 +209,16 @@ function BackupScheduleCard({
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <TextField
-          label="Run every"
-          help="1m–8760h; for example 6h, 24h, or 168h."
+        <IntervalField
+          label="Backup frequency"
+          help="Choose how often to save a fresh backup."
           value={draft.interval}
-          error={intervalOk ? undefined : 'Use an interval from 1m through 8760h.'}
-          onChange={(event) => setDraft((current) => ({ ...current, interval: event.target.value }))}
+          error={intervalOk ? undefined : 'Choose an interval from 1 minute to 365 days.'}
+          onChange={(interval) => setDraft((current) => ({ ...current, interval }))}
         />
         <SelectField
-          label="Snapshot format"
-          help="JSON is easiest to inspect or process."
+          label="Backup format"
+          help="Playlist names and track details; audio is not included."
           options={FORMAT_OPTIONS}
           value={draft.format}
           onChange={(event) => setDraft((current) => ({
@@ -225,17 +226,44 @@ function BackupScheduleCard({
             format: event.target.value as PlaylistBackupFormat,
           }))}
         />
-        <TextField
-          label="Snapshots to keep"
-          help="Set 0 to keep every snapshot."
-          type="number"
-          min={0}
-          max={10_000}
-          step={1}
-          value={draft.retention}
-          error={retentionOk ? undefined : 'Enter a whole number from 0 through 10000.'}
-          onChange={(event) => setDraft((current) => ({ ...current, retention: event.target.value }))}
-        />
+        <div className="flex min-w-0 flex-col gap-3">
+          <SelectField label="Keep backups"
+            help="Older backups are removed after a successful save."
+            value={customRetention || !['7', '30', '90', '0'].includes(draft.retention) ? 'custom' : draft.retention}
+            options={[{ value: '7', label: 'Latest 7 backups' }, { value: '30', label: 'Latest 30 backups' },
+              { value: '90', label: 'Latest 90 backups' }, { value: '0', label: 'All backups' }, { value: 'custom', label: 'Custom amount…' }]}
+            onChange={(event) => {
+              setCustomRetention(event.target.value === 'custom')
+              if (event.target.value !== 'custom') setDraft((current) => ({ ...current, retention: event.target.value }))
+            }} />
+          {(customRetention || !['7', '30', '90', '0'].includes(draft.retention)) && (
+            <TextField
+              label="Keep latest backups"
+              type="number"
+              min={1}
+              max={10_000}
+              step={1}
+              value={draft.retention}
+              error={retentionOk ? undefined : 'Enter a whole number from 1 through 10,000.'}
+              onChange={(event) => setDraft((current) => ({ ...current, retention: event.target.value }))}
+            />
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-control border border-border bg-surface p-3">
+        <FolderField label="Backup folder" value={draft.storage_dir}
+          defaultPath={job.default_storage_dir}
+          disabled={busy !== null}
+          help="Each account gets its own subfolder. Choose a folder or enter an existing path."
+          onChange={(storage_dir) => setDraft((current) => ({ ...current, storage_dir }))} />
+        <div className="mt-3">
+          <Toggle label="Use default backup folder" checked={!draft.storage_dir}
+            disabled={busy !== null}
+            onChange={(useDefault) => setDraft((current) => ({ ...current, storage_dir: useDefault ? '' : job.default_storage_dir }))} />
+        </div>
+        {draft.storage_dir !== storage_dir && <p className="mt-2 text-xs text-text-3">The new location applies to future backups. Existing files stay in their current folder.</p>}
+        {job.running && <p className="mt-2 text-xs text-text-3">You can choose a folder now. Save the new location after this backup finishes.</p>}
       </div>
 
       <div aria-live="polite" className="mt-4 rounded-control border border-border/80 bg-surface px-3 py-2.5 text-xs leading-relaxed text-text-2">
@@ -243,7 +271,7 @@ function BackupScheduleCard({
           <p>Reading every playlist now. Syncs and transfers will run before or after this backup, never at the same time.</p>
         ) : job.enabled && job.next_run_at ? (
           <p>
-            Next run at <span className="font-semibold text-text">{formatClockTime(job.next_run_at)}</span>
+            Next backup <span className="font-semibold text-text">{dateTime(new Date(job.next_run_at * 1000).toISOString())}</span>
             {' '}· {formatCountdown(job.next_run_at, now)}
           </p>
         ) : (
@@ -273,7 +301,7 @@ function BackupScheduleCard({
           size="sm"
           icon={<LuSave className="size-3.5" aria-hidden="true" />}
           loading={busy === 'save'}
-          disabled={!dirty || !intervalOk || !retentionOk || busy !== null}
+          disabled={!dirty || !intervalOk || !retentionOk || busy !== null || folderSaveBlocked}
           aria-label={`Save ${job.account_name} backup schedule`}
           onClick={() => void save()}
         >
@@ -383,39 +411,32 @@ export function ScheduledPlaylistBackups() {
         <div>
           <p className="text-sm font-medium text-text">Scheduled playlist archive</p>
           <p className="mt-0.5 text-xs leading-relaxed text-text-3">
-            Save fresh metadata for every playlist on a connected account alongside SongMirror's persistent app data.
-            Snapshots contain no credentials and stay available when their schedule is removed.
+            Save playlist names and track details automatically. Backups use SongMirror's app data folder by default,
+            or a folder you choose. Removing a schedule keeps its saved files.
           </p>
         </div>
       </div>
 
-      {error ? <p role="alert" className="rounded-control bg-danger-soft px-3 py-2 text-xs text-danger">Could not load backup schedules: {error}</p> : null}
-      {loading ? <p className="text-xs text-text-3">Loading backup schedules…</p> : null}
-      {(backups ?? []).map((job) => (
-        <BackupScheduleCard key={job.account_id} job={job} refresh={refresh} />
-      ))}
-
       {backups !== null ? (
         <div className="rounded-control border border-dashed border-border-strong p-3.5 sm:p-4">
           {available.length > 0 ? (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
               <div className="min-w-0 flex-1">
                 <SelectField
                   label="Add a connected account"
-                  help="Each account gets its own schedule, storage, and run history."
                   options={available.map((account) => ({ value: account.id, label: account.name }))}
                   value={selectedAccount}
                   onChange={(event) => setAccountId(event.target.value)}
                 />
               </div>
               <Button
-                className="sm:mb-[1.625rem]"
-                size="sm"
+                className="h-11 md:h-[42px]"
                 loading={adding}
                 onClick={() => void addSchedule()}
               >
-                Add daily backup
+                Add backup
               </Button>
+              <p className="text-xs text-text-3 sm:col-span-2">Each account gets its own schedule and folder. New schedules start with daily backups.</p>
             </div>
           ) : (
             <p className="text-xs leading-relaxed text-text-3">
@@ -429,6 +450,11 @@ export function ScheduledPlaylistBackups() {
           {addError ? <p role="alert" className="mt-2 text-xs text-danger">{addError}</p> : null}
         </div>
       ) : null}
+      {error ? <p role="alert" className="rounded-control bg-danger-soft px-3 py-2 text-xs text-danger">Could not load backup schedules: {error}</p> : null}
+      {loading ? <p className="text-xs text-text-3">Loading backup schedules…</p> : null}
+      {(backups ?? []).map((job) => (
+        <BackupScheduleCard key={job.account_id} job={job} refresh={refresh} />
+      ))}
     </div>
   )
 }

@@ -23,6 +23,7 @@ from ..engine import logs
 from ..engine.config import DEFAULT_INTERVAL, parse_args, parse_interval
 from ..engine.runner import run_pass
 from .syncs import SyncStore
+from .folders import download_directory
 
 
 async def _run_pass_async(opts, should_continue=None):
@@ -76,13 +77,9 @@ class SyncService:
         opts.max_adds = job.max_adds
         opts.max_removals = job.max_removals
         opts.apply_large_removals = job.apply_large_removals
-        # SONGMIRROR_DOWNLOAD_DIR (a container-internal bind-mount path set by
-        # docker-compose) wins over the UI-saved DOWNLOAD_DIR: inside the
-        # container that UI value can be a host path (e.g. a Windows F:\ path)
-        # that doesn't exist on the container's filesystem, so spotDL would write
-        # into the ephemeral container instead of the mounted volume. Unset
-        # outside Docker, so the UI value is used there.
-        opts.download_dir = (os.getenv("SONGMIRROR_DOWNLOAD_DIR") or self._settings.get("DOWNLOAD_DIR", "") or "") if job.download else ""
+        # Explicit UI folder choices are validated on the server. Legacy host
+        # paths still fall back to Docker's configured mount.
+        opts.download_dir = download_directory(self._settings) if job.download else ""
         return opts
 
     async def run_job(self, job_id, execute=False):

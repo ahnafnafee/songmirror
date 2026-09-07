@@ -2,9 +2,11 @@
 
 import os
 
-from fastapi import APIRouter, Body, Request
+from fastapi import APIRouter, Body, HTTPException, Request
 
 from ...services.accounts import CONNECTORS
+from ...services.folders import download_directory, writable_directory
+from ...services.folders import FolderBrowser
 
 router = APIRouter()
 
@@ -41,10 +43,22 @@ def get_settings(request: Request):
     for key in CONFIG_KEYS:
         if key not in out and os.getenv(key):
             out[key] = os.getenv(key)
+    out["DOWNLOAD_DIR"] = download_directory(request.app.state.settings)
+    out.pop("DOWNLOAD_DIR_CONFIRMED", None)
     return out
 
 
 @router.put("/api/settings")
 def put_settings(request: Request, values: dict = Body(...)):
+    values.pop("DOWNLOAD_DIR_CONFIRMED", None)
+    if "DOWNLOAD_DIR" in values:
+        try:
+            value = FolderBrowser(request.app.state.settings).server_path(values["DOWNLOAD_DIR"])
+            if not isinstance(value, str):
+                raise ValueError("Download folder must be a path.")
+            values["DOWNLOAD_DIR"] = str(writable_directory(value)) if value.strip() else ""
+            values["DOWNLOAD_DIR_CONFIRMED"] = "1"
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     request.app.state.settings.save(values)
     return {"ok": True}
