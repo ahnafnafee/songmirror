@@ -24,6 +24,8 @@ import os
 import random
 import re
 import time
+import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
@@ -39,9 +41,9 @@ from .provider_utils import source_playlist_details
 DEFAULT_AUTH_FILE = "ytmusic_oauth.json"
 API = "https://www.googleapis.com/youtube/v3"
 
-_TOPIC_RE = re.compile(r"\s*-\s*Topic$")
+_TOPIC_RE = re.compile(r"\s*-\s*Topic$", re.IGNORECASE)
 _CHANNEL_DECORATION_RE = re.compile(
-    r"(?:\s*vevo|\s+official(?:\s+channel)?)$",
+    r"(?:\s*vevo|\s+official(?:\s+channel)?|\s+resmi)$",
     re.IGNORECASE,
 )
 _TITLE_SEPARATOR = r"(?:\s+-\s+|\s*[–—]\s*|\s+\|\s+|:\s+)"
@@ -49,7 +51,8 @@ _TITLE_PREFIX_RE = re.compile(
     rf"^(?P<prefix>.+?){_TITLE_SEPARATOR}(?P<title>.+)$"
 )
 _COLLABORATOR_RE = re.compile(r"\s+(?:x|×|&|feat\.?|ft\.?)\s+|\s*,\s*", re.IGNORECASE)
-_PUBLISHER_RE = re.compile(r"\b(?:production|productions|records|recordings)\b")
+_PUBLISHER_RE = re.compile(r"\b(?:production|productions|records|recordings|muzik|muzikplay|fabrick)\b")
+_HASHTAGS_RE = re.compile(r"(?:\s+#[^\W\d]\w*)+\s*$", re.UNICODE)
 _TRAILING_BRACKET_RE = re.compile(
     r"\s*(?:\((?P<paren>[^()]*)\)|\[(?P<bracket>[^\[\]]*)\]|\{(?P<brace>[^{}]*)\})\s*$"
 )
@@ -188,12 +191,19 @@ def _parse_count(value):
 
 
 def _artist_from_channel(channel):
-    """'The Cranberries - Topic' -> 'The Cranberries'; VEVO/plain kept as-is.
+    """Remove channel branding from source artist credits consistently.
 
     Both YT readers run every artist through this because the two shapes name the
     SAME artist, and YouTube serves them interchangeably for one unchanging
     video. Leaving them apart makes a track's identity flap between passes."""
-    return _TOPIC_RE.sub("", channel or "").strip()
+    raw = unicodedata.normalize("NFC", str(channel or "")).strip()
+    artist = _HASHTAGS_RE.sub("", raw)
+    while artist:
+        cleaned = _CHANNEL_DECORATION_RE.sub("", _TOPIC_RE.sub("", artist)).strip()
+        if cleaned == artist:
+            break
+        artist = cleaned
+    return artist or raw
 
 
 def _channel_name_keys(channel):
@@ -201,16 +211,16 @@ def _channel_name_keys(channel):
 
     YouTube appends branding such as ``VEVO`` and ``Official Channel`` to many
     owner names while the video's leading credit remains the plain artist.
-    Keep the stored artist convention unchanged, but accept each progressively
-    undecorated spelling when deciding whether a prefix is safe to remove.
+    Accept progressively undecorated spellings when verifying a video credit.
     """
     variants = set()
     current = str(channel or "").strip()
     while current:
-        key = normalize_text(current)
+        key = romanized(current)
         if key:
             variants.add(key)
         undecorated = _CHANNEL_DECORATION_RE.sub("", current).strip()
+        undecorated = re.sub(r"^Official(?=[A-ZÇĞİÖŞÜ])", "", undecorated)
         if undecorated == current:
             break
         current = undecorated
@@ -223,14 +233,15 @@ def _is_video_production_tag(value):
         return True
     words = normalized.split()
     without_quality = [word for word in words if word not in _VIDEO_QUALITY_TAGS]
+    without_year = [word for word in without_quality if not re.fullmatch(r"(?:19|20)\d{2}", word)]
     return bool(words) and (
-        not without_quality or " ".join(without_quality) in _VIDEO_PRODUCTION_TAGS
+        not without_quality or " ".join(without_year) in _VIDEO_PRODUCTION_TAGS
     )
 
 
 def _credit_matches(credit, artist):
     """Accept a credited artist's channel spelling or longer display name."""
-    key = normalize_text(credit)
+    key = romanized(credit)
     compact = key.replace(" ", "")
     return any(
         compact == channel.replace(" ", "")
@@ -239,55 +250,28 @@ def _credit_matches(credit, artist):
     )
 
 
-def _clean_video_metadata(title, artists):
-    """Separate confirmed music credits from an unstructured video title.
+def _clean_video_hashtags(title):
+    """Drop promotion tags, but turn recording/guest tags into title qualifiers."""
+    def replace(match):
+        versions, features = [], []
+        for hashtag in match[0].split():
+            tag = hashtag.lstrip("#").replace("_", " ")
+            tag = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", tag)
+            tag = re.sub(r"([a-z])([A-Z])", r"\1 \2", tag)
+            if recording_version_signature(tag)[0]:
+                versions.append(tag)
+            elif featured_artists(f" {tag}"):
+                features.append(tag)
+        qualifiers = ([" ".join(versions)] if versions else []) + features
+        return "".join(f" ({qualifier})" for qualifier in qualifiers)
 
-    A channel can name one collaborator, a longer artist display name, or a
-    publisher. Whole credited band names take precedence over splitting an
-    ampersand. Production labels are removable; recording qualifiers are not.
-    """
-    raw = str(title or "").strip()
-    if not raw:
-        return "", artists
+    return _HASHTAGS_RE.sub(replace, title)
 
-    cleaned = raw
-    prefix_guests = []
-    prefix = _TITLE_PREFIX_RE.match(cleaned)
-    if prefix:
-        credit = prefix.group("prefix").strip()
-        if any(_credit_matches(credit, artist) for artist in artists):
-            credits = [credit]
-        else:
-            credits = [part.strip() for part in _COLLABORATOR_RE.split(credit) if part.strip()]
-        confirmed = any(
-            _credit_matches(part, artist) for part in credits for artist in artists
-        )
-        publisher = any(_PUBLISHER_RE.search(romanized(artist)) for artist in artists)
-        production = _TRAILING_BRACKET_RE.search(raw)
-        collaboration = len(credits) > 1 and production is not None and any(
-            value is not None and _is_video_production_tag(value)
-            for value in production.groups()
-        )
-        if confirmed or publisher or collaboration:
-            cleaned = prefix.group("title").strip()
-            artists = credits
-            # A feature is recording information as well as an artist credit.
-            # Keep it in the normalized title when the video puts it first.
-            prefix_guests = featured_artists(credit)
 
-    # Some uploader titles concatenate an uppercase artist credit and a song
-    # without punctuation. Require the complete credit at a word boundary.
-    if cleaned == raw:
-        for boundary in re.finditer(r"\s+", raw):
-            credit = raw[:boundary.start()]
-            if credit.isupper() and any(
-                normalize_text(credit).replace(" ", "")
-                in {key.replace(" ", "") for key in _channel_name_keys(artist)}
-                for artist in artists
-            ):
-                cleaned = raw[boundary.end():]
-                break
-
+def _strip_video_tags(title):
+    """Remove production decoration, retaining recording and subtitle text."""
+    raw = unicodedata.normalize("NFC", str(title or "")).strip()
+    cleaned = _clean_video_hashtags(raw)
     while cleaned:
         bracket = _TRAILING_BRACKET_RE.search(cleaned)
         if bracket:
@@ -321,9 +305,93 @@ def _clean_video_metadata(title, artists):
                 continue
         break
 
+    return cleaned or raw
+
+
+def _video_title_keys(title):
+    """Title hints may omit a version; only use that fact to locate the credit."""
+    title = _strip_video_tags(title)
+    keys = {romanized(title)} if title else set()
+    while bracket := _TRAILING_BRACKET_RE.search(title):
+        tag = bracket.group().strip()
+        if not (recording_version_signature(tag)[0] or featured_artists(tag)):
+            break
+        title = title[:bracket.start()].strip()
+        if title:
+            keys.add(romanized(title))
+    return keys
+
+
+def _clean_video_metadata(title, artists, *, song_title=None):
+    """Recover video credits using channel evidence or the same video's title.
+
+    A clean Music title can establish which part of an upload title is the
+    song, even when the uploader is a label or a renamed band. Without that
+    evidence, a separator alone is insufficient to invent an artist.
+    """
+    raw = unicodedata.normalize("NFC", str(title or "")).strip()
+    artists = [_artist_from_channel(artist) for artist in artists]
+    cleaned = _clean_video_hashtags(raw)
+    suffix = _TRAILING_SEPARATOR_RE.match(_strip_video_tags(cleaned))
+    if suffix and _TITLE_PREFIX_RE.match(suffix.group("title")) and any(
+        _credit_matches(suffix.group("tag"), artist)
+        and _PUBLISHER_RE.search(romanized(artist)) for artist in artists
+    ):
+        cleaned = _strip_video_tags(suffix.group("title"))
+
+    prefix_guests = []
+    prefix = _TITLE_PREFIX_RE.match(cleaned)
+    if prefix:
+        credit, rest = prefix.group("prefix").strip(), prefix.group("title").strip()
+        if any(_credit_matches(credit, artist) for artist in artists):
+            credits = [credit]  # Whole band names precede collaborator splitting.
+        else:
+            credits = [part.strip() for part in _COLLABORATOR_RE.split(credit) if part.strip()]
+        confirmed = any(_credit_matches(part, artist) for part in credits for artist in artists)
+        publisher = any(_PUBLISHER_RE.search(romanized(artist)) for artist in artists)
+        same_title = _video_title_keys(rest) & _video_title_keys(song_title)
+        production = _TRAILING_BRACKET_RE.search(raw)
+        collaboration = len(credits) > 1 and production is not None and any(
+            value is not None and _is_video_production_tag(value) for value in production.groups()
+        )
+        uploader_credit = False
+        if production:
+            tag = next(value for value in production.groups() if value is not None)
+            credited_producer = _PRODUCER_CREDIT_RE.fullmatch(romanized(tag))
+            named_remix = "remix" in recording_version_signature(tag)[0]
+            uploader_credit = (credited_producer or named_remix) and any(
+                len(key.replace(" ", "")) >= 4
+                and key.replace(" ", "") in romanized(tag).replace(" ", "")
+                for artist in artists for key in _channel_name_keys(artist)
+            )
+        if confirmed or publisher or same_title or collaboration or uploader_credit:
+            cleaned, artists = _strip_video_tags(rest), credits
+            prefix_guests = [
+                part.strip() for guest in featured_artists(credit)
+                for part in _COLLABORATOR_RE.split(guest) if part.strip()
+            ]
+        elif any(_credit_matches(rest, artist) for artist in artists) and (
+            _strip_video_tags(credit) != credit
+            or (_video_title_keys(credit) & _video_title_keys(song_title))
+        ):
+            cleaned, artists = _strip_video_tags(credit), [rest]
+
+    cleaned = _strip_video_tags(cleaned)
+    # Uppercase unseparated credits also occur, e.g. ADANALI AYHAN Song Title.
+    if cleaned == _strip_video_tags(raw):
+        for boundary in re.finditer(r"\s+", cleaned):
+            credit = cleaned[:boundary.start()]
+            if credit.isupper() and any(
+                romanized(credit).replace(" ", "")
+                in {key.replace(" ", "") for key in _channel_name_keys(artist)}
+                for artist in artists
+            ):
+                cleaned = cleaned[boundary.end():]
+                artists = [credit]
+                break
     if prefix_guests and not featured_artists(cleaned):
         cleaned += f" (feat. {', '.join(prefix_guests)})"
-    return cleaned or raw, artists
+    return cleaned, artists
 
 
 def _clean_data_api_video_title(title, channel):
@@ -367,7 +435,21 @@ def _normalized_data_api_playlist_item(item, music_metadata=None):
     ):
         music = _normalized_youtubei_playlist_track(music_metadata)
         if music and music["name"] and any(music["artists"]):
-            raw_name, raw_artists = _clean_video_metadata(snippet.get("title", ""), music["artists"])
+            raw_title = snippet.get("title", "")
+            raw_name, raw_artists = _clean_video_metadata(
+                raw_title, [artist, *music["artists"]], song_title=music["name"],
+            )
+            # Music's artist field may itself be the uploader. A credit from
+            # the title outranks that channel. Keep a distinct catalog alias
+            # when Music supplies evidence beyond the uploader, e.g. Can
+            # Demir is cataloged as Candemirtheater rather than netd müzik.
+            credited = raw_name != _strip_video_tags(raw_title)
+            catalog_alias = artist and all(
+                not _credit_matches(credit, artist) for credit in music["artists"]
+            ) and not any(
+                _credit_matches(credit, other) for credit in raw_artists for other in music["artists"]
+            )
+            resolved_artists = raw_artists if credited and not catalog_alias else music["artists"]
             # The same video can appear in Music with its studio title. Keep
             # explicit live/remix/version information from the original video.
             raw_markers, raw_details = recording_version_signature(raw_name)
@@ -379,13 +461,13 @@ def _normalized_data_api_playlist_item(item, music_metadata=None):
             )
             track.update({
                 "name": raw_name if keep_raw else music["name"],
-                "artist": music["artist"], "artists": music["artists"],
+                "artist": ", ".join(resolved_artists), "artists": resolved_artists,
                 "album": music["album"], "duration_ms": music["duration_ms"],
             })
     return track
 
 
-def _normalized_youtubei_playlist_track(track):
+def _normalized_youtubei_playlist_track(track, video_metadata=None):
     video_id = track.get("videoId")
     if not video_id:
         return None
@@ -398,6 +480,15 @@ def _normalized_youtubei_playlist_track(track):
         if artist
     ]
     name, artists = _clean_video_metadata(track.get("title", ""), artists or [""])
+    if video_metadata:
+        enriched = _normalized_data_api_playlist_item({
+            "contentDetails": {"videoId": video_id},
+            "snippet": {
+                "title": video_metadata["title"],
+                "videoOwnerChannelTitle": video_metadata["author_name"],
+            },
+        }, track)
+        name, artists = enriched["name"], enriched["artists"]
     album = track.get("album")
     duration_seconds = track.get("duration_seconds")
     thumbnails = track.get("thumbnails") or []
@@ -418,6 +509,26 @@ def _normalized_youtubei_playlist_track(track):
         "added_at": track.get("dateAdded") or "",
         "image": image,
     }
+
+
+def _public_video_metadata(video_id):
+    """Read the original title without forwarding a signed-in Music session."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", str(video_id or "")):
+        return None
+    try:
+        response = requests.get(
+            "https://www.youtube.com/oembed",
+            params={"url": f"https://www.youtube.com/watch?v={video_id}", "format": "json"},
+            timeout=min(REQUEST_TIMEOUT, 10),
+        )
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, dict) and all(isinstance(data.get(key), str) and data[key].strip()
+                                          for key in ("title", "author_name")):
+            return data
+    except (requests.RequestException, ValueError):
+        pass  # An unavailable public video does not invalidate a private read.
+    return None
 
 
 def _err_reason(response):
@@ -922,10 +1033,33 @@ class YTMusicBrowserTarget(YTMusicTarget):
     def playlist_tracks(self, playlist):
         data = _expired(lambda: self._api.get_playlist(playlist["playlistId"], limit=None),
                         f"playlist '{playlist.get('title', '')}'") or {}
+        return self._music_tracks(data.get("tracks") or [])
+
+    def _music_tracks(self, rows):
+        """Recover original video credits while retaining Music occurrences.
+
+        Art tracks already carry catalog metadata. Music videos need their
+        original title because the playlist can name an uploader and omit a
+        live/remix qualifier. Bound public reads and reuse them across pages.
+        """
+        metadata = getattr(self, "_video_metadata", {})
+        video_ids = list(dict.fromkeys(
+            row["videoId"] for row in rows
+            if row.get("videoId") and row["videoId"] not in metadata
+            and (row.get("videoType") in {"MUSIC_VIDEO_TYPE_OMV", "MUSIC_VIDEO_TYPE_UGC"}
+                 or (row.get("videoType") != "MUSIC_VIDEO_TYPE_ATV" and any(
+                     _PUBLISHER_RE.search(romanized(artist.get("name")))
+                     for artist in row.get("artists") or []
+                 )))
+        ))
+        if video_ids:
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                metadata.update(zip(video_ids, pool.map(_public_video_metadata, video_ids)))
+            self._video_metadata = metadata
         return [
             track
-            for raw in data.get("tracks") or []
-            if (track := _normalized_youtubei_playlist_track(raw)) is not None
+            for raw in rows
+            if (track := _normalized_youtubei_playlist_track(raw, metadata.get(raw.get("videoId")))) is not None
         ]
 
     def favorite_tracks(self):
@@ -933,11 +1067,7 @@ class YTMusicBrowserTarget(YTMusicTarget):
             lambda: self._api.get_liked_songs(limit=None),
             self.favorite_tracks_name,
         ) or {}
-        return [
-            track
-            for raw in data.get("tracks") or []
-            if (track := _normalized_youtubei_playlist_track(raw)) is not None
-        ]
+        return self._music_tracks(data.get("tracks") or [])
 
     def add_favorite_tracks(self, target_ids):
         for target_id in target_ids:
@@ -959,11 +1089,7 @@ class YTMusicBrowserTarget(YTMusicTarget):
             ),
             f"playlist '{playlist.get('title', '')}'",
         )
-        return [
-            track
-            for raw in rows
-            if (track := _normalized_youtubei_playlist_track(raw)) is not None
-        ], next_cursor
+        return self._music_tracks(rows), next_cursor
 
     def add(self, playlist, target_ids):
         # YouTube may stamp a whole batch alike and reorder it. Singleton writes
