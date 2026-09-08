@@ -118,13 +118,30 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
         if should_continue and should_continue() != "run":
             completed = False  # paused or stopped — leave the rest for a re-run
             break
+        key = track_key(norm["name"], norm["artist"])
         keys = spotify_track_keys(norm)
         if not keys & seen:  # skip tracks already on the destination
             if same_provider:
                 tid = source.track_id(norm["_raw"])
             else:
                 try:
-                    tid, _ = dest.resolve(norm, cache)
+                    manual_id = (
+                        cache.get("search", {}).get(key)
+                        if key in cache.get("manual", ()) else None
+                    )
+                    if manual_id:
+                        # Read the exact key exposed by conflict review. Provider
+                        # resolvers may use different artist credits or cache keys,
+                        # so a saved choice must precede automatic resolution.
+                        normalize_id = getattr(
+                            dest, "normalize_manual_track_id", MirrorTarget.normalize_manual_track_id,
+                        )
+                        tid = normalize_id(manual_id)
+                        if tid != manual_id:
+                            cache["search"][key] = tid
+                            cache["dirty"] = True
+                    else:
+                        tid, _ = dest.resolve(norm, cache)
                 except TargetAuthError:
                     raise
                 except Exception:
@@ -143,7 +160,7 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
                     log_add(f"{norm['name']} - {norm['artist']}", dry=not execute, tag="transfer")
             else:
                 not_found.append({"name": norm["name"], "artist": norm["artist"],
-                                  "key": track_key(norm["name"], norm["artist"])})
+                                  "key": key})
                 log_miss(f"no match: {norm['name']} - {norm['artist']}", tag="transfer")
         if on_progress:
             on_progress(i, total, len(additions))

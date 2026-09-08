@@ -50,6 +50,71 @@ def test_transfer_copies_matches_skips_dupes_reports_conflicts():
     # "Dup" already exists on the destination (same track_key) -> skipped, not re-added
 
 
+@pytest.mark.parametrize("manual_id", ["70711820", "https://www.deezer.com/tr/track/70711820"])
+@pytest.mark.parametrize("already_present", [False, True])
+@pytest.mark.parametrize("automatic_match", [None, "12345"])
+def test_transfer_manual_conflict_mapping_precedes_automatic_resolution(
+    manual_id, already_present, automatic_match,
+):
+    from songmirror.engine.matching import track_key
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    track = {"id": "video", "name": "Song (Album Version)",
+             "artist": "Artist", "artists": ["Artist", "Guest"], "isrc": "ISRC"}
+    source = _Prov(None, [track], source="ytmusic")
+    destination = DeezerTarget.__new__(DeezerTarget)
+    destination.playlist_tracks = lambda _playlist: (
+        [{"id": "70711820", "name": "Catalog title", "artists": ["Catalog artist"]}]
+        if already_present else []
+    )
+    added = []
+    destination.add = lambda _playlist, ids: added.extend(ids)
+    conflict_key = track_key(track["name"], track["artist"])
+    search_key = track_key(track["name"], " ".join(track["artists"]))
+    cache = {"isrc": {}, "search": {search_key: None, conflict_key: manual_id},
+             "manual": {conflict_key}, "dirty": False}
+    if automatic_match:
+        cache["isrc"]["ISRC"] = [{**track, "id": automatic_match}]
+
+    result = transfer(source, destination, {"id": "s"}, {"id": "d"}, cache,
+                      execute=True, max_adds=100)
+
+    assert result["not_found"] == []
+    assert result["added"] == (0 if already_present else 1)
+    assert added == ([] if already_present else ["70711820"])
+    assert cache["search"][conflict_key] == "70711820"
+
+
+@pytest.mark.parametrize(("has_manual_marker", "cached_id"), [
+    (False, "ignored-id"), (True, None), (True, ""),
+])
+def test_transfer_without_a_usable_manual_choice_uses_the_resolver(has_manual_marker, cached_id):
+    from songmirror.engine.matching import track_key
+
+    track = {"id": "video", "name": "Song", "artists": ["Artist"]}
+    source = _Prov(None, [track], source="ytmusic")
+    destination = _Prov(None, [], source="deezer")
+    resolved, added = [], []
+
+    def resolve(norm, _cache):
+        resolved.append(norm["name"])
+        return "automatic-id", "search"
+
+    destination.resolve = resolve
+    destination.add = lambda _playlist, ids: added.extend(ids)
+    key = track_key("Song", "Artist")
+    cache = {"isrc": {}, "search": {key: cached_id}, "dirty": False}
+    if has_manual_marker:
+        cache["manual"] = {key}
+
+    result = transfer(source, destination, {"id": "s"}, {"id": "d"}, cache,
+                      execute=True, max_adds=100)
+
+    assert result["not_found"] == []
+    assert added == ["automatic-id"]
+    assert resolved == ["Song"]
+
+
 def test_transfer_reports_a_provider_rejected_match_and_keeps_copying():
     written = []
 
@@ -838,6 +903,93 @@ def test_transfer_service_normalizes_manual_id_before_writing_cache(monkeypatch,
     asyncio.run(scenario())
 
     assert "4160591112" in out["cache"]["search"].values()
+
+
+def test_retransfer_uses_manual_deezer_conflicts_for_the_selected_profile(monkeypatch, tmp_path):
+    from songmirror.engine.runner import load_cache
+    from songmirror.engine.targets import AccountBoundTarget, deezer
+    from songmirror.services.resolve_cache import ResolveCacheStore
+
+    rows = [
+        ("Firarim Ben (Album Version)", ["Sibel Alas"], "70711820"),
+        ("Dr. (feat. Kenan Dogulu)", ["İskender Paydaş", "Kenan Doğulu"], "82035362"),
+        ("Ebru Gündeş'ten 2018 Sueno Show 🎉", ["Ebru Gündeş"], "1642285212"),
+        ("Yeni Biri (feat. Turac Berkay)", ["Berksan", "Turac Berkay"], "680917412"),
+        ("Rakkas (Lyrics I Şarkı Sözleri)", ["Sezen Aksu"], "3518914451"),
+        ("Seden Gürel Çalkala Remix", ["Rutkay Çarpıcı"], "66370321"),
+        ("Ara - Zeynep Bastık (Paro Official ZB Version)", ["Zeynep Bastık"], "1830441417"),
+        ("En Gerçeği (feat. Mirkelam)", ["Emre Altuğ"], "3407006311"),
+    ]
+    existing = {"id": "existing", "name": "Already copied", "artists": ["Artist"]}
+    source_tracks = [existing, *[
+        {"id": f"video-{i}", "name": name, "artist": ", ".join(artists), "artists": artists}
+        for i, (name, artists, _target_id) in enumerate(rows)
+    ]]
+    settings = SettingsStore(dir=tmp_path)
+    profiles = AccountProfileStore(settings)
+    profile = profiles.create("deezer", "Destination")
+    source = _Prov(str(tmp_path / "source.json"), source_tracks, source="ytmusic")
+    destination = deezer.DeezerTarget.__new__(deezer.DeezerTarget)
+    with profiles.activate(profile.id):
+        destination.cache_file = destination.resolve_cache_path()
+    destination.find_playlist = lambda _playlist_id: {"id": "p1", "title": "Destination"}
+    destination_tracks = [existing.copy()]
+    destination.playlist_tracks = lambda _playlist: destination_tracks
+    searches, added = [], []
+
+    def catalog_get(path, **kwargs):
+        searches.append((path, kwargs))
+        return {"data": []}
+
+    def add(_playlist, ids):
+        added.extend(ids)
+        destination_tracks.extend(
+            {"id": target_id, "name": f"Catalog title {target_id}", "artists": ["Catalog artist"]}
+            for target_id in ids
+        )
+
+    destination._catalog_get = catalog_get
+    destination.add = add
+    bound_destination = AccountBoundTarget(destination, profile, profiles)
+    monkeypatch.setattr(deezer, "polite_sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        TransferService, "_build",
+        lambda _self, account_id, _opts: (
+            bound_destination if account_id == profile.id else source
+        ),
+    )
+
+    async def scenario():
+        bus = EventBus()
+        bus.bind_loop(asyncio.get_running_loop())
+        sync = SyncService(settings, bus, profiles=profiles)
+        service = TransferService(settings, bus, sync, profiles=profiles)
+        spec = {"source_account": profiles.default_id("ytmusic"), "source_playlist_id": "p1",
+                "dest_account": profile.id, "dest_playlist_id": "p1"}
+        initial = await _await_job(service, service.submit(spec)["id"])
+        assert initial["status"] == "done"
+        assert initial["added"] == 0
+        assert len(initial["conflicts"]) == len(rows)
+        for conflict, (_name, _artists, target_id) in zip(initial["conflicts"], rows):
+            assert service.resolve(initial["id"], conflict["key"], f"https://www.deezer.com/tr/track/{target_id}")
+        mappings = ResolveCacheStore(settings, sync, profiles=profiles).entries(profile.id, kind="manual")
+        assert mappings["total"] == len(rows)
+        assert {row["target_id"] for row in mappings["entries"]} == {row[2] for row in rows}
+        assert load_cache(destination.cache_file)["manual"] == {c["key"] for c in initial["conflicts"]}
+        searches.clear()
+        repeated = await _await_job(service, service.submit(spec)["id"])
+        assert repeated["status"] == "done"
+        assert repeated["conflicts"] == []
+        assert repeated["added"] == len(rows)
+        assert added == [row[2] for row in rows]
+        assert searches == []
+        deduplicated = await _await_job(service, service.submit(spec)["id"])
+        assert deduplicated["status"] == "done"
+        assert deduplicated["conflicts"] == []
+        assert deduplicated["added"] == 0
+        assert added == [row[2] for row in rows]
+
+    asyncio.run(scenario())
 
 
 # -- pasted-link transfer sources --------------------------------------------
