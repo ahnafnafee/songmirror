@@ -21,7 +21,7 @@ from ..matching import (
     catalog_name, compute_diff, fuzzy_in, match_unresolved_removals,
     protect_removals, romanized,
     normalize_canonical_id, normalize_isrc, same_catalog_recording,
-    recording_version_signature, recording_versions_compatible,
+    recording_metadata_compatible, recording_performance_compatible, recording_version_signature,
     spotify_track_keys, track_addition_order_key, track_key, tracks_oldest_first,
 )
 
@@ -479,7 +479,9 @@ def _ordered_current_matches(source_tracks, target_tracks, expected_by_source, t
             candidates.extend(by_id.get(str(expected_id), ()))
         for key in _track_match_keys(source_track):
             candidates.extend(by_key.get(key, ()))
-        position = next((candidate for candidate in sorted(set(candidates)) if candidate in unused), None)
+        position = next((candidate for candidate in sorted(set(candidates))
+                         if candidate in unused
+                         and recording_metadata_compatible(source_track, target_tracks[candidate])), None)
         if position is None:
             continue
         unused.remove(position)
@@ -616,10 +618,7 @@ def _recover_archived_links(songs, source_key, target, source_tracks, known):
     links = {**known, **recovered}
     for track in source_tracks:
         candidate = by_id.get(str(links.get(track.get("id"))))
-        if candidate and not recording_versions_compatible(
-            track.get("name"), track.get("artists") or track.get("artist"),
-            candidate.get("name"), candidate.get("artists") or candidate.get("artist"),
-        ):
+        if candidate and not recording_metadata_compatible(track, candidate):
             links.pop(track["id"], None)
     return links
 
@@ -1014,16 +1013,21 @@ def _entry_cids(target, tracks, songs, cache, key2isrc, rebindings=None, remembe
     # if its resolve-cache link was later evicted. Upgrade it through the same
     # ISRC evidence as a live reverse link instead of splitting one recording.
     spotify_ids = set(rev.values()) | {cid[2:] for cid in known.values() if cid.startswith("s:")}
+    archive_sources = getattr(target, "archive_sources", None)
+    spotify_sources = tuple(
+        archive_sources("spotify") if callable(archive_sources) else ("spotify",)
+    )
+    sp_snapshots = {}
+    for source in spotify_sources:
+        for tid, snapshot in archive.get_snapshots(songs, source, spotify_ids).items():
+            sp_snapshots.setdefault(tid, []).append(snapshot)
     if spotify_ids:
-        archive_sources = getattr(target, "archive_sources", None)
-        spotify_sources = (
-            archive_sources("spotify") if callable(archive_sources) else ("spotify",)
-        )
         sp_isrc = archive.get_isrcs_from_sources(
             songs, spotify_sources, spotify_ids
         )
     else:
         sp_isrc = {}
+    references = archive.get_identity_snapshots(songs, spotify_sources, known.values())
     id2isrc = target.native_isrc_map(cache)  # provider-supplied track_id -> ISRC (Apple, future providers)
     history = {
         tid: {normalize_canonical_id(cid) for cid in canonical_ids}
@@ -1043,8 +1047,11 @@ def _entry_cids(target, tracks, songs, cache, key2isrc, rebindings=None, remembe
         keys = [track_key(norm["name"], norm["artist"]), *sorted(spotify_track_keys(norm))]
         direct_isrc = normalize_isrc(norm["isrc"])
         native_isrc = normalize_isrc(id2isrc.get(tid))
-        inferred_isrc = normalize_isrc(next(
-            (key2isrc[k] for k in keys if k in key2isrc), None))
+        inferred_candidates = {
+            isrc for key_ in keys for isrc, candidate in key2isrc.get(key_, [])
+            if recording_metadata_compatible(norm, candidate)
+        }
+        inferred_isrc = next(iter(inferred_candidates)) if len(inferred_candidates) == 1 else ""
         previous = known.get(tid)
         sp_id = rev.get(tid) or (previous[2:] if previous and previous.startswith("s:") else None)
         linked_isrc = normalize_isrc(sp_isrc.get(sp_id)) if sp_id else ""
@@ -1059,6 +1066,15 @@ def _entry_cids(target, tracks, songs, cache, key2isrc, rebindings=None, remembe
             cid, provenance = f"i:{inferred_isrc}", "inferred"
         else:
             cid, provenance = f"k:{track_key(norm['name'], norm['artist'])}", "soft"
+        historical = sp_snapshots.get(sp_id, []) if sp_id else references.get(previous, [])
+        if (not direct_isrc and not native_isrc and historical
+                and not any(recording_performance_compatible(norm, ref) for ref in historical)):
+            # Do not turn rejection of a stale binding into a synthetic user
+            # deletion. Retain its baseline identity but mark the read untrusted
+            # until native evidence can migrate it or its mapping is corrected.
+            norm["_identity_conflict"] = True
+            out.append((previous or cid, norm))
+            continue
         if cid.startswith("k:"):
             cid = previous or cid           # yield to whatever this entry already earned
         elif tid and previous != cid:
@@ -1142,7 +1158,7 @@ def _unify_aliases(canon):
 
     def compatible(left, right):
         return versions[left] == versions[right] and all(
-            recording_versions_compatible(a.get("name"), a.get("artists"), b.get("name"), b.get("artists"))
+            recording_metadata_compatible(a, b)
             for a in recordings[left] for b in recordings[right]
         )
 
@@ -1311,7 +1327,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     rebindings = {}    # source -> old hard id -> new hard ids for stable physical entries
     learned_identities = {}  # source -> physical id -> newly proven hard canonical id
     present = {}       # source -> set of ALL current target ids (not canonical-deduped)
-    key2isrc = {}      # track_key -> ISRC, seeded by every ISRC-bearing provider before canonicalization
+    key2isrc = {}      # track_key -> [(ISRC, metadata)], retaining conflicting recordings for validation
     raw_by_source = {}
     unreadable = {}
     for p in peers:
@@ -1363,7 +1379,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             isrc = normalize_isrc(norm.get("isrc") or native.get(p.track_id(track)))
             if isrc:
                 for key_ in spotify_track_keys(norm):
-                    key2isrc.setdefault(key_, isrc)
+                    key2isrc.setdefault(key_, []).append((isrc, norm))
 
     for p in peers:
         raw = raw_by_source[p.source]
@@ -1385,7 +1401,16 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     # retired alias is never mistaken for a deletion. Unification sees every
     # PHYSICAL entry's keys — an identity spanning differently-titled releases
     # must expose all of their names for aliases to land on.
-    alias = _unify_aliases(per_entry)
+    conflicting_sources = {
+        source: sum(bool(norm.get("_identity_conflict")) for _cid, norm in entries)
+        for source, entries in per_entry.items()
+        if any(norm.get("_identity_conflict") for _cid, norm in entries)
+    }
+    alias = _unify_aliases({src: [(cid, norm) for cid, norm in entries
+                                if not norm.get("_identity_conflict")]
+                            for src, entries in per_entry.items()})
+    conflicting_cids = {alias.get(cid, cid) for entries in per_entry.values()
+                        for cid, norm in entries if norm.get("_identity_conflict")}
     if alias:
         for src, by_cid in canon.items():
             merged = {}
@@ -1416,10 +1441,20 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     repr_ = {}  # canonical_id -> representative track (peers are ordered spotify-first for ISRC-rich reprs)
     for p in peers:
         for cid, norm in canon[p.source].items():
-            repr_.setdefault(cid, norm)
+            if not norm.get("_identity_conflict"):
+                repr_.setdefault(cid, norm)
 
     collapsed = set(unreadable)
     read_failures = []
+    for source, count in conflicting_sources.items():
+        read_anomalies += count
+        diagnostics.append({
+            "category": "conflicting_identity", "playlist": name,
+            "provider": peer_names.get(source, source), "count": count,
+            "evidence": "historical matches conflict with current performer or duration; those recordings are held",
+        })
+        log_warn(f"{name}: {source} has {count} historical recording conflict(s); "
+                 "holding those recordings until their identities can be verified", tag="sync")
     for source, reason in unreadable.items():
         read_anomalies += 1
         read_failures.append({"playlist": name, "error": reason})
@@ -1477,7 +1512,8 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             )
             continue
         remap = {old: next(iter(news)) for old, news in changes.items()
-                 if len(news) == 1 and old in prev.get(src, set()) and old not in current}
+                 if len(news) == 1 and old in prev.get(src, set()) and old not in current
+                 and old not in conflicting_cids and not (news & conflicting_cids)}
         if remap:
             prev[src] = {remap.get(cid, cid) for cid in prev[src]}
             baseline_repairs[src] = prev[src]
@@ -1499,7 +1535,8 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                             if src not in collapsed}
         if baseline_repairs or trusted_learning:
             archive.set_reconcile_identities(
-                songs, key, baseline_repairs, trusted_learning)
+                songs, key, baseline_repairs, trusted_learning,
+                preserve_pending=conflicting_cids)
 
     # A single successful snapshot is still not enough evidence that a missing
     # member was intentionally deleted: a provider can return a small partial
@@ -1517,7 +1554,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             alias.get(normalize_canonical_id(cid), normalize_canonical_id(cid))
             for cid in archive.get_pending_removals(songs, key, src)
         }
-        missing = prev.get(src, set()) - cur[src]
+        missing = prev.get(src, set()) - cur[src] - conflicting_cids
         first_seen = missing - pending
         confirmed = missing & pending
         missing_by_source[src] = missing
@@ -1539,6 +1576,14 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
 
     _, unconfirmed_plan = _merge(prev, cur, collapsed, authorities)
     desired, plan = _merge(prev, effective_cur, collapsed, authorities)
+    # A suspect historical binding is neither a user addition nor a deletion.
+    # Freeze only the disputed recordings, preserving unrelated synchronization
+    # and their exact previous membership until stronger identity evidence arrives.
+    desired |= conflicting_cids
+    plan = {src: (adds - conflicting_cids, removes - conflicting_cids)
+            for src, (adds, removes) in plan.items()}
+    unconfirmed_plan = {src: (adds - conflicting_cids, removes - conflicting_cids)
+                       for src, (adds, removes) in unconfirmed_plan.items()}
     addition_order = _addition_order_by_cid(
         peers, per_entry, prev, cur, collapsed, alias, authorities)
     desired_recordings = {}
@@ -1551,7 +1596,8 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     awaiting_confirmation = sum(len(ids) for ids in first_seen_removals.values())
     confirmed_absence_count = sum(len(ids) for ids in confirmed_removals.values())
     authority_bootstrap = authorities is not None and bool(authorities - initialized)
-    stats = {"clean": execute and not collapsed and not awaiting_confirmation and not authority_bootstrap,
+    stats = {"clean": execute and not collapsed and not conflicting_cids
+                      and not awaiting_confirmation and not authority_bootstrap,
              "added": 0, "removed": 0, "missing": 0,
              "held": 0, "uncertain_matches": 0, "chronology_replayed": 0,
              "deferred": 0, "removals_skipped": 0, "held_removals": [],
@@ -1670,8 +1716,15 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             current_key_matches = set().union(*(
                 present_cids_by_key[p.source].get(match_key, set()) for match_key in norm_keys
             )) if norm_keys else set()
-            if current_key_matches:
-                protected_remove_ids |= current_key_matches
+            matching_entries = [
+                (alias.get(current_cid, current_cid), current_norm)
+                for current_cid, current_norm in per_entry[p.source]
+                if alias.get(current_cid, current_cid) in current_key_matches
+                and norm_keys & spotify_track_keys(current_norm)
+                and recording_metadata_compatible(norm, current_norm)
+            ]
+            if matching_entries:
+                protected_remove_ids |= {current_cid for current_cid, _ in matching_entries}
                 current_candidates_by_cid[cid] = [
                     (
                         p.track_id(current_norm["_raw"]),
@@ -1680,8 +1733,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                             current_norm["_raw"],
                         ),
                     )
-                    for current_cid, current_norm in per_entry[p.source]
-                    if alias.get(current_cid, current_cid) in current_key_matches
+                    for current_cid, current_norm in matching_entries
                 ]
                 continue  # song already on the provider under a different id — no dupe, and no wasted search
             queued_key_matches = [item for match_key in norm_keys
@@ -1730,11 +1782,14 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             if tid in originally_present:
                 current_cids = present_cids_by_tid[p.source].get(tid, set())
                 protected_remove_ids |= current_cids
-                current_norms = [canon[p.source][current_cid] for current_cid in current_cids
-                                 if current_cid in canon[p.source]]
-                equivalent = any(current_cid == cid for current_cid in current_cids) or any(
-                    same_catalog_recording(norm, current_norm) for current_norm in current_norms
-                )
+                equivalent_entries = [
+                    current_norm for current_cid, current_norm in per_entry[p.source]
+                    if p.track_id(current_norm["_raw"]) == tid
+                    and recording_metadata_compatible(norm, current_norm)
+                    and (alias.get(current_cid, current_cid) == cid
+                         or same_catalog_recording(norm, current_norm))
+                ]
+                equivalent = bool(equivalent_entries)
                 if not equivalent:
                     add_blockers.add("a resolved addition collided with a different current track")
                     chronology_collision = True
@@ -1753,8 +1808,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                                 current_norm["_raw"],
                             ),
                         )
-                        for _current_cid, current_norm in per_entry[p.source]
-                        if p.track_id(current_norm["_raw"]) == tid
+                        for current_norm in equivalent_entries
                     ]
                     if norm["_source"] == "spotify" and norm["_raw"].get("id"):
                         new_links[p.source][norm["_raw"]["id"]] = tid
@@ -1825,7 +1879,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 "prevent an ordered repair",
                 tag=p.tag,
             )
-        can_replay = can_replay and not chronology_collision
+        can_replay = can_replay and not chronology_collision and not (cur[p.source] & conflicting_cids)
         additions, chronology_replay, cap_deferred, full_write_cost = _fit_chronology_writes(
             ordered_desired,
             current_by_cid,
@@ -2073,6 +2127,12 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 if baseline_blocked else
                 {src: set() for src in pending_sources}
             )
+            if conflicting_cids:
+                persist = {src: (ids - conflicting_cids) | (prev.get(src, set()) & conflicting_cids)
+                           for src, ids in persist.items()}
+                for src in pending_updates:
+                    pending_updates[src] |= (
+                        archive.get_pending_removals(songs, key, src) & conflicting_cids)
             archive.commit_reconcile_membership(
                 songs, key, persist, pending_updates, physical_playlist_ids)
             if baseline_blocked:

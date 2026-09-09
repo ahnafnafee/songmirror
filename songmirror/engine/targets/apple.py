@@ -13,7 +13,7 @@ from ..config import (
     AMP, DEFAULT_CACHE_FILE, REQUEST_TIMEOUT, polite_sleep, required_env,
 )
 from ..logs import log, log_warn
-from ..matching import normalize_text, recording_versions_compatible, romanized, score_candidate
+from ..matching import normalize_text, recording_metadata_compatible, romanized, score_candidate
 from .base import (
     MirrorTarget,
     TargetAuthError,
@@ -507,9 +507,10 @@ class AppleMusicTarget(MirrorTarget):
             )
             self._validated_catalog_ids = validated
         attrs = validated[target_id]
-        if attrs is not None and recording_versions_compatible(
-            track.get("name"), track.get("artists"), attrs.get("name"), attrs.get("artistName"),
-        ):
+        if attrs is not None and recording_metadata_compatible(track, {
+            "name": attrs.get("name"), "artist": attrs.get("artistName"),
+            "duration_ms": attrs.get("durationInMillis"),
+        }):
             self._remember_resolution(track, target_id, cache)
             return target_id, "link"
         return None, None

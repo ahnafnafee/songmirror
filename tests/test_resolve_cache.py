@@ -23,6 +23,22 @@ def test_legacy_automatic_matches_are_invalidated(tmp_path):
     assert cache["dirty"] is True
 
 
+def test_recording_match_upgrade_invalidates_previous_automatic_ids(tmp_path):
+    path = tmp_path / "cache.json"
+    path.write_text(json.dumps({
+        "matching_version": 1,
+        "isrc": {"ISRC": [{"id": "wrong-performer"}]},
+        "search": {"song|artist": "old-automatic", "chosen|artist": "user-choice"},
+        "manual": ["chosen|artist"],
+    }), encoding="utf-8")
+    cache = load_cache(path)
+    assert cache["isrc"] == {}
+    assert cache["search"] == {"chosen|artist": "user-choice"}
+    assert cache["manual"] == {"chosen|artist"}
+    save_cache(path, cache)
+    assert json.loads(path.read_text("utf-8"))["matching_version"] > 1
+
+
 def test_legacy_migration_preserves_manual_choices_and_refreshes_isrc_metadata(tmp_path):
     path = tmp_path / "cache.json"
     path.write_text(json.dumps({

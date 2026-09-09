@@ -12,6 +12,100 @@ from songmirror.engine.targets.qobuz import QobuzTarget
 from songmirror.engine.targets.tidal import TidalTarget
 
 
+@pytest.mark.parametrize(("artist", "candidate_artist", "duration", "candidate_duration"), [
+    ("Black Pistol Fire", "Black Math", 229320, 208000),
+    ("Black Pistol Fire", "Black Math", 229320, 229320),
+    ("AURORA", "AURORA Tribute Band", 248826, 248826),
+    ("Artist", "Artist", 180000, 230000),
+])
+def test_search_rejects_conflicting_performer_or_recording_length(
+    artist, candidate_artist, duration, candidate_duration,
+):
+    assert not score_candidate(
+        "A Song", [artist], duration, "A Song", candidate_artist, candidate_duration,
+    )[1]
+
+
+@pytest.mark.parametrize("target_class", [DeezerTarget, QobuzTarget, TidalTarget, AmazonMusicTarget, AppleMusicTarget])
+@pytest.mark.parametrize("conflict", ["performer", "duration"])
+def test_isrc_cache_cannot_override_conflicting_recording_metadata(target_class, conflict):
+    target = target_class.__new__(target_class)
+    target._search = lambda *_args: None
+    source = {"id": "source", "name": "A Song", "artists": ["Artist"],
+              "duration_ms": 180000, "isrc": "ISRC1"}
+    candidate = {"id": "wrong", "name": "A Song", "artist": "Different Performer",
+                 "duration_ms": 180000}
+    if conflict == "duration":
+        candidate.update(artist="Artist", duration_ms=230000)
+    cache = {"isrc": {"ISRC1": [candidate]}, "search": {track_key("A Song", "Artist"): None}}
+    assert target.resolve(source, cache)[0] is None
+    assert target.expected_ids([source], {}, cache) == {}
+
+
+def test_duplicate_guard_does_not_treat_a_tribute_performer_as_the_original():
+    source = {"name": "Runaway", "artists": ["AURORA"], "duration_ms": 248826}
+    cover = {"name": "Runaway", "artist": "AURORA Tribute Band", "duration_ms": 248826}
+    assert not same_catalog_recording(source, cover)
+
+
+def test_a_shared_guest_cannot_hide_a_different_primary_performer():
+    source = {"name": "A Song", "artists": ["Original Artist", "Shared Guest"], "duration_ms": 180000}
+    cover = {"name": "A Song", "artist": "Different Artist, Shared Guest", "duration_ms": 180000}
+    assert not same_catalog_recording(source, cover)
+    assert not score_candidate(source["name"], source["artists"], 180000,
+                               cover["name"], cover["artist"], 180000)[1]
+
+
+@pytest.mark.parametrize("separator", ["ft.", "with", "feat.", "&", ","])
+def test_explicit_credit_separators_allow_a_providers_primary_credit(separator):
+    assert score_candidate("A Song", [f"Original Artist {separator} Guest"], 180000,
+                           "A Song", "Original Artist", 180000)[1]
+
+
+def test_release_normalization_keeps_a_literal_version_word_in_the_song_title():
+    source = {"name": "Version - Acoustic", "artists": ["Artist"], "duration_ms": 180000}
+    other = {**source, "name": "Acoustic"}
+    assert not same_catalog_recording(source, other)
+
+
+def test_shared_long_title_cannot_alias_a_different_performer():
+    name = "The Same Long Song Title From The Original Motion Picture Soundtrack"
+    original = _normalize({"name": name, "artists": ["Original Artist"], "duration_ms": 180000}, "spotify")
+    cover = _normalize({"name": name, "artists": ["Different Artist"], "duration_ms": 180000}, "ytmusic")
+    soft_id = "k:" + track_key(name, "Different Artist")
+    assert _unify_aliases({"spotify": {"i:ORIGINAL": original}, "ytmusic": {soft_id: cover}}) == {}
+
+
+def test_wrong_performer_in_an_archived_link_is_rejected(tmp_path):
+    target = DeezerTarget.__new__(DeezerTarget)
+    source = {"id": "source", "name": "A Song", "artists": ["Original Artist"], "duration_ms": 180000}
+    cover = {"id": "cover", "name": "A Song", "artist": "Cover Artist", "duration_ms": 180000}
+    conn = archive.connect(str(tmp_path / "wrong-performer.db"))
+    try:
+        archive.upsert_many(conn, "deezer", [cover])
+        assert _recover_archived_links(conn, "spotify", target, [source], {"source": "cover"}) == {}
+        assert compute_diff([source], [cover], {"source": {"cover"}}, target.track_id)[0] == [source]
+    finally:
+        conn.close()
+
+
+def test_historical_recording_references_prefer_native_evidence_and_selected_accounts(tmp_path):
+    conn = archive.connect(str(tmp_path / "reference-evidence.db"))
+    try:
+        for profile, track in [
+            ("selected", {"id": "native", "name": "A Song", "artist": "Original", "isrc": "US-ABC-26-00001"}),
+            ("selected", {"id": "learned", "name": "A Song", "artist": "Wrong"}),
+            ("other", {"id": "unselected", "name": "A Song", "artist": "Other", "isrc": "UNSELECTED"}),
+        ]:
+            archive.upsert_many(conn, profile, [track])
+        archive.set_identities(conn, "selected", {"learned": "i:USABC2600001"})
+        refs = archive.get_identity_snapshots(conn, ["selected"], ["i:USABC2600001", "i:UNSELECTED"])
+        assert set(refs) == {"i:USABC2600001"}
+        assert [t["id"] for t in refs["i:USABC2600001"]] == ["native"]
+    finally:
+        conn.close()
+
+
 @pytest.mark.parametrize("label", ["Acoustic", "Akustik", "Acústico", "Acoustique", "Unplugged", "Stripped"])
 @pytest.mark.parametrize("reverse", [False, True])
 def test_studio_and_acoustic_recordings_never_match(label, reverse):
