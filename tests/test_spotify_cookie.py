@@ -42,9 +42,9 @@ def test_writes_route_to_cookie_when_enabled(monkeypatch):
 
     assert pl == {"id": "new"}
     assert [c[0] for c in calls] == ["create", "add", "remove", "remove_positions"]
-    # add is batched (one call, both ids); positions are forwarded verbatim
+    # Legacy positions carry track ids so a changed playlist fails closed.
     assert calls[1] == ("add", ("pl1", ["t1", "t2"]), {})
-    assert calls[3] == ("remove_positions", ("pl1", [0, 2]), {})
+    assert calls[3] == ("remove_positions", ("pl1", [0, 2]), {"expected_track_ids": ["t1", "t2"]})
 
 
 def test_oauth_write_rejection_remains_an_auth_error(monkeypatch):
@@ -63,6 +63,80 @@ def test_oauth_write_rejection_remains_an_auth_error(monkeypatch):
         target.create({"name": "Mix", "description": ""})
 
     assert not isinstance(exc_info.value, TargetDirectoryIncompleteError)
+
+
+def test_cookie_position_removal_skips_hidden_playlist_entries(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+
+    monkeypatch.setattr(sc, "contents", lambda _: [
+        {"uid": "hidden", "uri": None},
+        {"uid": "keep", "uri": "spotify:track:go"},
+        {"uid": "remove", "uri": "spotify:track:extra"},
+    ])
+    writes = []
+    monkeypatch.setattr(sc, "_pf", lambda operation, payload: writes.append((operation, payload)))
+
+    sc.remove_positions("playlist", [1])
+
+    assert writes == [("removeFromPlaylist", {
+        "playlistUri": "spotify:playlist:playlist", "uids": ["remove"],
+    })]
+
+
+def test_cookie_playlist_read_retains_occurrence_uid():
+    from songmirror.engine import spotify_cookie as sc
+
+    rows = sc._normalized_content_tracks([
+        {"uid": "hidden", "itemV2": {"data": {}}},
+        {"uid": "selected-copy", "itemV2": {"data": {"uri": "spotify:track:song"}}},
+    ])
+
+    assert len(rows) == 1
+    assert rows[0]["playlistItemId"] == "selected-copy"
+
+
+def test_cookie_removal_uses_selected_copy_after_playlist_order_changes(monkeypatch):
+    monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
+    writes = []
+    monkeypatch.setattr(st.spotify_cookie, "_pf", lambda operation, payload: writes.append((operation, payload)))
+    monkeypatch.setattr(st.spotify_cookie, "contents", lambda _: pytest.fail("stable removal must not resolve fresh positions"))
+    target = SpotifyTarget(_BoomSp(), "cache.json")
+
+    target.remove_occurrences({"id": "playlist"}, [(1, {"id": "song", "playlistItemId": "selected-copy"})])
+    target.remove_occurrence({"id": "playlist"}, "song", "other-copy")
+
+    assert target.stable_occurrence_ids
+    assert [payload["uids"] for _, payload in writes] == [["selected-copy"], ["other-copy"]]
+    monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "oauth")
+    assert not target.stable_occurrence_ids
+
+
+@pytest.mark.parametrize("positions,expected", [([0, 1], ["keep", "removed"]), ([0, 2], ["keep", "extra"])])
+def test_cookie_legacy_removal_validates_every_selection_before_writing(monkeypatch, positions, expected):
+    from songmirror.engine import spotify_cookie as sc
+
+    monkeypatch.setattr(sc, "contents", lambda _: [
+        {"uid": "keep", "uri": "spotify:track:keep"},
+        {"uid": "extra", "uri": "spotify:track:extra"},
+    ])
+    monkeypatch.setattr(sc, "_pf", lambda *_: pytest.fail("changed selections must not delete anything"))
+
+    with pytest.raises(RuntimeError, match="playlist changed"):
+        sc.remove_positions("playlist", positions, expected_track_ids=expected)
+
+
+@pytest.mark.parametrize("before_uid,after_uid", [(None, "original"), ("original", None)])
+def test_cookie_chronology_rollback_refuses_incomplete_occurrence_ids(monkeypatch, before_uid, after_uid):
+    monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
+    target = SpotifyTarget(_BoomSp(), "cache.json")
+    before = [{"id": "kept", "playlistItemId": before_uid}]
+    monkeypatch.setattr(target, "playlist_tracks", lambda _: [
+        {"id": "kept", "playlistItemId": after_uid},
+        {"id": "new", "playlistItemId": "staged"},
+    ])
+
+    with pytest.raises(RuntimeError, match="occurrence ids"):
+        target._chronology_entries_added_since({"id": "playlist"}, before)
 
 
 def test_cookie_sync_read_never_requires_the_developer_catalog_api(monkeypatch):

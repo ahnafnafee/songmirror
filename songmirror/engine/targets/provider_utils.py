@@ -3,7 +3,7 @@
 import html
 import re
 
-from ..matching import normalize_text, recording_versions_compatible, score_candidate
+from ..matching import normalize_text, recording_metadata_compatible, score_candidate
 
 
 def title_with_version(title, version):
@@ -16,18 +16,15 @@ def title_with_version(title, version):
 
 
 def compatible_isrc_candidates(track, cache):
-    """Trust an ISRC crosswalk unless its title explicitly names another version.
+    """Use an ISRC crosswalk only when its known recording metadata agrees.
 
-    ISRC results can outrank text or duration drift, but cannot bypass the
-    studio/live/acoustic boundary used by search and sync identity matching.
+    A cached identifier cannot bypass performer, version, or duration conflicts
+    that would reject the same candidate during a fresh search.
     """
     return [
         candidate for candidate in cache["isrc"].get(track.get("isrc") or "", [])
         if candidate and candidate.get("id")
-        and recording_versions_compatible(
-            track.get("name"), track.get("artists") or track.get("artist"),
-            candidate.get("name"), candidate.get("artists") or candidate.get("artist"),
-        )
+        and recording_metadata_compatible(track, candidate)
     ]
 
 

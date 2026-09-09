@@ -55,7 +55,7 @@ def _save_json(path, data):
         json.dump(data, f)
 
 
-MATCHING_CACHE_VERSION = 1
+MATCHING_CACHE_VERSION = 2
 
 
 def load_cache(cache_file):
@@ -64,7 +64,7 @@ def load_cache(cache_file):
 
     `manual` is a set of `search` keys a person chose in the conflict editor.
     Old automatic results must be searched again when matching rules change:
-    they contain only ids, so recording-version conflicts cannot be checked
+    they contain only ids, so recording-metadata conflicts cannot be checked
     offline. Manual choices survive migration. ISRC candidates are refetched
     as older normalizers could discard the provider's separate version field.
     """

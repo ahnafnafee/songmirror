@@ -29,6 +29,10 @@ class SpotifyTarget(MirrorTarget):
     source = "spotify"
     favorite_tracks_name = "Liked Songs"
 
+    @property
+    def stable_occurrence_ids(self):
+        return spotify_write_backend() == "cookie"
+
     @classmethod
     def resolve_cache_path(cls, opts=None):
         return getattr(opts, "spotify_cache_file", None) or os.getenv(
@@ -262,7 +266,15 @@ class SpotifyTarget(MirrorTarget):
 
     def remove_occurrences(self, playlist, positioned):
         if spotify_write_backend() == "cookie":
-            spotify_cookie.remove_positions(playlist["id"], [pos for pos, _ in positioned])
+            positioned = list(positioned)
+            uids = [raw.get("playlistItemId") for _, raw in positioned]
+            if all(uids):
+                spotify_cookie.remove_uids(playlist["id"], uids)
+            else:
+                spotify_cookie.remove_positions(
+                    playlist["id"], [pos for pos, _ in positioned],
+                    expected_track_ids=[self.track_id(raw) for _, raw in positioned],
+                )
             return
         # Position-addressed removal against the read-time snapshot: with the
         # same uri present twice, remove() would drop BOTH copies. All positions
@@ -274,3 +286,9 @@ class SpotifyTarget(MirrorTarget):
             self._write(lambda chunk=items[i:i + 100]: self._sp.playlist_remove_specific_occurrences_of_items(
                 playlist["id"], chunk, snapshot_id=snapshot), "remove occurrences")
             polite_sleep(0.3)
+
+    def remove_occurrence(self, playlist, track_id, occurrence_id):
+        if spotify_write_backend() == "cookie":
+            spotify_cookie.remove_uids(playlist["id"], [occurrence_id])
+            return
+        super().remove_occurrence(playlist, track_id, occurrence_id)

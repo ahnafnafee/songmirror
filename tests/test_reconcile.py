@@ -1075,6 +1075,39 @@ def test_held_removal_still_initializes_a_new_peer_without_resurrection(tmp_path
     conn.close()
 
 
+def test_unresolved_match_does_not_forget_observed_additions_or_user_removals(tmp_path):
+    class MissingMatchPeer(_P):
+        def resolve(self, norm, cache):
+            if norm["isrc"] == "X":
+                return None, None
+            return super().resolve(norm, cache)
+
+    conn = archive.connect(str(tmp_path / "observed-removal.db"))
+    key = "group:apple,spotify:aurora"
+    archive.set_playlist_state(conn, key, "spotify", {f"i:{i}" for i in "ABCX"})
+    archive.set_playlist_state(conn, key, "apple", {f"i:{i}" for i in "ABC"})
+    sp = _P("spotify", list("ABCXD"))
+    apple = MissingMatchPeer("apple", list("ABCD"))
+    peers = [sp, apple]
+    playlists = {p.source: {"id": p.source} for p in peers}
+
+    def run():
+        return reconcile(peers, "Aurora", playlists, _caches("spotify", "apple"), conn,
+                         execute=True, max_removals=25, max_adds=200,
+                         authority_sources={"spotify", "apple"})
+
+    # X cannot be matched on Apple, but D was actually observed on both sides.
+    # Freezing all history here makes Apple's D look newly added forever.
+    assert run()["clean"] is False
+    sp._isrcs.remove("D")
+    for _ in range(3):
+        run()
+        assert sp.added == []
+    assert "i:D" in archive.get_playlist_state(conn, key, "spotify")
+    assert archive.get_pending_removals(conn, key, "spotify") == {"i:D"}
+    conn.close()
+
+
 class _VariantPeer:
     """Peer holding ONE copy of a song under provider-flavored metadata
     (decorated title, partial or embellished artist credits). resolve() returns
@@ -1138,6 +1171,69 @@ class _ManyPeer:
 
     def remove(self, pl, raw):
         self.removed.append(raw)
+
+
+@pytest.mark.parametrize("profiled", [False, True])
+@pytest.mark.parametrize("remembered_link_only", [False, True])
+def test_removed_song_is_not_resurrected_by_a_link_without_snapshot_isrc(
+    tmp_path, profiled, remembered_link_only,
+):
+    # Spotify's web snapshots omit ISRCs. Apple still links to the original
+    # Spotify catalog id, whose learned ISRC survives in track_identity. Treating
+    # that link as a separate s: identity restores a song the user just removed.
+    conn = archive.connect(str(tmp_path / "linked-removal.db"))
+    sp_source = "profile_default_spotify" if profiled else "spotify"
+    ap_source = "profile_default_apple" if profiled else "apple"
+    authorities = {sp_source, ap_source}
+    key = f"group:{','.join(sorted(authorities))}:aurora"
+    retained = [
+        {"id": f"sp-{isrc}", "name": name, "artist": artist, "isrc": isrc}
+        for isrc, name, artist in [
+            ("A", "Older Song", "Other Artist"),
+            ("B", "Reverse Psychology", "Temper City"),
+            ("C", "Self Aware", "Temper City"),
+        ]
+    ]
+    removed = {"id": "sp-original", "name": "Runaway - Piano Version",
+               "artist": "AURORA", "isrc": None}
+    apple_copy = {"id": "ap-piano", "name": "Runaway (Piano Acoustic)",
+                  "artist": "AURORA", "isrc": None}
+    archive.upsert_many(conn, sp_source, [removed])
+    archive.set_identities(conn, sp_source, {"sp-original": "i:GBUM72100931"})
+    archive.set_identities(conn, ap_source, {"ap-piano": "s:sp-original"})
+    if not remembered_link_only:
+        archive.set_links(conn, ap_source, {"sp-original": "ap-piano"})
+    baseline = {"i:A", "i:B", "i:C"}
+    archive.set_playlist_state(conn, key, sp_source, baseline | {"i:GBUM72100931"})
+    archive.set_playlist_state(conn, key, ap_source, baseline | {"s:sp-original"})
+    spotify = _ManyPeer(sp_source, retained, lambda _norm: "sp-reissue")
+    apple = _ManyPeer(ap_source, [*retained, apple_copy], lambda _norm: None)
+    spotify.provider, apple.provider = "spotify", "apple"
+    apple.archive_sources = lambda _provider: (sp_source,)
+    peers = [spotify, apple]
+    playlists = {peer.source: {"id": peer.source} for peer in peers}
+    for _ in range(2):
+        reconcile(peers, "Aurora", playlists, _caches(sp_source, ap_source), conn,
+                  execute=True, max_removals=25, max_adds=200,
+                  authority_sources=authorities)
+        assert spotify.added == []
+    assert apple.removed == [apple_copy]
+    conn.close()
+
+
+def test_linked_isrc_prefers_snapshot_evidence_across_selected_profiles(tmp_path):
+    conn = archive.connect(str(tmp_path / "linked-isrc.db"))
+    archive.set_identities(conn, "profile_spotify_one", {
+        "snapshot": "i:OLD", "remembered": "i:KNOWN", "soft": "s:other-id",
+    })
+    archive.upsert_many(conn, "profile_spotify_two", [{"id": "snapshot", "isrc": "CURRENT"}])
+    archive.set_identities(conn, "unselected_profile", {"unselected": "i:UNSELECTED"})
+
+    assert archive.get_isrcs_from_sources(
+        conn, iter(["profile_spotify_one", "profile_spotify_two"]),
+        ["snapshot", "remembered", "soft", "unselected"],
+    ) == {"snapshot": "CURRENT", "remembered": "KNOWN"}
+    conn.close()
 
 
 def _replacement_peers(*, same_metadata=False, spotify_resolve="sp-new"):
@@ -1241,6 +1337,37 @@ def test_catalog_recording_guard_is_conservative():
          "artist": "Cover Band"}, base)
 
 
+@pytest.mark.parametrize("provider", ["apple", "ytmusic", "tidal", "deezer", "amazon", "qobuz"])
+@pytest.mark.parametrize(("original", "release", "artist"), [
+    ("45 - Acoustic", "45 - Acoustic Version", "Shinedown"),
+    ("Black Sheep - Brie Larson Vocal Version",
+     "Black Sheep - Brie Larson Vocal Version / Bonus Track", "Metric, Brie Larson"),
+    ("KIDS RETURN", "KIDS RETURN - from 'Kids Return'", "Joe Hisaishi Ensemble"),
+])
+def test_release_label_drift_does_not_add_another_copy_on_repeated_syncs(
+    tmp_path, provider, original, release, artist,
+):
+    conn = archive.connect(str(tmp_path / "release-label.db"))
+    source = _VariantPeer("spotify", {
+        "id": "original", "name": original, "artists": [artist], "artist": artist,
+        "duration_ms": 274000, "isrc": "ORIGINAL", "added_at": "2020",
+    }, "another-source-release")
+    destination = _VariantPeer(provider, {
+        "id": "release", "name": release, "artists": [artist], "artist": artist,
+        "duration_ms": 274000, "isrc": "REISSUE", "added_at": "2020",
+    }, "another-destination-release")
+    peers = [source, destination]
+    try:
+        for _ in range(3):
+            stats = reconcile(peers, "Mix", {p.source: {"id": p.source} for p in peers},
+                              _caches(*(p.source for p in peers)), conn,
+                              execute=True, max_removals=25, max_adds=200)
+            assert stats["added"] == stats["removed"] == 0
+        assert source.added == destination.added == []
+    finally:
+        conn.close()
+
+
 def test_isrc_format_drift_does_not_remove_a_present_song(tmp_path):
     # Live false-removal shape: Spotify/YouTube learned a lowercase, punctuated
     # ISRC while newer peers report the standard uppercase compact form. The
@@ -1298,10 +1425,9 @@ def test_equivalent_catalog_alias_does_not_remove_the_existing_copy(tmp_path):
     conn.close()
 
 
-def test_exact_key_satisfying_an_add_protects_that_current_track_from_removal(tmp_path):
-    # Title/artist equality can satisfy a desired add even when duration proves
-    # the two hard identities are not catalog-equivalent. The existing entry is
-    # then the add's explicit stand-in and cannot be removed in the same pass.
+def test_exact_key_does_not_prevent_a_confirmed_recording_replacement(tmp_path):
+    # A confirmed user replacement must select the new recording even if its
+    # title and artist match. The materially different length disproves a dupe.
     conn = archive.connect(str(tmp_path / "key-satisfied-replacement.db"))
     _seed_replacement_baseline(conn)
     sp, tidal = _replacement_peers(same_metadata=True)
@@ -1311,8 +1437,8 @@ def test_exact_key_satisfying_an_add_protects_that_current_track_from_removal(tm
                       _caches(*(p.source for p in peers)), conn,
                       execute=True, max_removals=25, max_adds=200)
 
-    assert stats["added"] == 0 and stats["removed"] == 0
-    assert sp.added == [] and sp.removed == []
+    assert stats["added"] == 1 and stats["removed"] == 1
+    assert sp.added == ["sp-new"] and len(sp.removed) == 1
     conn.close()
 
 
@@ -1398,6 +1524,37 @@ def test_unrelated_catalog_collision_does_not_block_valid_new_songs(max_adds, ex
     assert stats["added"] == len(expected) * 6
     assert stats["deferred"] == (3 - len(expected)) * 6
     assert stats["clean"] is False
+    conn.close()
+
+
+@pytest.mark.parametrize("collision", [False, True])
+def test_older_recoveries_wait_when_playlist_order_cannot_be_repaired(collision):
+    def track(tid, name, date):
+        return dict(id=tid, name=name, isrc=tid.upper(), artists=["Artist"],
+                    duration_ms=180000, added_at=date)
+
+    recovered = track("recovered", "Older song", "2020-01-01T00:00:00Z")
+    cutoff = track("cutoff", "Last intentional addition", "2026-09-04T00:00:00Z")
+    new = track("new", "New intentional addition", "2026-09-10T00:00:00Z")
+    conflict = track("conflict", "Unrelated recording", "2021-01-01T00:00:00Z")
+
+    class Mirror(_ManyPeer):
+        replay_chronology = None
+
+    conn = archive.connect(":memory:")
+    source = _ManyPeer("spotify", [recovered, *([conflict] if collision else []), cutoff, new],
+                       lambda norm: norm["_raw"]["id"])
+    destinations = [Mirror(provider, [cutoff], lambda norm:
+                           "cutoff" if norm["isrc"] == "CONFLICT" else norm["_raw"]["id"])
+                    for provider in ("apple", "ytmusic", "tidal", "deezer", "amazon", "qobuz")]
+    peers = [source, *destinations]
+    stats = reconcile(peers, "Mix", {p.source: {"id": p.source} for p in peers},
+                      _caches(*(p.source for p in peers)), conn, execute=True,
+                      authority_sources={"spotify", "apple"}, max_adds=200, max_removals=200)
+
+    assert all(peer.added == ["new"] for peer in destinations)
+    assert all(peer.removed == [] for peer in peers)
+    assert stats["deferred"] == 6 * (2 if collision else 1)
     conn.close()
 
 
@@ -1898,7 +2055,7 @@ def test_inferred_isrc_cannot_rebind_a_remembered_hard_identity(tmp_path):
              "duration_ms": 1000, "isrc": None, "added_at": "2020"}
     ap = _VariantPeer("apple", track, "ap-cat")
     changes = {}
-    inferred = {track_key("Song", "A"): "INFERRED"}
+    inferred = {track_key("Song", "A"): [("INFERRED", track)]}
 
     entries = _entry_cids(ap, ap.playlist_tracks(None), conn, {}, inferred,
                           rebindings=changes)
@@ -1906,6 +2063,113 @@ def test_inferred_isrc_cannot_rebind_a_remembered_hard_identity(tmp_path):
     assert [cid for cid, _ in entries] == ["i:PROVEN"]
     assert changes == {}
     assert archive.get_identities(conn, "apple", ["ap-lib"]) == {"ap-lib": "i:PROVEN"}
+    conn.close()
+
+
+@pytest.mark.parametrize("binding", ["reverse", "remembered"])
+@pytest.mark.parametrize("conflict", ["performer", "duration"])
+def test_conflicting_historical_identity_is_held_without_inventing_a_deletion(tmp_path, binding, conflict):
+    conn = archive.connect(str(tmp_path / "historical-conflict.db"))
+    source = {"id": "source", "name": "A Song", "artists": ["Original Artist"],
+              "artist": "Original Artist", "duration_ms": 180000, "isrc": "ORIGINAL",
+              "added_at": "2020-01-01T00:00:00Z"}
+    cover = {**source, "id": "cover", "isrc": None}
+    if conflict == "performer":
+        cover.update(artists=["Different Artist"], artist="Different Artist")
+    else:
+        cover["duration_ms"] = 230000
+    archive.upsert_many(conn, "spotify", [source])
+    if binding == "reverse":
+        archive.set_links(conn, "ytmusic", {"source": "cover"})
+    else:
+        archive.set_identities(conn, "ytmusic", {"cover": "i:ORIGINAL"})
+    peers = [_ManyPeer("spotify", [source], lambda _: "source"),
+             _ManyPeer("apple", [source], lambda _: "source"),
+             _ManyPeer("ytmusic", [cover], lambda _: "correct")]
+    key = "group:apple,spotify:mix"
+    for p in peers:
+        archive.set_playlist_state(conn, key, p.source, {"i:ORIGINAL"})
+    for _ in range(3):
+        stats = reconcile(peers, "Mix", {p.source: {"id": p.source} for p in peers},
+                          _caches(*(p.source for p in peers)), conn, execute=True,
+                          max_adds=200, max_removals=25, authority_sources={"spotify", "apple"})
+        assert not stats["clean"]
+        assert any(d["category"] == "conflicting_identity" for d in stats["change_diagnostics"])
+        assert all(not p.added and not p.removed for p in peers)
+        assert archive.get_playlist_state(conn, key, "ytmusic") == {"i:ORIGINAL"}
+        assert archive.get_pending_removals(conn, key, "ytmusic") == set()
+    # A disputed older match must not disable the provider or replay that row
+    # when the user adds an unrelated newer recording.
+    new = {**source, "id": "new", "name": "New Song", "isrc": "NEW", "added_at": "2030-01-01T00:00:00Z"}
+    peers[0]._tracks.append(new)
+    stats = reconcile(peers, "Mix", {p.source: {"id": p.source} for p in peers},
+                      _caches(*(p.source for p in peers)), conn, execute=True,
+                      max_adds=200, max_removals=25, authority_sources={"spotify", "apple"})
+    assert peers[-1].added == ["correct"]
+    assert not peers[-1].removed
+    assert "i:NEW" in archive.get_playlist_state(conn, key, "spotify")
+    conn.close()
+
+
+def test_same_title_and_artist_cannot_infer_the_identity_of_a_different_length_recording(tmp_path):
+    conn = archive.connect(str(tmp_path / "inference-conflict.db"))
+    original = {"id": "source", "name": "A Song", "artists": ["Artist"],
+                "artist": "Artist", "duration_ms": 180000, "isrc": "ORIGINAL"}
+    variant = {**original, "id": "variant", "isrc": None, "duration_ms": 230000}
+    sp, yt = _ManyPeer("spotify", [original], lambda _: "source"), _ManyPeer("ytmusic", [variant], lambda _: "correct")
+    stats = reconcile([sp, yt], "Mix", {p.source: {"id": p.source} for p in (sp, yt)},
+                      _caches("spotify", "ytmusic"), conn, execute=True, max_adds=200, max_removals=25)
+    assert archive.get_identities(conn, "ytmusic", ["variant"]) == {}
+    assert not stats["clean"] and stats["deferred"] > 0
+    conn.close()
+
+
+def test_an_unrelated_identity_repair_keeps_disputed_deletion_evidence(tmp_path):
+    conn = archive.connect(str(tmp_path / "repair-disputed-pending.db"))
+    original = {"id": "original", "name": "A Song", "artist": "Original Artist", "isrc": "ORIGINAL"}
+    cover = {"id": "cover", "name": "A Song", "artist": "Different Artist"}
+    fixed = {"id": "stable", "name": "Another Song", "artist": "Another Artist", "isrc": "NEW"}
+    archive.set_playlist_state(conn, "mix", "spotify", {"i:ORIGINAL", "i:NEW"})
+    archive.set_playlist_state(conn, "mix", "ytmusic", {"i:ORIGINAL", "i:OLD"})
+    archive.set_identities(conn, "ytmusic", {"cover": "i:ORIGINAL", "stable": "i:OLD"})
+    archive.commit_reconcile_membership(conn, "mix", {}, {"ytmusic": {"i:ORIGINAL"}})
+    peers = [_ManyPeer("spotify", [original, fixed], lambda _: None),
+             _ManyPeer("ytmusic", [cover, fixed], lambda _: None)]
+    reconcile(peers, "Mix", {p.source: {"id": p.source} for p in peers},
+              _caches("spotify", "ytmusic"), conn, execute=True, max_adds=200, max_removals=25)
+    assert archive.get_playlist_state(conn, "mix", "ytmusic") == {"i:ORIGINAL", "i:NEW"}
+    assert archive.get_pending_removals(conn, "mix", "ytmusic") == {"i:ORIGINAL"}
+    assert all(not p.added and not p.removed for p in peers)
+    conn.close()
+
+
+def test_same_key_on_a_mirror_does_not_satisfy_a_different_recording(tmp_path):
+    conn = archive.connect(str(tmp_path / "current-key-conflict.db"))
+    original = {"id": "source", "name": "A Song", "artists": ["Artist"],
+                "artist": "Artist", "duration_ms": 180000, "isrc": "ORIGINAL"}
+    variant = {**original, "id": "variant", "isrc": "VARIANT", "duration_ms": 230000}
+    peers = [_ManyPeer("spotify", [original], lambda _: "source"),
+             _ManyPeer("apple", [original], lambda _: "source"),
+             _ManyPeer("ytmusic", [variant], lambda _: "correct")]
+    stats = reconcile(peers, "Mix", {p.source: {"id": p.source} for p in peers},
+                      _caches(*(p.source for p in peers)), conn, execute=True,
+                      max_adds=200, max_removals=25, authority_sources={"spotify", "apple"})
+    assert stats["added"] == 1
+    assert peers[-1].added == ["correct"]
+    conn.close()
+
+
+def test_queued_recordings_with_a_shared_guest_are_both_added(tmp_path):
+    conn = archive.connect(str(tmp_path / "queued-credit-conflict.db"))
+    original = {"id": "source", "name": "A Song", "artists": ["Original Artist", "Shared Guest"],
+                "artist": "Original Artist, Shared Guest", "duration_ms": 180000, "isrc": "ORIGINAL"}
+    cover = {**original, "id": "cover", "artists": ["Different Artist", "Shared Guest"],
+             "artist": "Different Artist, Shared Guest", "isrc": "COVER"}
+    sp = _ManyPeer("spotify", [original, cover], lambda n: n["isrc"])
+    yt = _ManyPeer("ytmusic", [], lambda n: n["isrc"])
+    reconcile([sp, yt], "Mix", {p.source: {"id": p.source} for p in (sp, yt)},
+              _caches("spotify", "ytmusic"), conn, execute=True, max_adds=200, max_removals=25)
+    assert set(yt.added) == {"ORIGINAL", "COVER"}
     conn.close()
 
 

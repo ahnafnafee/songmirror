@@ -494,16 +494,27 @@ def get_isrcs_from_sources(conn, sources, ids):
 
     Spotify catalog ids are shared by its accounts, but a track may only have
     been archived through a custom profile. Preserve source order on the rare
-    conflicting row and stop querying once every requested id is satisfied.
+    conflicting row. Web snapshots may omit ISRCs, so fall back to the current
+    hard identity learned for that exact catalog id after checking every
+    selected account's snapshots. A reverse link must keep identifying the same
+    recording even after it disappears from the Spotify playlist.
     """
     wanted = [track_id for track_id in ids if track_id]
+    sources = tuple(dict.fromkeys(source for source in sources if source))
     out = {}
-    for source in dict.fromkeys(source for source in sources if source):
+    for source in sources:
         remaining = [track_id for track_id in wanted if track_id not in out]
         if not remaining:
             break
         for track_id, isrc in get_isrcs(conn, source, remaining).items():
             out.setdefault(track_id, isrc)
+    for source in sources:
+        remaining = [track_id for track_id in wanted if track_id not in out]
+        if not remaining:
+            break
+        for track_id, cid in get_identities(conn, source, remaining).items():
+            if cid.startswith("i:") and cid[2:]:
+                out.setdefault(track_id, cid[2:])
     return out
 
 
@@ -533,6 +544,40 @@ def get_identities(conn, source, track_ids):
     return _in_chunks(
         conn, "SELECT track_id, canonical_id FROM track_identity WHERE source = ? "
               "AND track_id IN ({marks})", [source], track_ids)
+
+
+def get_identity_snapshots(conn, sources, canonical_ids):
+    """Archived reference metadata for hard identities in selected accounts.
+
+    Prefer native ISRC evidence over learned bindings. Keep every reference for
+    an identity because separate catalog releases can expose different credits.
+    """
+    wanted = sorted({cid for cid in canonical_ids if cid.startswith("i:")})
+    direct, learned = {}, {}
+    for source in dict.fromkeys(sources):
+        for offset in range(0, len(wanted), 400):
+            chunk = wanted[offset:offset + 400]
+            marks = ",".join("?" * len(chunk))
+            native_cid = "('i:' || upper(replace(replace(trim(s.isrc), '-', ''), ' ', '')))"
+            rows = conn.execute(
+                f"SELECT {native_cid}, i.canonical_id, s.meta FROM songs s "
+                "LEFT JOIN track_identity i ON i.source = s.source AND i.track_id = s.id "
+                f"WHERE s.source = ? AND ({native_cid} IN ({marks}) "
+                f"OR i.canonical_id IN ({marks}))",
+                [source, *chunk, *chunk],
+            )
+            for native, remembered, meta in rows:
+                try:
+                    snapshot = json.loads(meta)
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(snapshot, dict) or not str(snapshot.get("name") or "").strip():
+                    continue
+                if native in chunk:
+                    direct.setdefault(native, []).append(snapshot)
+                if remembered in chunk:
+                    learned.setdefault(remembered, []).append(snapshot)
+    return {cid: direct.get(cid) or snapshots for cid, snapshots in (learned | direct).items()}
 
 
 def get_identity_crosswalk(conn, source, target, source_track_ids):
@@ -745,14 +790,15 @@ def set_playlist_state(conn, playlist, source, canonical_ids):
         conn, playlist, {source: canonical_ids}, {source: set()})
 
 
-def set_reconcile_identities(conn, playlist, repaired_states, learned_identities):
+def set_reconcile_identities(conn, playlist, repaired_states, learned_identities, *, preserve_pending=()):
     """Atomically persist identity learning and any source-local baseline repair.
 
     A stable physical entry can move from one hard canonical id to another as
     provider metadata improves. Committing the new ``track_identity`` without
     remapping its old playlist baseline loses the evidence of that transition
     and makes the next pass look like a deletion. Keep both sides in one SQLite
-    transaction, after every provider read has succeeded.
+    transaction, after every provider read has succeeded. Disputed recordings
+    retain their pending deletion evidence even when unrelated identities move.
     """
     now = _now()
     try:
@@ -770,9 +816,10 @@ def set_reconcile_identities(conn, playlist, repaired_states, learned_identities
                 "INSERT OR IGNORE INTO playlist_state VALUES (?, ?, ?)",
                 [(playlist, source, cid) for cid in canonical_ids],
             )
-            conn.execute(
-                "DELETE FROM playlist_pending_removal WHERE playlist = ? AND source = ?",
-                (playlist, source),
+            conn.executemany(
+                "DELETE FROM playlist_pending_removal WHERE playlist = ? AND source = ? AND canonical_id = ?",
+                [(playlist, source, cid) for cid in
+                 get_pending_removals(conn, playlist, source) - set(preserve_pending)],
             )
         rows = [
             (source, track_id, canonical_id, now)

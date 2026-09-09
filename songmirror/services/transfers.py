@@ -180,7 +180,8 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
     def fit(budget, ordered):
         return _fit_chronology_writes(
             ordered_keys, current_by_source, requested, lambda item: id(item[1]),
-            budget, replay_write_cost=replay_write_cost, can_replay=ordered)
+            budget, replay_write_cost=replay_write_cost, can_replay=ordered,
+            preserve_chronology=False)
 
     if can_replay:
         additions, chronology_replay, deferred, ordered_cost = fit(max_adds, True)

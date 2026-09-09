@@ -5,8 +5,8 @@ cached link) first, then a fuzzy search scored against title/artist/duration.
 The fuzzy layer is RapidFuzz `token_set_ratio` (order/subset/decoration
 tolerant) plus Jaro-Winkler (short strings, transliteration near-misses), run
 over both raw and romanized (anyascii) variants so different scripts match. The
-duration anchor gates the looser matching so a different version or a
-wrong-artist cover is rejected when its length disagrees.
+performer, version, and duration gates prevent a similar title from outweighing
+evidence that the candidate is a different recording.
 """
 
 import math
@@ -31,7 +31,11 @@ CATALOG_TAG = r"(?:(?:\d{4}\s+)?re-?master(?:ed)?(?:\s+\d{4})?|clean|explicit)"
 BRACKETED_CATALOG_TAG_RE = re.compile(rf"[\(\[]\s*(?:{CATALOG_TAG})\s*[\)\]]", re.IGNORECASE)
 TRAILING_CATALOG_TAG_RE = re.compile(rf"\s*[-–—]\s*(?:{CATALOG_TAG})\s*$", re.IGNORECASE)
 FROM_RELEASE_RE = re.compile(
-    r'\s*(?:[-–—]\s*from|[\(\[]\s*from)\s+["“][^"”]+["”]\s*[\)\]]?\s*$',
+    r'''\s*(?:[-–—]\s*from|[\(\[]\s*from)\s+(?:"[^"]+"|'[^']+'|“[^”]+”|‘[^’]+’)\s*[\)\]]?\s*$''',
+    re.IGNORECASE,
+)
+BONUS_TRACK_SUFFIX_RE = re.compile(
+    r"(?:\s+[-–—/]\s*bonus\s+track|\s*[\(\[]\s*bonus\s+track\s*[\)\]])\s*$",
     re.IGNORECASE,
 )
 CREATIVE_VERSION_PATTERNS = (
@@ -178,7 +182,7 @@ def catalog_name(name):
     qualifiers (remix, acoustic, live, piano, radio edit, etc.) deliberately
     remain, so genuinely different recordings never collapse merely by title.
     """
-    cleaned = str(name or "")
+    cleaned = BONUS_TRACK_SUFFIX_RE.sub("", str(name or ""))
     while True:
         previous = cleaned
         cleaned = BRACKETED_CATALOG_TAG_RE.sub(" ", cleaned)
@@ -186,7 +190,15 @@ def catalog_name(name):
         cleaned = FROM_RELEASE_RE.sub(" ", cleaned)
         if cleaned == previous:
             break
-    return loose_name(cleaned)
+    normalized = loose_name(cleaned)
+    markers = creative_version_markers(cleaned)
+    if markers and markers != {"alternate-version"}:
+        # Acoustic / Acoustic Version name the same variant. The compatibility
+        # gate still compares named mixes, venues, and other version details.
+        for _marker, pattern in CREATIVE_VERSION_PATTERNS:
+            normalized = re.sub(rf"({pattern.pattern})\s+version\b", r"\1", normalized,
+                                flags=re.IGNORECASE)
+    return " ".join(normalized.split())
 
 
 def creative_version_markers(name):
@@ -238,6 +250,7 @@ def recording_version_signature(name):
     concerts. Compare explicit qualifiers before fuzzy scoring, while allowing
     label spelling differences such as Acoustic Version / Akustik.
     """
+    name = BONUS_TRACK_SUFFIX_RE.sub("", str(name or ""))
     markers = frozenset(creative_version_markers(name))
     details = set()
     for part in re.split(r"\s+[-–—]\s+|[()\[\]{}]", _without_feature_credits(name))[1:]:
@@ -324,8 +337,94 @@ def _artist_variants(track):
     return variants
 
 
+def _artist_names(track):
+    artists = track.get("artists") or track.get("artist") or []
+    if isinstance(artists, str):
+        artists = [artists]
+    # Auto-generated channel placeholders convey no performer evidence. They
+    # cannot validate a search result or contradict a previously proven ID.
+    unavailable = {"", "release", "release topic", "unknown artist", "various artists"}
+    return [str(artist).strip() for artist in artists
+            if romanized(str(artist or "")) not in unavailable]
+
+
 def _artist_similarity(track, candidate):
-    return _best(_sim_loose, _artist_variants(track), _artist_variants(candidate))
+    """Compare complete performer credits, allowing a provider's primary credit.
+
+    Token subsets make "AURORA Tribute Band" a perfect match for "AURORA".
+    Split only credit separators, then compare whole names. When both sides
+    expose joined credits, require a complete credit set to match, not just a
+    common fragment of two different comma-containing band names.
+    """
+    names, candidates = _artist_names(track), _artist_names(candidate)
+    tribute = re.compile(r"\b(?:tribute|karaoke|covers?|renditions?)\b")
+    left_markers = set(tribute.findall(romanized(" ".join(names))))
+    right_markers = set(tribute.findall(romanized(" ".join(candidates))))
+    if left_markers != right_markers:
+        return 0.0
+
+    def split_credits(values):
+        return [part.strip() for value in values
+                for part in re.split(r"\s*(?:,|;|&|\b(?:feat|ft)\.?\s|\bfeaturing\s|\band\b|\bwith\b)\s*", value,
+                                     flags=re.IGNORECASE) if part.strip()]
+
+    def variants(values):
+        out = {v for value in values for v in _artist_variants({"artist": value})}
+        # Soundtrack brands may add "Music" to an otherwise complete multiword
+        # credit ("League of Legends Music"). Do not shorten compact stage names.
+        out.update(v.removesuffix(" music") for v in list(out)
+                   if v.endswith(" music") and len(v.split()) >= 4)
+        return out
+
+    def similarity(left, right):
+        return _best(lambda a, b: fuzz.token_sort_ratio(a, b) / 100.0, left, right)
+
+    def all_credits(left, right):
+        right_variants = variants(right)
+        return min((similarity(variants([name]), right_variants) for name in left), default=0.0)
+
+    left_parts, right_parts = split_credits(names), split_credits(candidates)
+    if not left_parts or not right_parts:
+        return 0.0
+    # Fuzzy aggregate strings can hide one conflicting performer in a long
+    # shared credit. Only exact formatting equivalence or a complete subset of
+    # credited names is sufficient; a shared guest alone is not.
+    if variants([" ".join(names)]) & variants([" ".join(candidates)]):
+        return 1.0
+    return max(
+        all_credits(left_parts, right_parts),
+        all_credits(right_parts, left_parts),
+    )
+
+
+def recording_metadata_compatible(track, candidate):
+    """Reject explicit recording conflicts, including on ID and archive paths.
+
+    Missing metadata cannot disprove a hard identifier. Known performer or
+    length disagreements can: older automatic mappings are not independent
+    evidence that overrides the provider's actual recording metadata.
+    """
+    if not recording_versions_compatible(
+        track.get("name"), track.get("artists") or track.get("artist"),
+        candidate.get("name"), candidate.get("artists") or candidate.get("artist"),
+    ):
+        return False
+    return recording_performance_compatible(track, candidate)
+
+
+def recording_performance_compatible(track, candidate):
+    """Whether usable performer and duration evidence can describe the same audio.
+
+    Historical hard identities tolerate mutable version labels, but must not
+    equate a different performer or a materially different recording length.
+    """
+    if _artist_names(track) and _artist_names(candidate) and _artist_similarity(track, candidate) < FUZZY_THRESHOLD:
+        return False
+    duration, candidate_duration = track.get("duration_ms"), candidate.get("duration_ms")
+    if duration is not None and candidate_duration is not None:
+        if duration > 0 and candidate_duration > 0:
+            return abs(duration - candidate_duration) <= CATALOG_DURATION_TOLERANCE_MS
+    return True
 
 
 def fuzzy_in(key, keys, threshold=FUZZY_THRESHOLD):
@@ -337,7 +436,9 @@ def fuzzy_in(key, keys, threshold=FUZZY_THRESHOLD):
 def score_candidate(name, artists, duration_ms, cand_name, cand_artist, cand_duration_ms):
     """(score in 0..1, acceptable) for a search-result candidate vs the wanted
     track — the fuzzy fallback when no ISRC/link resolves it."""
-    if not recording_versions_compatible(name, artists, cand_name, cand_artist):
+    wanted = {"name": name, "artists": artists, "duration_ms": duration_ms}
+    candidate = {"name": cand_name, "artist": cand_artist, "duration_ms": cand_duration_ms}
+    if not recording_metadata_compatible(wanted, candidate):
         return 0.0, False
     if isinstance(artists, str):
         artists = [artists]
@@ -345,10 +446,7 @@ def score_candidate(name, artists, duration_ms, cand_name, cand_artist, cand_dur
     name_strict = _best(_sim_strict, q_names, c_names)
     name_loose = _best(_sim_loose, q_names, c_names)
 
-    joined = " ".join(artists)
-    q_art = {normalize_text(joined), romanized(joined)}
-    c_art = {normalize_text(cand_artist), romanized(cand_artist)}
-    artist_sim = _best(_sim_loose, q_art, c_art)  # subset-tolerant: services list the primary artist
+    artist_sim = _artist_similarity(wanted, candidate)
 
     if duration_ms is not None and cand_duration_ms is not None:
         delta = abs(duration_ms - cand_duration_ms)
@@ -359,8 +457,8 @@ def score_candidate(name, artists, duration_ms, cand_name, cand_artist, cand_dur
 
     name_sim = max(name_strict, name_loose) if duration_close else name_strict
     score = 0.45 * name_sim + 0.35 * artist_sim + 0.20 * duration_score
-    strong = duration_close and name_sim >= 0.78 and artist_sim >= 0.58
-    fuzzy = name_strict >= 0.88 and artist_sim >= 0.60
+    strong = duration_close and name_sim >= 0.78 and artist_sim >= FUZZY_THRESHOLD
+    fuzzy = name_strict >= 0.88 and artist_sim >= FUZZY_THRESHOLD
     return score, (strong or fuzzy)
 
 
@@ -378,10 +476,7 @@ def same_catalog_recording(track, candidate):
     it) near-identical duration. It catches alternate catalog releases without
     treating an acoustic/live/remix/version as the ordinary track.
     """
-    if not recording_versions_compatible(
-        track.get("name"), track.get("artists") or track.get("artist"),
-        candidate.get("name"), candidate.get("artists") or candidate.get("artist"),
-    ):
+    if not recording_metadata_compatible(track, candidate):
         return False
     wanted = catalog_name(track.get("name"))
     existing = catalog_name(candidate.get("name"))
@@ -451,10 +546,7 @@ def compute_diff(sp_tracks, target_tracks, expected_by_sp, target_id_of, thresho
         target_by_key.setdefault(track_key(track["name"], track["artist"]), []).append(track)
 
     def compatible(source, target):
-        return recording_versions_compatible(
-            source.get("name"), source.get("artists") or source.get("artist"),
-            target.get("name"), target.get("artists") or target.get("artist"),
-        )
+        return recording_metadata_compatible(source, target)
 
     expected_all = set()
     sp_by_version = {}
