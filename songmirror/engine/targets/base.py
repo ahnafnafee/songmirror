@@ -974,21 +974,25 @@ def _entry_cids(target, tracks, songs, cache, key2isrc, rebindings=None, remembe
     but cannot overwrite proven memory; the memory otherwise covers for a read
     too degraded to derive one."""
     ids = [target.track_id(t) for t in tracks]
+    known = {tid: normalize_canonical_id(cid)
+             for tid, cid in archive.get_identities(songs, target.source, ids).items()}
     rev = ({} if _target_provider(target) == "spotify"
            else archive.get_reverse_links(songs, target.source, ids))
-    if rev:
+    # A remembered Spotify identity still names that exact catalog entry even
+    # if its resolve-cache link was later evicted. Upgrade it through the same
+    # ISRC evidence as a live reverse link instead of splitting one recording.
+    spotify_ids = set(rev.values()) | {cid[2:] for cid in known.values() if cid.startswith("s:")}
+    if spotify_ids:
         archive_sources = getattr(target, "archive_sources", None)
         spotify_sources = (
             archive_sources("spotify") if callable(archive_sources) else ("spotify",)
         )
         sp_isrc = archive.get_isrcs_from_sources(
-            songs, spotify_sources, list(rev.values())
+            songs, spotify_sources, spotify_ids
         )
     else:
         sp_isrc = {}
     id2isrc = target.native_isrc_map(cache)  # provider-supplied track_id -> ISRC (Apple, future providers)
-    known = {tid: normalize_canonical_id(cid)
-             for tid, cid in archive.get_identities(songs, target.source, ids).items()}
     history = {
         tid: {normalize_canonical_id(cid) for cid in canonical_ids}
         for tid, canonical_ids in archive.get_identity_history(
@@ -1009,7 +1013,8 @@ def _entry_cids(target, tracks, songs, cache, key2isrc, rebindings=None, remembe
         native_isrc = normalize_isrc(id2isrc.get(tid))
         inferred_isrc = normalize_isrc(next(
             (key2isrc[k] for k in keys if k in key2isrc), None))
-        sp_id = rev.get(tid)
+        previous = known.get(tid)
+        sp_id = rev.get(tid) or (previous[2:] if previous and previous.startswith("s:") else None)
         linked_isrc = normalize_isrc(sp_isrc.get(sp_id)) if sp_id else ""
         if direct_isrc:
             cid, provenance = f"i:{direct_isrc}", "direct"
@@ -1022,7 +1027,6 @@ def _entry_cids(target, tracks, songs, cache, key2isrc, rebindings=None, remembe
             cid, provenance = f"i:{inferred_isrc}", "inferred"
         else:
             cid, provenance = f"k:{track_key(norm['name'], norm['artist'])}", "soft"
-        previous = known.get(tid)
         if cid.startswith("k:"):
             cid = previous or cid           # yield to whatever this entry already earned
         elif tid and previous != cid:
@@ -1219,7 +1223,8 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     state so differently-named paired playlists share one logical identity;
     otherwise the casefolded display name is used (implicit same-name pairing).
     Returns a stats dict; `clean` is True when every side applied with no guard
-    tripped (only then is the canonical snapshot advanced)."""
+    tripped. Held changes retain removal evidence while recording newly observed
+    membership, so an old addition cannot override a later user deletion."""
     authorities = None if authority_sources is None else frozenset(authority_sources)
     peer_sources = {p.source for p in peers}
     if authorities is not None:
@@ -2017,13 +2022,14 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
         for p in peers:
             archive.delete_links(songs, p.source, rejected_link_ids[p.source])
             archive.set_links(songs, p.source, new_links[p.source])
-        # Advance every baseline when reads were trusted and no membership
-        # change was held. When additions are incomplete or a removal is capped,
-        # established peers stay frozen, but a newly connected peer must still
-        # graduate from bootstrap or its entire library looks newly added forever.
+        # A held change must retain previous membership as removal evidence,
+        # but cannot prevent us from remembering tracks actually observed now.
+        # Otherwise an old addition on another authority wins over a later user
+        # deletion forever. Only observed membership is added: unresolved or
+        # newly written matches still need a provider read before entering state.
         if not collapsed and not interrupted:
             persist = new_state if not baseline_blocked else {
-                src: ids for src, ids in new_state.items() if src not in initialized}
+                src: prev.get(src, set()) | ids for src, ids in new_state.items()}
             pending_sources = initialized if authorities is None else initialized & authorities
             pending_updates = (
                 {src: missing_by_source.get(src, set()) | applied_removals.get(src, set())
@@ -2034,7 +2040,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             archive.commit_reconcile_membership(
                 songs, key, persist, pending_updates, physical_playlist_ids)
             if baseline_blocked:
-                for src in persist:
+                for src in persist.keys() - initialized:
                     label = next((p.name for p in peers if p.source == src), src)
                     log_note(f"{name}: initialized {label} baseline despite held changes", tag="sync")
 

@@ -1075,6 +1075,39 @@ def test_held_removal_still_initializes_a_new_peer_without_resurrection(tmp_path
     conn.close()
 
 
+def test_unresolved_match_does_not_forget_observed_additions_or_user_removals(tmp_path):
+    class MissingMatchPeer(_P):
+        def resolve(self, norm, cache):
+            if norm["isrc"] == "X":
+                return None, None
+            return super().resolve(norm, cache)
+
+    conn = archive.connect(str(tmp_path / "observed-removal.db"))
+    key = "group:apple,spotify:aurora"
+    archive.set_playlist_state(conn, key, "spotify", {f"i:{i}" for i in "ABCX"})
+    archive.set_playlist_state(conn, key, "apple", {f"i:{i}" for i in "ABC"})
+    sp = _P("spotify", list("ABCXD"))
+    apple = MissingMatchPeer("apple", list("ABCD"))
+    peers = [sp, apple]
+    playlists = {p.source: {"id": p.source} for p in peers}
+
+    def run():
+        return reconcile(peers, "Aurora", playlists, _caches("spotify", "apple"), conn,
+                         execute=True, max_removals=25, max_adds=200,
+                         authority_sources={"spotify", "apple"})
+
+    # X cannot be matched on Apple, but D was actually observed on both sides.
+    # Freezing all history here makes Apple's D look newly added forever.
+    assert run()["clean"] is False
+    sp._isrcs.remove("D")
+    for _ in range(3):
+        run()
+        assert sp.added == []
+    assert "i:D" in archive.get_playlist_state(conn, key, "spotify")
+    assert archive.get_pending_removals(conn, key, "spotify") == {"i:D"}
+    conn.close()
+
+
 class _VariantPeer:
     """Peer holding ONE copy of a song under provider-flavored metadata
     (decorated title, partial or embellished artist credits). resolve() returns
@@ -1138,6 +1171,69 @@ class _ManyPeer:
 
     def remove(self, pl, raw):
         self.removed.append(raw)
+
+
+@pytest.mark.parametrize("profiled", [False, True])
+@pytest.mark.parametrize("remembered_link_only", [False, True])
+def test_removed_song_is_not_resurrected_by_a_link_without_snapshot_isrc(
+    tmp_path, profiled, remembered_link_only,
+):
+    # Spotify's web snapshots omit ISRCs. Apple still links to the original
+    # Spotify catalog id, whose learned ISRC survives in track_identity. Treating
+    # that link as a separate s: identity restores a song the user just removed.
+    conn = archive.connect(str(tmp_path / "linked-removal.db"))
+    sp_source = "profile_default_spotify" if profiled else "spotify"
+    ap_source = "profile_default_apple" if profiled else "apple"
+    authorities = {sp_source, ap_source}
+    key = f"group:{','.join(sorted(authorities))}:aurora"
+    retained = [
+        {"id": f"sp-{isrc}", "name": name, "artist": artist, "isrc": isrc}
+        for isrc, name, artist in [
+            ("A", "Older Song", "Other Artist"),
+            ("B", "Reverse Psychology", "Temper City"),
+            ("C", "Self Aware", "Temper City"),
+        ]
+    ]
+    removed = {"id": "sp-original", "name": "Runaway - Piano Version",
+               "artist": "AURORA", "isrc": None}
+    apple_copy = {"id": "ap-piano", "name": "Runaway (Piano Acoustic)",
+                  "artist": "AURORA", "isrc": None}
+    archive.upsert_many(conn, sp_source, [removed])
+    archive.set_identities(conn, sp_source, {"sp-original": "i:GBUM72100931"})
+    archive.set_identities(conn, ap_source, {"ap-piano": "s:sp-original"})
+    if not remembered_link_only:
+        archive.set_links(conn, ap_source, {"sp-original": "ap-piano"})
+    baseline = {"i:A", "i:B", "i:C"}
+    archive.set_playlist_state(conn, key, sp_source, baseline | {"i:GBUM72100931"})
+    archive.set_playlist_state(conn, key, ap_source, baseline | {"s:sp-original"})
+    spotify = _ManyPeer(sp_source, retained, lambda _norm: "sp-reissue")
+    apple = _ManyPeer(ap_source, [*retained, apple_copy], lambda _norm: None)
+    spotify.provider, apple.provider = "spotify", "apple"
+    apple.archive_sources = lambda _provider: (sp_source,)
+    peers = [spotify, apple]
+    playlists = {peer.source: {"id": peer.source} for peer in peers}
+    for _ in range(2):
+        reconcile(peers, "Aurora", playlists, _caches(sp_source, ap_source), conn,
+                  execute=True, max_removals=25, max_adds=200,
+                  authority_sources=authorities)
+        assert spotify.added == []
+    assert apple.removed == [apple_copy]
+    conn.close()
+
+
+def test_linked_isrc_prefers_snapshot_evidence_across_selected_profiles(tmp_path):
+    conn = archive.connect(str(tmp_path / "linked-isrc.db"))
+    archive.set_identities(conn, "profile_spotify_one", {
+        "snapshot": "i:OLD", "remembered": "i:KNOWN", "soft": "s:other-id",
+    })
+    archive.upsert_many(conn, "profile_spotify_two", [{"id": "snapshot", "isrc": "CURRENT"}])
+    archive.set_identities(conn, "unselected_profile", {"unselected": "i:UNSELECTED"})
+
+    assert archive.get_isrcs_from_sources(
+        conn, iter(["profile_spotify_one", "profile_spotify_two"]),
+        ["snapshot", "remembered", "soft", "unselected"],
+    ) == {"snapshot": "CURRENT", "remembered": "KNOWN"}
+    conn.close()
 
 
 def _replacement_peers(*, same_metadata=False, spotify_resolve="sp-new"):

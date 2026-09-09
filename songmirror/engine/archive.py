@@ -494,16 +494,27 @@ def get_isrcs_from_sources(conn, sources, ids):
 
     Spotify catalog ids are shared by its accounts, but a track may only have
     been archived through a custom profile. Preserve source order on the rare
-    conflicting row and stop querying once every requested id is satisfied.
+    conflicting row. Web snapshots may omit ISRCs, so fall back to the current
+    hard identity learned for that exact catalog id after checking every
+    selected account's snapshots. A reverse link must keep identifying the same
+    recording even after it disappears from the Spotify playlist.
     """
     wanted = [track_id for track_id in ids if track_id]
+    sources = tuple(dict.fromkeys(source for source in sources if source))
     out = {}
-    for source in dict.fromkeys(source for source in sources if source):
+    for source in sources:
         remaining = [track_id for track_id in wanted if track_id not in out]
         if not remaining:
             break
         for track_id, isrc in get_isrcs(conn, source, remaining).items():
             out.setdefault(track_id, isrc)
+    for source in sources:
+        remaining = [track_id for track_id in wanted if track_id not in out]
+        if not remaining:
+            break
+        for track_id, cid in get_identities(conn, source, remaining).items():
+            if cid.startswith("i:") and cid[2:]:
+                out.setdefault(track_id, cid[2:])
     return out
 
 
