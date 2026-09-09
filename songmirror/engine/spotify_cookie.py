@@ -671,6 +671,8 @@ def _normalized_content_tracks(items):
             "added_at": (it.get("addedAt") or {}).get("isoString") or "",
             "image": image,
         })
+        if it.get("uid"):
+            out[-1]["playlistItemId"] = it["uid"]
     return out
 
 
@@ -781,14 +783,33 @@ def remove(playlist, track_ids):
         _pf("removeFromPlaylist", {"playlistUri": _puri(playlist), "uids": uids})
 
 
-def remove_positions(playlist, positions):
-    """Remove the items at these 0-based positions. ponytail: evaluated against a
-    fresh contents read, not the caller's read-time snapshot — acceptable because
-    reconcile position-removes within one short pass; revisit if drift bites."""
-    items = contents(playlist)
-    uids = [items[p]["uid"] for p in positions if 0 <= p < len(items) and items[p]["uid"]]
+def remove_uids(playlist, uids):
+    """Remove exact playlist occurrences, independent of intervening order edits."""
+    uids = list(dict.fromkeys(uids))
+    if any(not uid for uid in uids):
+        raise RuntimeError("Spotify did not return an occurrence id for a selected track")
     if uids:
         _pf("removeFromPlaylist", {"playlistUri": _puri(playlist), "uids": uids})
+
+
+def remove_positions(playlist, positions, *, expected_track_ids=None):
+    """Resolve legacy selections against the same visible tracks used by reads.
+
+    Hidden/local/episode rows still occupy raw contents positions. Including
+    them here shifts every later selection away from the normalized read. New
+    reads retain occurrence ids and bypass this positional fallback entirely.
+    """
+    positions = list(positions)
+    items = [item for item in contents(playlist)
+             if (item.get("uri") or "").startswith("spotify:track:")]
+    if any(position < 0 or position >= len(items) for position in positions):
+        raise RuntimeError("Spotify playlist changed; refresh it before removing tracks")
+    selected = [items[position] for position in positions]
+    if expected_track_ids is not None:
+        expected = [_turi(track_id) for track_id in expected_track_ids]
+        if [item["uri"] for item in selected] != expected:
+            raise RuntimeError("Spotify playlist changed; refresh it before removing tracks")
+    remove_uids(playlist, [item.get("uid") for item in selected])
 
 
 def _spc_headers():

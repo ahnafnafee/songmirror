@@ -1497,6 +1497,37 @@ def test_unrelated_catalog_collision_does_not_block_valid_new_songs(max_adds, ex
     conn.close()
 
 
+@pytest.mark.parametrize("collision", [False, True])
+def test_older_recoveries_wait_when_playlist_order_cannot_be_repaired(collision):
+    def track(tid, name, date):
+        return dict(id=tid, name=name, isrc=tid.upper(), artists=["Artist"],
+                    duration_ms=180000, added_at=date)
+
+    recovered = track("recovered", "Older song", "2020-01-01T00:00:00Z")
+    cutoff = track("cutoff", "Last intentional addition", "2026-09-04T00:00:00Z")
+    new = track("new", "New intentional addition", "2026-09-10T00:00:00Z")
+    conflict = track("conflict", "Unrelated recording", "2021-01-01T00:00:00Z")
+
+    class Mirror(_ManyPeer):
+        replay_chronology = None
+
+    conn = archive.connect(":memory:")
+    source = _ManyPeer("spotify", [recovered, *([conflict] if collision else []), cutoff, new],
+                       lambda norm: norm["_raw"]["id"])
+    destinations = [Mirror(provider, [cutoff], lambda norm:
+                           "cutoff" if norm["isrc"] == "CONFLICT" else norm["_raw"]["id"])
+                    for provider in ("apple", "ytmusic", "tidal", "deezer", "amazon", "qobuz")]
+    peers = [source, *destinations]
+    stats = reconcile(peers, "Mix", {p.source: {"id": p.source} for p in peers},
+                      _caches(*(p.source for p in peers)), conn, execute=True,
+                      authority_sources={"spotify", "apple"}, max_adds=200, max_removals=200)
+
+    assert all(peer.added == ["new"] for peer in destinations)
+    assert all(peer.removed == [] for peer in peers)
+    assert stats["deferred"] == 6 * (2 if collision else 1)
+    conn.close()
+
+
 def test_same_key_queued_additions_stay_distinct_when_audio_differs(tmp_path):
     conn = archive.connect(str(tmp_path / "queued-key-collision.db"))
     for src in ("spotify", "tidal"):

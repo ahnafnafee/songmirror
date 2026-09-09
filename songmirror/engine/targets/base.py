@@ -348,6 +348,10 @@ class MirrorTarget:
         """Locate copies appended by a failed staging pass for rollback."""
         after = list(self.playlist_tracks(playlist))
         if self.stable_occurrence_ids:
+            if any(self.occurrence_id(track) is None for track in [*before, *after]):
+                raise RuntimeError(
+                    f"{self.name} returned incomplete occurrence ids; cannot safely identify staged copies"
+                )
             old = Counter(
                 occurrence_id for track in before
                 if (occurrence_id := self.occurrence_id(track)) is not None
@@ -502,11 +506,30 @@ def _chronology_replay_tail(ordered_keys, current_by_key, additions_by_key):
 
 def _fit_chronology_writes(ordered_keys, current_by_key, additions, addition_key,
                            max_writes, *, addition_target_id=lambda item: item[0],
-                           replay_write_cost=len, can_replay=True):
+                           replay_write_cost=len, can_replay=True, preserve_chronology=True,
+                           order_evidence=None):
     """Fit new membership plus any required chronology suffix under one write cap."""
     additions = list(additions)
     if not can_replay:
-        selected = additions[:max(0, max_writes)]
+        eligible = additions
+        if preserve_chronology:
+            positions = {key: position for position, key in enumerate(ordered_keys)}
+
+            def chronology_key(key):
+                evidence = (order_evidence or {}).get(key)
+                if evidence is not None:
+                    # Equal timestamps are not evidence that one song predates
+                    # another; provider rank merely breaks their sorting tie.
+                    return evidence[:2] if evidence[0] == 0 else evidence
+                return (2, positions.get(key, -1))
+
+            existing = [chronology_key(key) for key in current_by_key if key in positions]
+            last_existing = max(existing) if existing else None
+            # Missing old tracks must not become the newest entries merely
+            # because a provider cannot safely replay the newer suffix.
+            eligible = [item for item in additions
+                        if last_existing is None or chronology_key(addition_key(item)) >= last_existing]
+        selected = eligible[:max(0, max_writes)]
         return selected, [], len(additions) - len(selected), len(additions)
 
     full_by_key = {addition_key(item): addition_target_id(item) for item in additions}
@@ -768,6 +791,9 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
         max_adds,
         replay_write_cost=replay_write_cost,
         can_replay=can_replay,
+        preserve_chronology=not is_favorite_resource,
+        order_evidence={id(track): track_addition_order_key(track, playlist_position=position)
+                        for position, track in enumerate(ordered_source)},
     )
     chronology_replayed = sum(1 for _target_id, original in chronology_replay
                               if original is not None)
@@ -778,6 +804,12 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
             log_warn(
                 f"preserving Recently Added order would require {full_write_cost} ordered writes; "
                 f"--max-adds={max_adds}, deferring {cap_deferred} addition(s)",
+                tag=tag,
+            )
+        elif not can_replay and not is_favorite_resource:
+            log_warn(
+                f"deferring {cap_deferred} addition(s): older playlist gaps require an ordered "
+                f"repair before they can be filled (write cap {max_adds})",
                 tag=tag,
             )
         else:
@@ -1738,20 +1770,18 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             present_recordings[p.source].setdefault(catalog_name(norm["name"]), []).append((None, norm))
             additions.append((cid, tid, method or "search", norm))
 
-        ordered_desired = sorted(
-            desired,
-            key=lambda cid: (
-                addition_order.get(
-                    cid,
-                    track_addition_order_key(
-                        repr_.get(cid, {}),
-                        source_rank=len(peers),
-                        playlist_position=repr_.get(cid, {}).get("_playlist_position", 0),
-                    ),
-                ),
+        order_evidence = {
+            cid: addition_order.get(
                 cid,
-            ),
-        )
+                track_addition_order_key(
+                    repr_.get(cid, {}),
+                    source_rank=len(peers),
+                    playlist_position=repr_.get(cid, {}).get("_playlist_position", 0),
+                ),
+            )
+            for cid in desired
+        }
+        ordered_desired = sorted(desired, key=lambda cid: (order_evidence[cid], cid))
         current_by_cid = {}
         for current_cid, current_norm in per_entry[p.source]:
             current_cid = alias.get(current_cid, current_cid)
@@ -1788,13 +1818,11 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
         can_replay = callable(getattr(p, "replay_chronology", None)) and not is_favorite_resource
         replay_write_cost = getattr(p, "chronology_replay_write_cost", len)
         if chronology_collision and additions:
-            # Only the ambiguous entries are blocked. Replaying existing rows
-            # would rely on their disputed identities, but independently resolved
-            # additions can safely append in source order. A later pass can
-            # recover older gaps once the conflicting matches are corrected.
+            # Disputed identities prevent suffix replay. Only additions newer
+            # than the current playlist can append without changing chronology.
             log_warn(
-                f"{p.name}/{name}: appending valid additions without reordering existing "
-                "tracks while conflicting matches are held",
+                f"{p.name}/{name}: holding older recoveries while conflicting matches "
+                "prevent an ordered repair",
                 tag=p.tag,
             )
         can_replay = can_replay and not chronology_collision
@@ -1807,6 +1835,8 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             addition_target_id=lambda item: item[1],
             replay_write_cost=replay_write_cost,
             can_replay=can_replay,
+            preserve_chronology=not is_favorite_resource,
+            order_evidence=order_evidence,
         )
         chronology_replayed = sum(1 for _target_id, original in chronology_replay
                                   if original is not None)
@@ -1817,6 +1847,12 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                     f"{p.name}/{name}: preserving Recently Added order would require "
                     f"{full_write_cost} ordered writes; --max-adds={max_adds}, "
                     f"deferring {cap_deferred} addition(s)",
+                    tag=p.tag,
+                )
+            elif not can_replay and not is_favorite_resource:
+                log_warn(
+                    f"{p.name}/{name}: deferring {cap_deferred} addition(s): older playlist gaps "
+                    f"require an ordered repair before they can be filled (write cap {max_adds})",
                     tag=p.tag,
                 )
             else:
