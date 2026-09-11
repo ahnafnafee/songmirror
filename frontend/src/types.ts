@@ -629,3 +629,91 @@ export type ResolveCacheKind = 'all' | 'manual' | 'unmatched'
 export interface ClearUnmatchedResponse {
   removed: number
 }
+
+export type ImportSourceKind = 'text' | 'file' | 'url'
+export type ImportStatus =
+  | 'parsing'
+  | 'matching'
+  | 'ready'
+  | 'creating'
+  | 'paused'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
+export type TrackDecision = 'auto' | 'approved' | 'selected' | 'skipped' | 'unmatched'
+export type ParseStatus = 'parsed' | 'warning' | 'invalid' | 'skipped'
+
+export interface ImportJob {
+  id: string
+  status: ImportStatus
+  source_kind: ImportSourceKind
+  source_provider?: string
+  source_account?: string
+  source_url?: string
+  source_name?: string
+  source_description?: string
+  destination_account: string
+  destination_playlist_id?: string
+  destination_name: string
+  destination_description: string
+  destination_mode: string
+  created_at: string
+  updated_at: string
+  started_at?: string
+  finished_at?: string
+  error?: string
+  total_tracks: number
+  matched_tracks: number
+  unmatched_tracks: number
+  needs_review: number
+  tracks_added: number
+  tracks_skipped: number
+  tracks_failed: number
+}
+
+export interface ImportTrack {
+  import_id: string
+  position: number
+  source_track_id?: string
+  source_isrc?: string
+  title?: string
+  artist?: string
+  album?: string
+  duration_ms?: number
+  raw_text?: string
+  parse_status: ParseStatus
+  parse_warning?: string
+  decision: TrackDecision
+  resolved_target_id?: string
+  resolved_method?: string
+  score?: number
+  write_status: string
+  write_error?: string
+}
+
+export interface ImportCandidate {
+  import_id: string
+  position: number
+  rank: number
+  target_id: string
+  title?: string
+  artist?: string
+  album?: string
+  duration_ms?: number
+  image?: string
+  external_url?: string
+  score?: number
+  reason?: string
+  selected: boolean
+}
+
+export interface ImportJobResponse {
+  job: ImportJob
+  tracks: ImportTrack[]
+  // JSON object keys are always strings, even when the backend used int positions.
+  candidates: Record<string, ImportCandidate[]>
+}
+
+export interface ImportListResponse {
+  jobs: ImportJob[]
+}

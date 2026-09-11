@@ -4,9 +4,11 @@ import { Link, NavLink } from 'react-router-dom'
 import {
   LuArrowLeftRight,
   LuGithub,
+  LuHistory,
   LuLayoutDashboard,
   LuLink2,
   LuListMusic,
+  LuListPlus,
   LuMenu,
   LuMilestone,
   LuPanelLeftClose,
@@ -32,6 +34,8 @@ const NAV_ITEMS: Array<{ to: string; label: string; end: boolean; icon: IconType
   { to: '/playlists', get label() { return t("Playlists") }, end: false, icon: LuListMusic },
   { to: '/sync', get label() { return t("Sync") }, end: false, icon: LuRefreshCw },
   { to: '/transfers', get label() { return t("Transfers") }, end: false, icon: LuArrowLeftRight },
+  { to: '/create-playlist', get label() { return t("Create Playlist") }, end: false, icon: LuListPlus },
+  { to: '/imports', get label() { return t("Imports") }, end: false, icon: LuHistory },
   { to: '/mappings', get label() { return t("Mappings") }, end: false, icon: LuMilestone },
   { to: '/settings', get label() { return t("Settings") }, end: false, icon: LuSettings2 },
 ]

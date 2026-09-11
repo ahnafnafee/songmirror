@@ -814,6 +814,60 @@ class YTMusicTarget(MirrorTarget):
         polite_sleep(0.4)
         return best_id, method
 
+    def _normalize_search_result(self, cand):
+        vid = cand.get("videoId")
+        if not vid:
+            return None
+        artists = [a.get("name", "") for a in (cand.get("artists") or []) if a.get("name")]
+        artist = ", ".join(artists) or cand.get("author") or ""
+        ds = cand.get("duration_seconds")
+        thumbnails = cand.get("thumbnails") or []
+        image = ""
+        if isinstance(thumbnails, list):
+            for thumb in reversed(thumbnails):
+                if isinstance(thumb, dict) and thumb.get("url"):
+                    image = thumb["url"]
+                    break
+        album = cand.get("album") or {}
+        album_name = album.get("name") if isinstance(album, dict) else album
+        return {
+            "id": str(vid),
+            "videoId": str(vid),
+            "name": cand.get("title", ""),
+            "artist": artist,
+            "artists": artists or ([artist] if artist else []),
+            "album": album_name,
+            "duration_ms": ds * 1000 if ds else None,
+            "image": image or None,
+            "external_url": f"https://music.youtube.com/watch?v={vid}",
+        }
+
+    def search_candidates(self, query, *, limit=5):
+        query = str(query or "").strip()
+        if not query:
+            return []
+        out = []
+        seen = set()
+        for filt in ("songs", "videos"):
+            try:
+                results = _with_backoff(
+                    lambda q=query, f=filt: self._ytm.search(q, filter=f, limit=max(limit, 1)),
+                    f"{filt}",
+                )
+            except Exception:
+                results = []
+            for cand in results or []:
+                normalized = self._normalize_search_result(cand)
+                if not normalized or normalized["id"] in seen:
+                    continue
+                seen.add(normalized["id"])
+                out.append(normalized)
+                if len(out) >= limit:
+                    return out
+            if out:
+                return out
+        return out
+
     def _search(self, track, primary):
         """Resolve via ytmusicapi's public search (no Data API quota). Prefer a
         `songs` (art-track) match so tracks land as native songs; fall back to

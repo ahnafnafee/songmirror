@@ -26,6 +26,14 @@ def test_roundtrip_persists(tmp_path):
     assert reopened.get("SPOTIFY_CLIENT_ID") == "abc"
 
 
+def test_create_playlist_default_source_defaults_to_file(tmp_path):
+    store = SettingsStore(dir=tmp_path)
+    assert store.get("create_playlist_default_source") == "file"
+    assert store.load()["create_playlist_default_source"] == "file"
+    store.save({"create_playlist_default_source": "url"})
+    assert SettingsStore(dir=tmp_path).get("create_playlist_default_source") == "url"
+
+
 def test_none_values_ignored(tmp_path):
     store = SettingsStore(dir=tmp_path)
     store.save({"A": "1", "B": None})

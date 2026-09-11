@@ -696,7 +696,7 @@ class AmazonMusicTarget(MirrorTarget):
             queries.append(roman)
         best = None
         for query in queries:
-            candidates = self._search("name", query)
+            candidates = self.search_candidates(query, limit=20)
             if primary:
                 candidates = [
                     c for c in candidates if normalize_text(primary) in normalize_text(c.get("artist"))
@@ -708,6 +708,46 @@ class AmazonMusicTarget(MirrorTarget):
         cache["dirty"] = True
         polite_sleep(0.25)
         return best, "search"
+
+    def search_candidates(self, query, *, limit=5):
+        query = str(query or "").strip()
+        if not query:
+            return []
+        try:
+            rows = self._search("name", query, limit=max(limit, 1))
+        except Exception:
+            return []
+        out = []
+        seen = set()
+        for candidate in rows:
+            target_id = candidate.get("id")
+            if not target_id or str(target_id) in seen:
+                continue
+            seen.add(str(target_id))
+            row = dict(candidate)
+            row["external_url"] = f"https://music.amazon.com/tracks/{target_id}"
+            out.append(row)
+            if len(out) >= limit:
+                break
+        return out
+
+    def search_by_isrc(self, isrc):
+        isrc = str(isrc or "").strip()
+        if not isrc:
+            return []
+        wanted = normalize_isrc(isrc)
+        try:
+            rows = self._search("isrc", isrc, limit=10)
+        except Exception:
+            return []
+        out = []
+        for candidate in rows:
+            if normalize_isrc(candidate.get("isrc")) != wanted:
+                continue
+            row = dict(candidate)
+            row["external_url"] = f"https://music.amazon.com/tracks/{candidate['id']}"
+            out.append(row)
+        return out
 
     def _add(self, playlist, target_ids, *, allow_duplicates):
         if getattr(self, "_web", None) is not None:

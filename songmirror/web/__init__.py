@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..services.account_profiles import AccountProfileStore
 from ..services.events import EventBus
+from ..services.imports import ImportService
 from ..services.playlist_backups import PlaylistBackupService, PlaylistBackupStore
 from ..services.playlists import LinkStore
 from ..services.resolve_cache import ResolveCacheStore
@@ -26,7 +27,8 @@ from ..services.syncs import SyncStore
 from ..services.transfers import TransferService
 from .access_log import install_oauth_access_log_filter
 from .routers import (
-    accounts, events, folders, playlist_backups as playlist_backups_router, playlists,
+    accounts, events, folders, imports as imports_router,
+    playlist_backups as playlist_backups_router, playlists,
     resolve_cache as resolve_cache_router, settings as settings_router, sync,
     syncs as syncs_router,
     transfers as transfers_router,
@@ -39,7 +41,7 @@ _DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 def create_app(settings=None, bus=None, sync_service=None, links=None, transfers=None,
                syncs=None, resolve_cache=None, account_profiles=None,
-               playlist_backups=None) -> FastAPI:
+               playlist_backups=None, imports=None) -> FastAPI:
     install_oauth_access_log_filter()
     settings = settings or SettingsStore()
     bus = bus or EventBus()
@@ -58,6 +60,12 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
         PlaylistBackupStore(settings.data_dir, profiles=account_profiles),
         profiles=account_profiles,
     )
+    imports = imports or ImportService(
+        bus=bus,
+        settings=settings,
+        sync=sync_service,
+        profiles=account_profiles,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -71,6 +79,11 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
         settings.apply_to_env()
         await sync_service.start()
         await playlist_backups.start()
+        # Recover orphaned import jobs and prune stale terminal history.
+        imports_service = getattr(app.state, "imports", None) or imports
+        if imports_service is not None:
+            await imports_service.recover_orphaned_jobs()
+            await imports_service.cleanup_old_jobs()
         try:
             yield
         finally:
@@ -87,6 +100,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
     app.state.transfers = transfers
     app.state.resolve_cache = resolve_cache
     app.state.playlist_backups = playlist_backups
+    app.state.imports = imports
 
     app.include_router(accounts.router)
     app.include_router(settings_router.router)
@@ -98,6 +112,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
     app.include_router(playlist_backups_router.router)
     app.include_router(transfers_router.router)
     app.include_router(resolve_cache_router.router)
+    app.include_router(imports_router.router)
 
     @app.get("/health")
     def health():

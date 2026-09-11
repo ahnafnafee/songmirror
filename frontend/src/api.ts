@@ -8,6 +8,9 @@ import type {
   Account,
   ClearUnmatchedResponse,
   ConnectResponse,
+  ImportJob,
+  ImportJobResponse,
+  ImportListResponse,
   LinkUpsertRequest,
   OkResponse,
   PlaylistBackupJob,
@@ -33,6 +36,7 @@ import type {
   SyncJob,
   SyncJobUpsertRequest,
   SyncStatus,
+  TrackDecision,
   TransferControlResponse,
   TransferJob,
   TransferSourcePreview,
@@ -297,4 +301,150 @@ export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) return err.message
   if (err instanceof Error) return err.message
   return String(err)
+}
+
+async function parseErrorDetail(res: Response): Promise<string> {
+  let detail = res.statusText || t('HTTP {{resStatus}}', { resStatus: res.status })
+  try {
+    const body: unknown = await res.clone().json()
+    if (body && typeof body === 'object' && 'detail' in body && typeof body.detail === 'string') {
+      detail = body.detail
+    }
+  } catch {
+    // Response wasn't JSON — fall back to the status text above.
+  }
+  return detail
+}
+
+/** Create Playlist imports (paste / file / URL → destination playlist). */
+export const importApi = {
+  createTextImport: (data: {
+    text: string
+    destination_account: string
+    destination_mode?: string
+    destination_playlist_id?: string
+    name?: string
+    description?: string
+  }) =>
+    request<ImportJob>('/api/imports/text', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  async createFileImport(
+    file: File,
+    destination: {
+      destination_account: string
+      destination_mode?: string
+      destination_playlist_id?: string
+      name?: string
+      description?: string
+    },
+  ): Promise<ImportJob> {
+    const formData = new FormData()
+    formData.append('file', file)
+    Object.entries(destination).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        formData.append(key, value)
+      }
+    })
+
+    let res: Response
+    try {
+      // Do not set Content-Type — the browser must add the multipart boundary.
+      res = await fetch('/api/imports/file', { method: 'POST', body: formData })
+    } catch {
+      throw new ApiError(0, t('Could not reach the server. Check that it is running and reachable.'))
+    }
+    if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res))
+    return (await res.json()) as ImportJob
+  },
+
+  createUrlImport: (data: {
+    url: string
+    source_account: string
+    destination_account: string
+    destination_mode?: string
+    destination_playlist_id?: string
+    name?: string
+    description?: string
+  }) =>
+    request<ImportJob>('/api/imports/url', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  async listImports(): Promise<ImportJob[]> {
+    const res = await request<ImportListResponse>('/api/imports')
+    return res.jobs
+  },
+
+  getImport: (id: string, options?: { offset?: number; limit?: number }) => {
+    const params = new URLSearchParams()
+    if (options?.offset != null) params.set('offset', String(options.offset))
+    if (options?.limit != null) params.set('limit', String(options.limit))
+    const qs = params.toString()
+    return request<ImportJobResponse>(
+      `/api/imports/${encodeURIComponent(id)}${qs ? `?${qs}` : ''}`,
+    )
+  },
+
+  updateImport: (id: string, data: { name?: string; description?: string; destination_playlist_id?: string }) =>
+    request<ImportJob>(`/api/imports/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  async updateTrackDecision(
+    importId: string,
+    position: number,
+    data: { decision: TrackDecision; resolved_target_id?: string },
+  ): Promise<void> {
+    await request(`/api/imports/${encodeURIComponent(importId)}/tracks/${position}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async bulkUpdateDecisions(
+    importId: string,
+    decisions: { position: number; decision: TrackDecision; resolved_target_id?: string }[],
+  ): Promise<void> {
+    await request(`/api/imports/${encodeURIComponent(importId)}/decisions`, {
+      method: 'POST',
+      body: JSON.stringify({ decisions }),
+    })
+  },
+
+  matchImport: (id: string) =>
+    request<ImportJob>(`/api/imports/${encodeURIComponent(id)}/match`, { method: 'POST' }),
+
+  createFromImport: (id: string) =>
+    request<ImportJob>(`/api/imports/${encodeURIComponent(id)}/create`, { method: 'POST' }),
+
+  pauseImport: (id: string) =>
+    request<ImportJob>(`/api/imports/${encodeURIComponent(id)}/pause`, { method: 'POST' }),
+
+  resumeImport: (id: string) =>
+    request<ImportJob>(`/api/imports/${encodeURIComponent(id)}/resume`, { method: 'POST' }),
+
+  cancelImport: (id: string) =>
+    request<ImportJob>(`/api/imports/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+
+  deleteImport: (id: string) =>
+    request<OkResponse>(`/api/imports/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  async searchTrack(
+    account: string,
+    query: string,
+  ): Promise<Array<{ id: string; name: string; artist: string; album?: string; duration_ms?: number; image?: string; external_url?: string }>> {
+    const params = new URLSearchParams({
+      account,
+      query,
+    })
+    const res = await request<{ results: Array<{ id: string; name: string; artist: string; album?: string; duration_ms?: number; image?: string; external_url?: string }> }>(
+      `/api/imports/search-track?${params.toString()}`,
+    )
+    return res.results
+  },
 }

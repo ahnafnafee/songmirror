@@ -4,7 +4,9 @@ import { Link, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import { BUTTON_BASE_CLASSES, BUTTON_SIZE_CLASSES, BUTTON_VARIANT_CLASSES } from './components/ui/buttonStyles'
 import Accounts from './pages/Accounts'
+import CreatePlaylist from './pages/CreatePlaylist'
 import Dashboard from './pages/Dashboard'
+import Imports from './pages/Imports'
 import Playlists from './pages/Playlists'
 import ResolveMappings from './pages/ResolveMappings'
 import Settings from './pages/Settings'
@@ -21,6 +23,8 @@ export default function App() {
         <Route path="/playlists" element={<Playlists />} />
         <Route path="/sync" element={<Sync />} />
         <Route path="/transfers" element={<Transfers />} />
+        <Route path="/imports" element={<Imports />} />
+        <Route path="/create-playlist" element={<CreatePlaylist />} />
         <Route path="/mappings" element={<ResolveMappings />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<NotFound />} />

@@ -84,9 +84,39 @@ class MirrorTarget:
         """Create a same-named playlist (name + description copied)."""
         raise NotImplementedError
 
+    def create_playlist(self, name, description=""):
+        """Create a playlist by name/description and return its stable id.
+
+        Convenience wrapper used by Create Playlist imports; providers keep
+        implementing ``create()`` and the shared accessors.
+        """
+        playlist = self.create({"name": name, "description": description or ""})
+        return str(self.playlist_id(playlist))
+
     def playlist_tracks(self, playlist):
         """Existing tracks as dicts with name/artist/duration_ms + an id."""
         raise NotImplementedError
+
+    def get_playlist_info(self, playlist_id):
+        """Playlist metadata for URL imports: name/description/id/count."""
+        playlist = self.find_playlist(playlist_id) or self.fetch_playlist(playlist_id)
+        if playlist is None:
+            return None
+        return {
+            "id": self.playlist_id(playlist),
+            "name": self.playlist_name(playlist),
+            "description": self.playlist_description(playlist),
+            "count": self.playlist_count(playlist),
+            "playlist": playlist,
+        }
+
+    def get_playlist_tracks(self, playlist_id):
+        """All tracks for a playlist id (library or fetchable public link)."""
+        playlist = self.find_playlist(playlist_id) or self.fetch_playlist(playlist_id)
+        if playlist is None:
+            raise LookupError(f"playlist not found: {playlist_id}")
+        read_tracks = getattr(self, "playlist_tracks_for_transfer", self.playlist_tracks)
+        return list(read_tracks(playlist))
 
     @staticmethod
     def is_favorite_tracks_resource(resource):
@@ -254,6 +284,23 @@ class MirrorTarget:
         """(target_id, method) for an unlinked track, or (None, None)."""
         raise NotImplementedError
 
+    def search_candidates(self, query, *, limit=5):
+        """Search for catalog candidates. Override in provider-specific targets.
+
+        Returns normalized dicts with at least ``id``, ``name``, and ``artist``.
+        Optional fields used by Create Playlist review: ``album``,
+        ``duration_ms``, ``image``, ``external_url``, ``artists``, ``isrc``.
+        """
+        raise NotImplementedError
+
+    def search_by_isrc(self, isrc):
+        """Optional ISRC catalog lookup. Default: no provider-specific support."""
+        return []
+
+    def fetch_track(self, target_id):
+        """Optional live metadata lookup for one catalog id. Default: unknown."""
+        return None
+
     def validate_link(self, sp_track, target_id, cache):
         """Return a still-addable linked id, or None to fall through to resolve.
 
@@ -270,6 +317,28 @@ class MirrorTarget:
         return the requested ids that were actually written, in order.
         """
         raise NotImplementedError
+
+    def add_track_to_playlist(self, playlist_id, track_id):
+        """Append one catalog id to a playlist identified by stable id."""
+        playlist = self.find_playlist(playlist_id) or self.fetch_playlist(playlist_id)
+        if playlist is None:
+            raise LookupError(f"playlist not found: {playlist_id}")
+        return self.add(playlist, [track_id])
+
+    def track_exists_in_playlist(self, playlist_id, track_id):
+        """True when ``track_id`` is already present in the playlist."""
+        playlist = self.find_playlist(playlist_id) or self.fetch_playlist(playlist_id)
+        if playlist is None:
+            return False
+        wanted = str(track_id)
+        for track in self.playlist_tracks(playlist):
+            try:
+                current = self.track_id(track)
+            except Exception:
+                current = track.get("id") or track.get("videoId") or track.get("catalog_id")
+            if current is not None and str(current) == wanted:
+                return True
+        return False
 
     def add_chronology_copies(self, playlist, target_ids):
         """Append temporary duplicate-capable copies for a chronology repair.

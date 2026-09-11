@@ -515,6 +515,70 @@ class AppleMusicTarget(MirrorTarget):
             return target_id, "link"
         return None, None
 
+    def _normalize_search_song(self, song):
+        attrs = song.get("attributes", {}) if isinstance(song, dict) else {}
+        target_id = song.get("id") if isinstance(song, dict) else None
+        if not target_id:
+            return None
+        artwork = attrs.get("artwork") or {}
+        image = str(artwork.get("url") or "").replace("{w}", "128").replace("{h}", "128")
+        return {
+            "id": str(target_id),
+            "name": attrs.get("name", ""),
+            "artist": attrs.get("artistName", ""),
+            "artists": [attrs.get("artistName", "")] if attrs.get("artistName") else [],
+            "album": attrs.get("albumName"),
+            "duration_ms": attrs.get("durationInMillis"),
+            "isrc": attrs.get("isrc"),
+            "image": image or None,
+            "external_url": f"https://music.apple.com/song/{target_id}",
+        }
+
+    def search_candidates(self, query, *, limit=5):
+        query = str(query or "").strip()
+        if not query:
+            return []
+        try:
+            response = self._request(
+                "GET",
+                f"{AMP}/catalog/{self.storefront}/search",
+                params={"term": query, "types": "songs", "limit": max(limit, 1), "l": "en-us"},
+            )
+            songs = response.json().get("results", {}).get("songs", {}).get("data", [])
+        except Exception:
+            return []
+        out = []
+        seen = set()
+        for song in songs:
+            candidate = self._normalize_search_song(song)
+            if not candidate or candidate["id"] in seen:
+                continue
+            seen.add(candidate["id"])
+            out.append(candidate)
+            if len(out) >= limit:
+                break
+        return out
+
+    def search_by_isrc(self, isrc):
+        isrc = str(isrc or "").strip()
+        if not isrc:
+            return []
+        try:
+            response = self._request(
+                "GET",
+                f"{AMP}/catalog/{self.storefront}/songs",
+                params={"filter[isrc]": isrc},
+            )
+            songs = response.json().get("data", [])
+        except Exception:
+            return []
+        out = []
+        for song in songs:
+            candidate = self._normalize_search_song(song)
+            if candidate:
+                out.append(candidate)
+        return out
+
     def _search_once(self, term, name, artists, duration_ms):
         r = self._request("GET", f"{AMP}/catalog/{self.storefront}/search",
                          params={"term": term, "types": "songs", "limit": 10, "l": "en-us"})

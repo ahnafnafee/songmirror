@@ -208,6 +208,16 @@ def test_settings_falls_back_to_env(tmp_path, monkeypatch):
         assert client.get("/api/settings").json()["MAX_ADDS"] == "321"
 
 
+def test_create_playlist_default_source_roundtrip(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        assert client.get("/api/settings").json()["create_playlist_default_source"] == "file"
+        assert client.put("/api/settings", json={"create_playlist_default_source": "text"}).status_code == 200
+        assert client.get("/api/settings").json()["create_playlist_default_source"] == "text"
+        bad = client.put("/api/settings", json={"create_playlist_default_source": "clipboard"})
+        assert bad.status_code == 422
+        assert client.get("/api/settings").json()["create_playlist_default_source"] == "text"
+
+
 def test_settings_store_uses_data_dir_env(tmp_path, monkeypatch):
     # In Docker, SONGMIRROR_DATA_DIR points at the persistent /data volume — the store
     # must write there (not the container-relative ./data default) so wizard

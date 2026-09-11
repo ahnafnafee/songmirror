@@ -449,6 +449,42 @@ class DeezerTarget(MirrorTarget):
         polite_sleep(0.2)
         return best, "search"
 
+    def search_candidates(self, query, *, limit=5):
+        query = str(query or "").strip()
+        if not query:
+            return []
+        try:
+            body = self._catalog_get("search/track", params={"q": query, "limit": max(limit, 1)})
+        except Exception:
+            return []
+        out = []
+        seen = set()
+        for raw in body.get("data") or []:
+            candidate = _normalized_track(raw)
+            target_id = candidate.get("id")
+            if not target_id or target_id in seen:
+                continue
+            seen.add(target_id)
+            candidate["external_url"] = f"https://www.deezer.com/track/{target_id}"
+            out.append(candidate)
+            if len(out) >= limit:
+                break
+        return out
+
+    def search_by_isrc(self, isrc):
+        isrc = str(isrc or "").strip()
+        if not isrc:
+            return []
+        try:
+            raw = self._catalog_get(f"track/isrc:{isrc}")
+        except Exception:
+            return []
+        candidate = _normalized_track(raw) if raw.get("id") else None
+        if not candidate:
+            return []
+        candidate["external_url"] = f"https://www.deezer.com/track/{candidate['id']}"
+        return [candidate]
+
     def add(self, playlist, target_ids):
         if self._web is not None:
             try:

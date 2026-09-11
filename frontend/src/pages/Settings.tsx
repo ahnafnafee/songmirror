@@ -28,6 +28,7 @@ const DEFAULTS: SettingsMap = {
   DISPLAY_NAME: '',
   DOWNLOAD_DIR: '',
   LOCAL_MIRROR_FORMAT: '',
+  create_playlist_default_source: 'file',
 }
 
 function sameSettings(left: SettingsMap, right: SettingsMap): boolean {
@@ -78,19 +79,24 @@ export default function Settings() {
     setSaveError(null)
   }
 
-  const sectionKeys = section === 'downloads' ? ['DOWNLOAD_DIR', 'LOCAL_MIRROR_FORMAT'] : ['DISPLAY_NAME']
+  const sectionKeys =
+    section === 'downloads'
+      ? ['DOWNLOAD_DIR', 'LOCAL_MIRROR_FORMAT']
+      : ['DISPLAY_NAME', 'create_playlist_default_source']
   const dirty = Boolean(form && settings && sectionKeys.some((key) => form[key] !== settingsForm(settings)[key]))
 
   async function save() {
-    if (!form) return
+    if (!form || !settings) return
     setSaving(true)
     setSaveError(null)
     try {
-      await api.saveSettings(Object.fromEntries(sectionKeys.map((key) => [key, form[key]])))
+      const baseline = settingsForm(settings)
+      const dirtyKeys = sectionKeys.filter((key) => form[key] !== baseline[key])
+      await api.saveSettings(Object.fromEntries(dirtyKeys.map((key) => [key, form[key]])))
       const saved = settingsForm(await api.getSettings())
       setForm((current) => current && {
         ...current,
-        ...Object.fromEntries(sectionKeys.filter((key) => current[key] === form[key]).map((key) => [key, saved[key]])),
+        ...Object.fromEntries(dirtyKeys.filter((key) => current[key] === form[key]).map((key) => [key, saved[key]])),
       })
       setJustSaved(true)
       await refresh()
@@ -163,6 +169,7 @@ export default function Settings() {
         >
           <div className="grid grid-cols-1 items-start gap-4">
             {section === 'general' && (
+            <>
             <SettingsGroup label={t("PROFILE")}>
               <TextField
                 label={t("Display name")}
@@ -172,6 +179,20 @@ export default function Settings() {
                 onChange={(e) => setField('DISPLAY_NAME', e.target.value)}
               />
             </SettingsGroup>
+            <SettingsGroup label={t("CREATE PLAYLIST")}>
+              <SelectField
+                label={t("Default source")}
+                help={t("Choose which input method is selected by default when creating a playlist")}
+                value={form.create_playlist_default_source || 'file'}
+                onChange={(e) => setField('create_playlist_default_source', e.target.value)}
+                options={[
+                  { value: 'file', label: t('File') },
+                  { value: 'text', label: t('Text') },
+                  { value: 'url', label: t('URL') },
+                ]}
+              />
+            </SettingsGroup>
+            </>
             )}
 
             {section === 'downloads' && (
