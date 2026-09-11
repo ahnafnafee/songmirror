@@ -12,7 +12,7 @@ import { Pill } from '@/components/ui/Pill'
 import { ServiceLogo } from '@/components/ui/ServiceLogo'
 import { Spinner } from '@/components/ui/Spinner'
 import { serviceLogoId, tagText } from '@/lib/constants'
-import { formatNumber } from '@/lib/format'
+import { formatDateTime, formatTrackCount } from '@/lib/format'
 import type { ImportJob, ImportStatus } from '@/types'
 
 function statusTone(status: ImportStatus): string {
@@ -33,6 +33,29 @@ function statusTone(status: ImportStatus): string {
       return 'bg-warning-soft text-warning'
     default:
       return 'bg-neutral-soft text-neutral'
+  }
+}
+
+function statusLabel(status: ImportStatus): string {
+  switch (status) {
+    case 'parsing':
+      return t('parsing')
+    case 'matching':
+      return t('matching')
+    case 'ready':
+      return t('ready')
+    case 'creating':
+      return t('creating')
+    case 'done':
+      return t('done')
+    case 'failed':
+      return t('failed')
+    case 'cancelled':
+      return t('cancelled')
+    case 'paused':
+      return t('paused')
+    default:
+      return status
   }
 }
 
@@ -148,13 +171,13 @@ export default function Imports() {
                   <div className="min-w-0">
                     <div className="truncate font-medium text-text">{job.destination_name}</div>
                     <div className="mt-0.5 text-sm text-text-3">
-                      {sourceKindLabel(job.source_kind)} • {formatNumber(job.total_tracks)} {t('tracks')} •{' '}
-                      {new Date(job.created_at).toLocaleDateString()}
+                      {sourceKindLabel(job.source_kind)} • {formatTrackCount(job.total_tracks)} •{' '}
+                      {formatDateTime(job.created_at)}
                     </div>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  <Pill toneClasses={statusTone(job.status)} label={t(job.status)} />
+                  <Pill toneClasses={statusTone(job.status)} label={statusLabel(job.status)} />
                   {canResume && (
                     <Button size="sm" onClick={() => void handleResume(job.id)} loading={resumingId === job.id}>
                       {t('Resume')}

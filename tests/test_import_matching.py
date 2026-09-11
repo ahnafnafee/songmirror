@@ -92,6 +92,53 @@ def test_isrc_match_beats_catalog_search():
     assert target.isrc_queries == ["NOX9X1501010"]
 
 
+def test_isrc_compatible_metadata_stays_exact():
+    target = FakeTarget(
+        isrc={
+            "NOX9X1501010": [{
+                "id": "isrc-hit",
+                "name": "Runaway",
+                "artist": "AURORA",
+                "duration_ms": 243500,
+                "isrc": "NOX9X1501010",
+            }]
+        }
+    )
+    matcher = ImportMatcher(target)
+    result = matcher.match_track(_track(source_isrc="NOX9X1501010"))
+    assert result.status == "exact"
+    assert result.best is not None
+    assert result.best.target_id == "isrc-hit"
+    assert result.best.acceptable is True
+    assert result.best.reason == "isrc_match"
+
+
+def test_isrc_duration_conflict_needs_review():
+    target = FakeTarget(
+        candidates=[{
+            "id": "studio",
+            "name": "Runaway",
+            "artist": "AURORA",
+            "duration_ms": 243000,
+        }],
+        isrc={
+            "NOX9X1501010": [{
+                "id": "live-isrc",
+                "name": "Runaway (Live)",
+                "artist": "AURORA",
+                "duration_ms": 310000,
+                "isrc": "NOX9X1501010",
+            }]
+        },
+    )
+    matcher = ImportMatcher(target)
+    result = matcher.match_track(_track(source_isrc="NOX9X1501010"))
+    assert result.status != "exact"
+    assert result.best is None or result.best.target_id != "live-isrc" or not result.best.acceptable
+    assert result.status in {"high", "ambiguous"}
+    assert any(c.target_id == "studio" for c in result.candidates) or result.status == "ambiguous"
+
+
 def test_resolve_cache_hit_is_exact():
     cache = {
         "isrc": {},
@@ -114,6 +161,63 @@ def test_resolve_cache_hit_is_exact():
     assert result.best.target_id == "cached-1"
     assert result.best.reason == "cache_hit"
     assert target.search_queries == []
+
+
+def test_cache_hit_compatible_metadata_stays_exact():
+    cache = {
+        "isrc": {},
+        "search": {track_key("Runaway", "AURORA"): "cached-1"},
+        "manual": set(),
+    }
+    target = FakeTarget(
+        tracks={
+            "cached-1": {
+                "id": "cached-1",
+                "name": "Runaway",
+                "artist": "AURORA",
+                "duration_ms": 244000,
+            }
+        }
+    )
+    matcher = ImportMatcher(target, cache)
+    result = matcher.match_track(_track())
+    assert result.status == "exact"
+    assert result.best is not None
+    assert result.best.reason == "cache_hit"
+    assert result.best.acceptable is True
+
+
+def test_cache_hit_duration_conflict_needs_review():
+    cache = {
+        "isrc": {},
+        "search": {track_key("Runaway", "AURORA"): "cached-live"},
+        "manual": set(),
+    }
+    target = FakeTarget(
+        candidates=[{
+            "id": "studio",
+            "name": "Runaway",
+            "artist": "AURORA",
+            "duration_ms": 243000,
+        }],
+        tracks={
+            "cached-live": {
+                "id": "cached-live",
+                "name": "Runaway (Live)",
+                "artist": "AURORA",
+                "duration_ms": 310000,
+            }
+        },
+    )
+    matcher = ImportMatcher(target, cache)
+    result = matcher.match_track(_track())
+    assert result.status != "exact"
+    assert result.status in {"high", "ambiguous"}
+    if result.best is not None:
+        assert result.best.target_id != "cached-live" or not result.best.acceptable
+    assert any(c.reason == "cache_conflict" for c in result.candidates) or any(
+        c.target_id == "studio" for c in result.candidates
+    )
 
 
 def test_fuzzy_high_confidence_auto_selects_best():
@@ -249,6 +353,71 @@ def test_search_candidates_errors_are_soft_failures():
     matcher = ImportMatcher(BrokenTarget())
     result = matcher.match_track(_track())
     assert result.status == "unmatched"
+
+
+def test_amazon_search_wrappers_propagate_auth_and_transient_errors():
+    from songmirror.engine.targets.amazon_music import AmazonMusicTarget
+    from songmirror.engine.targets.base import TargetAuthError, TargetTransientError
+
+    target = AmazonMusicTarget.__new__(AmazonMusicTarget)
+
+    def boom_auth(field, query, limit=20):
+        raise TargetAuthError("auth expired")
+
+    def boom_transient(field, query, limit=20):
+        raise TargetTransientError("retry later")
+
+    def boom_other(field, query, limit=20):
+        raise RuntimeError("unexpected")
+
+    target._search = boom_auth  # type: ignore[method-assign]
+    with pytest.raises(TargetAuthError):
+        target.search_candidates("Runaway")
+    with pytest.raises(TargetAuthError):
+        target.search_by_isrc("NOX9X1501010")
+
+    target._search = boom_transient  # type: ignore[method-assign]
+    with pytest.raises(TargetTransientError):
+        target.search_candidates("Runaway")
+    with pytest.raises(TargetTransientError):
+        target.search_by_isrc("NOX9X1501010")
+
+    target._search = boom_other  # type: ignore[method-assign]
+    assert target.search_candidates("Runaway") == []
+    assert target.search_by_isrc("NOX9X1501010") == []
+
+
+def test_apple_search_wrappers_propagate_auth_and_transient_errors():
+    from songmirror.engine.targets.apple import AppleMusicTarget
+    from songmirror.engine.targets.base import TargetAuthError, TargetTransientError
+
+    target = AppleMusicTarget.__new__(AppleMusicTarget)
+    target.storefront = "us"
+
+    def request_auth(method, path, params=None):
+        raise TargetAuthError("auth expired")
+
+    def request_transient(method, path, params=None):
+        raise TargetTransientError("retry later")
+
+    def request_other(method, path, params=None):
+        raise RuntimeError("unexpected")
+
+    target._request = request_auth  # type: ignore[method-assign]
+    with pytest.raises(TargetAuthError):
+        target.search_candidates("Runaway")
+    with pytest.raises(TargetAuthError):
+        target.search_by_isrc("NOX9X1501010")
+
+    target._request = request_transient  # type: ignore[method-assign]
+    with pytest.raises(TargetTransientError):
+        target.search_candidates("Runaway")
+    with pytest.raises(TargetTransientError):
+        target.search_by_isrc("NOX9X1501010")
+
+    target._request = request_other  # type: ignore[method-assign]
+    assert target.search_candidates("Runaway") == []
+    assert target.search_by_isrc("NOX9X1501010") == []
 
 
 @pytest.mark.parametrize(

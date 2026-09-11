@@ -14,6 +14,7 @@ from typing import Any, Callable, Optional
 from ..engine.matching import (
     normalize_isrc,
     normalize_text,
+    recording_metadata_compatible,
     romanized,
     score_candidate,
     track_key,
@@ -135,6 +136,25 @@ def _candidate_id(data: dict) -> str:
     return ""
 
 
+def _compat_view(data) -> dict:
+    """Shape a candidate/track dict for ``recording_metadata_compatible``."""
+    if isinstance(data, MatchCandidate):
+        artist = data.artist or ""
+        return {
+            "name": data.title or "",
+            "artist": artist,
+            "artists": [artist] if artist else [],
+            "duration_ms": data.duration_ms,
+        }
+    artist = _candidate_artist(data)
+    return {
+        "name": str(data.get("name") or data.get("title") or ""),
+        "artist": artist,
+        "artists": _artists_of(data) or ([artist] if artist else []),
+        "duration_ms": data.get("duration_ms"),
+    }
+
+
 class ImportMatcher:
     """Match imported tracks against one destination MirrorTarget."""
 
@@ -181,40 +201,64 @@ class ImportMatcher:
                     confidence=1.0,
                 )
 
+        isrc_conflict: Optional[MatchCandidate] = None
         isrc = source.get("isrc")
         if isrc:
             isrc_match = self._search_by_isrc(isrc, source)
-            if isrc_match is not None:
+            if isrc_match is not None and isrc_match.acceptable:
                 return MatchResult(
                     status="exact",
                     best=isrc_match,
                     candidates=[isrc_match],
                     confidence=isrc_match.score,
                 )
+            # Incompatible ISRC hits fall through so catalog search / review can
+            # recover the correct recording instead of auto-accepting a conflict.
+            if isrc_match is not None:
+                isrc_conflict = isrc_match
 
+        cache_conflict: Optional[MatchCandidate] = None
         cache_key = self._cache_key(source)
         cached_id = (self.cache.get("search") or {}).get(cache_key)
         if cached_id:
             validated = self._validate_target_id(str(cached_id), source)
             if validated is not None:
-                candidate = self._to_candidate(
+                if recording_metadata_compatible(source, _compat_view(validated)):
+                    candidate = self._to_candidate(
+                        validated,
+                        score=0.95,
+                        reason="cache_hit",
+                        acceptable=True,
+                    )
+                    return MatchResult(
+                        status="exact",
+                        best=candidate,
+                        candidates=[candidate],
+                        confidence=0.95,
+                    )
+                # Conflicting automatic cache entries are not independent evidence;
+                # fall through to catalog search / review instead of exact-accepting.
+                cache_conflict = self._to_candidate(
                     validated,
                     score=0.95,
-                    reason="cache_hit",
-                    acceptable=True,
-                )
-                return MatchResult(
-                    status="exact",
-                    best=candidate,
-                    candidates=[candidate],
-                    confidence=0.95,
+                    reason="cache_conflict",
+                    acceptable=False,
                 )
 
         candidates = self._search_catalog(source)
-        if not candidates:
-            return MatchResult(status="unmatched", confidence=0.0)
+        scored = self._score_candidates(source, candidates) if candidates else []
 
-        scored = self._score_candidates(source, candidates)
+        # Keep identity-shortcut conflicts visible for review when search finds
+        # nothing better.
+        for conflict in (isrc_conflict, cache_conflict):
+            if conflict is None:
+                continue
+            if any(item.target_id == conflict.target_id for item in scored):
+                continue
+            scored.append(conflict)
+        if scored:
+            scored.sort(key=lambda item: (item.acceptable, item.score), reverse=True)
+
         if not scored:
             return MatchResult(status="unmatched", confidence=0.0)
 
@@ -222,7 +266,7 @@ class ImportMatcher:
         if best.acceptable and best.score >= HIGH_SCORE:
             status = "high"
             selected = best
-        elif best.score >= AMBIGUOUS_SCORE:
+        elif best.score >= AMBIGUOUS_SCORE or isrc_conflict is not None or cache_conflict is not None:
             status = "ambiguous"
             selected = None
         else:
@@ -318,14 +362,23 @@ class ImportMatcher:
         scored = self._score_candidates(source, usable)
         if scored:
             best = scored[0]
-            best.reason = "isrc_match"
-            best.score = max(best.score, 0.99)
-            best.acceptable = True
+            if recording_metadata_compatible(source, _compat_view(best)):
+                best.reason = "isrc_match"
+                best.score = max(best.score, 0.99)
+                best.acceptable = True
+                return best
+            # Known performer/version/duration conflict: keep the hit visible for
+            # review, but do not force an exact auto-accept.
+            best.reason = "isrc_conflict"
+            best.acceptable = False
             return best
 
         # ISRC is a hard identity even when title metadata drifted enough that
-        # fuzzy scoring abstains; keep the first provider hit.
-        return self._to_candidate(usable[0], score=0.99, reason="isrc_match", acceptable=True)
+        # fuzzy scoring abstains; keep the first provider hit when compatible.
+        raw = usable[0]
+        if recording_metadata_compatible(source, _compat_view(raw)):
+            return self._to_candidate(raw, score=0.99, reason="isrc_match", acceptable=True)
+        return self._to_candidate(raw, score=0.99, reason="isrc_conflict", acceptable=False)
 
     def _search_catalog(self, track: dict) -> list[dict]:
         """Search the target catalog for matching tracks."""

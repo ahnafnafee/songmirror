@@ -87,6 +87,15 @@ class SettingsStore:
         data.update(self._data)
         return data
 
+    def has_persisted_values(self):
+        """True only when settings.json actually contained data.
+
+        ``load()`` always merges effective UI defaults, so callers that need to
+        distinguish "empty store" from "defaults only" must use this instead of
+        truthiness of ``load()``.
+        """
+        return bool(self._data)
+
     def get(self, key, default=None):
         if key in self._data:
             return self._data[key]

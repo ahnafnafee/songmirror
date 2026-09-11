@@ -20,7 +20,7 @@ from ...amazon_music_web import (
 from ...oauth import merge_refresh, read_token, token_is_live, token_path, write_token
 from ..config import REQUEST_TIMEOUT, polite_sleep, required_env
 from ..matching import normalize_isrc, normalize_text, romanized, track_key
-from .base import MirrorTarget, TargetAuthError
+from .base import MirrorTarget, TargetAuthError, TargetTransientError
 from .provider_utils import best_candidate, chunks, compatible_isrc_candidates, source_playlist_details
 
 API = "https://api.music.amazon.dev/v1"
@@ -714,7 +714,11 @@ class AmazonMusicTarget(MirrorTarget):
         if not query:
             return []
         try:
-            rows = self._search("name", query, limit=max(limit, 1))
+            rows = self._search("name", query, max(limit, 1))
+        except TargetAuthError:
+            raise
+        except TargetTransientError:
+            raise
         except Exception:
             return []
         out = []
@@ -737,7 +741,11 @@ class AmazonMusicTarget(MirrorTarget):
             return []
         wanted = normalize_isrc(isrc)
         try:
-            rows = self._search("isrc", isrc, limit=10)
+            rows = self._search("isrc", isrc, 10)
+        except TargetAuthError:
+            raise
+        except TargetTransientError:
+            raise
         except Exception:
             return []
         out = []

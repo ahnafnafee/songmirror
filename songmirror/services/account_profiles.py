@@ -446,7 +446,7 @@ class AccountProfileStore:
                 dir=self.profile_dir(self.default_id(provider)),
                 project_env=False,
             )
-            if not local.load():
+            if not local.has_persisted_values():
                 local.save(values)
 
     def _save(self):

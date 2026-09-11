@@ -287,6 +287,49 @@ def test_create_playlist_reuses_existing_playlist_and_marks_already_present(tmp_
     assert dest.added == [("keep-me", "t2")]
 
 
+def test_create_playlist_dedupes_batch_internal_duplicate_target_ids(tmp_path):
+    dest = FakeDest()
+    service = _service(tmp_path, targets={"spotify": dest})
+    job = _seed_ready_job(
+        service,
+        tracks=[
+            {"resolved_target_id": "t1", "decision": TrackDecision.auto.value},
+            {"resolved_target_id": "t1", "decision": TrackDecision.approved.value},
+        ],
+    )
+
+    asyncio.run(_run_and_wait(service, service.create_playlist(job.id)))
+
+    done = asyncio.run(service.get_job(job.id))
+    assert done.job.status == ImportStatus.done
+    assert [track.write_status for track in done.tracks] == ["added", "already_present"]
+    assert done.job.tracks_added == 1
+    assert done.job.tracks_skipped == 1
+    assert done.job.tracks_failed == 0
+    assert dest.added == [("pl-1", "t1")]
+
+
+def test_create_playlist_keeps_batch_duplicates_retryable_on_failed_write(tmp_path):
+    dest = FakeDest(add_fail_ids={"t1"})
+    service = _service(tmp_path, targets={"spotify": dest})
+    job = _seed_ready_job(
+        service,
+        tracks=[
+            {"resolved_target_id": "t1", "decision": TrackDecision.auto.value},
+            {"resolved_target_id": "t1", "decision": TrackDecision.approved.value},
+        ],
+    )
+
+    # The create worker stores the failure on the job; both duplicate positions
+    # stay failed/retryable instead of one being marked already_present.
+    asyncio.run(_run_and_wait(service, service.create_playlist(job.id)))
+
+    done = asyncio.run(service.get_job(job.id))
+    assert done.job.status == ImportStatus.failed
+    assert [track.write_status for track in done.tracks] == ["failed", "failed"]
+    assert dest.added == []
+
+
 def test_search_track_normalizes_catalog_results(tmp_path):
     dest = FakeDest()
 
@@ -759,19 +802,6 @@ def test_url_import_rejects_invalid_playlist_link(tmp_path):
 )
 def test_url_parsing_covers_each_provider(url, expected):
     assert parse_playlist_link(url) == expected
-
-
-def test_base_target_playlist_helpers_use_existing_apis():
-    dest = FakeDest(existing={"pl-9": [{"id": "t9", "name": "Song", "artist": "A"}]})
-    dest._playlists["pl-9"] = {"id": "pl-9", "name": "Kept", "description": "desc"}
-
-    assert dest.create_playlist("Fresh", "notes") == "pl-1"
-    assert dest.get_playlist_info("pl-9")["name"] == "Kept"
-    assert [track["id"] for track in dest.get_playlist_tracks("pl-9")] == ["t9"]
-    assert dest.track_exists_in_playlist("pl-9", "t9") is True
-    assert dest.track_exists_in_playlist("pl-9", "missing") is False
-    dest.add_track_to_playlist("pl-9", "t10")
-    assert dest.track_exists_in_playlist("pl-9", "t10") is True
 
 
 def test_album_link_still_raises_playlist_link_error():

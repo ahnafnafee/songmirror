@@ -1388,8 +1388,9 @@ class ImportService:
         tracks = self._with_conn(
             lambda conn: self.archive.get_import_tracks(conn, job_id, offset=0, limit=1_000_000)
         )
-        pending_ids = []
-        pending_positions = []
+        # Map each unique target id to every input position that resolved to it so
+        # batch-internal duplicates only hit the provider once.
+        pending_id_to_positions: dict[str, list[int]] = {}
         added = 0
         failed = 0
         already_present = 0
@@ -1406,14 +1407,14 @@ class ImportService:
                 )
                 return
             if self._control(job_id) == "pause":
-                if pending_ids:
+                if pending_id_to_positions:
                     flushed = self._flush_adds(
-                        dest, playlist, job_id, pending_ids, pending_positions, existing_ids
+                        dest, playlist, job_id, pending_id_to_positions, existing_ids
                     )
                     added += flushed["added"]
                     failed += flushed["failed"]
                     already_present += flushed["already_present"]
-                    pending_ids, pending_positions = [], []
+                    pending_id_to_positions = {}
                 self._with_conn(
                     lambda conn: self.archive.update_import_job(
                         conn,
@@ -1487,18 +1488,17 @@ class ImportService:
                 already_present += 1
                 continue
 
-            pending_ids.append(target_id)
-            pending_positions.append(int(track["position"]))
+            pending_id_to_positions.setdefault(target_id, []).append(int(track["position"]))
 
             # Flush in modest batches so a pause can stop between chunks.
-            if len(pending_ids) >= 50:
+            if len(pending_id_to_positions) >= 50:
                 flushed = self._flush_adds(
-                    dest, playlist, job_id, pending_ids, pending_positions, existing_ids
+                    dest, playlist, job_id, pending_id_to_positions, existing_ids
                 )
                 added += flushed["added"]
                 failed += flushed["failed"]
                 already_present += flushed["already_present"]
-                pending_ids, pending_positions = [], []
+                pending_id_to_positions = {}
 
             self._emit(
                 "note",
@@ -1513,9 +1513,9 @@ class ImportService:
                 },
             )
 
-        if pending_ids:
+        if pending_id_to_positions:
             flushed = self._flush_adds(
-                dest, playlist, job_id, pending_ids, pending_positions, existing_ids
+                dest, playlist, job_id, pending_id_to_positions, existing_ids
             )
             added += flushed["added"]
             failed += flushed["failed"]
@@ -1546,8 +1546,10 @@ class ImportService:
             },
         )
 
-    def _flush_adds(self, dest, playlist, job_id, target_ids, positions, existing_ids=None):
+    def _flush_adds(self, dest, playlist, job_id, pending_id_to_positions, existing_ids=None):
         existing_ids = existing_ids if existing_ids is not None else set()
+        # Preserve insertion order of unique ids for stable provider writes.
+        target_ids = list(pending_id_to_positions.keys())
         added_ids = None
         error = None
         try:
@@ -1558,42 +1560,49 @@ class ImportService:
             log_warn(f"import add failed: {exc!r}", tag="import")
 
         updates_by_position: dict[int, dict] = {}
+        added = 0
+        failed = 0
+        already_present = 0
         if error is not None:
-            for position in positions:
-                updates_by_position[int(position)] = {
-                    "write_status": "failed",
-                    "write_error": error,
-                }
-            added = 0
-            failed = len(positions)
-        elif added_ids is None:
-            for position, target_id in zip(positions, target_ids):
-                updates_by_position[int(position)] = {
+            for positions in pending_id_to_positions.values():
+                for position in positions:
+                    updates_by_position[int(position)] = {
+                        "write_status": "failed",
+                        "write_error": error,
+                    }
+                    failed += 1
+        else:
+            if added_ids is None:
+                written = set(target_ids)
+            else:
+                written = {str(item) for item in added_ids}
+
+            for target_id, positions in pending_id_to_positions.items():
+                target_id = str(target_id)
+                if target_id not in written:
+                    for position in positions:
+                        updates_by_position[int(position)] = {
+                            "write_status": "failed",
+                            "write_error": "Rejected by provider",
+                        }
+                        failed += 1
+                    continue
+
+                # First occurrence is the actual write; later batch-internal
+                # duplicates become already_present only after that write succeeds.
+                first, *dupes = positions
+                updates_by_position[int(first)] = {
                     "write_status": "added",
                     "write_error": None,
                 }
-                existing_ids.add(str(target_id))
-            added = len(positions)
-            failed = 0
-        else:
-            added_set = {str(item) for item in added_ids}
-            added = 0
-            failed = 0
-            for position, target_id in zip(positions, target_ids):
-                target_id = str(target_id)
-                if target_id in added_set:
+                added += 1
+                existing_ids.add(target_id)
+                for position in dupes:
                     updates_by_position[int(position)] = {
-                        "write_status": "added",
+                        "write_status": "already_present",
                         "write_error": None,
                     }
-                    existing_ids.add(target_id)
-                    added += 1
-                else:
-                    updates_by_position[int(position)] = {
-                        "write_status": "failed",
-                        "write_error": "Rejected by provider",
-                    }
-                    failed += 1
+                    already_present += 1
 
         def write(conn):
             for position, payload in updates_by_position.items():
@@ -1603,5 +1612,5 @@ class ImportService:
         return {
             "added": added,
             "failed": failed,
-            "already_present": 0,
+            "already_present": already_present,
         }

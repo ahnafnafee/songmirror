@@ -72,3 +72,21 @@ Beethoven.mp3"""
         m3u_content = "song1.mp3\nsong2.mp3"
         result = parse_m3u(m3u_content)
         assert len(result.tracks) == 2
+
+
+class TestFileParserTxt:
+    def test_txt_keeps_commas_in_artist_names(self):
+        content = "Earth, Wind & Fire - September\nDaft Punk - One More Time\n"
+        result = parse_file(content, "playlist.txt")
+        assert [(track.artist, track.title) for track in result.tracks] == [
+            ("Earth, Wind & Fire", "September"),
+            ("Daft Punk", "One More Time"),
+        ]
+
+    def test_txt_matches_paste_parity(self):
+        content = "Earth, Wind & Fire - September\nArtist - Title"
+        pasted = parse_text(content)
+        uploaded = parse_file(content, "playlist.txt")
+        assert [(t.artist, t.title) for t in uploaded.tracks] == [
+            (t.artist, t.title) for t in pasted.tracks
+        ]

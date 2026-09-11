@@ -545,6 +545,10 @@ class AppleMusicTarget(MirrorTarget):
                 params={"term": query, "types": "songs", "limit": max(limit, 1), "l": "en-us"},
             )
             songs = response.json().get("results", {}).get("songs", {}).get("data", [])
+        except TargetAuthError:
+            raise
+        except TargetTransientError:
+            raise
         except Exception:
             return []
         out = []
@@ -570,6 +574,10 @@ class AppleMusicTarget(MirrorTarget):
                 params={"filter[isrc]": isrc},
             )
             songs = response.json().get("data", [])
+        except TargetAuthError:
+            raise
+        except TargetTransientError:
+            raise
         except Exception:
             return []
         out = []

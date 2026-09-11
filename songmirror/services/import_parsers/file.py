@@ -48,8 +48,13 @@ def parse_file(content: str | bytes, filename: str | None = None) -> ParseResult
         result = parse_m3u(text)
     elif suffix in {".csv", ".tsv"}:
         result = parse_csv(text)
-    elif suffix in {".txt", ".text", ""}:
-        # Prefer CSV when the file clearly looks columnar; otherwise treat as text.
+    elif suffix in {".txt", ".text"}:
+        # Advertised TXT behavior matches paste: always plain-text lines. Artist
+        # names like "Earth, Wind & Fire" must not trip CSV detection.
+        result = parse_text(text)
+    elif suffix == "":
+        # Extensionless uploads may be either pasted text or a columnar export;
+        # sniff only in that ambiguous case.
         sample = text.lstrip()[:2048]
         looks_columnar = (
             ("\n" in sample or "\r" in sample)

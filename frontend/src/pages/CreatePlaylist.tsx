@@ -47,7 +47,20 @@ function trackTone(track: ImportTrack): string {
 }
 
 function decisionLabel(decision: TrackDecision): string {
-  return t(decision)
+  switch (decision) {
+    case 'auto':
+      return t('auto')
+    case 'approved':
+      return t('approved')
+    case 'selected':
+      return t('selected')
+    case 'skipped':
+      return t('skipped')
+    case 'unmatched':
+      return t('unmatched')
+    default:
+      return decision
+  }
 }
 
 function isAutoMatched(track: ImportTrack): boolean {
@@ -266,16 +279,23 @@ export default function CreatePlaylist() {
         try {
           const data = await importApi.getImport(jobId)
           if (cancelled) return
-          setJob(data.job)
-          setJobData(data)
 
           if (data.job.status === 'ready') {
+            // Fetch the full review payload BEFORE publishing ready status.
+            // Setting job/status first would re-run this effect, flip cancelled,
+            // and discard the in-flight full fetch — leaving the UI stuck.
             const full = await fetchImportWithAllTracks(jobId)
             if (cancelled) return
             setJob(full.job)
             setJobData(full)
             setStep('review')
-          } else if (['done', 'failed', 'cancelled'].includes(data.job.status)) {
+            return
+          }
+
+          setJob(data.job)
+          setJobData(data)
+
+          if (['done', 'failed', 'cancelled'].includes(data.job.status)) {
             setStep('result')
           } else {
             setStep('progress')
