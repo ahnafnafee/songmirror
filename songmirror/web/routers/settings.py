@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from ...services.accounts import CONNECTORS
 from ...services.folders import download_directory, writable_directory
 from ...services.folders import FolderBrowser
+from ...services.settings import VALID_CREATE_PLAYLIST_DEFAULT_SOURCES
 
 router = APIRouter()
 
@@ -34,7 +35,8 @@ SECRET_KEYS |= {
 # back to the process environment — a docker-compose env_file / .env (the user's
 # gitignored config) — so the form reflects the actual running values, not blanks.
 CONFIG_KEYS = ("DISPLAY_NAME", "SYNC_MODE", "SYNC_SOURCE", "SYNC_INTERVAL", "PROVIDERS", "MAX_ADDS",
-               "MAX_REMOVALS", "PLAYLISTS", "DOWNLOAD_DIR", "LOCAL_MIRROR_FORMAT")
+               "MAX_REMOVALS", "PLAYLISTS", "DOWNLOAD_DIR", "LOCAL_MIRROR_FORMAT",
+               "create_playlist_default_source")
 
 
 @router.get("/api/settings")
@@ -51,6 +53,13 @@ def get_settings(request: Request):
 @router.put("/api/settings")
 def put_settings(request: Request, values: dict = Body(...)):
     values.pop("DOWNLOAD_DIR_CONFIRMED", None)
+    if "create_playlist_default_source" in values:
+        value = values["create_playlist_default_source"]
+        if not isinstance(value, str) or value not in VALID_CREATE_PLAYLIST_DEFAULT_SOURCES:
+            raise HTTPException(
+                status_code=422,
+                detail="create_playlist_default_source must be one of: text, file, url",
+            )
     if "DOWNLOAD_DIR" in values:
         try:
             value = FolderBrowser(request.app.state.settings).server_path(values["DOWNLOAD_DIR"])

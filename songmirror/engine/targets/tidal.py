@@ -585,6 +585,69 @@ class TidalTarget(MirrorTarget):
         polite_sleep(0.25)
         return best, "search"
 
+    def search_candidates(self, query, *, limit=5):
+        query = str(query or "").strip()
+        if not query:
+            return []
+        try:
+            body = self._request(
+                "GET",
+                "searchResults",
+                params={
+                    "filter[query]": query,
+                    "include": ["tracks", "tracks.artists", "tracks.albums", "tracks.albums.coverArt"],
+                    "countryCode": self.country,
+                },
+            ).json()
+        except Exception:
+            return []
+        result = next(
+            (item for item in body.get("data") or [] if item.get("type") == "searchResults"),
+            {},
+        )
+        identifiers = ((result.get("relationships") or {}).get("tracks") or {}).get("data") or []
+        candidates = self._tracks_from_body(
+            {"data": identifiers, "included": body.get("included") or []}
+        )
+        out = []
+        seen = set()
+        for candidate in candidates:
+            target_id = candidate.get("id")
+            if not target_id or str(target_id) in seen:
+                continue
+            seen.add(str(target_id))
+            row = dict(candidate)
+            row["external_url"] = f"https://listen.tidal.com/track/{target_id}"
+            out.append(row)
+            if len(out) >= limit:
+                break
+        return out
+
+    def search_by_isrc(self, isrc):
+        isrc = str(isrc or "").strip()
+        if not isrc:
+            return []
+        try:
+            body = self._request(
+                "GET",
+                "tracks",
+                params={
+                    "filter[isrc]": [isrc],
+                    "include": ["artists", "albums", "albums.coverArt"],
+                    "countryCode": self.country,
+                },
+            ).json()
+        except Exception:
+            return []
+        out = []
+        for candidate in self._tracks_from_body(body):
+            if str(candidate.get("isrc") or "") != isrc:
+                continue
+            row = dict(candidate)
+            row["external_url"] = f"https://listen.tidal.com/track/{candidate['id']}"
+            out.append(row)
+        return out
+
     def add(self, playlist, target_ids):
         for target_id in target_ids:
             self._request(

@@ -29,6 +29,18 @@ def _scalar(v):
     return v is not None and not isinstance(v, (dict, list))
 
 
+# Default source mode for Create Playlist. Options: "text", "file", "url".
+CREATE_PLAYLIST_DEFAULT_SOURCE = "file"
+VALID_CREATE_PLAYLIST_DEFAULT_SOURCES = frozenset({"text", "file", "url"})
+
+# Non-secret UI defaults applied when a key is absent from settings.json.
+# Keep this narrow: only values the Settings page / Create Playlist wizard
+# expect to exist without an explicit save.
+DEFAULT_SETTINGS = {
+    "create_playlist_default_source": CREATE_PLAYLIST_DEFAULT_SOURCE,
+}
+
+
 def _open_private(path):
     """Open for writing with owner-only perms (0o600) from creation — these files
     hold OAuth secrets and service tokens. POSIX modes are ignored on Windows,
@@ -71,10 +83,25 @@ class SettingsStore:
             return {}
 
     def load(self):
-        return dict(self._data)
+        data = dict(DEFAULT_SETTINGS)
+        data.update(self._data)
+        return data
+
+    def has_persisted_values(self):
+        """True only when settings.json actually contained data.
+
+        ``load()`` always merges effective UI defaults, so callers that need to
+        distinguish "empty store" from "defaults only" must use this instead of
+        truthiness of ``load()``.
+        """
+        return bool(self._data)
 
     def get(self, key, default=None):
-        return self._data.get(key, default)
+        if key in self._data:
+            return self._data[key]
+        if default is not None:
+            return default
+        return DEFAULT_SETTINGS.get(key)
 
     def save(self, values):
         """Merge non-None `values`, persist json + env file, apply to os.environ."""

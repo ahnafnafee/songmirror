@@ -175,6 +175,79 @@ CREATE TABLE IF NOT EXISTS playlist_track_cache (
 CREATE INDEX IF NOT EXISTS idx_playlist_track_cache_track
 ON playlist_track_cache (provider, track_id)
 """,
+    # Create Playlist / import workflow. Jobs, parsed source tracks, and ranked
+    # destination candidates live here so review/resume survives restarts.
+    """
+CREATE TABLE IF NOT EXISTS playlist_import (
+    id                       TEXT PRIMARY KEY,
+    status                   TEXT NOT NULL,
+    source_kind              TEXT NOT NULL,
+    source_provider          TEXT,
+    source_account           TEXT,
+    source_url               TEXT,
+    source_name              TEXT,
+    source_description       TEXT,
+    destination_account      TEXT NOT NULL,
+    destination_playlist_id  TEXT,
+    destination_name         TEXT NOT NULL,
+    destination_description  TEXT NOT NULL DEFAULT '',
+    destination_mode         TEXT NOT NULL DEFAULT 'create',
+    created_at               TEXT NOT NULL,
+    updated_at               TEXT NOT NULL,
+    started_at               TEXT,
+    finished_at              TEXT,
+    error                    TEXT,
+    options_json             TEXT NOT NULL DEFAULT '{}'
+)
+""",
+    """
+CREATE TABLE IF NOT EXISTS playlist_import_track (
+    import_id           TEXT NOT NULL,
+    position            INTEGER NOT NULL,
+    source_track_id     TEXT,
+    source_isrc         TEXT,
+    title               TEXT,
+    artist              TEXT,
+    album               TEXT,
+    duration_ms         INTEGER,
+    raw_text            TEXT,
+    parse_status        TEXT NOT NULL DEFAULT 'parsed',
+    parse_warning       TEXT,
+    decision            TEXT NOT NULL DEFAULT 'auto',
+    resolved_target_id  TEXT,
+    resolved_method     TEXT,
+    score               REAL,
+    write_status        TEXT NOT NULL DEFAULT 'pending',
+    write_error         TEXT,
+    PRIMARY KEY (import_id, position)
+)
+""",
+    """
+CREATE INDEX IF NOT EXISTS idx_playlist_import_track_import
+ON playlist_import_track (import_id, position)
+""",
+    """
+CREATE TABLE IF NOT EXISTS playlist_import_candidate (
+    import_id     TEXT NOT NULL,
+    position      INTEGER NOT NULL,
+    rank          INTEGER NOT NULL,
+    target_id     TEXT NOT NULL,
+    title         TEXT,
+    artist        TEXT,
+    album         TEXT,
+    duration_ms   INTEGER,
+    image         TEXT,
+    external_url  TEXT,
+    score         REAL,
+    reason        TEXT,
+    selected      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (import_id, position, rank)
+)
+""",
+    """
+CREATE INDEX IF NOT EXISTS idx_playlist_import_candidate_track
+ON playlist_import_candidate (import_id, position, rank)
+""",
 ]
 
 # Columns whose values historically held a provider type (``spotify``,
@@ -1037,4 +1110,371 @@ def reset_playlist_peer_state(conn, playlist, source):
         "DELETE FROM sync_state WHERE pair = ? AND target = ?",
         (playlist, source),
     )
+    conn.commit()
+
+
+_IMPORT_JOB_COLUMNS = (
+    "id",
+    "status",
+    "source_kind",
+    "source_provider",
+    "source_account",
+    "source_url",
+    "source_name",
+    "source_description",
+    "destination_account",
+    "destination_playlist_id",
+    "destination_name",
+    "destination_description",
+    "destination_mode",
+    "created_at",
+    "updated_at",
+    "started_at",
+    "finished_at",
+    "error",
+    "options_json",
+)
+
+_IMPORT_TRACK_COLUMNS = (
+    "import_id",
+    "position",
+    "source_track_id",
+    "source_isrc",
+    "title",
+    "artist",
+    "album",
+    "duration_ms",
+    "raw_text",
+    "parse_status",
+    "parse_warning",
+    "decision",
+    "resolved_target_id",
+    "resolved_method",
+    "score",
+    "write_status",
+    "write_error",
+)
+
+_IMPORT_CANDIDATE_COLUMNS = (
+    "import_id",
+    "position",
+    "rank",
+    "target_id",
+    "title",
+    "artist",
+    "album",
+    "duration_ms",
+    "image",
+    "external_url",
+    "score",
+    "reason",
+    "selected",
+)
+
+_IMPORT_JOB_UPDATABLE = {
+    "status",
+    "source_provider",
+    "source_account",
+    "source_url",
+    "source_name",
+    "source_description",
+    "destination_account",
+    "destination_playlist_id",
+    "destination_name",
+    "destination_description",
+    "destination_mode",
+    "started_at",
+    "finished_at",
+    "error",
+    "options_json",
+}
+
+_IMPORT_TRACK_UPDATABLE = {
+    "source_track_id",
+    "source_isrc",
+    "title",
+    "artist",
+    "album",
+    "duration_ms",
+    "raw_text",
+    "parse_status",
+    "parse_warning",
+    "decision",
+    "resolved_target_id",
+    "resolved_method",
+    "score",
+    "write_status",
+    "write_error",
+}
+
+
+def _row_to_dict(columns, row):
+    if row is None:
+        return None
+    return {column: row[index] for index, column in enumerate(columns)}
+
+
+def _import_track_counts(conn, import_id):
+    row = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS total_tracks,
+            SUM(
+                CASE
+                    WHEN resolved_target_id IS NOT NULL
+                         AND decision NOT IN ('skipped', 'unmatched')
+                    THEN 1 ELSE 0
+                END
+            ) AS matched_tracks,
+            SUM(
+                CASE
+                    WHEN decision = 'unmatched'
+                         OR (
+                            resolved_target_id IS NULL
+                            AND decision NOT IN ('skipped')
+                            AND parse_status != 'skipped'
+                         )
+                    THEN 1 ELSE 0
+                END
+            ) AS unmatched_tracks,
+            SUM(
+                CASE
+                    WHEN decision = 'auto'
+                         AND resolved_target_id IS NULL
+                         AND parse_status NOT IN ('invalid', 'skipped')
+                    THEN 1
+                    WHEN decision = 'auto'
+                         AND score IS NOT NULL
+                         AND score < 0.85
+                         AND resolved_target_id IS NOT NULL
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS needs_review,
+            SUM(
+                CASE
+                    WHEN write_status IN ('added', 'written')
+                    THEN 1 ELSE 0
+                END
+            ) AS tracks_added,
+            SUM(
+                CASE
+                    WHEN write_status IN ('skipped', 'already_present')
+                         OR decision = 'skipped'
+                    THEN 1 ELSE 0
+                END
+            ) AS tracks_skipped,
+            SUM(
+                CASE
+                    WHEN write_status = 'failed'
+                    THEN 1 ELSE 0
+                END
+            ) AS tracks_failed
+        FROM playlist_import_track
+        WHERE import_id = ?
+        """,
+        (import_id,),
+    ).fetchone()
+    return {
+        "total_tracks": int(row[0] or 0),
+        "matched_tracks": int(row[1] or 0),
+        "unmatched_tracks": int(row[2] or 0),
+        "needs_review": int(row[3] or 0),
+        "tracks_added": int(row[4] or 0),
+        "tracks_skipped": int(row[5] or 0),
+        "tracks_failed": int(row[6] or 0),
+    }
+
+
+def _hydrate_import_job(conn, row):
+    job = _row_to_dict(_IMPORT_JOB_COLUMNS, row)
+    if job is None:
+        return None
+    job.update(_import_track_counts(conn, job["id"]))
+    return job
+
+
+def create_import_job(conn, job_data):
+    """Insert a playlist_import row. Returns the job id."""
+    data = dict(job_data)
+    job_id = data.get("id")
+    if not job_id:
+        raise ValueError("import job id is required")
+    now = _now()
+    data.setdefault("created_at", now)
+    data.setdefault("updated_at", now)
+    data.setdefault("destination_description", "")
+    data.setdefault("destination_mode", "create")
+    data.setdefault("options_json", "{}")
+    missing = [column for column in ("status", "source_kind", "destination_account", "destination_name") if not data.get(column)]
+    if missing:
+        raise ValueError(f"import job missing required fields: {', '.join(missing)}")
+    values = [data.get(column) for column in _IMPORT_JOB_COLUMNS]
+    placeholders = ", ".join("?" for _ in _IMPORT_JOB_COLUMNS)
+    columns = ", ".join(_IMPORT_JOB_COLUMNS)
+    conn.execute(
+        f"INSERT INTO playlist_import ({columns}) VALUES ({placeholders})",
+        values,
+    )
+    conn.commit()
+    return job_id
+
+
+def get_import_job(conn, job_id):
+    """Return one import job dict (with computed track counts), or None."""
+    row = conn.execute(
+        f"SELECT {', '.join(_IMPORT_JOB_COLUMNS)} FROM playlist_import WHERE id = ?",
+        (str(job_id),),
+    ).fetchone()
+    return _hydrate_import_job(conn, row)
+
+
+def list_import_jobs(conn):
+    """Return import jobs newest-first, each with computed track counts."""
+    rows = conn.execute(
+        f"SELECT {', '.join(_IMPORT_JOB_COLUMNS)} FROM playlist_import "
+        "ORDER BY created_at DESC, id DESC"
+    ).fetchall()
+    return [_hydrate_import_job(conn, row) for row in rows]
+
+
+def update_import_job(conn, job_id, updates):
+    """Patch allowed playlist_import columns and bump updated_at."""
+    if not isinstance(updates, dict) or not updates:
+        raise ValueError("updates must be a non-empty object")
+    unknown = sorted(set(updates) - _IMPORT_JOB_UPDATABLE - {"updated_at"})
+    if unknown:
+        raise ValueError(f"unknown import job field: {unknown[0]}")
+    payload = {key: value for key, value in updates.items() if key in _IMPORT_JOB_UPDATABLE}
+    payload["updated_at"] = updates.get("updated_at") or _now()
+    if get_import_job(conn, job_id) is None:
+        return None
+    assignments = ", ".join(f"{column} = ?" for column in payload)
+    conn.execute(
+        f"UPDATE playlist_import SET {assignments} WHERE id = ?",
+        [*payload.values(), str(job_id)],
+    )
+    conn.commit()
+    return get_import_job(conn, job_id)
+
+
+def delete_import_job(conn, job_id):
+    """Delete an import job and its tracks/candidates. Returns True when removed."""
+    job_id = str(job_id)
+    conn.execute("DELETE FROM playlist_import_candidate WHERE import_id = ?", (job_id,))
+    conn.execute("DELETE FROM playlist_import_track WHERE import_id = ?", (job_id,))
+    cursor = conn.execute("DELETE FROM playlist_import WHERE id = ?", (job_id,))
+    conn.commit()
+    return cursor.rowcount > 0
+
+
+def add_import_tracks(conn, tracks):
+    """Insert one or more playlist_import_track rows."""
+    if not tracks:
+        return 0
+    rows = []
+    for track in tracks:
+        data = dict(track)
+        if data.get("import_id") is None or data.get("position") is None:
+            raise ValueError("import track requires import_id and position")
+        data.setdefault("parse_status", "parsed")
+        data.setdefault("decision", "auto")
+        data.setdefault("write_status", "pending")
+        rows.append([data.get(column) for column in _IMPORT_TRACK_COLUMNS])
+    columns = ", ".join(_IMPORT_TRACK_COLUMNS)
+    placeholders = ", ".join("?" for _ in _IMPORT_TRACK_COLUMNS)
+    conn.executemany(
+        f"INSERT OR REPLACE INTO playlist_import_track ({columns}) VALUES ({placeholders})",
+        rows,
+    )
+    conn.commit()
+    return len(rows)
+
+
+def get_import_tracks(conn, job_id, offset=0, limit=100):
+    """Return import tracks for a job in playlist order."""
+    offset = max(0, int(offset or 0))
+    limit = max(0, int(limit if limit is not None else 100))
+    rows = conn.execute(
+        f"SELECT {', '.join(_IMPORT_TRACK_COLUMNS)} FROM playlist_import_track "
+        "WHERE import_id = ? ORDER BY position ASC LIMIT ? OFFSET ?",
+        (str(job_id), limit, offset),
+    ).fetchall()
+    return [_row_to_dict(_IMPORT_TRACK_COLUMNS, row) for row in rows]
+
+
+def update_import_track(conn, job_id, position, updates):
+    """Patch one import track. Returns the updated row, or None if missing."""
+    if not isinstance(updates, dict) or not updates:
+        raise ValueError("updates must be a non-empty object")
+    unknown = sorted(set(updates) - _IMPORT_TRACK_UPDATABLE)
+    if unknown:
+        raise ValueError(f"unknown import track field: {unknown[0]}")
+    payload = {key: value for key, value in updates.items() if key in _IMPORT_TRACK_UPDATABLE}
+    assignments = ", ".join(f"{column} = ?" for column in payload)
+    conn.execute(
+        f"UPDATE playlist_import_track SET {assignments} "
+        "WHERE import_id = ? AND position = ?",
+        [*payload.values(), str(job_id), int(position)],
+    )
+    conn.commit()
+    row = conn.execute(
+        f"SELECT {', '.join(_IMPORT_TRACK_COLUMNS)} FROM playlist_import_track "
+        "WHERE import_id = ? AND position = ?",
+        (str(job_id), int(position)),
+    ).fetchone()
+    return _row_to_dict(_IMPORT_TRACK_COLUMNS, row)
+
+
+def add_import_candidates(conn, candidates):
+    """Insert ranked match candidates for import tracks."""
+    if not candidates:
+        return 0
+    rows = []
+    for candidate in candidates:
+        data = dict(candidate)
+        required = ("import_id", "position", "rank", "target_id")
+        missing = [field for field in required if data.get(field) is None]
+        if missing:
+            raise ValueError(f"import candidate missing required fields: {', '.join(missing)}")
+        data["selected"] = 1 if data.get("selected") else 0
+        rows.append([data.get(column) for column in _IMPORT_CANDIDATE_COLUMNS])
+    columns = ", ".join(_IMPORT_CANDIDATE_COLUMNS)
+    placeholders = ", ".join("?" for _ in _IMPORT_CANDIDATE_COLUMNS)
+    conn.executemany(
+        f"INSERT OR REPLACE INTO playlist_import_candidate ({columns}) "
+        f"VALUES ({placeholders})",
+        rows,
+    )
+    conn.commit()
+    return len(rows)
+
+
+def get_import_candidates(conn, job_id, position):
+    """Return ranked candidates for one import track."""
+    rows = conn.execute(
+        f"SELECT {', '.join(_IMPORT_CANDIDATE_COLUMNS)} FROM playlist_import_candidate "
+        "WHERE import_id = ? AND position = ? ORDER BY rank ASC",
+        (str(job_id), int(position)),
+    ).fetchall()
+    result = []
+    for row in rows:
+        item = _row_to_dict(_IMPORT_CANDIDATE_COLUMNS, row)
+        item["selected"] = bool(item.get("selected"))
+        result.append(item)
+    return result
+
+
+def clear_import_candidates(conn, job_id, position=None):
+    """Remove candidates for a whole job or one track position."""
+    if position is None:
+        conn.execute(
+            "DELETE FROM playlist_import_candidate WHERE import_id = ?",
+            (str(job_id),),
+        )
+    else:
+        conn.execute(
+            "DELETE FROM playlist_import_candidate WHERE import_id = ? AND position = ?",
+            (str(job_id), int(position)),
+        )
     conn.commit()

@@ -254,6 +254,23 @@ class MirrorTarget:
         """(target_id, method) for an unlinked track, or (None, None)."""
         raise NotImplementedError
 
+    def search_candidates(self, query, *, limit=5):
+        """Search for catalog candidates. Override in provider-specific targets.
+
+        Returns normalized dicts with at least ``id``, ``name``, and ``artist``.
+        Optional fields used by Create Playlist review: ``album``,
+        ``duration_ms``, ``image``, ``external_url``, ``artists``, ``isrc``.
+        """
+        raise NotImplementedError
+
+    def search_by_isrc(self, isrc):
+        """Optional ISRC catalog lookup. Default: no provider-specific support."""
+        return []
+
+    def fetch_track(self, target_id):
+        """Optional live metadata lookup for one catalog id. Default: unknown."""
+        return None
+
     def validate_link(self, sp_track, target_id, cache):
         """Return a still-addable linked id, or None to fall through to resolve.
 

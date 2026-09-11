@@ -307,6 +307,38 @@ class QobuzTarget(MirrorTarget):
         body = self._request("GET", "catalog/search", params={"query": query, "type": "tracks", "limit": limit})
         return [_normalized_track(track) for track in ((body.get("tracks") or {}).get("items") or [])]
 
+    def search_candidates(self, query, *, limit=5):
+        query = str(query or "").strip()
+        if not query:
+            return []
+        try:
+            rows = self._search(query, limit=max(limit, 1))
+        except Exception:
+            return []
+        out = []
+        seen = set()
+        for candidate in rows:
+            target_id = candidate.get("id")
+            if not target_id or str(target_id) in seen:
+                continue
+            seen.add(str(target_id))
+            row = dict(candidate)
+            row["external_url"] = f"https://open.qobuz.com/track/{target_id}"
+            out.append(row)
+            if len(out) >= limit:
+                break
+        return out
+
+    def search_by_isrc(self, isrc):
+        isrc = str(isrc or "").strip()
+        if not isrc:
+            return []
+        return [
+            candidate
+            for candidate in self.search_candidates(isrc, limit=10)
+            if str(candidate.get("isrc") or "") == isrc
+        ]
+
     def prefetch(self, source_tracks, cache):
         for isrc in sorted({t.get("isrc") for t in source_tracks if t.get("isrc")}):
             if isrc in cache["isrc"]:
