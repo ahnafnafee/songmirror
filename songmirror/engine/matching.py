@@ -282,11 +282,6 @@ def recording_versions_compatible(name, artists, cand_name, cand_artists):
     )
 
 
-def track_artist(track):
-    """Artist text for provider rows with either singular or plural credits."""
-    return track.get("artist") or ", ".join(track.get("artists") or [])
-
-
 def track_key(name, artist):
     credits = str(artist or "")
     for guest in featured_artists(name):
@@ -548,7 +543,7 @@ def compute_diff(sp_tracks, target_tracks, expected_by_sp, target_id_of, thresho
     for track in target_tracks:
         if target_id_of(track):
             target_by_id.setdefault(target_id_of(track), []).append(track)
-        target_by_key.setdefault(track_key(track["name"], track_artist(track)), []).append(track)
+        target_by_key.setdefault(track_key(track["name"], track["artist"]), []).append(track)
 
     def compatible(source, target):
         return recording_metadata_compatible(source, target)
@@ -578,7 +573,7 @@ def compute_diff(sp_tracks, target_tracks, expected_by_sp, target_id_of, thresho
         tid = target_id_of(t)
         if tid and tid in expected_all:
             continue
-        key = track_key(t["name"], track_artist(t))
+        key = track_key(t["name"], t["artist"])
         sources = sp_by_version.get(
             recording_version_signature(t.get("name")), []
         )
