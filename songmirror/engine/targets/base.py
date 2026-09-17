@@ -22,7 +22,7 @@ from ..matching import (
     protect_removals, romanized,
     normalize_canonical_id, normalize_isrc, same_catalog_recording,
     recording_metadata_compatible, recording_performance_compatible, recording_version_signature,
-    spotify_track_keys, track_addition_order_key, track_key, tracks_oldest_first,
+    spotify_track_keys, track_addition_order_key, track_artist, track_key, tracks_oldest_first,
 )
 
 # A provider reading fewer than this fraction of the known baseline is treated
@@ -614,7 +614,7 @@ def held_removals(target_name, playlist, tracks, max_removals, reason=None, *,
     out = []
     for track in tracks:
         row = {"target": target_name, "playlist": playlist,
-               "track": track.get("name", ""), "artist": track.get("artist", ""),
+               "track": track.get("name", ""), "artist": track_artist(track),
                "reason": reason}
         if category:
             row["category"] = category
@@ -716,7 +716,7 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
     archive.upsert_many(songs, source_key, sp_tracks)
     archive.upsert_many(songs, target.source, tgt_tracks)
     archive.record_order(songs, name.strip().casefold(), target.source,
-                         [[target.track_id(t), t.get("name", ""), t.get("artist", "")] for t in tgt_tracks])
+                         [[target.track_id(t), t.get("name", ""), track_artist(t)] for t in tgt_tracks])
 
     links = (archive.get_links(songs, target.source, [t.get("id") for t in sp_tracks])
              if (source_provider or source_key) == "spotify" else {})
@@ -949,9 +949,10 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
     for _, label, method, _track in additions:
         log_add(f"{label}  {paint('(' + method + ')', 'grey')}", dry=not execute, tag=tag)
     for track in removals:
-        log_remove(f"{track['name']} - {track['artist']}", dry=not execute, tag=tag)
+        log_remove(f"{track['name']} - {track_artist(track)}", dry=not execute, tag=tag)
     for track in held:
-        log_hold(f"kept (no {target.name} match for its Spotify twin): {track['name']} - {track['artist']}", tag=tag)
+        log_hold(f"kept (no {target.name} match for its {source_name} twin): "
+                 f"{track['name']} - {track_artist(track)}", tag=tag)
     for track in not_found:
         log_miss(f"not on {target.name}: {track['name']} - {', '.join(track['artists'])}", tag=tag)
 
@@ -981,10 +982,8 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
     )
     change_diagnostics = []
     for existing, unresolved in uncertain_matches:
-        existing_artist = existing.get("artist") or ", ".join(existing.get("artists") or [])
-        unresolved_artist = unresolved.get("artist") or ", ".join(
-            unresolved.get("artists") or []
-        )
+        existing_artist = track_artist(existing)
+        unresolved_artist = track_artist(unresolved)
         change_diagnostics.append({
             "category": "uncertain_match",
             "playlist": name,
