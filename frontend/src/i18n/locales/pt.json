@@ -1179,5 +1179,6 @@
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "Lê seu histórico de audição. Autorize para ler um perfil privado e marcar faixas como favoritas.",
   "Loved Tracks": "Faixas favoritas",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "Autorize {{accountName}} na página de contas antes que ele possa receber faixas favoritas.",
-  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} não tem playlists, então a própria coleção é o único destino."
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} não tem playlists, então a própria coleção é o único destino.",
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "Cole isto como URL de retorno ao registrar o aplicativo de API. Ele é pedido antes de existir qualquer chave, então copie primeiro."
 }

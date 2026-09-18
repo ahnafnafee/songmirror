@@ -1275,5 +1275,6 @@
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "يقرأ سجل استماعك. فوّضه لقراءة ملف خاص وإضافة المقطوعات إلى المفضلة.",
   "Loved Tracks": "المقطوعات المفضلة",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "فوّض {{accountName}} من صفحة الحسابات قبل أن يتمكن من استقبال المقطوعات المفضلة.",
-  "{{accountName}} has no playlists, so its own collection is the only destination.": "لا توجد في {{accountName}} قوائم تشغيل، لذلك مجموعته الخاصة هي الوجهة الوحيدة."
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "لا توجد في {{accountName}} قوائم تشغيل، لذلك مجموعته الخاصة هي الوجهة الوحيدة.",
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "الصق هذا كعنوان استدعاء عند تسجيل تطبيق API. يُطلب منك قبل وجود أي مفتاح، لذا انسخه أولًا."
 }

@@ -1147,5 +1147,6 @@
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "读取你的收听记录。授权后可读取私密资料并收藏歌曲。",
   "Loved Tracks": "喜欢的歌曲",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "请先在账户页面授权 {{accountName}}，它才能接收喜欢的歌曲。",
-  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} 没有歌单，因此它自己的集合是唯一的目标。"
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} 没有歌单，因此它自己的集合是唯一的目标。",
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "注册 API 应用时把这个粘贴为回调地址。它会在任何密钥生成之前就被询问，所以请先复制。"
 }

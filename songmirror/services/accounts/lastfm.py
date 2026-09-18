@@ -7,6 +7,8 @@ session key has an infinite lifetime, so unlike every pasted credential in this
 project it needs no renewal; the user revokes it from their Last.fm settings.
 """
 
+from urllib.parse import parse_qs, urlsplit
+
 import requests
 
 from ...engine.config import REQUEST_TIMEOUT
@@ -25,6 +27,21 @@ from .base import ConnStatus, Connector, Field
 # session, so `favorites_write` is granted only once one exists.
 READ_ONLY = frozenset({"library_read"})
 READ_AND_LOVE = frozenset({"library_read", "favorites_write"})
+
+
+def _callback_token(params: dict) -> str:
+    """The authorization token Last.fm appended to the callback.
+
+    The OAuth callback route hands every connector the full callback URL as
+    ``{"url": ...}`` rather than parsed query parameters, so the token is read
+    out of the query here. A caller that already holds one may pass ``token``
+    directly.
+    """
+    direct = str(params.get("token") or "").strip()
+    if direct:
+        return direct
+    query = urlsplit(str(params.get("url") or "")).query
+    return (parse_qs(query).get("token") or [""])[0].strip()
 
 
 class LastfmConnector(Connector):
@@ -88,7 +105,7 @@ class LastfmConnector(Connector):
         return auth_url(key, redirect_uri)
 
     def complete_redirect(self, params: dict) -> ConnStatus:
-        token = (params.get("token") or "").strip()
+        token = _callback_token(params)
         if not token:
             return ConnStatus("error", "Last.fm returned no token")
         key = self._store.get("LASTFM_API_KEY")

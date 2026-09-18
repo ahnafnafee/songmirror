@@ -162,7 +162,26 @@ def _status_payload(request, profile):
         "supports_playlists": _supports_playlists(profile.provider),
         "source_capable": _source_capable(profile.provider),
         "preserves_order": _preserves_order(profile.provider),
+        "callback_url": _callback_url(request, profile, connector),
     }
+
+
+def _callback_url(request, profile, connector):
+    """Where the provider must redirect back to, for a connector whose provider
+    asks for the callback while the API application is being registered (as
+    Last.fm does). Reported by the server because the path rule and the
+    public-URL handling live here, so the browser never restates them.
+
+    Best-effort: a misconfigured SONGMIRROR_PUBLIC_URL must not take down the
+    whole accounts list, so the field is simply absent.
+    """
+    if connector.auth_kind != "oauth_redirect":
+        return None
+    callback_id = profile.provider if profile.is_default else profile.id
+    try:
+        return _redirect_uri(request, callback_id)
+    except HTTPException:
+        return None
 
 
 @router.get("/api/accounts")

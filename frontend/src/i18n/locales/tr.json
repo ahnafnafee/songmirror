@@ -1147,5 +1147,6 @@
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "Dinleme geçmişinizi okur. Özel bir profili okumak ve parçaları beğenmek için yetkilendirin.",
   "Loved Tracks": "Beğenilen parçalar",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "{{accountName}} beğenilen parçaları alabilmesi için önce Hesaplar sayfasında yetkilendirilmelidir.",
-  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} çalma listesi barındırmaz, bu yüzden tek hedef kendi koleksiyonudur."
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} çalma listesi barındırmaz, bu yüzden tek hedef kendi koleksiyonudur.",
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "API uygulamasını kaydederken bunu geri çağırma adresi olarak yapıştırın. Henüz hiçbir anahtar yokken sorulur, bu yüzden önce kopyalayın."
 }

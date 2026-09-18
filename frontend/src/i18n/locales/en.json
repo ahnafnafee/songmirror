@@ -621,6 +621,7 @@
   "Paste raw headers instead": "Paste raw headers instead",
   "Paste the URL and key below; <strong1>User ID</strong1> is optional.": "Paste the URL and key below; <strong1>User ID</strong1> is optional.",
   "Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.": "Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.",
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.",
   "Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field.": "Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field.",
   "Paste your tracks": "Paste your tracks",
   "Pause": "Pause",

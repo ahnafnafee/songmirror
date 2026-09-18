@@ -58,6 +58,11 @@ export interface Account {
    * kinds of non-peer: Last.fm is input-only and readable, while Jellyfin is
    * output-only and is fed by the download mirror rather than read from. */
   source_capable?: boolean
+  /** Where the provider must redirect back to, for `oauth_redirect` connectors.
+   * Last.fm asks for this while its API application is being registered, which
+   * is before any token exists, so the wizard shows it up front. Absent when
+   * the connector needs no callback or the public URL is misconfigured. */
+  callback_url?: string | null
   /** Whether this service can replay date-added order into an existing playlist.
    * False where the provider's writes can't express the repair safely (Deezer),
    * which greys out the transfer form's "preserve order" switch. */

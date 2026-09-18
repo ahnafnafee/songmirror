@@ -545,6 +545,19 @@ function FieldsStep({
       }}
     >
       {guide && <ConnectGuide content={guide} />}
+      {account.callback_url && (
+        <div className="flex flex-col gap-2 rounded-control border border-border-strong bg-inset px-3.5 py-3">
+          <p className="text-xs leading-relaxed text-text-2">
+            {t("Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.")}
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded bg-surface-2 px-2 py-1.5 font-mono text-[12px] text-text" dir="ltr">
+              {account.callback_url}
+            </code>
+            <CopyButton value={account.callback_url} />
+          </div>
+        </div>
+      )}
       <HeaderPasteBox
         fields={account.fields}
         onFilled={(filled) => {

@@ -1147,5 +1147,6 @@
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "재생 기록을 읽습니다. 승인하면 비공개 프로필 읽기와 트랙 좋아요를 사용할 수 있습니다.",
   "Loved Tracks": "좋아하는 트랙",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "{{accountName}}이(가) 좋아하는 트랙을 받으려면 먼저 계정 페이지에서 승인하세요.",
-  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}}은(는) 재생목록이 없으므로 자체 모음이 유일한 대상입니다."
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}}은(는) 재생목록이 없으므로 자체 모음이 유일한 대상입니다.",
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "API 애플리케이션을 등록할 때 이것을 콜백 URL로 붙여넣으세요. 키가 생기기 전에 입력을 요구하므로 먼저 복사해 두세요."
 }

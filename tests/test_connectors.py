@@ -381,3 +381,38 @@ def test_lastfm_never_claims_playlist_support_in_the_payload():
 
     assert supports_playlists("lastfm") is False
     assert supports_playlists("spotify") is True
+
+
+def test_lastfm_reads_the_token_out_of_the_callback_url(tmp_path, monkeypatch):
+    """The OAuth callback route passes {"url": <full callback>}, not parsed
+    query params. Reading a "token" key instead silently rejected every real
+    authorization with "Last.fm returned no token"."""
+    from songmirror.services.accounts import lastfm as connector_module
+
+    c = _conn("lastfm", tmp_path)
+    c._store.save({"LASTFM_API_KEY": "k", "LASTFM_API_SECRET": "s"})
+    seen = {}
+
+    def fake_get_session(key, secret, token):
+        seen.update(key=key, secret=secret, token=token)
+        return "sk-1", "ahnaf"
+
+    monkeypatch.setattr(connector_module, "get_session", fake_get_session)
+    monkeypatch.setattr(c, "_validate", lambda: (True, "ahnaf"))
+
+    status = c.complete_redirect(
+        {"url": "http://127.0.0.1:8888/oauth/lastfm/callback?token=tok-abc"})
+
+    assert seen["token"] == "tok-abc"
+    assert status.state == "connected"
+    assert c._store.get("LASTFM_SESSION_KEY") == "sk-1"
+    assert c._store.get("LASTFM_USER") == "ahnaf"
+    assert status.capabilities == frozenset({"library_read", "favorites_write"})
+
+
+def test_lastfm_callback_without_a_token_is_an_error(tmp_path):
+    c = _conn("lastfm", tmp_path)
+    c._store.save({"LASTFM_API_KEY": "k", "LASTFM_API_SECRET": "s"})
+
+    assert c.complete_redirect({"url": "http://127.0.0.1:8888/oauth/lastfm/callback"}).state == "error"
+    assert c.complete_redirect({}).state == "error"

@@ -1147,5 +1147,6 @@
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "再生履歴を読み込みます。認証すると非公開プロフィールの読み込みとトラックのお気に入り登録ができます。",
   "Loved Tracks": "お気に入りのトラック",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "{{accountName}} がお気に入り曲を受け取れるようにするには、先にアカウント画面で認証してください。",
-  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} はプレイリストを持たないため、自身のコレクションが唯一の送り先です。"
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} はプレイリストを持たないため、自身のコレクションが唯一の送り先です。",
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "API アプリケーションを登録するとき、これをコールバック URL として貼り付けてください。キーが存在する前に入力を求められるため、先にコピーしておきます。"
 }
