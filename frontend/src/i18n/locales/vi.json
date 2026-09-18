@@ -1144,5 +1144,6 @@
   "From the same API account page. Needed to authorize the account, read a private profile, and love tracks": "Từ cùng trang tài khoản API. Cần thiết để cấp quyền cho tài khoản, đọc trang cá nhân riêng tư và yêu thích bài hát",
   "Shared secret": "Khóa bí mật chia sẻ",
   "Username": "Tên người dùng",
-  "Reads your listening history. Authorize it to read a private profile and love tracks.": "Đọc lịch sử nghe của bạn. Cấp quyền để đọc trang cá nhân riêng tư và yêu thích bài hát."
+  "Reads your listening history. Authorize it to read a private profile and love tracks.": "Đọc lịch sử nghe của bạn. Cấp quyền để đọc trang cá nhân riêng tư và yêu thích bài hát.",
+  "Loved Tracks": "Bài hát yêu thích"
 }

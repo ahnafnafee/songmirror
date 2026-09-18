@@ -1272,5 +1272,6 @@
   "From the same API account page. Needed to authorize the account, read a private profile, and love tracks": "من صفحة حساب API نفسها. مطلوب لتفويض الحساب وقراءة ملف خاص وإضافة المقطوعات إلى المفضلة",
   "Shared secret": "المفتاح السري المشترك",
   "Username": "اسم المستخدم",
-  "Reads your listening history. Authorize it to read a private profile and love tracks.": "يقرأ سجل استماعك. فوّضه لقراءة ملف خاص وإضافة المقطوعات إلى المفضلة."
+  "Reads your listening history. Authorize it to read a private profile and love tracks.": "يقرأ سجل استماعك. فوّضه لقراءة ملف خاص وإضافة المقطوعات إلى المفضلة.",
+  "Loved Tracks": "المقطوعات المفضلة"
 }

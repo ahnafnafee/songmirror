@@ -90,11 +90,11 @@ def test_apple_paid_library_validation_keeps_full_access(tmp_path, monkeypatch):
 
     assert status.state == "connected"
     assert status.detail == ""
-    assert status.capabilities == frozenset({
-        "library_read",
-        "library_write",
-        "public_playlist_read",
-    })
+    # Derived, so adding a capability to the contract does not require editing
+    # this expectation.
+    from songmirror.services.accounts.base import FULL_PEER_CAPABILITIES
+
+    assert status.capabilities == FULL_PEER_CAPABILITIES
 
 
 def test_apple_catalog_fallback_must_validate_the_storefront(tmp_path, monkeypatch):
@@ -358,3 +358,26 @@ def test_default_profile_label_matches_each_connector_name():
 
     for provider, connector in CONNECTORS.items():
         assert AccountProfileStore._provider_label(provider) == connector.name, provider
+
+
+def test_lastfm_grants_favorites_write_only_once_authorized(tmp_path, monkeypatch):
+    """Loving needs the session key, so the grant set has to follow it: without
+    this the sync wizard would offer Last.fm as a loves destination and every
+    write would fail."""
+    c = _conn("lastfm", tmp_path)
+    monkeypatch.setattr(c, "_validate", lambda: (True, "ahnaf"))
+
+    c.submit({"LASTFM_API_KEY": "k", "LASTFM_API_SECRET": "s", "LASTFM_USER": "ahnaf"})
+    assert c.status().capabilities == frozenset({"library_read"})
+
+    c._store.save({"LASTFM_SESSION_KEY": "sk-1"})
+    assert c.status().capabilities == frozenset({"library_read", "favorites_write"})
+    # Never playlist writes: Last.fm has no playlists at all.
+    assert "library_write" not in c.status().capabilities
+
+
+def test_lastfm_never_claims_playlist_support_in_the_payload():
+    from songmirror.engine.targets import supports_playlists
+
+    assert supports_playlists("lastfm") is False
+    assert supports_playlists("spotify") is True

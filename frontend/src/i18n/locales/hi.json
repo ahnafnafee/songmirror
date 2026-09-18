@@ -1144,5 +1144,6 @@
   "From the same API account page. Needed to authorize the account, read a private profile, and love tracks": "उसी API खाता पृष्ठ से। खाते को अधिकृत करने, निजी प्रोफ़ाइल पढ़ने और ट्रैक पसंद करने के लिए आवश्यक",
   "Shared secret": "साझा गुप्त कुंजी",
   "Username": "उपयोगकर्ता नाम",
-  "Reads your listening history. Authorize it to read a private profile and love tracks.": "आपका सुनने का इतिहास पढ़ता है। निजी प्रोफ़ाइल पढ़ने और ट्रैक पसंद करने के लिए इसे अधिकृत करें।"
+  "Reads your listening history. Authorize it to read a private profile and love tracks.": "आपका सुनने का इतिहास पढ़ता है। निजी प्रोफ़ाइल पढ़ने और ट्रैक पसंद करने के लिए इसे अधिकृत करें।",
+  "Loved Tracks": "पसंदीदा ट्रैक"
 }

@@ -1144,5 +1144,6 @@
   "From the same API account page. Needed to authorize the account, read a private profile, and love tracks": "来自同一 API 账户页面。用于授权账户、读取私密资料以及收藏歌曲",
   "Shared secret": "共享密钥",
   "Username": "用户名",
-  "Reads your listening history. Authorize it to read a private profile and love tracks.": "读取你的收听记录。授权后可读取私密资料并收藏歌曲。"
+  "Reads your listening history. Authorize it to read a private profile and love tracks.": "读取你的收听记录。授权后可读取私密资料并收藏歌曲。",
+  "Loved Tracks": "喜欢的歌曲"
 }

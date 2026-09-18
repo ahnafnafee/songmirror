@@ -1144,5 +1144,6 @@
   "From the same API account page. Needed to authorize the account, read a private profile, and love tracks": "Von derselben API-Kontoseite. Erforderlich, um das Konto zu autorisieren, ein privates Profil zu lesen und Titel zu markieren",
   "Shared secret": "Gemeinsames Geheimnis",
   "Username": "Benutzername",
-  "Reads your listening history. Authorize it to read a private profile and love tracks.": "Liest Ihren Hörverlauf. Autorisieren Sie ihn, um ein privates Profil zu lesen und Titel zu markieren."
+  "Reads your listening history. Authorize it to read a private profile and love tracks.": "Liest Ihren Hörverlauf. Autorisieren Sie ihn, um ein privates Profil zu lesen und Titel zu markieren.",
+  "Loved Tracks": "Lieblingssongs"
 }

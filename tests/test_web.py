@@ -181,6 +181,7 @@ def test_accounts_report_catalog_only_apple_capabilities(tmp_path, monkeypatch):
         "library_read": False,
         "library_write": False,
         "public_playlist_read": True,
+        "favorites_write": False,
     }
 
 
@@ -293,6 +294,7 @@ def test_spotify_connect_accepts_web_session_without_oauth_redirect(tmp_path, mo
             "library_read": True,
             "library_write": True,
             "public_playlist_read": True,
+            "favorites_write": True,
         },
     }
 

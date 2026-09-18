@@ -15,12 +15,14 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from ...engine.targets import is_peer, target_class
+from ...engine.targets import supports_playlists as targets_supports_playlists
 from ...services.accounts import CONNECTORS
 from ...services.accounts.base import FULL_PEER_CAPABILITIES, ConnStatus, DeviceCode
 
 router = APIRouter()
 
-_CAPABILITY_KEYS = ("library_read", "library_write", "public_playlist_read")
+_CAPABILITY_KEYS = ("library_read", "library_write", "public_playlist_read",
+                    "favorites_write")
 
 
 def _profile(request: Request, identity: str):
@@ -65,6 +67,24 @@ def _capabilities(provider, status):
             # but cannot participate in track-level syncs or transfers.
             granted = {"library_read"}
     return {key: key in granted for key in _CAPABILITY_KEYS}
+
+
+def _supports_playlists(provider):
+    """Whether the provider has playlists at all. False for a history service
+    (Last.fm), which the sync wizard must offer as a source and as a liked-tracks
+    destination without ever offering it a playlist."""
+    return targets_supports_playlists(provider)
+
+
+def _source_capable(provider):
+    """Whether the provider can supply tracks to a sync.
+
+    True when it has a MirrorTarget to read through. This is what separates the
+    two kinds of non-peer: Last.fm is input-only and has a target, while
+    Jellyfin is output-only, has no target, and is fed by the download mirror
+    rather than read from.
+    """
+    return target_class(provider) is not None
 
 
 def _status_values(provider, status):
@@ -139,6 +159,8 @@ def _status_payload(request, profile):
         "fields": fields,
         **_status_values(profile.provider, status),
         "transferable": is_peer(profile.provider),
+        "supports_playlists": _supports_playlists(profile.provider),
+        "source_capable": _source_capable(profile.provider),
         "preserves_order": _preserves_order(profile.provider),
     }
 

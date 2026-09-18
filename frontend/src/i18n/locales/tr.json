@@ -1144,5 +1144,6 @@
   "From the same API account page. Needed to authorize the account, read a private profile, and love tracks": "Aynı API hesabı sayfasından. Hesabı yetkilendirmek, özel bir profili okumak ve parçaları beğenmek için gereklidir",
   "Shared secret": "Paylaşılan gizli anahtar",
   "Username": "Kullanıcı adı",
-  "Reads your listening history. Authorize it to read a private profile and love tracks.": "Dinleme geçmişinizi okur. Özel bir profili okumak ve parçaları beğenmek için yetkilendirin."
+  "Reads your listening history. Authorize it to read a private profile and love tracks.": "Dinleme geçmişinizi okur. Özel bir profili okumak ve parçaları beğenmek için yetkilendirin.",
+  "Loved Tracks": "Beğenilen parçalar"
 }

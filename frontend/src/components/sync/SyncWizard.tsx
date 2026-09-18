@@ -13,7 +13,12 @@ import { TextField } from '@/components/ui/TextField'
 import { Toggle } from '@/components/ui/Toggle'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { useSettings } from '@/hooks/useSettings'
-import { canSyncAccount } from '@/lib/accountCapabilities'
+import {
+  canBeSyncSource,
+  canParticipateInSync,
+  canReceiveLikedTracks,
+  canSyncAccount,
+} from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { serviceLogoId, tagDot, tagText } from '@/lib/constants'
 import { intervalSeconds, isValidIntervalText, isValidPositiveInt } from '@/lib/format'
@@ -24,7 +29,6 @@ import {
   enabledProvidersOf,
   lockedProvidersOf,
   parseCsv,
-  syncPeersOf,
 } from '@/lib/syncSummary'
 import { PlaylistFilterField } from '../settings/PlaylistFilterField'
 import { MergeDestinationFields, MergeSourcesFields } from './MergeFields'
@@ -144,6 +148,14 @@ const STEPS = [
   { get label() { return t("Limits & downloads") }, get intro() { return t("Guardrails so one pass can't make a huge change, plus an optional offline copy of what's synced.") } },
 ] as const
 
+/** Everything the wizard may offer. Wider than `syncPeersOf`, which is the
+ * playlist-peer set: a history service with no playlists of its own is still a
+ * valid one-way source and can still receive loves, so it belongs here while
+ * staying out of the transfer and playlist-link pickers. */
+function syncCandidates(accounts: Account[]): Account[] {
+  return accounts.filter((account) => account.transferable || canParticipateInSync(account))
+}
+
 /** A followers/services toggle chip — `locked` marks whichever service is
  * currently this job's sync source, which is always included and can't be
  * toggled off. */
@@ -161,7 +173,7 @@ function ProviderChip({
   onToggle: () => void
 }) {
   useTranslation()
-  const connected = canSyncAccount(account)
+  const connected = canParticipateInSync(account)
   const unavailableLabel = account.state === 'connected' ? t("catalog only") : t("not connected")
   const logoId = serviceLogoId(account.provider)
 
@@ -214,7 +226,9 @@ function ProviderChip({
  * exclusive-choice (radio) rather than a toggle set. */
 function SourceChip({ account, selected, onSelect }: { account: Account; selected: boolean; onSelect: () => void }) {
   useTranslation()
-  const connected = canSyncAccount(account)
+  // Reading is enough to be the source of truth, so a history service with no
+  // playlists of its own still qualifies.
+  const connected = canBeSyncSource(account)
   const unavailableLabel = account.state === 'connected' ? t("catalog only") : t("not connected")
   const logoId = serviceLogoId(account.provider)
 
@@ -337,7 +351,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     if (!job) {
       // Snapshot the connected peers now. Persisting an empty sentinel would
       // make this job silently gain every provider connected in the future.
-      const connected = syncPeersOf(accounts).filter(canSyncAccount)
+      const connected = syncCandidates(accounts).filter(canSyncAccount)
       initial.providers = connected.map((account) => account.id).join(',')
       initial.source = connected.find((account) => account.provider === 'spotify')?.id ?? connected[0]?.id ?? initial.source
     }
@@ -357,7 +371,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  const syncPeers = syncPeersOf(accounts)
+  const syncPeers = syncCandidates(accounts)
   const jellyfinConnected = accounts.some((a) => a.provider === 'jellyfin' && a.state === 'connected')
 
   // One-way uses this as its source of truth. In group mode it is the order
@@ -495,7 +509,8 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
   const likedSourceName = syncPeers.find((account) => account.id === syncSource)?.name ?? syncSource
   const likedPlaylistSuggestion = providerLikedTracksLabel(sourceAccount?.provider, likedSourceName)
   const likedDestinations = syncPeers.filter(
-    (account) => enabledProviders.has(account.id) && account.id !== syncSource,
+    (account) => enabledProviders.has(account.id) && account.id !== syncSource
+      && canReceiveLikedTracks(account),
   )
 
   function setLikedTracks(selected: boolean) {

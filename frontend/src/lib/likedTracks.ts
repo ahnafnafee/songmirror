@@ -7,6 +7,7 @@ const NATIVE_LIKED_TRACK_NAMES: Record<string, string> = {
   get amazon() { return t("My Likes") },
   get apple() { return t("Favorite Songs") },
   get ytmusic() { return t("Liked Music") },
+  get lastfm() { return t("Loved Tracks") },
 }
 
 export function nativeLikedTracksName(providerId: string | null | undefined): string {

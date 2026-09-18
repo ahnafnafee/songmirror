@@ -20,9 +20,11 @@ from ...lastfm import (
 )
 from .base import ConnStatus, Connector, Field
 
-# Last.fm has no playlists, so it never grants playlist writes. Loving a track
-# is a favorites-collection write, which the target exposes separately.
+# Last.fm has no playlists, so it never grants `library_write`. Reading is
+# always available; loving a track needs the shared secret plus an authorized
+# session, so `favorites_write` is granted only once one exists.
 READ_ONLY = frozenset({"library_read"})
+READ_AND_LOVE = frozenset({"library_read", "favorites_write"})
 
 
 class LastfmConnector(Connector):
@@ -40,18 +42,22 @@ class LastfmConnector(Connector):
                    "to read a different public profile"),
     ]
 
+    def _granted(self):
+        """Loving needs an authorized session, so the grant set follows it."""
+        return READ_AND_LOVE if self._store.get("LASTFM_SESSION_KEY") else READ_ONLY
+
     def status(self) -> ConnStatus:
         if not self._configured("LASTFM_API_KEY"):
             return ConnStatus("unconfigured", "add a Last.fm API key",
-                              capabilities=READ_ONLY)
+                              capabilities=self._granted())
         if not self._store.get("LASTFM_USER"):
             return ConnStatus("unconfigured",
                               "authorize the account, or set a username to read "
                               "a public profile",
-                              capabilities=READ_ONLY)
+                              capabilities=self._granted())
         ok, detail = self._validate()
         return ConnStatus("connected" if ok else "expired", detail,
-                          capabilities=READ_ONLY)
+                          capabilities=self._granted())
 
     # -- api_key half: a username is enough for public reads -----------------
 
@@ -64,10 +70,10 @@ class LastfmConnector(Connector):
             return ConnStatus("unconfigured",
                               "authorize the account to read private data and "
                               "love tracks, or set a username for public reads",
-                              capabilities=READ_ONLY)
+                              capabilities=self._granted())
         ok, detail = self._validate()
         return ConnStatus("connected" if ok else "error", detail,
-                          capabilities=READ_ONLY)
+                          capabilities=self._granted())
 
     # -- oauth_redirect half: adds the session key ---------------------------
 
@@ -99,7 +105,7 @@ class LastfmConnector(Connector):
         suffix = " (private reads and loving enabled)"
         return ConnStatus("connected" if ok else "error",
                           (detail + suffix) if ok else detail,
-                          capabilities=READ_ONLY)
+                          capabilities=self._granted())
 
     def disconnect(self) -> None:
         self._store.save({"LASTFM_API_KEY": "", "LASTFM_API_SECRET": "",

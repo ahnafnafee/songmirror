@@ -9,12 +9,18 @@ from dataclasses import dataclass
 from typing import Literal
 
 AuthKind = Literal["oauth_redirect", "oauth_device", "token_paste", "api_key"]
-AccountCapability = Literal["library_read", "library_write", "public_playlist_read"]
+# `library_write` is playlist writing. `favorites_write` is the provider's own
+# liked/loved collection, which is a separate grant because a service can have
+# one without the other: Last.fm can love a track but has no playlists at all.
+AccountCapability = Literal[
+    "library_read", "library_write", "public_playlist_read", "favorites_write",
+]
 
 FULL_PEER_CAPABILITIES = frozenset({
     "library_read",
     "library_write",
     "public_playlist_read",
+    "favorites_write",
 })
 
 

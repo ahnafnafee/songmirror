@@ -1144,5 +1144,6 @@
   "From the same API account page. Needed to authorize the account, read a private profile, and love tracks": "同じ API アカウントページから取得します。アカウントの認証、非公開プロフィールの読み込み、トラックのお気に入り登録に必要です",
   "Shared secret": "共有シークレット",
   "Username": "ユーザー名",
-  "Reads your listening history. Authorize it to read a private profile and love tracks.": "再生履歴を読み込みます。認証すると非公開プロフィールの読み込みとトラックのお気に入り登録ができます。"
+  "Reads your listening history. Authorize it to read a private profile and love tracks.": "再生履歴を読み込みます。認証すると非公開プロフィールの読み込みとトラックのお気に入り登録ができます。",
+  "Loved Tracks": "お気に入りのトラック"
 }

@@ -1144,5 +1144,6 @@
   "From the same API account page. Needed to authorize the account, read a private profile, and love tracks": "Dari halaman akun API yang sama. Diperlukan untuk mengotorisasi akun, membaca profil pribadi, dan menyukai lagu",
   "Shared secret": "Rahasia bersama",
   "Username": "Nama pengguna",
-  "Reads your listening history. Authorize it to read a private profile and love tracks.": "Membaca riwayat mendengarkan Anda. Otorisasi untuk membaca profil pribadi dan menyukai lagu."
+  "Reads your listening history. Authorize it to read a private profile and love tracks.": "Membaca riwayat mendengarkan Anda. Otorisasi untuk membaca profil pribadi dan menyukai lagu.",
+  "Loved Tracks": "Lagu favorit"
 }
