@@ -1138,5 +1138,11 @@
   "Playlist creation": "Çalma listesi oluşturma",
   "Loading import history…": "İçe aktarma geçmişi yükleniyor…",
   "Loading import history timed out. Please try again.": "İçe aktarma geçmişi yüklenirken zaman aşımına uğradı. Lütfen tekrar deneyin.",
-  "Find matches": "Eşleşmeleri bul"
+  "Find matches": "Eşleşmeleri bul",
+  "Create an API account at https://www.last.fm/api/account/create": "https://www.last.fm/api/account/create adresinde bir API hesabı oluşturun",
+  "Filled in automatically when you authorize; set it by hand to read a different public profile": "Yetkilendirdiğinizde otomatik olarak doldurulur; farklı bir herkese açık profili okumak için elle girin",
+  "From the same API account page. Needed to authorize the account, read a private profile, and love tracks": "Aynı API hesabı sayfasından. Hesabı yetkilendirmek, özel bir profili okumak ve parçaları beğenmek için gereklidir",
+  "Shared secret": "Paylaşılan gizli anahtar",
+  "Username": "Kullanıcı adı",
+  "Reads your listening history. Authorize it to read a private profile and love tracks.": "Dinleme geçmişinizi okur. Özel bir profili okumak ve parçaları beğenmek için yetkilendirin."
 }

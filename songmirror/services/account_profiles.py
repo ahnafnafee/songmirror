@@ -67,6 +67,10 @@ PROVIDER_KEYS = {
         "YTMUSIC_AUTH_FILE", "YTMUSIC_BROWSER_AUTH", "YTMUSIC_PREFER_BROWSER",
         "YTMUSIC_CACHE_FILE",
     },
+    "lastfm": {
+        "LASTFM_API_KEY", "LASTFM_API_SECRET", "LASTFM_USER",
+        "LASTFM_SESSION_KEY", "LASTFM_CACHE_FILE",
+    },
     "jellyfin": {"JELLYFIN_URL", "JELLYFIN_API_KEY", "JELLYFIN_USER_ID"},
 }
 
@@ -98,6 +102,7 @@ _FILE_DEFAULTS = {
         "YTMUSIC_BROWSER_AUTH": "ytmusic_browser.json",
         "YTMUSIC_CACHE_FILE": "ytmusic_resolve_cache.json",
     },
+    "lastfm": {"LASTFM_CACHE_FILE": "lastfm_resolve_cache.json"},
 }
 
 _ACTIVE_SPOTIFY_PROFILE: str | None = None
@@ -466,8 +471,13 @@ class AccountProfileStore:
 
     @staticmethod
     def _provider_label(provider):
+        """Default profile label per provider. Mirrors each connector's own
+        `name`; test_connectors asserts the two stay in step, because a missing
+        entry silently labels the profile with the raw provider id and the UI
+        then renders "Last.fm . lastfm"."""
         return {
             "spotify": "Spotify", "tidal": "TIDAL", "qobuz": "Qobuz",
             "deezer": "Deezer", "amazon": "Amazon Music", "apple": "Apple Music",
-            "ytmusic": "YouTube Music", "jellyfin": "Jellyfin",
+            "ytmusic": "YouTube Music", "lastfm": "Last.fm",
+            "jellyfin": "Jellyfin",
         }.get(provider, provider)

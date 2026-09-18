@@ -1138,5 +1138,11 @@
   "Playlist creation": "प्लेलिस्ट बनाना",
   "Loading import history…": "आयात इतिहास लोड हो रहा है…",
   "Loading import history timed out. Please try again.": "आयात इतिहास लोड करने का समय समाप्त हो गया। कृपया फिर से प्रयास करें।",
-  "Find matches": "मेल खाते ट्रैक खोजें"
+  "Find matches": "मेल खाते ट्रैक खोजें",
+  "Create an API account at https://www.last.fm/api/account/create": "https://www.last.fm/api/account/create पर एक API खाता बनाएं",
+  "Filled in automatically when you authorize; set it by hand to read a different public profile": "अधिकृत करने पर स्वतः भर जाता है; किसी अन्य सार्वजनिक प्रोफ़ाइल को पढ़ने के लिए इसे स्वयं भरें",
+  "From the same API account page. Needed to authorize the account, read a private profile, and love tracks": "उसी API खाता पृष्ठ से। खाते को अधिकृत करने, निजी प्रोफ़ाइल पढ़ने और ट्रैक पसंद करने के लिए आवश्यक",
+  "Shared secret": "साझा गुप्त कुंजी",
+  "Username": "उपयोगकर्ता नाम",
+  "Reads your listening history. Authorize it to read a private profile and love tracks.": "आपका सुनने का इतिहास पढ़ता है। निजी प्रोफ़ाइल पढ़ने और ट्रैक पसंद करने के लिए इसे अधिकृत करें।"
 }

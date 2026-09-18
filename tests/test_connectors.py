@@ -333,3 +333,28 @@ def test_spotify_status_reports_a_refused_isrc_app(tmp_path, monkeypatch):
     assert st.state == "error"                 # -> dashboard "needs a look" card
     assert "Premium" in st.detail
     assert "continue" in st.detail             # and says the sync is degraded, not stopped
+
+
+def test_every_connector_has_a_profile_key_slice():
+    """A connector with no PROVIDER_KEYS entry gets no default profile, so it
+    never appears in /api/accounts however correctly it is registered."""
+    from songmirror.services.account_profiles import PROVIDER_KEYS
+
+    assert set(CONNECTORS) == set(PROVIDER_KEYS)
+
+
+def test_profile_file_defaults_name_only_known_providers():
+    from songmirror.services.account_profiles import _FILE_DEFAULTS, PROVIDER_KEYS
+
+    assert set(_FILE_DEFAULTS) <= set(PROVIDER_KEYS)
+    for provider, defaults in _FILE_DEFAULTS.items():
+        assert set(defaults) <= PROVIDER_KEYS[provider], provider
+
+
+def test_default_profile_label_matches_each_connector_name():
+    """A provider missing from the label map is labelled with its raw id, and
+    the accounts UI then renders "Last.fm . lastfm" instead of "Last.fm"."""
+    from songmirror.services.account_profiles import AccountProfileStore
+
+    for provider, connector in CONNECTORS.items():
+        assert AccountProfileStore._provider_label(provider) == connector.name, provider

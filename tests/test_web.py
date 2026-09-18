@@ -93,7 +93,8 @@ def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
     with TestClient(_app(tmp_path)) as client:
         accounts = client.get("/api/accounts").json()
         assert {a["provider"] for a in accounts} == {
-            "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic", "jellyfin"
+            "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
+            "lastfm", "jellyfin"
         }
         assert all(a["id"].startswith("profile_default_") for a in accounts)
         assert all(a["id"] != a["provider"] for a in accounts)

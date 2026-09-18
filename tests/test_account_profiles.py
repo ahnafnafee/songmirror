@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from songmirror.services.account_profiles import AccountProfileStore
+from songmirror.services.account_profiles import PROVIDER_KEYS, AccountProfileStore
 from songmirror.services.playlists import LinkStore, PlaylistLink
 from songmirror.services.settings import SettingsStore
 from songmirror.services.syncs import SyncJob, SyncStore
@@ -40,7 +40,9 @@ def test_legacy_provider_settings_migrate_to_a_stable_default_profile(tmp_path, 
     # Re-opening the store is idempotent: deterministic compatibility profiles
     # are not duplicated and the old provider alias remains valid.
     reopened = AccountProfileStore(SettingsStore(dir=tmp_path))
-    assert len(reopened.list()) == 8
+    # One seeded default per known provider, derived so adding a provider does
+    # not require editing this count.
+    assert len(reopened.list()) == len(PROVIDER_KEYS)
     assert reopened.canonical_id("spotify") == default_id
 
 

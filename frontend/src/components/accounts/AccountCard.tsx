@@ -23,6 +23,7 @@ const SERVICE_BLURBS: Record<string, string> = {
   get amazon() { return t("Syncs playlists using an auto-renewing session from your signed-in Amazon Music web player.") },
   get apple() { return t("Paste a couple of tokens from the Apple Music web player. No developer account needed.") },
   get ytmusic() { return t("Sign in with a Google account using a short code. Approve it from your phone or another tab.") },
+  get lastfm() { return t("Reads your listening history. Authorize it to read a private profile and love tracks.") },
   get jellyfin() { return t("Optional. Pushes real playlist cover art to your Jellyfin server.") },
 }
 
