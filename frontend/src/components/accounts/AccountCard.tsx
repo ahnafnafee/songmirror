@@ -42,7 +42,13 @@ function borderClass(state: Account['state']): string {
   return 'border-border'
 }
 
-export function AccountCard({ account, onChanged }: { account: Account; onChanged: () => void }) {
+export function AccountCard({ account, onChanged }: {
+  account: Account
+  /** Awaited before the card leaves its pending state, so a disconnect cannot
+   * keep rendering the stale "Connected" while the account list reloads. That
+   * reload revalidates every provider live and takes seconds. */
+  onChanged: () => void | Promise<void>
+}) {
   useTranslation()
   const [wizardOpen, setWizardOpen] = useState(false)
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
@@ -63,8 +69,8 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
     setError(null)
     try {
       await api.disconnectAccount(account.id)
+      await onChanged()
       setConfirmingDisconnect(false)
-      onChanged()
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -77,8 +83,8 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
     setError(null)
     try {
       await api.removeAccount(account.id)
+      await onChanged()
       setConfirmingRemove(false)
-      onChanged()
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -92,8 +98,8 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
     setError(null)
     try {
       await api.renameAccount(account.id, label.trim())
+      await onChanged()
       setEditingLabel(false)
-      onChanged()
     } catch (err) {
       setError(errorMessage(err))
     } finally {
