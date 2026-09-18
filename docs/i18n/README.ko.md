@@ -389,7 +389,7 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - **내 라이브러리 우선(진짜 FLAC)**: `LOCAL_LIBRARY_DIR`을 기존 음악 트리로 지정하면 거기서 찾은 트랙이 **원래 형식 그대로 재생목록 폴더로 복사**되므로 FLAC은 FLAC으로 남습니다. 로컬에 일치하는 것이 없는 트랙만 spotDL로 넘어갑니다. 대조는 ISRC 태그를 먼저 보고 그다음 곡명과 아티스트를 보며, 동기화 엔진과 같은 규칙을 씁니다. 하드 링크가 아니라 복사를 택한 것은 의도적입니다. 미러는 수정 시각을 기록하고 태그를 채우는데, 하드 링크라면 원본 파일을 고쳐 버립니다. 비워 두면 꺼집니다.
 - 오디오 품질 — 소스는 YouTube이므로 YT Music Premium 쿠키가 없으면 최대치는 ~128~160kbps입니다. `LOCAL_MIRROR_FORMAT=opus`는 mp3 재인코딩 없이 YouTube의 기본 스트림을 유지합니다. Premium 쿠키(`LOCAL_MIRROR_COOKIE_FILE`)는 256kbps AAC를 잠금 해제합니다. `flac`를 선택하면 출력 컨테이너가 변경되지만 손실이 있는 소스를 무손실 오디오로 바꿀 수는 없습니다. 진짜 무손실 음원이 필요하면 `LOCAL_LIBRARY_DIR`을 사용하세요.
 
-SongMirror는 스트리밍 카탈로그에서 FLAC을 추출하는 일을 자동화하지 않습니다. 새 음원은 먼저 [`docs/monochrome-flac-assessment.md`](../monochrome-flac-assessment.md)의 기준을 충족해야 합니다. 공급자가 공개하고 버전이 관리되는 내려받기 또는 내보내기 지점, 사용자 단위 승인, 영구 복제에 대한 명시적 권리, 지역과 만료 및 오프라인 사용에 관한 문서화된 규정, 그리고 DRM이나 접근 제어를 우회하지 않는 것입니다. 로컬 미러는 본인 소유이거나 복제 권한이 있는 콘텐츠에만 사용하세요.
+SongMirror는 스트리밍 카탈로그에서 FLAC을 추출하는 일을 자동화하지 않습니다. 새 음원은 먼저 `docs/monochrome-flac-assessment.md`의 기준을 충족해야 합니다. 공급자가 공개하고 버전이 관리되는 내려받기 또는 내보내기 지점, 사용자 단위 승인, 영구 복제에 대한 명시적 권리, 지역과 만료 및 오프라인 사용에 관한 문서화된 규정, 그리고 DRM이나 접근 제어를 우회하지 않는 것입니다. 로컬 미러는 본인 소유이거나 복제 권한이 있는 콘텐츠에만 사용하세요.
 
 <div align="right">
 

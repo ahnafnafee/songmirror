@@ -31,7 +31,8 @@ produces FLAC through three engines: Qobuz MD5-signed CDN stream URLs, TIDAL
 DASH master manifests, and Amazon Music Widevine DRM decryption with FLAC
 remuxing.
 
-`docs/monochrome-flac-assessment.md` already sets this project's bar for any new
+`docs/monochrome-flac-assessment.md`, a repo-local document that `.gitignore`
+excludes, already sets this project's bar for any new
 FLAC source: a provider-published, versioned download or export endpoint,
 user-scoped authorization, explicit permanent-copy rights, documented territory,
 expiry and offline-use rules, and no DRM or access-control bypass. None of the

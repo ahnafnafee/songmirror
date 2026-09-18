@@ -161,6 +161,10 @@ to make a *new* provider a second canonical hub, which isn't needed.
   `check-readmes.mjs` compares code blocks, the inline-code multiset, anchors, heading and
   table structure, brand-name counts and link targets against English, and rejects any
   untranslated English phrase, so a new README section is a translation task, not a copy.
+  It also resolves every local link, and that check passes locally for a file that exists
+  on disk but is gitignored, then fails in CI's fresh checkout. Link only to paths
+  `git ls-files` lists. A localized file sits one level deeper, so `docs/x.md` in English
+  is `../x.md` there.
 
 Running the app is worth a pass of its own: the profile-registry and frontend-list
 omissions above all typecheck, pass the Python suite, and only show up as a missing

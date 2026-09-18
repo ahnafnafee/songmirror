@@ -389,7 +389,7 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - **先用你自己的音乐库（真正的 FLAC）**：把 `LOCAL_LIBRARY_DIR` 指向已有的音乐目录树，在那里找到的每首歌都会**按原始格式复制到歌单文件夹**，所以 FLAC 仍是 FLAC。只有本地没有匹配的歌曲才会交给 spotDL。匹配先看 ISRC 标签，再看曲名加艺人，规则与同步引擎完全一致。这里刻意选择复制而非硬链接：镜像会写入修改时间并补全标签，硬链接会改写你的原始文件。留空表示关闭。
 - 音频质量 — 源为 YouTube，因此如果没有 YT Music Premium cookie，上限约为 128–160 kbps。 `LOCAL_MIRROR_FORMAT=opus` 保留 YouTube 的本机流，无需 mp3 重新编码； Premium cookie (`LOCAL_MIRROR_COOKIE_FILE`) 解锁 256 kbps AAC。选择 `flac` 会更改输出容器，但无法将有损源转换为无损音频。 需要真正的无损音频时，请使用 `LOCAL_LIBRARY_DIR`。
 
-SongMirror 不会自动从流媒体目录中提取 FLAC。任何新的音频来源都必须先满足 [`docs/monochrome-flac-assessment.md`](../monochrome-flac-assessment.md) 中的条件：服务方公开且有版本的下载或导出接口、面向用户的授权、明确的永久复制权利、对地区、有效期与离线使用的成文规定，以及不绕过 DRM 或访问控制。本地镜像只应用于你拥有或已获授权复制的内容。
+SongMirror 不会自动从流媒体目录中提取 FLAC。任何新的音频来源都必须先满足 `docs/monochrome-flac-assessment.md` 中的条件：服务方公开且有版本的下载或导出接口、面向用户的授权、明确的永久复制权利、对地区、有效期与离线使用的成文规定，以及不绕过 DRM 或访问控制。本地镜像只应用于你拥有或已获授权复制的内容。
 
 <div align="right">
 
