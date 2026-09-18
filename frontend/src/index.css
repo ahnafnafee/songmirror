@@ -72,6 +72,8 @@
   --color-svc-apple-soft: rgb(217 48 67 / 0.1);
   --color-svc-ytmusic: #c43227;
   --color-svc-ytmusic-soft: rgb(196 50 39 / 0.1);
+  --color-svc-lastfm: #ba0f08;
+  --color-svc-lastfm-soft: rgb(186 15 8 / 0.1);
   --color-svc-jellyfin: #7a58c5;
   --color-svc-jellyfin-soft: rgb(122 88 197 / 0.11);
 
@@ -143,6 +145,8 @@
   --color-svc-apple-soft: rgb(250 92 113 / 0.12);
   --color-svc-ytmusic: #f4453e;
   --color-svc-ytmusic-soft: rgb(244 69 62 / 0.12);
+  --color-svc-lastfm: #ff7a6f;
+  --color-svc-lastfm-soft: rgb(255 122 111 / 0.13);
   --color-svc-jellyfin: #ae8cec;
   --color-svc-jellyfin-soft: rgb(174 140 236 / 0.13);
 

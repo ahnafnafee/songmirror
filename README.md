@@ -72,6 +72,7 @@ A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and Fre
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [Last.fm](#lastfm)
 - [🖥️ Headless CLI](#headless-cli)
 - [🛡️ Safety rails](#safety-rails)
 - [🗃️ Caching &amp; song archive](#caching-song-archive)
@@ -104,7 +105,8 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 - 🔗 **Transfer from a link** — paste a public playlist URL from any connected service and copy it straight across. No need to save or follow it first.
 - 🌐 **Followed playlists** — sync and transfer playlists you follow but don't own, not just ones you created.
 - 📦 **Scheduled metadata backups** — archive an account's entire playlist library on its own schedule under persistent app data, with JSON/XML, retention limits, and visible success/failure history. One-off downloads and import-ready Soundiiz JSON remain available too.
-- 💿 **Local download mirror** — keep offline audio, one folder per playlist in **Jellyfin's** `AlbumArtist/Album` layout, with covers and an auto-updated `.m3u8`.
+- 📻 **Last.fm**: sync your Loved Tracks, Top Tracks (six periods), and Recent Scrobbles out to any connected service, and once you authorize the account, sync other services' liked tracks back **into** Last.fm loves. It has no playlists, so it is never a playlist destination.
+- 💿 **Local download mirror**: keep offline audio, one folder per playlist in **Jellyfin's** `AlbumArtist/Album` layout, with covers and an auto-updated `.m3u8`. Point it at an existing music library and matching tracks are copied in **at their original quality** (a FLAC stays a FLAC), with downloads filling only the gaps.
 - 🛡️ **Safety rails** — dry-run by default, per-pass add/removal caps, net-loss protection, empty-snapshot guard, fail-closed on expired tokens.
 - 🗃️ **Ever-growing song archive** — every track ever seen is recorded in a local SQLite database (name, artist, album, ISRC, raw metadata, first/last seen).
 - 🧭 **Editable match history** — browse, correct, and delete every cached track match per service from the **Mappings** page, including the "no match" results that would otherwise stay unmatched forever.
@@ -383,9 +385,11 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - **Incremental** — after the first full download, only newly-added tracks are fetched; removed tracks (and their emptied album folders) are pruned. An interrupted run continues next pass.
 - **Newest-first `.m3u8`** — written in date-added order, newest at the top (set `LOCAL_MIRROR_ORDER=oldest` to flip). Rebuild covers / tags / mtimes from existing files with `uv run main.py --refresh-local`.
 - **Playlist covers in Jellyfin** — Jellyfin ignores a cover file next to an m3u, so set `JELLYFIN_URL` + `JELLYFIN_API_KEY` and each pass uploads the real playlist cover via the Jellyfin API.
-- **Audio quality** — the source is YouTube, so without a YT Music **Premium** cookie the ceiling is ~128–160 kbps. `LOCAL_MIRROR_FORMAT=opus` keeps YouTube's native stream without an mp3 re-encode; a Premium cookie (`LOCAL_MIRROR_COOKIE_FILE`) unlocks 256 kbps AAC. Selecting `flac` changes the output container but cannot turn a lossy source into lossless audio.
+- **Any source, not just Spotify**: the mirror reads whichever service the sync uses as its source. Spotify playlists are still downloaded by catalog URL; every other source (including Last.fm) is searched by artist and title.
+- **Your own library first (real FLAC)**: point `LOCAL_LIBRARY_DIR` at an existing music tree and each track found there is **copied into the playlist folder in its original format**, so a library FLAC stays a FLAC. Only the tracks with no local match fall through to spotDL. Matching is ISRC tag first, then title plus artist, using the same rules as the sync engine. Files are copied rather than hard-linked on purpose: the mirror stamps mtimes and backfills tags on what it finds, and a hard link would let it rewrite your library originals. Empty means off.
+- **Audio quality of the spotDL fallback**: that path sources from YouTube, so without a YT Music **Premium** cookie the ceiling is roughly 128 to 160 kbps. `LOCAL_MIRROR_FORMAT=opus` keeps YouTube's native stream without an mp3 re-encode, and a Premium cookie (`LOCAL_MIRROR_COOKIE_FILE`) unlocks 256 kbps AAC. Selecting `flac` changes the output container but cannot turn a lossy source into lossless audio. For genuine lossless, use `LOCAL_LIBRARY_DIR`.
 
-Monochrome's current FLAC path uses browser-gated, single-use playback resources rather than a stable, provider-authorized file-export API, so SongMirror does not automate it. Use the local mirror only for content you own or are otherwise authorized to copy.
+SongMirror does not automate FLAC extraction from a streaming catalog. Any new audio source must first clear the bar set in [`docs/monochrome-flac-assessment.md`](docs/monochrome-flac-assessment.md): a provider-published, versioned download or export endpoint, user-scoped authorization, explicit permanent-copy rights, documented territory, expiry and offline-use rules, and no DRM or access-control bypass. Use the local mirror only for content you own or are otherwise authorized to copy.
 
 <div align="right">
 
@@ -414,6 +418,7 @@ SongMirror refreshes credentials **just in time**, not with a separate token-ref
 | **Amazon Music** | The web access token renews through `/pandaToken` using the captured browser user agent, referer, and allowlisted cookies. The current `POST config.json?skipToken=false` flow bootstraps device context when needed, and rotated cookies are persisted. Logout, security changes, or server-side revocation still require a fresh capture. |
 | **Apple Music** | The pasted Bearer and Media-User-Token cannot be renewed by SongMirror and must be captured again after rejection. |
 | **YouTube Music** | Data API OAuth refreshes automatically within 60 seconds of expiry. Browser mode attempts Google's cookie rotation whenever a sync target is built; an already-expired browser session must be exported again. |
+| **Last.fm** | Neither the API key nor the session key expires, so nothing is refreshed. Re-authorize only if you revoke the app's access in your Last.fm settings. |
 | **Jellyfin** | The API key has no access-token refresh cycle; replace it only if it is revoked or deleted. |
 
 <a id="spotify"></a>
@@ -491,6 +496,46 @@ Talks to the **official [YouTube Data API v3](https://developers.google.com/yout
 3. In the app, paste the client ID + secret and complete the on-screen device code.
 
 > **Quota**: the Data API allows 10,000 units/day (a search costs 100, an add/remove 50). Steady-state upkeep is cheap; a big first-time backlog can hit the cap and resume the next day.
+
+<div align="right">
+
+[![][back-to-top]](#readme-top)
+
+</div>
+
+<a id="lastfm"></a>
+
+### Last.fm
+
+Last.fm has no playlists, so it is never a playlist destination. It contributes **listening history** as read-only collections, and its **Loved Tracks** is a liked-tracks collection like every other provider's, which becomes writable once you authorize the account.
+
+1. Create an API account at <https://www.last.fm/api/account/create>. Note both the **API key** and the **shared secret**.
+2. In Accounts → Last.fm, paste both, then click through the Last.fm authorization page.
+
+There are two credential levels, and the second is what unlocks writing:
+
+| You provide | You get |
+| --- | --- |
+| API key + username | public reads of that profile |
+| + shared secret + authorization | **private** reads, plus loving and unloving tracks |
+
+Authorization is a one-time browser round trip: songmirror sends you to Last.fm, you approve the app, and the returned token is exchanged for a **session key with an infinite lifetime**. Unlike every pasted credential in the table above, it never needs re-capturing. Revoke it from your Last.fm settings.
+
+What that exposes:
+
+| Collection | Contents |
+| --- | --- |
+| **Loved Tracks** | the liked-tracks collection. Readable always; **writable** once authorized, so your Spotify/TIDAL/Apple liked tracks can sync *into* Last.fm |
+| **Top Tracks (7 days … all time)** | six ranked read-only collections, one per Last.fm period |
+| **Recent Scrobbles** | the play feed, minus the currently-playing row |
+
+Three limits worth knowing before you rely on it:
+
+- **No ISRC.** The `user.*` endpoints return artist and track names only, so Last.fm tracks match by name rather than on catalog identity. Expect the occasional wrong-version match that an ISRC-carrying provider would have avoided. Before loving a track, songmirror asks `track.getInfo` for Last.fm's canonical spelling, so a near-miss title does not create a second loved entry.
+- **Ranked collections are undated.** Top Tracks has no per-track timestamp, so those tracks sync as undated and cannot drive date-added ordering.
+- **Playlist routes do not apply.** A liked-tracks sync *into* Last.fm must use the native route. There is no playlist for the "create a named playlist" route to write to.
+
+Without the shared secret, the profile you point at must have its loved and top tracks public.
 
 <div align="right">
 

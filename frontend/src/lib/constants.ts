@@ -46,6 +46,7 @@ const SERVICE_STYLES: Record<string, ServiceStyle> = {
   amazon: { label: 'Amazon Music', dot: 'bg-svc-amazon', soft: 'bg-svc-amazon-soft', text: 'text-svc-amazon' },
   apple: { label: 'Apple Music', dot: 'bg-svc-apple', soft: 'bg-svc-apple-soft', text: 'text-svc-apple' },
   ytmusic: { label: 'YouTube Music', dot: 'bg-svc-ytmusic', soft: 'bg-svc-ytmusic-soft', text: 'text-svc-ytmusic' },
+  lastfm: { label: 'Last.fm', dot: 'bg-svc-lastfm', soft: 'bg-svc-lastfm-soft', text: 'text-svc-lastfm' },
   jellyfin: { label: 'Jellyfin', dot: 'bg-svc-jellyfin', soft: 'bg-svc-jellyfin-soft', text: 'text-svc-jellyfin' },
   sync: { get label() { return t("Sync engine") }, dot: 'bg-accent', soft: 'bg-accent-soft', text: 'text-accent' },
   local: { get label() { return t("Download mirror") }, dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },
@@ -88,7 +89,7 @@ export function tagText(tag: string): string {
 
 /** Provider id -> ServiceLogo id (both the "yt" event tag and the "ytmusic"
  * account id resolve to the same YouTube Music mark). */
-export function serviceLogoId(idOrTag: string): 'spotify' | 'tidal' | 'qobuz' | 'deezer' | 'amazon' | 'apple' | 'ytmusic' | 'jellyfin' | null {
+export function serviceLogoId(idOrTag: string): 'spotify' | 'tidal' | 'qobuz' | 'deezer' | 'amazon' | 'apple' | 'ytmusic' | 'lastfm' | 'jellyfin' | null {
   idOrTag = activitySourceId(idOrTag)
   if (idOrTag === 'spotify') return 'spotify'
   if (idOrTag === 'tidal') return 'tidal'
@@ -97,6 +98,7 @@ export function serviceLogoId(idOrTag: string): 'spotify' | 'tidal' | 'qobuz' | 
   if (idOrTag === 'amazon') return 'amazon'
   if (idOrTag === 'apple') return 'apple'
   if (idOrTag === 'ytmusic') return 'ytmusic'
+  if (idOrTag === 'lastfm') return 'lastfm'
   if (idOrTag === 'jellyfin') return 'jellyfin'
   return null
 }
@@ -109,6 +111,7 @@ const SERVICE_HOME_URLS: Record<string, string> = {
   amazon: 'https://music.amazon.com/',
   apple: 'https://music.apple.com/',
   ytmusic: 'https://music.youtube.com/',
+  lastfm: 'https://www.last.fm/',
 }
 
 export function serviceHomeUrl(idOrTag: string): string {

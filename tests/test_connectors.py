@@ -13,7 +13,8 @@ def _conn(cid, tmp_path):
 
 def test_registry_has_all_supported_services():
     assert set(CONNECTORS) == {
-        "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic", "jellyfin"
+        "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
+        "lastfm", "jellyfin"
     }
 
 

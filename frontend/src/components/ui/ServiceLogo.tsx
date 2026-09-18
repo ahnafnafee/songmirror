@@ -1,10 +1,10 @@
-import { SiApplemusic, SiDeezer, SiJellyfin, SiSpotify, SiTidal, SiYoutubemusic } from 'react-icons/si'
+import { SiApplemusic, SiDeezer, SiJellyfin, SiLastdotfm, SiSpotify, SiTidal, SiYoutubemusic } from 'react-icons/si'
 
 import qobuzLogo from '@/assets/providers/qobuz.svg'
 
 const AMAZON_MUSIC_MARK = 'https://m.media-amazon.com/images/G/01/music/logo/1.0/smile_256x256.png'
 
-export type ServiceId = 'spotify' | 'tidal' | 'qobuz' | 'deezer' | 'amazon' | 'apple' | 'ytmusic' | 'jellyfin'
+export type ServiceId = 'spotify' | 'tidal' | 'qobuz' | 'deezer' | 'amazon' | 'apple' | 'ytmusic' | 'lastfm' | 'jellyfin'
 
 interface ServiceLogoProps {
   service: ServiceId
@@ -38,6 +38,8 @@ export function ServiceLogo({ service, className }: ServiceLogoProps) {
       return <SiApplemusic className={className} aria-hidden="true" />
     case 'ytmusic':
       return <SiYoutubemusic className={className} aria-hidden="true" />
+    case 'lastfm':
+      return <SiLastdotfm className={className} aria-hidden="true" />
     case 'jellyfin':
       return <SiJellyfin className={className} aria-hidden="true" />
   }

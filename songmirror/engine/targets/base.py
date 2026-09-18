@@ -70,6 +70,10 @@ class MirrorTarget:
     # durable id. The manual editor can then delete that exact occurrence
     # without rereading a thousand-track playlist to revalidate its position.
     stable_occurrence_ids = False
+    # False only for a provider with no playlist concept at all (Last.fm). Such
+    # a target is excluded from playlist mirroring and from N-way, but its
+    # native favorites collection stays usable.
+    supports_playlists = True
     favorite_tracks_name = "Liked Tracks"
     favorite_tracks_id = "liked-tracks"
 

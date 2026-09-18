@@ -21,17 +21,19 @@ from .base import (
     reconcile,
 )
 from .deezer import DeezerTarget
+from .lastfm import LastfmTarget
 from .qobuz import QobuzTarget
 from .spotify_target import SpotifyTarget
 from .tidal import TidalTarget
 from . import ytmusic
 
-__all__ = ["AppleMusicTarget", "AmazonMusicTarget", "DeezerTarget", "QobuzTarget",
+__all__ = ["AppleMusicTarget", "AmazonMusicTarget", "DeezerTarget", "LastfmTarget",
+           "QobuzTarget",
            "SpotifyTarget", "TidalTarget", "MirrorTarget", "TargetAuthError",
            "TargetCapabilityError",
            "TargetDirectoryIncompleteError", "TargetTransientError",
            "mirror_pair", "reconcile", "build_targets", "build_peers", "build_one", "is_peer",
-           "target_class", "provider_ids",
+           "target_class", "provider_ids", "supports_playlists",
            "nway_order_candidates"]
 
 
@@ -88,8 +90,14 @@ _REGISTRY = {
     "amazon": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(AmazonMusicTarget, "Amazon Music"),
     "apple": lambda opts, sp, sync_peer=False, songs=None: _apple(opts),
     "ytmusic": lambda opts, sp, sync_peer=False, songs=None: ytmusic.build(),
+    "lastfm": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(
+        LastfmTarget, "Last.fm"),
 }
-_SOURCE_ORDER = ["spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic"]
+# ISRC-rich providers first: they seed cross-provider identity for the rest.
+# Last.fm is last because its reads carry no ISRC at all, so it can only ever
+# unify through the fuzzy key and must not pre-empt a provider that can.
+_SOURCE_ORDER = ["spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
+                 "lastfm"]
 
 # The same providers as _REGISTRY, by class rather than by builder, for the
 # class-level facts a caller needs WITHOUT credentials (where the resolution
@@ -104,12 +112,35 @@ _CLASSES = {
     "amazon": AmazonMusicTarget,
     "apple": AppleMusicTarget,
     "ytmusic": ytmusic.YTMusicTarget,
+    "lastfm": LastfmTarget,
 }
 
 
 def provider_ids():
     """Every sync/transfer provider id, in presentation order."""
     return tuple(_SOURCE_ORDER)
+
+
+def supports_playlists(provider_id):
+    """Whether this provider has playlists at all. The single authority is the
+    target class, so nothing here restates the list."""
+    target = _CLASSES.get(provider_id)
+    return True if target is None else bool(getattr(target, "supports_playlists", True))
+
+
+def _writable(identity, opts):
+    """Whether this participant belongs in a mirror-target or peer list.
+
+    A provider with no playlists would only produce capability errors on an
+    otherwise healthy playlist pass, so it is excluded. It is still kept for a
+    liked-tracks job, because its native favorites collection is writable and
+    that sync runs through the same per-target loop.
+    """
+    profiles = _profiles(opts)
+    provider = profiles.provider_of(identity) if profiles is not None else identity
+    if supports_playlists(provider):
+        return True
+    return bool(getattr(opts, "liked_tracks", False))
 
 
 def target_provider(target, default=None):
@@ -205,7 +236,10 @@ def nway_order_candidates(opts):
     source order.
     """
     profiles = _profiles(opts)
-    participants = _participant_ids(opts)
+    # A read-only source can never hold order authority: the role requires the
+    # holder to be a writable peer.
+    participants = [identity for identity in _participant_ids(opts)
+                    if _writable(identity, opts)]
     if profiles is None:
         preferred = ("spotify", getattr(opts, "sync_source", None))
     else:
@@ -232,7 +266,7 @@ def build_targets(opts, sp=None):
     return [
         target
         for identity in _participant_ids(opts)
-        if identity != source
+        if identity != source and _writable(identity, opts)
         for target in (build_one(identity, opts, sp, sync_peer=True),)
         if target
     ]
@@ -276,7 +310,7 @@ def is_peer(provider_id, opts=None):
     Jellyfin, which the download mirror feeds instead of track-level writes."""
     if opts is not None and _profiles(opts) is not None:
         provider_id = _profiles(opts).provider_of(provider_id)
-    return provider_id in _REGISTRY
+    return provider_id in _REGISTRY and supports_playlists(provider_id)
 
 
 def build_peers(opts, sp, songs=None):
@@ -289,6 +323,7 @@ def build_peers(opts, sp, songs=None):
     return [
         peer
         for identity in _participant_ids(opts)
+        if _writable(identity, opts)
         for peer in (build_one(identity, opts, sp, sync_peer=True, songs=songs),)
         if peer
     ]

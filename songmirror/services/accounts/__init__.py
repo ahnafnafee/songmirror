@@ -9,6 +9,7 @@ from .amazon_music import AmazonMusicConnector
 from .base import ConnStatus, Connector, DeviceCode, Field
 from .deezer import DeezerConnector
 from .jellyfin import JellyfinConnector
+from .lastfm import LastfmConnector
 from .qobuz import QobuzConnector
 from .spotify import SpotifyConnector
 from .tidal import TidalConnector
@@ -24,5 +25,7 @@ CONNECTORS = {
     "amazon": AmazonMusicConnector,
     "apple": AppleConnector,
     "ytmusic": YTMusicConnector,
+    # Read-only source: supplies listening history, accepts no writes.
+    "lastfm": LastfmConnector,
     "jellyfin": JellyfinConnector,
 }
