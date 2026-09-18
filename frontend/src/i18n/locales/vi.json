@@ -1145,5 +1145,7 @@
   "Shared secret": "Khóa bí mật chia sẻ",
   "Username": "Tên người dùng",
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "Đọc lịch sử nghe của bạn. Cấp quyền để đọc trang cá nhân riêng tư và yêu thích bài hát.",
-  "Loved Tracks": "Bài hát yêu thích"
+  "Loved Tracks": "Bài hát yêu thích",
+  "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "Hãy cấp quyền cho {{accountName}} ở trang Tài khoản trước khi nó có thể nhận bài hát yêu thích.",
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} không có danh sách phát, nên bộ sưu tập của chính nó là đích duy nhất."
 }

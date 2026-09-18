@@ -1145,5 +1145,7 @@
   "Shared secret": "共享密钥",
   "Username": "用户名",
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "读取你的收听记录。授权后可读取私密资料并收藏歌曲。",
-  "Loved Tracks": "喜欢的歌曲"
+  "Loved Tracks": "喜欢的歌曲",
+  "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "请先在账户页面授权 {{accountName}}，它才能接收喜欢的歌曲。",
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} 没有歌单，因此它自己的集合是唯一的目标。"
 }

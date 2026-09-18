@@ -1145,5 +1145,7 @@
   "Shared secret": "共有シークレット",
   "Username": "ユーザー名",
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "再生履歴を読み込みます。認証すると非公開プロフィールの読み込みとトラックのお気に入り登録ができます。",
-  "Loved Tracks": "お気に入りのトラック"
+  "Loved Tracks": "お気に入りのトラック",
+  "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "{{accountName}} がお気に入り曲を受け取れるようにするには、先にアカウント画面で認証してください。",
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} はプレイリストを持たないため、自身のコレクションが唯一の送り先です。"
 }

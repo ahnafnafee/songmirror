@@ -49,3 +49,10 @@ export function canReceiveLikedTracks(account: Account): boolean {
 export function canParticipateInSync(account: Account): boolean {
   return canSyncAccount(account) || canBeSyncSource(account) || canReceiveLikedTracks(account)
 }
+
+/** Whether the provider has playlists. False only for a history service, where
+ * the "create a named playlist" liked-tracks route has nothing to write to.
+ * Defaults true for account data cached before the field existed. */
+export function hasPlaylists(account: Account): boolean {
+  return account.supports_playlists ?? true
+}

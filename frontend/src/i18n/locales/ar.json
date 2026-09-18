@@ -1273,5 +1273,7 @@
   "Shared secret": "المفتاح السري المشترك",
   "Username": "اسم المستخدم",
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "يقرأ سجل استماعك. فوّضه لقراءة ملف خاص وإضافة المقطوعات إلى المفضلة.",
-  "Loved Tracks": "المقطوعات المفضلة"
+  "Loved Tracks": "المقطوعات المفضلة",
+  "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "فوّض {{accountName}} من صفحة الحسابات قبل أن يتمكن من استقبال المقطوعات المفضلة.",
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "لا توجد في {{accountName}} قوائم تشغيل، لذلك مجموعته الخاصة هي الوجهة الوحيدة."
 }

@@ -1145,5 +1145,7 @@
   "Shared secret": "Paylaşılan gizli anahtar",
   "Username": "Kullanıcı adı",
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "Dinleme geçmişinizi okur. Özel bir profili okumak ve parçaları beğenmek için yetkilendirin.",
-  "Loved Tracks": "Beğenilen parçalar"
+  "Loved Tracks": "Beğenilen parçalar",
+  "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "{{accountName}} beğenilen parçaları alabilmesi için önce Hesaplar sayfasında yetkilendirilmelidir.",
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} çalma listesi barındırmaz, bu yüzden tek hedef kendi koleksiyonudur."
 }

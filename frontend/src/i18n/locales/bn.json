@@ -1145,5 +1145,7 @@
   "Shared secret": "শেয়ার করা সিক্রেট",
   "Username": "ব্যবহারকারীর নাম",
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "আপনার শোনার ইতিহাস পড়ে। ব্যক্তিগত প্রোফাইল পড়তে এবং ট্র্যাক পছন্দ করতে অনুমোদন দিন।",
-  "Loved Tracks": "পছন্দের ট্র্যাক"
+  "Loved Tracks": "পছন্দের ট্র্যাক",
+  "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "{{accountName}} পছন্দের ট্র্যাক নিতে পারার আগে অ্যাকাউন্ট পাতায় এটিকে অনুমোদন দিন।",
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}}-এ কোনো প্লেলিস্ট নেই, তাই তার নিজের সংগ্রহই একমাত্র গন্তব্য।"
 }

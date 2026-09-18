@@ -1177,5 +1177,7 @@
   "Shared secret": "Segredo compartilhado",
   "Username": "Nome de usuário",
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "Lê seu histórico de audição. Autorize para ler um perfil privado e marcar faixas como favoritas.",
-  "Loved Tracks": "Faixas favoritas"
+  "Loved Tracks": "Faixas favoritas",
+  "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "Autorize {{accountName}} na página de contas antes que ele possa receber faixas favoritas.",
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} não tem playlists, então a própria coleção é o único destino."
 }

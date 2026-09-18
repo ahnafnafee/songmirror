@@ -1145,5 +1145,7 @@
   "Shared secret": "Rahasia bersama",
   "Username": "Nama pengguna",
   "Reads your listening history. Authorize it to read a private profile and love tracks.": "Membaca riwayat mendengarkan Anda. Otorisasi untuk membaca profil pribadi dan menyukai lagu.",
-  "Loved Tracks": "Lagu favorit"
+  "Loved Tracks": "Lagu favorit",
+  "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "Otorisasi {{accountName}} di halaman Akun sebelum layanan ini bisa menerima lagu favorit.",
+  "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} tidak punya daftar putar, jadi koleksinya sendiri adalah satu-satunya tujuan."
 }
