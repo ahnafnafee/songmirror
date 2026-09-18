@@ -519,7 +519,7 @@ There are two credential levels, and the second is what unlocks writing:
 | API key + username | public reads of that profile |
 | + shared secret + authorization | **private** reads, plus loving and unloving tracks |
 
-Authorization is a one-time browser round trip: songmirror sends you to Last.fm, you approve the app, and the returned token is exchanged for a **session key with an infinite lifetime**. Unlike every pasted credential in the table above, it never needs re-capturing. Revoke it from your Last.fm settings.
+Authorization is a one-time browser round trip: SongMirror sends you to Last.fm, you approve the app, and the returned token is exchanged for a **session key with an infinite lifetime**. Unlike every pasted credential in the table above, it never needs re-capturing. Revoke it from your Last.fm settings.
 
 What that exposes:
 
@@ -531,7 +531,7 @@ What that exposes:
 
 Three limits worth knowing before you rely on it:
 
-- **No ISRC.** The `user.*` endpoints return artist and track names only, so Last.fm tracks match by name rather than on catalog identity. Expect the occasional wrong-version match that an ISRC-carrying provider would have avoided. Before loving a track, songmirror asks `track.getInfo` for Last.fm's canonical spelling, so a near-miss title does not create a second loved entry.
+- **No ISRC.** The `user.*` endpoints return artist and track names only, so Last.fm tracks match by name rather than on catalog identity. Expect the occasional wrong-version match that an ISRC-carrying provider would have avoided. Before loving a track, SongMirror asks `track.getInfo` for Last.fm's canonical spelling, so a near-miss title does not create a second loved entry.
 - **Ranked collections are undated.** Top Tracks has no per-track timestamp, so those tracks sync as undated and cannot drive date-added ordering.
 - **Playlist routes do not apply.** A liked-tracks sync *into* Last.fm must use the native route. There is no playlist for the "create a named playlist" route to write to.
 

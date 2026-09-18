@@ -72,6 +72,7 @@ Alternatif gratis, sumber terbuka, dan dihosting sendiri untuk Soundiiz, TuneMyM
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [Last.fm](#lastfm)
 - [🖥️ tanpa antarmuka grafis CLI](#headless-cli)
 - [🛡️ Perlindungan keamanan](#safety-rails)
 - [🗃️ Caching & arsip lagu](#caching-song-archive)
@@ -104,7 +105,8 @@ SongMirror menjaga daftar putar Anda tetap sama di mana saja tanpa menambahkan u
 - 🔗 **Transfer dari tautan** — tempelkan URL daftar putar publik dari layanan mana pun yang terhubung dan salin langsung. Tidak perlu menyimpan atau mengikutinya terlebih dahulu.
 - 🌐 **Daftar putar yang diikuti** — menyinkronkan dan mentransfer daftar putar yang Anda ikuti tetapi bukan milik Anda, bukan hanya daftar putar yang Anda buat.
 - 📦 **Pencadangan metadata terjadwal** — arsipkan seluruh pustaka daftar putar akun sesuai jadwalnya sendiri berdasarkan data aplikasi yang persisten, dengan JSON/XML, batas retensi, dan riwayat keberhasilan/kegagalan yang terlihat. unduhan satu kali dan siap impor Soundiiz JSON tetap tersedia juga.
-- 💿 **Cermin unduhan lokal** — simpan audio offline, satu folder per daftar putar dalam tata letak Jellyfin `AlbumArtist/Album`, dengan sampul dan `.m3u8` yang diperbarui secara otomatis.
+- 📻 **Last.fm**: kirim Loved Tracks, Top Tracks (enam periode), dan Recent Scrobbles Anda ke layanan mana pun yang terhubung, dan setelah akun diotorisasi, bawa lagu favorit dari layanan lain kembali **ke** Last.fm. Layanan ini tidak punya daftar putar, jadi tidak pernah menjadi tujuan daftar putar.
+- 💿 **Cermin unduhan lokal** — simpan audio offline, satu folder per daftar putar dalam tata letak Jellyfin `AlbumArtist/Album`, dengan sampul dan `.m3u8` yang diperbarui secara otomatis. Arahkan ke pustaka musik yang sudah ada dan lagu yang cocok akan disalin **dengan kualitas aslinya** (FLAC tetap FLAC), sementara unduhan hanya menutup sisanya.
 - 🛡️ **Perlindungan keamanan** — simulasi secara default, batasan penambahan/penghapusan per pass, perlindungan kerugian bersih, pelindung snapshot kosong, dibatalkan tanpa menulis saat token kedaluwarsa.
 - 🗃️ **Arsip lagu yang terus bertambah** — setiap lagu yang pernah dilihat direkam dalam database SQLite lokal (nama, artis, album, ISRC, metadata mentah, pertama/terakhir dilihat).
 - 🧭 **Riwayat kecocokan yang dapat diedit** — telusuri, perbaiki, dan hapus setiap kecocokan trek yang disimpan dalam cache per layanan dari halaman Pemetaan, termasuk hasil "tidak cocok" yang jika tidak, akan tetap tidak cocok selamanya.
@@ -383,9 +385,11 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - Inkremental — setelah pengunduhan penuh pertama, hanya trek yang baru ditambahkan yang diambil; trek yang dihapus (dan folder albumnya yang dikosongkan) dipangkas. Lari yang terputus berlanjut pada lintasan berikutnya.
 - Terbaru-pertama `.m3u8` — ditulis dalam urutan penambahan tanggal, terbaru di atas (atur `LOCAL_MIRROR_ORDER=oldest` untuk membalik). Bangun kembali sampul / tag / mtimes dari file yang ada dengan `uv run main.py --refresh-local`.
 - Sampul daftar putar di Jellyfin — Jellyfin mengabaikan file sampul di sebelah m3u, jadi atur `JELLYFIN_URL` + `JELLYFIN_API_KEY` dan setiap pass mengunggah sampul daftar putar sebenarnya melalui Jellyfin API.
-- Kualitas audio — sumbernya adalah YouTube, jadi tanpa cookie YT Music Premium, batas maksimumnya adalah ~128–160 kbps. `LOCAL_MIRROR_FORMAT=opus` menyimpan aliran asli YouTube tanpa pengkodean ulang mp3; cookie Premium (`LOCAL_MIRROR_COOKIE_FILE`) membuka 256 kbps AAC. Memilih `flac` akan mengubah wadah keluaran tetapi tidak dapat mengubah sumber lossy menjadi audio lossless.
+- **Sumber apa pun, bukan hanya Spotify**: cermin membaca layanan yang dipakai sinkronisasi sebagai sumber. Daftar putar Spotify tetap diunduh melalui URL katalognya; sumber lain (termasuk Last.fm) dicari berdasarkan artis dan judul.
+- **Pustaka Anda lebih dulu (FLAC asli)**: arahkan `LOCAL_LIBRARY_DIR` ke pohon musik yang sudah ada, lalu setiap lagu yang ditemukan di sana **disalin ke folder daftar putar dalam format aslinya**, sehingga FLAC tetap FLAC. Hanya lagu tanpa padanan lokal yang diteruskan ke spotDL. Pencocokan memakai tag ISRC lebih dulu, lalu judul dan artis, dengan aturan yang sama seperti mesin sinkronisasi. Penyalinan dipilih alih-alih tautan keras dengan sengaja: cermin menulis waktu modifikasi dan melengkapi tag, dan tautan keras akan mengubah berkas asli Anda. Kosong berarti nonaktif.
+- Kualitas audio — sumbernya adalah YouTube, jadi tanpa cookie YT Music Premium, batas maksimumnya adalah ~128–160 kbps. `LOCAL_MIRROR_FORMAT=opus` menyimpan aliran asli YouTube tanpa pengkodean ulang mp3; cookie Premium (`LOCAL_MIRROR_COOKIE_FILE`) membuka 256 kbps AAC. Memilih `flac` akan mengubah wadah keluaran tetapi tidak dapat mengubah sumber lossy menjadi audio lossless. Untuk audio tanpa kompresi yang sebenarnya, gunakan `LOCAL_LIBRARY_DIR`.
 
-Jalur FLAC Monochrome saat ini menggunakan sumber daya pemutaran sekali pakai yang dilindungi browser, bukan ekspor file stabil dan resmi dari penyedia API, jadi SongMirror tidak mengotomatiskannya. Gunakan mirror lokal hanya untuk konten yang Anda miliki atau yang diizinkan untuk disalin.
+SongMirror tidak mengotomatiskan ekstraksi FLAC dari katalog streaming. Setiap sumber audio baru harus lebih dulu memenuhi syarat di [`docs/monochrome-flac-assessment.md`](../monochrome-flac-assessment.md): titik akhir unduh atau ekspor yang diterbitkan penyedia dan berversi, otorisasi per pengguna, hak salinan permanen yang tegas, aturan wilayah, masa berlaku, dan penggunaan luring yang terdokumentasi, serta tanpa pengelakan DRM atau kontrol akses. Gunakan cermin lokal hanya untuk konten milik Anda atau yang Anda berhak salin.
 
 <div align="right">
 
@@ -414,6 +418,7 @@ SongMirror menyegarkan kredensial tepat pada waktunya, bukan dengan pengatur wak
 | Amazon Music | Token akses web diperbarui melalui `/pandaToken` menggunakan agen pengguna browser yang diambil, rujukan, dan cookie yang diizinkan. Konteks perangkat bootstrap aliran `POST config.json?skipToken=false` saat ini bila diperlukan, dan cookie yang diputar tetap ada. Logout, perubahan keamanan, atau pencabutan sisi server masih memerlukan pengambilan baru. |
 | Apple Music | Bearer dan Media-User-Token yang ditempel tidak dapat diperpanjang dengan SongMirror dan harus diambil lagi setelah ditolak. |
 | YouTube Music | Data API OAuth disegarkan secara otomatis dalam waktu 60 detik setelah habis masa berlakunya. Mode browser mencoba rotasi cookie Google setiap kali target sinkronisasi dibuat; sesi browser yang sudah kedaluwarsa harus diekspor lagi. |
+| Last.fm | Kunci API maupun kunci sesi tidak kedaluwarsa, jadi tidak ada yang diperbarui. Otorisasi ulang hanya jika Anda mencabut akses aplikasi di pengaturan akun Last.fm Anda. |
 | Jellyfin | Kunci API tidak memiliki siklus penyegaran token akses; menggantinya hanya jika dicabut atau dihapus. |
 
 <a id="spotify"></a>
@@ -491,6 +496,46 @@ Berbicara dengan [YouTube Data API v3](https://developers.google.com/youtube/v3)
 3. Di aplikasi, tempel ID klien + rahasia dan lengkapi kode perangkat di layar.
 
 > Kuota: Data API memungkinkan 10.000 unit/hari (biaya pencarian 100, tambah/hapus 50). Pemeliharaan dalam kondisi tunak itu murah; simpanan pertama yang besar dapat mencapai batasnya dan dilanjutkan keesokan harinya.
+
+<div align="right">
+
+[![][back-to-top]](#readme-top)
+
+</div>
+
+<a id="lastfm"></a>
+
+### Last.fm
+
+Last.fm tidak punya daftar putar, jadi tidak pernah menjadi tujuan daftar putar. Layanan ini menyumbang **riwayat mendengarkan** sebagai koleksi baca-saja, dan **Loved Tracks** miliknya adalah koleksi lagu favorit seperti pada penyedia lain, yang bisa ditulis begitu Anda mengotorisasi akun.
+
+1. Buat akun API di <https://www.last.fm/api/account/create>. Catat baik **kunci API** maupun **rahasia bersama**.
+2. Di Akun → Last.fm, tempel keduanya, lalu selesaikan halaman otorisasi Last.fm.
+
+Ada dua tingkat kredensial, dan tingkat kedua itulah yang membuka penulisan:
+
+| Yang Anda berikan | Yang Anda dapat |
+| --- | --- |
+| kunci API + nama pengguna | pembacaan publik atas profil tersebut |
+| + rahasia bersama + otorisasi | pembacaan **pribadi**, serta menambah dan melepas lagu favorit |
+
+Otorisasi adalah satu perjalanan sekali lewat peramban: SongMirror mengirim Anda ke Last.fm, Anda menyetujui aplikasinya, dan token yang kembali ditukar dengan **kunci sesi berumur tak terbatas**. Berbeda dari semua kredensial tempel di tabel di atas, kunci ini tidak pernah perlu diambil lagi. Anda bisa mencabutnya di pengaturan akun Last.fm Anda.
+
+Berikut yang tersedia:
+
+| Koleksi | Isi |
+| --- | --- |
+| **Loved Tracks** | koleksi lagu favorit. Selalu bisa dibaca; **bisa ditulis** setelah diotorisasi, sehingga favorit Spotify, TIDAL, atau Apple Anda dapat disinkronkan *ke dalam* Last.fm |
+| **Top Tracks (7 hari … sepanjang waktu)** | enam koleksi baca-saja berperingkat, satu untuk setiap periode Last.fm |
+| **Recent Scrobbles** | umpan pemutaran, tanpa baris yang sedang diputar |
+
+Tiga batas yang perlu diketahui sebelum Anda mengandalkannya:
+
+- **Tanpa ISRC.** Titik akhir `user.*` hanya mengembalikan nama artis dan lagu, jadi lagu Last.fm dipadankan berdasarkan nama, bukan identitas katalog. Bersiaplah untuk versi yang sesekali salah, yang akan dihindari penyedia bertag ISRC. Sebelum menyukai sebuah lagu, SongMirror menanyakan ejaan kanonis Last.fm lewat `track.getInfo`, sehingga judul yang nyaris sama tidak membuat entri kedua.
+- **Koleksi berperingkat tidak bertanggal.** Top Tracks tidak punya penanda waktu per lagu, jadi lagu-lagu itu disinkronkan tanpa tanggal dan tidak dapat menentukan urutan penambahan.
+- **Rute daftar putar tidak berlaku.** Sinkronisasi lagu favorit *ke dalam* Last.fm harus memakai rute asli. Tidak ada daftar putar yang bisa ditulis oleh rute pembuat daftar putar bernama.
+
+Tanpa rahasia bersama, profil yang Anda tunjuk harus menjadikan Loved Tracks dan Top Tracks miliknya publik.
 
 <div align="right">
 

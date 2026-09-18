@@ -72,6 +72,7 @@ Soundiiz, TuneMyMusic ve FreeYourMusic servislerine ücretsiz, açık kaynaklı,
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [Last.fm](#lastfm)
 - [🖥️ Arayüzsüz CLI (Headless)](#headless-cli)
 - [🛡️ Güvenlik önlemleri](#safety-rails)
 - [🗃️ Önbellek ve şarkı arşivi](#caching-song-archive)
@@ -104,7 +105,8 @@ SongMirror; manuel olarak tek tek şarkı eklemeye, kopyalamaya ya da kitaplığ
 - 🔗 **Bağlantıdan aktarma** — bağlı herhangi bir servisteki herkese açık bir çalma listesi URL'sini yapıştırarak doğrudan kopyalayın. Listeyi önceden kaydetmeniz veya takip etmeniz gerekmez.
 - 🌐 **Takip edilen çalma listeleri** — yalnızca kendi oluşturduğunuz değil, takip ettiğiniz ancak sahibi olmadığınız çalma listelerini de senkronize edin ve aktarın.
 - 📦 **Zamanlanmış meta veri yedeklemeleri** — bir hesabın çalma listesi kitaplığının tamamını JSON/XML formatında, saklama sınırları ve başarı/başarısızlık geçmişiyle kalıcı uygulama verileri altında düzenli olarak arşivleyin. Tek seferlik indirmeler ve içe aktarmaya hazır Soundiiz JSON da kullanılabilir.
-- 💿 **Yerel indirme aynası** — çevrimdışı ses dosyalarını, **Jellyfin'in** `AlbumArtist/Album` klasör yapısında, kapak resimleri ve otomatik güncellenen `.m3u8` dosyasıyla çalma listesi başına bir klasör halinde saklayın.
+- 📻 **Last.fm**: Loved Tracks, Top Tracks (altı dönem) ve Recent Scrobbles koleksiyonlarınızı bağlı herhangi bir hizmete gönderin; hesabı yetkilendirdikten sonra diğer hizmetlerdeki beğenilen parçaları **Last.fm tarafına** geri taşıyın. Çalma listesi yoktur, dolayısıyla asla çalma listesi hedefi olmaz.
+- 💿 **Yerel indirme aynası** — çevrimdışı ses dosyalarını, **Jellyfin'in** `AlbumArtist/Album` klasör yapısında, kapak resimleri ve otomatik güncellenen `.m3u8` dosyasıyla çalma listesi başına bir klasör halinde saklayın. Mevcut bir müzik kitaplığına yönlendirdiğinizde eşleşen parçalar **özgün kaliteleriyle** kopyalanır (bir FLAC yine FLAC kalır) ve indirmeler yalnızca eksikleri tamamlar.
 - 🛡️ **Güvenlik önlemleri** — varsayılan olarak simülasyon, geçiş başına ekleme/kaldırma sınırları, net kayıp koruması, boş anlık görüntü koruması ve belirteçlerin süresi dolduğunda yazmadan güvenle iptal etme.
 - 🗃️ **Sürekli büyüyen şarkı arşivi** — karşılaşılan her parça yerel bir SQLite veritabanına kaydedilir (isim, sanatçı, albüm, ISRC, ham meta veriler, ilk/son görülme).
 - 🧭 **Düzenlenebilir eşleşme geçmişi** — servis başına önbelleğe alınmış tüm parça eşleşmelerini (ve aksi halde sonsuza kadar eşleşmeyecek olan "eşleşme yok" sonuçlarını) Eşlemeler sayfasından inceleyin, düzeltin ve silin.
@@ -383,9 +385,11 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - **Artımlı** — ilk tam indirmeden sonra yalnızca yeni eklenen parçalar getirilir; kaldırılan parçalar (ve bunların boşaltılan albüm klasörleri) budanır. Kesintiye uğrayan çalışma bir sonraki geçişte devam eder.
 - **En yeni ilk `.m3u8`** — eklenme tarihine göre yazılır, en yeni en üsttedir (çevirmek için `LOCAL_MIRROR_ORDER=oldest` olarak ayarlayın). `uv run main.py --refresh-local` ile mevcut dosyalardan kapakları / etiketleri / mtime'ları yeniden oluşturun.
 - **Çalma listesi kapakları Jellyfin** — Jellyfin m3u'nun yanındaki kapak dosyasını yok sayar, bu nedenle `JELLYFIN_URL` + `JELLYFIN_API_KEY` değerini ayarlayın ve her geçiş, Jellyfin API aracılığıyla gerçek çalma listesi kapağını yükler.
-- **Ses kalitesi** — kaynak YouTube'dir, yani YT Music **Premium** çerezi olmadan tavan ~128–160 kbps'dir. `LOCAL_MIRROR_FORMAT=opus`, YouTube'nin yerel akışını mp3 yeniden kodlaması olmadan tutar; bir Premium çerez (`LOCAL_MIRROR_COOKIE_FILE`), 256 kbps AAC'nin kilidini açar. `flac` seçeneğinin seçilmesi çıkış kabını değiştirir ancak kayıplı bir kaynağı kayıpsız sese dönüştüremez.
+- **Yalnızca Spotify değil, her kaynak**: Ayna, eşitlemenin kaynak olarak kullandığı hizmeti okur. Spotify çalma listeleri hâlâ katalog adresinden indirilir; diğer her kaynak (Last.fm dahil) sanatçı ve parça adına göre aranır.
+- **Önce kendi kitaplığınız (gerçek FLAC)**: `LOCAL_LIBRARY_DIR` değişkenini mevcut bir müzik ağacına yönlendirin; orada bulunan her parça **özgün biçimiyle çalma listesi klasörüne kopyalanır**, yani bir FLAC yine FLAC kalır. Yalnızca yerelde eşi bulunmayan parçalar spotDL tarafına düşer. Eşleştirme önce ISRC etiketiyle, sonra parça adı ve sanatçıyla yapılır; eşitleme motorunun kurallarıyla aynıdır. Sabit bağlantı yerine kopyalama bilinçli bir tercihtir: ayna değişiklik tarihlerini yazar ve etiketleri tamamlar, sabit bağlantı ise özgün dosyalarınızı değiştirirdi. Boş bırakmak kapalı anlamına gelir.
+- **Ses kalitesi** — kaynak YouTube'dir, yani YT Music **Premium** çerezi olmadan tavan ~128–160 kbps'dir. `LOCAL_MIRROR_FORMAT=opus`, YouTube'nin yerel akışını mp3 yeniden kodlaması olmadan tutar; bir Premium çerez (`LOCAL_MIRROR_COOKIE_FILE`), 256 kbps AAC'nin kilidini açar. `flac` seçeneğinin seçilmesi çıkış kabını değiştirir ancak kayıplı bir kaynağı kayıpsız sese dönüştüremez. Gerçek kayıpsız ses için `LOCAL_LIBRARY_DIR` kullanın.
 
-Monochrome'nin mevcut FLAC yolu, kararlı, sağlayıcı tarafından yetkilendirilmiş dosya dışa aktarımı API yerine tarayıcı geçişli, tek kullanımlık oynatma kaynaklarını kullanır, dolayısıyla SongMirror bunu otomatikleştirmez. Yerel yansıtmayı yalnızca sahip olduğunuz veya kopyalamaya yetkili olduğunuz içerik için kullanın.
+SongMirror, bir akış kataloğundan FLAC çıkarmayı otomatikleştirmez. Yeni her ses kaynağı önce [`docs/monochrome-flac-assessment.md`](../monochrome-flac-assessment.md) belgesindeki koşulları karşılamalıdır: sağlayıcının yayımladığı, sürümlenmiş bir indirme veya dışa aktarma uç noktası, kullanıcıya bağlı yetkilendirme, kalıcı kopya için açık haklar, bölge, son kullanma ve çevrimdışı kullanım kurallarının belgelenmiş olması ve DRM ile erişim denetiminin aşılmaması. Yerel aynayı yalnızca size ait olan veya kopyalamaya yetkili olduğunuz içerik için kullanın.
 
 <div align="right">
 
@@ -414,6 +418,7 @@ SongMirror kimlik bilgilerini ayrı bir belirteç yenileme zamanlayıcısıyla d
 | **Amazon Music** | Web erişim belirteci, yakalanan tarayıcı kullanıcı aracısı, yönlendiren ve izin verilenler listesine eklenen çerezler kullanılarak `/pandaToken` aracılığıyla yenilenir. Mevcut `POST config.json?skipToken=false` akış, gerektiğinde cihaz bağlamını önyükler ve döndürülen çerezler kalıcı olur. Oturum kapatma, güvenlik değişiklikleri veya sunucu tarafı iptali hâlâ yeni bir yakalama gerektiriyor. |
 | **Apple Music** | Yapıştırılan Bearer ve Media-User-Token, SongMirror tarihine kadar yenilenemez ve reddedildikten sonra yeniden yakalanmalıdır. |
 | **YouTube Music** | Data API OAuth sürenin dolmasından itibaren 60 saniye içinde otomatik olarak yenilenir. Tarayıcı modu, bir senkronizasyon hedefi oluşturulduğunda Google'nin çerez rotasyonunu dener; süresi dolmuş bir tarayıcı oturumunun yeniden dışa aktarılması gerekir. |
+| Last.fm | Ne API anahtarı ne de oturum anahtarı sona erer, dolayısıyla hiçbir şey yenilenmez. Yalnızca uygulamanın erişimini Last.fm hesap ayarlarınızdan geri aldıysanız yeniden yetkilendirin. |
 | **Jellyfin** | API anahtarının erişim belirteci yenileme döngüsü yoktur; yalnızca iptal edilmesi veya silinmesi durumunda değiştirin. |
 
 <a id="spotify"></a>
@@ -491,6 +496,46 @@ OAuth yenileme belirteci dayanıklı olan ve yeniden başlatmalarda korunan resm
 3. Uygulamada istemci kimliğini + gizli anahtarını yapıştırın ve ekrandaki cihaz kodunu onaylayın.
 
 > **Kota**: Data API günde 10.000 birime izin verir (arama maliyeti 100, ekleme/çıkarma maliyeti 50). Rutin bakım işlemleri oldukça ekonomiktir; ilk çalıştırmadaki büyük bir aktarım limite ulaşıp ertesi gün devam edebilir.
+
+<div align="right">
+
+[![][back-to-top]](#readme-top)
+
+</div>
+
+<a id="lastfm"></a>
+
+### Last.fm
+
+Last.fm'in çalma listesi yoktur, dolayısıyla asla çalma listesi hedefi olmaz. **Dinleme geçmişinizi** salt okunur koleksiyonlar olarak sunar ve **Loved Tracks** koleksiyonu, diğer tüm sağlayıcılardaki gibi bir beğenilen parça koleksiyonudur; hesabı yetkilendirdiğinizde yazılabilir hale gelir.
+
+1. <https://www.last.fm/api/account/create> adresinde bir API hesabı oluşturun. Hem **API anahtarını** hem de **paylaşılan gizli anahtarı** not edin.
+2. Hesaplar → Last.fm bölümünde ikisini de yapıştırın, ardından Last.fm yetkilendirme sayfasını tamamlayın.
+
+İki kimlik bilgisi düzeyi vardır ve yazmayı açan ikincisidir:
+
+| Verdiğiniz | Aldığınız |
+| --- | --- |
+| API anahtarı + kullanıcı adı | o profilin herkese açık okumaları |
+| + paylaşılan gizli anahtar + yetkilendirme | **özel** okumalar ve beğenilen parça ekleyip kaldırma |
+
+Yetkilendirme tarayıcı üzerinden tek seferlik bir gidiş dönüştür: SongMirror sizi Last.fm'e yönlendirir, uygulamayı onaylarsınız ve dönen belirteç **süresiz ömürlü bir oturum anahtarıyla** değiştirilir. Yukarıdaki tablodaki yapıştırılan tüm kimlik bilgilerinin aksine bunun yeniden alınması hiç gerekmez. Last.fm hesap ayarlarınızdan geri alabilirsiniz.
+
+Bu, şunları kullanıma açar:
+
+| Koleksiyon | İçerik |
+| --- | --- |
+| **Loved Tracks** | beğenilen parça koleksiyonu. Her zaman okunabilir; yetkilendirmeden sonra **yazılabilir**, böylece Spotify, TIDAL veya Apple beğenileriniz *Last.fm tarafına* eşitlenebilir |
+| **Top Tracks (7 gün … tüm zamanlar)** | her Last.fm dönemi için bir tane olmak üzere, sıralanmış altı salt okunur koleksiyon |
+| **Recent Scrobbles** | o anda çalan satır dışında kalan dinleme akışı |
+
+Buna güvenmeden önce bilinmesi gereken üç sınır:
+
+- **ISRC yok.** `user.*` uç noktaları yalnızca sanatçı ve parça adı döndürür, bu yüzden Last.fm parçaları katalog kimliği yerine ada göre eşleştirilir. ISRC taşıyan bir sağlayıcının önleyeceği hatalı sürümlerle ara sıra karşılaşabilirsiniz. Bir parçayı beğenmeden önce SongMirror, `track.getInfo` üzerinden Last.fm'in standart yazımını sorar; böylece çok benzer bir başlık ikinci bir kayıt oluşturmaz.
+- **Sıralanmış koleksiyonlarda tarih yoktur.** Top Tracks parça başına zaman damgası taşımaz, bu yüzden o parçalar tarihsiz eşitlenir ve eklenme sırasını belirleyemez.
+- **Çalma listesi yolları geçerli değildir.** Beğenilen parçaların *Last.fm tarafına* eşitlenmesi yerel yolu kullanmak zorundadır. Adlandırılmış çalma listesi oluşturan yolun yazabileceği bir çalma listesi yoktur.
+
+Paylaşılan gizli anahtar olmadan, belirttiğiniz profilin Loved Tracks ve Top Tracks koleksiyonları herkese açık olmalıdır.
 
 <div align="right">
 

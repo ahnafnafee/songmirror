@@ -72,6 +72,7 @@ Một giải pháp thay thế miễn phí, mã nguồn mở, tự lưu trữ cho
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [Last.fm](#lastfm)
 - [🖥️ không có giao diện đồ họa CLI](#headless-cli)
 - [🛡️ Biện pháp đảm bảo an toàn](#safety-rails)
 - [🗃️ Bộ nhớ đệm và lưu trữ bài hát](#caching-song-archive)
@@ -104,7 +105,8 @@ SongMirror giữ cho danh sách phát của bạn giống hệt nhau ở mọi n
 - 🔗 **Chuyển từ một liên kết** — dán URL danh sách phát công khai từ bất kỳ dịch vụ được kết nối nào và sao chép trực tiếp. Không cần phải lưu hoặc theo dõi nó trước.
 - 🌐 **Danh sách phát đã theo dõi** — đồng bộ hóa và chuyển danh sách phát bạn theo dõi nhưng không sở hữu, không chỉ những danh sách bạn đã tạo.
 - 📦 **Sao lưu siêu dữ liệu theo lịch trình** — lưu trữ toàn bộ thư viện danh sách phát của tài khoản theo lịch riêng theo dữ liệu ứng dụng liên tục, với JSON/XML, giới hạn lưu giữ và lịch sử thành công/thất bại rõ ràng. tải xuống một lần và sẵn sàng nhập Soundiiz JSON vẫn có sẵn.
-- 💿 **Bản sao tải xuống cục bộ** - giữ âm thanh ngoại tuyến, một thư mục cho mỗi danh sách phát theo bố cục `AlbumArtist/Album` của Jellyfin, có bìa và `.m3u8` được cập nhật tự động.
+- 📻 **Last.fm**: đưa Loved Tracks, Top Tracks (sáu khoảng thời gian) và Recent Scrobbles của bạn tới bất kỳ dịch vụ đã kết nối, và sau khi cấp quyền cho tài khoản, mang các bài hát yêu thích từ dịch vụ khác trở lại **vào** Last.fm. Nó không có danh sách phát nên không bao giờ là đích đến của danh sách phát.
+- 💿 **Bản sao tải xuống cục bộ** - giữ âm thanh ngoại tuyến, một thư mục cho mỗi danh sách phát theo bố cục `AlbumArtist/Album` của Jellyfin, có bìa và `.m3u8` được cập nhật tự động. Trỏ nó tới một thư viện nhạc có sẵn thì các bài khớp sẽ được sao chép **ở chất lượng gốc** (FLAC vẫn là FLAC), còn phần tải về chỉ bù cho những chỗ còn thiếu.
 - 🛡️ **Các biện pháp bảo vệ an toàn** — mô phỏng theo mặc định, giới hạn thêm/xóa mỗi lần vượt qua, bảo vệ chống mất mạng, bảo vệ ảnh chụp nhanh trống, hủy bỏ mà không ghi khi mã thông báo hết hạn.
 - 🗃️ **Kho lưu trữ bài hát ngày càng phát triển** - mọi bản nhạc từng xem đều được ghi lại trong cơ sở dữ liệu SQLite cục bộ (tên, nghệ sĩ, album, ISRC, siêu dữ liệu thô, nhìn thấy lần đầu/lần cuối).
 - 🧭 **Lịch sử đối sánh có thể chỉnh sửa** - duyệt, sửa và xóa mọi bản nhạc trùng khớp được lưu trong bộ nhớ đệm cho mỗi dịch vụ khỏi trang Bản đồ, bao gồm cả các kết quả "không khớp" mà nếu không sẽ mãi mãi không thể sánh được.
@@ -383,9 +385,11 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - Tăng dần - sau lần tải xuống đầy đủ đầu tiên, chỉ các bản nhạc mới được thêm vào mới được tìm nạp; các bản nhạc đã xóa (và các thư mục album trống của chúng) sẽ được cắt bớt. Một lượt chạy bị gián đoạn sẽ tiếp tục lượt tiếp theo.
 - Mới nhất trước `.m3u8` — được viết theo thứ tự ngày thêm, mới nhất ở trên cùng (đặt `LOCAL_MIRROR_ORDER=oldest` để lật). Xây dựng lại bìa / thẻ / mtimes từ các tệp hiện có với `uv run main.py --refresh-local`.
 - Danh sách phát bao gồm Jellyfin — Jellyfin bỏ qua tệp bìa bên cạnh m3u, vì vậy hãy đặt `JELLYFIN_URL` + `JELLYFIN_API_KEY` và mỗi lượt tải lên bìa danh sách phát thực thông qua Jellyfin API.
-- Chất lượng âm thanh - nguồn là YouTube, vì vậy nếu không có cookie YT Music Premium thì mức trần là ~128–160 kbps. `LOCAL_MIRROR_FORMAT=opus` giữ luồng gốc của YouTube mà không cần mã hóa lại mp3; cookie Premium (`LOCAL_MIRROR_COOKIE_FILE`) mở khóa 256 kbps AAC. Chọn `flac` chỉ thay đổi vùng chứa đầu ra; nguồn âm thanh nén mất dữ liệu không thể trở thành âm thanh không mất dữ liệu.
+- **Mọi nguồn, không chỉ Spotify**: bản sao đọc đúng dịch vụ mà lần đồng bộ dùng làm nguồn. Danh sách phát Spotify vẫn được tải qua địa chỉ danh mục; mọi nguồn khác (kể cả Last.fm) được tìm theo nghệ sĩ và tên bài.
+- **Thư viện của bạn trước (FLAC thật)**: trỏ `LOCAL_LIBRARY_DIR` tới một cây nhạc có sẵn, mỗi bài tìm thấy ở đó sẽ được **sao chép vào thư mục danh sách phát ở định dạng gốc**, nên FLAC vẫn là FLAC. Chỉ những bài không có bản khớp cục bộ mới chuyển sang spotDL. Việc đối khớp dùng thẻ ISRC trước, rồi tới tên bài và nghệ sĩ, theo đúng quy tắc của bộ máy đồng bộ. Sao chép thay cho liên kết cứng là lựa chọn có chủ đích: bản sao ghi lại thời điểm sửa và bổ sung thẻ, còn liên kết cứng sẽ sửa chính tệp gốc của bạn. Để trống nghĩa là tắt.
+- Chất lượng âm thanh - nguồn là YouTube, vì vậy nếu không có cookie YT Music Premium thì mức trần là ~128–160 kbps. `LOCAL_MIRROR_FORMAT=opus` giữ luồng gốc của YouTube mà không cần mã hóa lại mp3; cookie Premium (`LOCAL_MIRROR_COOKIE_FILE`) mở khóa 256 kbps AAC. Chọn `flac` chỉ thay đổi vùng chứa đầu ra; nguồn âm thanh nén mất dữ liệu không thể trở thành âm thanh không mất dữ liệu. Muốn âm thanh không mất dữ liệu thật sự, hãy dùng `LOCAL_LIBRARY_DIR`.
 
-Đường dẫn FLAC hiện tại của Monochrome sử dụng tài nguyên phát lại sử dụng một lần, được kiểm soát bởi trình duyệt thay vì xuất tệp ổn định, được nhà cung cấp ủy quyền API, vì vậy SongMirror không tự động hóa nó. Chỉ sử dụng máy nhân bản cục bộ cho nội dung bạn sở hữu hoặc được ủy quyền sao chép.
+SongMirror không tự động trích xuất FLAC từ danh mục phát trực tuyến. Mọi nguồn âm thanh mới phải đáp ứng trước các yêu cầu trong [`docs/monochrome-flac-assessment.md`](../monochrome-flac-assessment.md): một điểm cuối tải về hoặc xuất dữ liệu do nhà cung cấp công bố và có phiên bản, sự cấp quyền theo người dùng, quyền sao chép lâu dài rõ ràng, quy định được ghi rõ về vùng, thời hạn và việc dùng ngoại tuyến, cùng với việc không vượt qua DRM hay kiểm soát truy cập. Chỉ dùng bản sao cục bộ cho nội dung thuộc về bạn hoặc bạn được phép sao chép.
 
 <div align="right">
 
@@ -414,6 +418,7 @@ SongMirror làm mới thông tin xác thực đúng lúc chứ không phải b�
 | Amazon Music | Mã thông báo truy cập web sẽ gia hạn thông qua `/pandaToken` bằng cách sử dụng tác nhân người dùng, người giới thiệu và cookie trong danh sách cho phép của trình duyệt đã thu thập. Bối cảnh thiết bị khởi động luồng `POST config.json?skipToken=false` hiện tại khi cần và các cookie đã xoay vẫn được duy trì. Đăng xuất, thay đổi bảo mật hoặc thu hồi phía máy chủ vẫn yêu cầu bản chụp mới. |
 | Apple Music | Không thể gia hạn Bearer và Media-User-Token đã dán trước SongMirror và phải được chụp lại sau khi bị từ chối. |
 | YouTube Music | Data API OAuth tự động làm mới trong vòng 60 giây sau khi hết hạn. Chế độ trình duyệt thử xoay cookie của Google bất cứ khi nào mục tiêu đồng bộ hóa được tạo; phiên trình duyệt đã hết hạn phải được xuất lại. |
+| Last.fm | Cả khóa API lẫn khóa phiên đều không hết hạn nên không có gì được làm mới. Chỉ cấp quyền lại nếu bạn thu hồi quyền truy cập của ứng dụng trong phần cài đặt tài khoản Last.fm. |
 | Jellyfin | Khóa API không có chu kỳ làm mới mã thông báo truy cập; chỉ thay thế nó nếu nó bị thu hồi hoặc xóa. |
 
 <a id="spotify"></a>
@@ -491,6 +496,46 @@ Nói chuyện với [YouTube Data API v3](https://developers.google.com/youtube/
 3. Trong ứng dụng, dán ID khách hàng + bí mật và hoàn thành mã thiết bị trên màn hình.
 
 > Hạn ngạch: Data API cho phép 10.000 đơn vị/ngày (một lần tìm kiếm tốn 100, thêm/xóa 50). Bảo trì trạng thái ổn định là rẻ; lượng tồn đọng lớn lần đầu có thể đạt đến giới hạn và tiếp tục vào ngày hôm sau.
+
+<div align="right">
+
+[![][back-to-top]](#readme-top)
+
+</div>
+
+<a id="lastfm"></a>
+
+### Last.fm
+
+Last.fm không có danh sách phát nên không bao giờ là đích đến của danh sách phát. Nó góp **lịch sử nghe** dưới dạng các bộ sưu tập chỉ đọc, và **Loved Tracks** của nó là một bộ sưu tập bài hát yêu thích giống như ở mọi nhà cung cấp khác, và trở nên ghi được khi bạn cấp quyền cho tài khoản.
+
+1. Tạo tài khoản API tại <https://www.last.fm/api/account/create>. Ghi lại cả **khóa API** và **khóa bí mật chia sẻ**.
+2. Trong Tài khoản → Last.fm, dán cả hai rồi hoàn tất trang cấp quyền của Last.fm.
+
+Có hai mức thông tin đăng nhập, và mức thứ hai mới mở khả năng ghi:
+
+| Bạn cung cấp | Bạn nhận được |
+| --- | --- |
+| khóa API + tên người dùng | quyền đọc công khai trang cá nhân đó |
+| + khóa bí mật chia sẻ + cấp quyền | quyền đọc **riêng tư**, cùng với việc thêm và bỏ bài hát yêu thích |
+
+Việc cấp quyền là một vòng đi qua trình duyệt duy nhất: SongMirror đưa bạn tới Last.fm, bạn chấp thuận ứng dụng, và mã trả về được đổi thành **khóa phiên có thời hạn vô hạn**. Khác với mọi thông tin đăng nhập dán ở bảng trên, khóa này không bao giờ cần lấy lại. Bạn có thể thu hồi nó trong phần cài đặt tài khoản Last.fm.
+
+Những gì có sẵn:
+
+| Bộ sưu tập | Nội dung |
+| --- | --- |
+| **Loved Tracks** | bộ sưu tập bài hát yêu thích. Luôn đọc được; **ghi được** sau khi cấp quyền, nên các bài yêu thích trên Spotify, TIDAL hay Apple có thể đồng bộ *vào* Last.fm |
+| **Top Tracks (7 ngày … toàn bộ thời gian)** | sáu bộ sưu tập chỉ đọc được xếp hạng, mỗi khoảng thời gian của Last.fm một bộ |
+| **Recent Scrobbles** | dòng lịch sử phát, trừ bài đang phát |
+
+Ba giới hạn nên biết trước khi dựa vào nó:
+
+- **Không có ISRC.** Các điểm cuối `user.*` chỉ trả về tên nghệ sĩ và tên bài, nên bài của Last.fm được khớp theo tên chứ không theo danh tính danh mục. Hãy chuẩn bị cho vài trường hợp sai bản mà một nhà cung cấp có ISRC sẽ tránh được. Trước khi đánh dấu yêu thích, SongMirror hỏi `track.getInfo` để lấy cách viết chuẩn của Last.fm, nhờ đó một tên bài gần giống không tạo thêm mục thứ hai.
+- **Các bộ sưu tập xếp hạng không có ngày.** Top Tracks không mang dấu thời gian cho từng bài, nên những bài đó đồng bộ mà không có ngày và không thể quyết định thứ tự theo ngày thêm.
+- **Các tuyến danh sách phát không áp dụng.** Việc đồng bộ bài hát yêu thích *vào* Last.fm buộc phải dùng tuyến gốc. Không có danh sách phát nào để tuyến tạo danh sách phát theo tên ghi vào.
+
+Nếu không có khóa bí mật chia sẻ, trang cá nhân bạn trỏ tới phải công khai Loved Tracks và Top Tracks của nó.
 
 <div align="right">
 

@@ -72,6 +72,7 @@ Un'alternativa gratuita, open source e self-hosted a Soundiiz, TuneMyMusic e Fre
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [Last.fm](#lastfm)
 - [🖥️ senza interfaccia grafica CLI](#headless-cli)
 - [🛡️Tutele di sicurezza](#safety-rails)
 - [🗃️ Memorizzazione nella cache e archivio di brani](#caching-song-archive)
@@ -104,7 +105,8 @@ SongMirror mantiene le tue playlist identiche ovunque senza dover aggiungere nuo
 - 🔗 **Trasferisci da un collegamento**: incolla l'URL di una playlist pubblica da qualsiasi servizio connesso e copialo direttamente. Non è necessario salvarlo o seguirlo prima.
 - 🌐 **Playlist seguite**: sincronizza e trasferisci le playlist che segui ma non possiedi, non solo quelle che hai creato.
 - 📦 **Backup dei metadati pianificati**: archivia l'intera libreria di playlist di un account secondo la propria pianificazione sotto i dati persistenti dell'app, con JSON/XML, limiti di conservazione e cronologia visibile di successi/fallimenti. rimangono disponibili anche download una tantum e Soundiiz JSON pronti per l'importazione.
-- 💿 **Mirror download locale**: mantieni l'audio offline, una cartella per playlist nel layout `AlbumArtist/Album` di Jellyfin, con copertine e un `.m3u8` aggiornato automaticamente.
+- 📻 **Last.fm**: porta i tuoi Loved Tracks, Top Tracks (sei periodi) e Recent Scrobbles verso qualsiasi servizio collegato e, una volta autorizzato l'account, riporta i brani preferiti degli altri servizi **dentro** Last.fm. Non ha playlist, quindi non è mai una destinazione per le playlist.
+- 💿 **Mirror download locale**: mantieni l'audio offline, una cartella per playlist nel layout `AlbumArtist/Album` di Jellyfin, con copertine e un `.m3u8` aggiornato automaticamente. Puntalo a una libreria musicale esistente e i brani corrispondenti vengono copiati **nella loro qualità originale** (un FLAC resta un FLAC), mentre i download coprono solo le lacune.
 - 🛡️ **Misure di sicurezza**: simulazione per impostazione predefinita, limiti di aggiunta/rimozione per passaggio, protezione dalla perdita di rete, protezione dagli snapshot vuoti, interruzioni senza scrittura alla scadenza dei token.
 - 🗃️ **Archivio di brani in continua crescita**: ogni traccia mai vista è registrata in un database locale SQLite (nome, artista, album, ISRC, metadati grezzi, primo/ultimo visto).
 - 🧭 **Cronologia delle partite modificabile**: sfoglia, correggi ed elimina ogni corrispondenza di traccia memorizzata nella cache per servizio dalla pagina Mapping, inclusi i risultati "nessuna corrispondenza" che altrimenti rimarrebbero senza corrispondenza per sempre.
@@ -383,9 +385,11 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - Incrementale: dopo il primo download completo, vengono recuperate solo le tracce appena aggiunte; le tracce rimosse (e le cartelle degli album svuotate) vengono eliminate. Una corsa interrotta continua al passaggio successivo.
 - Il più recente-prima `.m3u8` — scritto in ordine di data di aggiunta, il più recente in alto (imposta `LOCAL_MIRROR_ORDER=oldest` per capovolgere). Ricostruisci copertine/tag/mtimes da file esistenti con `uv run main.py --refresh-local`.
 - Le copertine della playlist in Jellyfin — Jellyfin ignora un file di copertina accanto a un m3u, quindi imposta `JELLYFIN_URL` + `JELLYFIN_API_KEY` e ogni passaggio carica la vera copertina della playlist tramite Jellyfin API.
-- Qualità audio: la sorgente è YouTube, quindi senza un cookie YT Music Premium il limite è di ~128–160 kbps. `LOCAL_MIRROR_FORMAT=opus` mantiene il flusso nativo di YouTube senza ricodificare mp3; un cookie Premium (`LOCAL_MIRROR_COOKIE_FILE`) sblocca AAC a 256 kbps. Selezionando `flac` si modifica il contenitore di output ma non è possibile trasformare una sorgente con perdita in audio senza perdita.
+- **Qualsiasi origine, non solo Spotify**: il mirror legge il servizio che la sincronizzazione usa come origine. Le playlist di Spotify vengono ancora scaricate tramite l'URL di catalogo; ogni altra origine (compreso Last.fm) viene cercata per artista e titolo.
+- **Prima la tua libreria (FLAC vero)**: punta `LOCAL_LIBRARY_DIR` a un albero musicale esistente e ogni brano trovato viene **copiato nella cartella della playlist nel formato originale**, quindi un FLAC resta un FLAC. Solo i brani senza corrispondenza locale passano a spotDL. La corrispondenza usa prima il tag ISRC e poi titolo e artista, con le stesse regole del motore di sincronizzazione. La copia sostituisce il collegamento fisico di proposito: il mirror imposta le date di modifica e completa i tag, e un collegamento fisico riscriverebbe i tuoi file originali. Vuoto significa disattivato.
+- Qualità audio: la sorgente è YouTube, quindi senza un cookie YT Music Premium il limite è di ~128–160 kbps. `LOCAL_MIRROR_FORMAT=opus` mantiene il flusso nativo di YouTube senza ricodificare mp3; un cookie Premium (`LOCAL_MIRROR_COOKIE_FILE`) sblocca AAC a 256 kbps. Selezionando `flac` si modifica il contenitore di output ma non è possibile trasformare una sorgente con perdita in audio senza perdita. Per audio davvero senza perdita usa `LOCAL_LIBRARY_DIR`.
 
-L'attuale percorso FLAC di Monochrome utilizza risorse di riproduzione monouso con controllo del browser anziché un'esportazione di file stabile e autorizzata dal provider API, quindi SongMirror non lo automatizza. Utilizza il mirror locale solo per i contenuti che possiedi o che sei altrimenti autorizzato a copiare.
+SongMirror non automatizza l'estrazione di FLAC da un catalogo di streaming. Ogni nuova origine audio deve prima soddisfare i requisiti di [`docs/monochrome-flac-assessment.md`](../monochrome-flac-assessment.md): un endpoint di download o esportazione pubblicato dal fornitore e con versione, un'autorizzazione legata all'utente, diritti espliciti di copia permanente, regole documentate su territorio, scadenza e uso offline, e nessuna elusione di DRM o del controllo di accesso. Usa il mirror locale solo per contenuti che possiedi o che sei autorizzato a copiare.
 
 <div align="right">
 
@@ -414,6 +418,7 @@ SongMirror aggiorna le credenziali just in time, non con un timer di aggiornamen
 | Amazon Music | Il token di accesso al Web si rinnova tramite `/pandaToken` utilizzando lo user agent, il referer e i cookie consentiti del browser acquisiti. L'attuale flusso `POST config.json?skipToken=false` esegue il bootstrap del contesto del dispositivo quando necessario e i cookie ruotati vengono mantenuti. Il logout, le modifiche alla sicurezza o la revoca lato server richiedono comunque una nuova acquisizione. |
 | Apple Music | Gli Bearer e Media-User-Token incollati non possono essere rinnovati entro SongMirror e devono essere acquisiti nuovamente dopo il rifiuto. |
 | YouTube Music | Data API OAuth si aggiorna automaticamente entro 60 secondi dalla scadenza. La modalità browser tenta la rotazione dei cookie di Google ogni volta che viene creata una destinazione di sincronizzazione; è necessario esportare nuovamente una sessione del browser già scaduta. |
+| Last.fm | Né la chiave API né la chiave di sessione scadono, quindi non viene rinnovato nulla. Autorizza di nuovo solo se revochi l'accesso dell'applicazione nelle impostazioni del tuo account Last.fm. |
 | Jellyfin | La chiave API non ha ciclo di aggiornamento del token di accesso; sostituirlo solo in caso di revoca o cancellazione. |
 
 <a id="spotify"></a>
@@ -491,6 +496,46 @@ Parla con il funzionario [YouTube Data API v3](https://developers.google.com/you
 3. Nell'app, incolla l'ID client + il segreto e completa il codice del dispositivo visualizzato sullo schermo.
 
 > Quota: il Data API consente 10.000 unità/giorno (una ricerca costa 100, un'aggiunta/rimozione 50). Il mantenimento dello stato stazionario è economico; un grosso arretrato per la prima volta può raggiungere il limite e riprendere il giorno successivo.
+
+<div align="right">
+
+[![][back-to-top]](#readme-top)
+
+</div>
+
+<a id="lastfm"></a>
+
+### Last.fm
+
+Last.fm non ha playlist, quindi non è mai una destinazione per le playlist. Contribuisce con la **cronologia di ascolto** sotto forma di raccolte in sola lettura, e i suoi **Loved Tracks** sono una raccolta di brani preferiti come in ogni altro fornitore, che diventa scrivibile quando autorizzi l'account.
+
+1. Crea un account API su <https://www.last.fm/api/account/create>. Prendi nota sia della **chiave API** sia del **segreto condiviso**.
+2. In Account → Last.fm incolla entrambi, poi completa la pagina di autorizzazione di Last.fm.
+
+Esistono due livelli di credenziali, e il secondo è quello che abilita la scrittura:
+
+| Cosa fornisci | Cosa ottieni |
+| --- | --- |
+| chiave API + nome utente | letture pubbliche di quel profilo |
+| + segreto condiviso + autorizzazione | letture **private**, più l'aggiunta e la rimozione dei brani preferiti |
+
+L'autorizzazione è un passaggio unico dal browser: SongMirror ti manda su Last.fm, tu approvi l'applicazione e il token restituito viene scambiato con una **chiave di sessione di durata illimitata**. A differenza di tutte le credenziali incollate nella tabella sopra, non va mai ricatturata. Puoi revocarla dalle impostazioni del tuo account Last.fm.
+
+Ecco cosa diventa disponibile:
+
+| Raccolta | Contenuto |
+| --- | --- |
+| **Loved Tracks** | la raccolta dei brani preferiti. Sempre leggibile; **scrivibile** dopo l'autorizzazione, così i tuoi preferiti di Spotify, TIDAL o Apple possono sincronizzarsi *verso* Last.fm |
+| **Top Tracks (7 giorni … sempre)** | sei raccolte in sola lettura ordinate per posizione, una per ogni periodo di Last.fm |
+| **Recent Scrobbles** | la cronologia di riproduzione, senza il brano in corso |
+
+Tre limiti da conoscere prima di farci affidamento:
+
+- **Nessun ISRC.** Gli endpoint `user.*` restituiscono solo nomi di artista e brano, quindi i brani di Last.fm vengono abbinati per nome e non per identità di catalogo. Aspettati qualche versione sbagliata che un fornitore con ISRC avrebbe evitato. Prima di aggiungere un preferito, SongMirror chiede a `track.getInfo` la grafia canonica di Last.fm, così un titolo quasi identico non crea una seconda voce.
+- **Le raccolte ordinate non hanno data.** Top Tracks non ha un orario per brano, quindi quei brani si sincronizzano senza data e non possono determinare l'ordine di aggiunta.
+- **Le rotte per playlist non si applicano.** Una sincronizzazione di brani preferiti *verso* Last.fm deve usare la rotta nativa. Non esiste una playlist in cui la rotta che crea una playlist con nome possa scrivere.
+
+Senza il segreto condiviso, il profilo che indichi deve avere pubblici i suoi Loved Tracks e Top Tracks.
 
 <div align="right">
 
