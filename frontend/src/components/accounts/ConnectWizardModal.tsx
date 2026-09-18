@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { LuCheck, LuChevronDown, LuCircleAlert, LuCircleHelp, LuClipboardPaste, LuExternalLink, LuInfinity } from 'react-icons/lu'
 
 import { api, errorMessage } from '@/api'
+import { linkify } from '@/lib/linkify'
 import type { Account, AccountField, AccountState, ConnectDeviceResponse, ConnectRedirectResponse } from '@/types'
 
 import { Button } from '../ui/Button'
@@ -576,7 +577,7 @@ function FieldsStep({
                 placeholder={RAW_SESSION_PLACEHOLDERS[field.key]}
                 className="w-full resize-y rounded-control border border-border-strong bg-field px-3 py-2 font-mono text-xs text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
               />
-              {field.help && <p className="text-xs text-text-3">{t(field.help)}</p>}
+              {field.help && <p className="text-xs text-text-3">{linkify(t(field.help))}</p>}
             </div>
           )
         }
@@ -584,7 +585,7 @@ function FieldsStep({
           <TextField
             key={field.key}
             label={t(field.label)}
-            help={field.help ? t(field.help) : undefined}
+            help={field.help ? linkify(t(field.help)) : undefined}
             type={field.secret ? "password" : "text"}
             required={required}
             placeholder={keepable && field.secret ? t("saved — leave blank to keep") : undefined}
