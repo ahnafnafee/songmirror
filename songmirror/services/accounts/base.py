@@ -88,6 +88,16 @@ class Connector:
     def submit(self, values: dict) -> ConnStatus:
         raise NotImplementedError
 
+    def normalize_config(self, values: dict) -> dict:
+        """Clean a field's raw input before it is stored.
+
+        The wizard saves config directly for an oauth_redirect connector, whose
+        `submit` is never reached, so a connector that reduces a pasted browser
+        request to the few values it actually needs has to do it here or the
+        whole paste is persisted. Raise ValueError to reject the input.
+        """
+        return values
+
     def disconnect(self) -> None:
         """Clear connector-managed settings; providers may override for extras."""
 

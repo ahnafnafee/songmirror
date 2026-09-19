@@ -33,7 +33,7 @@ __all__ = ["AppleMusicTarget", "AmazonMusicTarget", "DeezerTarget", "LastfmTarge
            "TargetCapabilityError",
            "TargetDirectoryIncompleteError", "TargetTransientError",
            "mirror_pair", "reconcile", "build_targets", "build_peers", "build_one", "is_peer",
-           "target_class", "provider_ids", "supports_playlists",
+           "target_class", "provider_ids", "supports_playlists", "playlists_for",
            "nway_order_candidates"]
 
 
@@ -136,6 +136,22 @@ def supports_playlists(provider_id):
     return bool(declared() if callable(declared) else declared)
 
 
+def playlists_for(identity, opts=None):
+    """`supports_playlists` for one participant, asked with its profile active.
+
+    The class-level answer can depend on that account's own stored settings
+    (Last.fm has playlists only when a signed-in web session is configured), and
+    settings reach the mature adapters through the profile environment. Asking
+    outside the profile therefore answers about whatever happened to be in the
+    process environment instead of about this account.
+    """
+    profiles = _profiles(opts) if opts is not None else None
+    if profiles is None or profiles.resolve(identity) is None:
+        return supports_playlists(identity)
+    with profiles.activate(identity):
+        return supports_playlists(profiles.provider_of(identity))
+
+
 def _writable(identity, opts):
     """Whether this participant belongs in a mirror-target or peer list.
 
@@ -144,9 +160,7 @@ def _writable(identity, opts):
     liked-tracks job, because its native favorites collection is writable and
     that sync runs through the same per-target loop.
     """
-    profiles = _profiles(opts)
-    provider = profiles.provider_of(identity) if profiles is not None else identity
-    if supports_playlists(provider):
+    if playlists_for(identity, opts):
         return True
     return bool(getattr(opts, "liked_tracks", False))
 
@@ -316,9 +330,9 @@ def is_peer(provider_id, opts=None):
     """Whether a provider is a sync/transfer peer — i.e. has a MirrorTarget that
     can read and write tracks. False for browse/output-only services like
     Jellyfin, which the download mirror feeds instead of track-level writes."""
-    if opts is not None and _profiles(opts) is not None:
-        provider_id = _profiles(opts).provider_of(provider_id)
-    return provider_id in _REGISTRY and supports_playlists(provider_id)
+    profiles = _profiles(opts) if opts is not None else None
+    provider = profiles.provider_of(provider_id) if profiles is not None else provider_id
+    return provider in _REGISTRY and playlists_for(provider_id, opts)
 
 
 def build_peers(opts, sp, songs=None):

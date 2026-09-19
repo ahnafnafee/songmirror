@@ -20,14 +20,16 @@ from ...lastfm import (
     auth_url,
     get_session,
 )
-from ...lastfm_web import serialize_web_request
+from ...lastfm_web import credentials_from, serialize_web_request
 from .base import ConnStatus, Connector, Field
 
-# Last.fm has no playlists, so it never grants `library_write`. Reading is
-# always available; loving a track needs the shared secret plus an authorized
-# session, so `favorites_write` is granted only once one exists.
-READ_ONLY = frozenset({"library_read"})
-READ_AND_LOVE = frozenset({"library_read", "favorites_write"})
+# Reading is always available. The two write grants are independent and come
+# from different credentials: loving a track needs the shared secret plus an
+# authorized session key, while playlists exist only through a signed-in web
+# session, because the API has no playlist methods.
+READ = frozenset({"library_read"})
+LOVE = frozenset({"favorites_write"})
+PLAYLISTS = frozenset({"library_write"})
 
 
 def _callback_token(params: dict) -> str:
@@ -66,8 +68,18 @@ class LastfmConnector(Connector):
     ]
 
     def _granted(self):
-        """Loving needs an authorized session, so the grant set follows it."""
-        return READ_AND_LOVE if self._store.get("LASTFM_SESSION_KEY") else READ_ONLY
+        """The grant set follows whichever credentials are actually present.
+
+        Without `library_write` the sync wizard will not offer Last.fm as a
+        playlist destination, so the web session has to be reflected here and
+        not only in the target.
+        """
+        granted = set(READ)
+        if self._store.get("LASTFM_SESSION_KEY"):
+            granted |= LOVE
+        if credentials_from(self._store.get("LASTFM_WEB_SESSION") or ""):
+            granted |= PLAYLISTS
+        return frozenset(granted)
 
     def status(self) -> ConnStatus:
         if not self._configured("LASTFM_API_KEY"):
@@ -84,21 +96,29 @@ class LastfmConnector(Connector):
 
     # -- api_key half: a username is enough for public reads -----------------
 
+    def normalize_config(self, values: dict) -> dict:
+        """Reduce a pasted web request to the two session cookies.
+
+        This is the only place the paste is reduced. The wizard saves config
+        before the redirect rather than through `submit`, so without it the
+        whole copied request, every cookie and header in it, would be stored
+        verbatim.
+        """
+        if "LASTFM_WEB_SESSION" not in values:
+            return values
+        raw = str(values.get("LASTFM_WEB_SESSION") or "").strip()
+        return {**values,
+                "LASTFM_WEB_SESSION": serialize_web_request(raw) if raw else ""}
+
     def submit(self, values: dict) -> ConnStatus:
+        try:
+            values = self.normalize_config(values)
+        except ValueError as exc:
+            return ConnStatus("error", str(exc), capabilities=self._granted())
         self._store.save({key: (values.get(key) or "").strip()
                           for key in ("LASTFM_API_KEY", "LASTFM_API_SECRET",
-                                      "LASTFM_USER")
+                                      "LASTFM_USER", "LASTFM_WEB_SESSION")
                           if key in values})
-        if "LASTFM_WEB_SESSION" in values:
-            raw = (values.get("LASTFM_WEB_SESSION") or "").strip()
-            if not raw:
-                self._store.save({"LASTFM_WEB_SESSION": ""})
-            else:
-                # Keep only the session cookies; the rest of the paste is dropped.
-                try:
-                    self._store.save({"LASTFM_WEB_SESSION": serialize_web_request(raw)})
-                except ValueError as exc:
-                    return ConnStatus("error", str(exc), capabilities=self._granted())
         if not self._store.get("LASTFM_USER"):
             return ConnStatus("unconfigured",
                               "authorize the account to read private data and "

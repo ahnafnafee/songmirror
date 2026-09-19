@@ -1150,5 +1150,14 @@
   "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} はプレイリストを持たないため、自身のコレクションが唯一の送り先です。",
   "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "API アプリケーションを登録するとき、これをコールバック URL として貼り付けてください。キーが存在する前に入力を求められるため、先にコピーしておきます。",
   "Signed-in web request": "ログイン済みのウェブリクエスト",
-  "Optional, and only for playlists: Last.fm's API has none. Copy request headers or cURL from any signed-in last.fm page; only the session cookies are kept": "任意で、プレイリスト専用です。Last.fm の API にプレイリストはありません。ログイン済みの last.fm ページからリクエストヘッダーまたは cURL をコピーしてください。保存されるのはセッションの Cookie だけです"
+  "Optional, and only for playlists: Last.fm's API has none. Copy request headers or cURL from any signed-in last.fm page; only the session cookies are kept": "任意で、プレイリスト専用です。Last.fm の API にプレイリストはありません。ログイン済みの last.fm ページからリクエストヘッダーまたは cURL をコピーしてください。保存されるのはセッションの Cookie だけです",
+  "<strong1>For playlists only</strong1>: open <link2/> while signed in, open dev tools (<code3/>) → <strong4>Network</strong4>, and reload the page.": "<strong1>プレイリスト専用</strong1>: ログインした状態で <link2/> を開き、開発者ツール (<code3/>) → <strong4>ネットワーク</strong4> を開いてページを再読み込みします。",
+  "Copy the <strong1>API key</strong1> and <strong2>Shared secret</strong2> it gives you into the two fields below.": "表示された <strong1>API キー</strong1> と <strong2>共有シークレット</strong2> を下の 2 つの欄にコピーします。",
+  "Create a Last.fm API account": "Last.fm の API アカウントを作成",
+  "Last.fm needs a free API account. The signed-in web request at the end is optional and only adds playlists, which its API does not have.": "Last.fm には無料の API アカウントが必要です。最後のログイン済みウェブリクエストは任意で、API にないプレイリストだけを追加します。",
+  "Open <link1/>, fill in any name and description, and paste the callback URL shown below into <strong2>Callback URL</strong2>.": "<link1/> を開き、任意の名前と説明を入力し、下に表示されるコールバック URL を <strong2>Callback URL</strong2> に貼り付けます。",
+  "Paste that into the last field. It only has to contain the <code1/> line with <code2/> and <code3/> in it.": "それを最後の欄に貼り付けます。<code2/> と <code3/> を含む <code1/> の行さえあれば十分です。",
+  "Save and continue, then approve SongMirror on the Last.fm page that opens. That fills in your username and enables loving tracks.": "保存して続行し、開いた Last.fm のページで SongMirror を承認します。これでユーザー名が入力され、お気に入り登録が有効になります。",
+  "Select the first request in the list (the page itself, named after your username or <code1/>), then choose <strong2>Copy → Copy as cURL</strong2> or <strong3>Copy request headers</strong3>.": "一覧の最初のリクエスト（ページ自体で、ユーザー名または <code1/> という名前）を選び、<strong2>コピー → cURL としてコピー</strong2> または <strong3>リクエストヘッダーをコピー</strong3> を選びます。",
+  "The API key and secret never expire, and neither does the authorization. The web session does expire when you sign out of last.fm in that browser; re-paste it if playlist syncs start failing. Only the two session cookies are kept, and the rest of the paste is discarded.": "API キーとシークレット、そして承認は期限切れになりません。ウェブセッションはそのブラウザーで last.fm からログアウトすると失効するので、プレイリストの同期が失敗し始めたら貼り直してください。保存されるのはセッションの Cookie 2 つだけで、残りは破棄されます。"
 }

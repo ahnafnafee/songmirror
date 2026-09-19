@@ -70,9 +70,14 @@ def _capabilities(provider, status):
 
 
 def _supports_playlists(provider):
-    """Whether the provider has playlists at all. False for a history service
-    (Last.fm), which the sync wizard must offer as a source and as a liked-tracks
-    destination without ever offering it a playlist."""
+    """Whether this account has playlists at all.
+
+    False for a history service the sync wizard must offer as a source and as a
+    liked-tracks destination without ever offering it a playlist. Last.fm is
+    that by default and stops being it once a web session is configured, so the
+    answer depends on the account's own settings: call this with its profile
+    active, or it reports on the ambient process environment instead.
+    """
     return targets_supports_playlists(provider)
 
 
@@ -138,7 +143,14 @@ def _status_payload(request, profile):
     connector = _conn(request, profile.id)
     store = profiles.settings_for(profile.id)
     with profiles.activate(profile.id):
+        # Every derived fact here can depend on this account's own stored
+        # settings rather than only on its provider (Last.fm gains playlists,
+        # and with them peer status, once a web session is configured), so all
+        # of them are answered inside the profile runtime.
         status = connector.status()
+        status_values = _status_values(profile.provider, status)
+        supports_playlists = _supports_playlists(profile.provider)
+        transferable = is_peer(profile.provider)
         fields = []
         for field in connector.config_fields:
             data = asdict(field)
@@ -157,9 +169,9 @@ def _status_payload(request, profile):
         "removable": not profile.is_default,
         "auth_kind": connector.auth_kind,
         "fields": fields,
-        **_status_values(profile.provider, status),
-        "transferable": is_peer(profile.provider),
-        "supports_playlists": _supports_playlists(profile.provider),
+        **status_values,
+        "transferable": transferable,
+        "supports_playlists": supports_playlists,
         "source_capable": _source_capable(profile.provider),
         "preserves_order": _preserves_order(profile.provider),
         "callback_url": _callback_url(request, profile, connector),
@@ -217,6 +229,10 @@ def rename_account(account_id: str, request: Request, body: dict = Body(...)):
 @router.post("/api/accounts/{account_id}/config")
 def save_config(account_id: str, request: Request, values: dict = Body(...)):
     profile = _profile(request, account_id)
+    try:
+        values = _conn(request, profile.id).normalize_config(values)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     request.app.state.account_profiles.settings_for(profile.id).save(values)
     return {"ok": True}
 

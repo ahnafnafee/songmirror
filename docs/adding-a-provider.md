@@ -90,6 +90,12 @@ Subclass `Connector` (`accounts/base.py`). Pick an `auth_kind`
 kind (e.g. `begin_redirect`/`complete_redirect` for OAuth, or `submit` for a pasted
 token/key). The engine reads whatever the connector saves to the `SettingsStore`.
 
+If a field needs cleaning before it is stored — reducing a pasted browser request to
+the few values you actually keep, say — put that in `normalize_config`, not in
+`submit`. The wizard saves an `oauth_redirect` connector's fields straight to config
+and never reaches `submit`, so a reduction written only there stores the whole paste.
+Raise `ValueError` from it to reject the input; the route turns that into a 422.
+
 ### 4. Connectors registry — `songmirror/services/accounts/__init__.py`
 
 One line in `CONNECTORS`. The service now appears in the accounts wizard, the

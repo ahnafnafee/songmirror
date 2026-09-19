@@ -206,6 +206,29 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
     note: t("Next you’ll enter a short code at google.com/device to authorize."),
     link: { href: 'https://console.cloud.google.com/apis/credentials', label: t("Open Google Cloud credentials") },
   },
+  lastfm: {
+    intro: t("Last.fm needs a free API account. The signed-in web request at the end is optional and only adds playlists, which its API does not have."),
+    steps: [
+      <>
+        <Trans i18nKey={"Open <link1/>, fill in any name and description, and paste the callback URL shown below into <strong2>Callback URL</strong2>."} components={{ link1: <GuideLink href="https://www.last.fm/api/account/create">last.fm/api/account/create</GuideLink>, strong2: <strong /> }} />
+      </>,
+      <>
+        <Trans i18nKey={"Copy the <strong1>API key</strong1> and <strong2>Shared secret</strong2> it gives you into the two fields below."} components={{ strong1: <strong />, strong2: <strong /> }} />
+      </>,
+      <>{t("Save and continue, then approve SongMirror on the Last.fm page that opens. That fills in your username and enables loving tracks.")}</>,
+      <>
+        <Trans i18nKey={"<strong1>For playlists only</strong1>: open <link2/> while signed in, open dev tools (<code3/>) → <strong4>Network</strong4>, and reload the page."} components={{ strong1: <strong />, link2: <GuideLink href="https://www.last.fm">last.fm</GuideLink>, code3: <Code>F12</Code>, strong4: <strong /> }} />
+      </>,
+      <>
+        <Trans i18nKey={"Select the first request in the list (the page itself, named after your username or <code1/>), then choose <strong2>Copy → Copy as cURL</strong2> or <strong3>Copy request headers</strong3>."} components={{ code1: <Code>www.last.fm</Code>, strong2: <strong />, strong3: <strong /> }} />
+      </>,
+      <>
+        <Trans i18nKey={"Paste that into the last field. It only has to contain the <code1/> line with <code2/> and <code3/> in it."} components={{ code1: <Code>Cookie</Code>, code2: <Code>sessionid</Code>, code3: <Code>csrftoken</Code> }} />
+      </>,
+    ],
+    note: t("The API key and secret never expire, and neither does the authorization. The web session does expire when you sign out of last.fm in that browser; re-paste it if playlist syncs start failing. Only the two session cookies are kept, and the rest of the paste is discarded."),
+    link: { href: 'https://www.last.fm/api/account/create', label: t("Create a Last.fm API account") },
+  },
   jellyfin: {
     intro: t("Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key."),
     steps: [
@@ -244,6 +267,7 @@ const RAW_SESSION_PLACEHOLDERS: Record<string, string> = {
   get DEEZER_REFRESH_TOKEN() { return t('{{headers}}\n—or paste the auth.deezer.com request as cURL—', { headers: 'Cookie: refresh-token=…' }) },
   AMAZON_MUSIC_WEB_HEADERS: '{\n  "accessToken": "…",\n  "deviceId": "…",\n  "deviceType": "…"\n}',
   get AMAZON_MUSIC_RENEWAL_REQUEST() { return t('{{headers}}\n—or paste config.json Copy as cURL—', { headers: 'User-Agent: Mozilla/5.0 …\nCookie: at-main-music=…; session-id=…' }) },
+  get LASTFM_WEB_SESSION() { return t('{{headers}}\n—or paste Copy as cURL—', { headers: 'Cookie: sessionid=…; csrftoken=…' }) },
 }
 
 /** Parses a raw "copy request headers" block (case-insensitive, line-based
