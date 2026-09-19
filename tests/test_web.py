@@ -1,7 +1,5 @@
 """Web layer smoke tests (FastAPI TestClient)."""
 
-import json
-
 import pytest
 
 from fastapi.testclient import TestClient
@@ -108,49 +106,6 @@ def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
         assert by_provider["apple"]["preserves_order"] is True
         assert by_provider["deezer"]["preserves_order"] is False
         assert by_provider["jellyfin"]["preserves_order"] is False   # browse-only, no target
-
-
-def test_lastfm_gains_playlists_in_the_payload_once_a_web_session_is_saved(tmp_path, monkeypatch):
-    """`supports_playlists` reads the account's own settings through the profile
-    environment, so the payload has to ask it with that profile active. Asked
-    outside, it answers about whatever the process happens to have and Last.fm
-    stays a source forever however many sessions are pasted."""
-    monkeypatch.delenv("LASTFM_WEB_SESSION", raising=False)
-    monkeypatch.setattr("songmirror.web.load_dotenv", lambda: False)
-    with TestClient(_app(tmp_path)) as client:
-        lastfm = next(a for a in client.get("/api/accounts").json()
-                      if a["provider"] == "lastfm")
-        assert lastfm["supports_playlists"] is False
-        assert lastfm["transferable"] is False
-
-        saved = client.post(
-            f"/api/accounts/{lastfm['id']}/config",
-            json={"LASTFM_WEB_SESSION":
-                  "curl 'https://www.last.fm/' -H 'Cookie: sessionid=s; csrftoken=c'"},
-        )
-        assert saved.status_code == 200
-
-        lastfm = next(a for a in client.get("/api/accounts").json()
-                      if a["provider"] == "lastfm")
-        assert lastfm["supports_playlists"] is True
-        assert lastfm["transferable"] is True
-        # The paste is reduced on the way in, not stored whole.
-        stored = (client.app.state.account_profiles
-                  .settings_for(lastfm["id"]).get("LASTFM_WEB_SESSION"))
-        assert json.loads(stored) == {"csrftoken": "c", "sessionid": "s"}
-
-
-def test_a_lastfm_paste_without_the_cookies_is_rejected_not_stored(tmp_path, monkeypatch):
-    monkeypatch.setattr("songmirror.web.load_dotenv", lambda: False)
-    with TestClient(_app(tmp_path)) as client:
-        lastfm = next(a for a in client.get("/api/accounts").json()
-                      if a["provider"] == "lastfm")
-
-        rejected = client.post(f"/api/accounts/{lastfm['id']}/config",
-                               json={"LASTFM_WEB_SESSION": "not a request"})
-
-        assert rejected.status_code == 422
-        assert "sessionid" in rejected.json()["detail"]
 
 
 def test_account_profile_api_adds_labels_isolates_secrets_and_removes(tmp_path):

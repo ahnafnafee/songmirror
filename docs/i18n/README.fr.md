@@ -105,7 +105,7 @@ SongMirror conserve vos listes de lecture identiques partout sans ré-ajout manu
 - 🔗 **Transfert à partir d'un lien **: collez l'URL d'une playlist publique à partir de n'importe quel service connecté et copiez-la directement. Pas besoin de le sauvegarder ou de le suivre au préalable.
 - 🌐 **Listes de lecture suivies **: synchronisez et transférez les listes de lecture que vous suivez mais que vous ne possédez pas, pas seulement celles que vous avez créées.
 - 📦 **Sauvegardes planifiées des métadonnées **: archivez l'intégralité de la bibliothèque de playlists d'un compte selon son propre calendrier sous les données d'application persistantes, avec JSON/XML, des limites de conservation et un historique de réussite/échec visible. les téléchargements uniques et les fichiers Soundiiz JSON prêts à l'importation restent également disponibles.
-- 📻 **Last.fm**: envoyez vos Loved Tracks, Top Tracks (six périodes) et Recent Scrobbles vers n'importe quel service connecté et, une fois le compte autorisé, ramenez les titres favoris des autres services **vers** Last.fm. Son API n'a pas de playlists ; celles-ci demandent une session web connectée, sans laquelle il n'est jamais une destination de playlist.
+- 📻 **Last.fm**: envoyez vos Loved Tracks, Top Tracks (six périodes) et Recent Scrobbles vers n'importe quel service connecté et, une fois le compte autorisé, ramenez les titres favoris des autres services **vers** Last.fm. La synchronisation des playlists avec ce service est indisponible, il n'est donc jamais une destination de playlist.
 - 💿 **Miroir de téléchargement local **: conservez l'audio hors ligne, un dossier par liste de lecture dans la mise en page `AlbumArtist/Album` de Jellyfin, avec des couvertures et un `.m3u8` mis à jour automatiquement. Pointez-le vers une bibliothèque musicale existante et les titres correspondants sont copiés **dans leur qualité d'origine** (un FLAC reste un FLAC), les téléchargements ne comblant que les manques.
 - 🛡️ **Mesures de sécurité **: simulation par défaut, plafonds d'ajout/suppression par passe, protection contre les pertes nettes, protection contre les instantanés vides, abandon sans écriture à l'expiration des jetons.
 - 🗃️ **Archives de chansons en constante évolution** — chaque morceau jamais vu est enregistré dans une base de données locale SQLite (nom, artiste, album, ISRC, métadonnées brutes, première/dernière vue).
@@ -507,7 +507,7 @@ Parle au officiel [YouTube Data API v3](https://developers.google.com/youtube/v3
 
 ### Last.fm
 
-L'API de Last.fm n'a pas de playlists, il n'est donc par défaut jamais une destination de playlist ; collez une session web connectée sur la page des comptes pour y synchroniser aussi des playlists. Il apporte votre **historique d'écoute** sous forme de collections en lecture seule, et ses **Loved Tracks** forment une collection de titres favoris comme chez tous les autres fournisseurs, qui devient inscriptible dès que vous autorisez le compte.
+La synchronisation des playlists avec Last.fm est indisponible, il n'est donc jamais une destination de playlist. Il apporte votre **historique d'écoute** sous forme de collections en lecture seule, et ses **Loved Tracks** forment une collection de titres favoris comme chez tous les autres fournisseurs, qui devient inscriptible dès que vous autorisez le compte.
 
 1. Créez un compte API sur <https://www.last.fm/api/account/create>. Notez à la fois la **clé d'API** et le **secret partagé**.
 2. Dans Comptes → Last.fm, collez les deux, puis parcourez la page d'autorisation de Last.fm.
@@ -533,7 +533,7 @@ Trois limites à connaître avant de vous y fier:
 
 - **Pas d'ISRC.** Les points d'accès `user.*` ne renvoient que des noms d'artiste et de titre, les titres Last.fm sont donc appariés par nom et non par identité de catalogue. Attendez-vous à une version erronée de temps à autre, qu'un fournisseur porteur d'ISRC aurait évitée. Avant d'ajouter un favori, SongMirror demande à `track.getInfo` l'orthographe canonique de Last.fm, afin qu'un titre presque identique ne crée pas une seconde entrée.
 - **Les collections classées sont sans date.** Top Tracks n'a pas d'horodatage par titre, ces titres se synchronisent donc sans date et ne peuvent pas déterminer l'ordre d'ajout.
-- **Les titres favoris passent toujours par la route native.** Une synchronisation de titres favoris *vers* Last.fm écrit dans sa collection Loved Tracks, jamais dans une playlist, même lorsqu'une session web est configurée.
+- **Les routes de playlist ne s'appliquent pas.** Une synchronisation de titres favoris *vers* Last.fm doit utiliser la route native. Aucune playlist n'existe où la route de création d'une playlist nommée pourrait écrire.
 
 Sans le secret partagé, le profil que vous indiquez doit rendre publics ses Loved Tracks et ses Top Tracks.
 

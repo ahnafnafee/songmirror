@@ -126,8 +126,7 @@ def supports_playlists(provider_id):
     target class, so nothing here restates the list.
 
     A class may expose this as a callable rather than a constant when the answer
-    depends on configuration: Last.fm has no playlists through its API and gains
-    them only when a signed-in web session is configured.
+    depends on the active account's configuration.
     """
     target = _CLASSES.get(provider_id)
     if target is None:
@@ -140,8 +139,7 @@ def playlists_for(identity, opts=None):
     """`supports_playlists` for one participant, asked with its profile active.
 
     The class-level answer can depend on that account's own stored settings
-    (Last.fm has playlists only when a signed-in web session is configured), and
-    settings reach the mature adapters through the profile environment. Asking
+    and settings reach the mature adapters through the profile environment. Asking
     outside the profile therefore answers about whatever happened to be in the
     process environment instead of about this account.
     """
@@ -163,6 +161,28 @@ def _writable(identity, opts):
     if playlists_for(identity, opts):
         return True
     return bool(getattr(opts, "liked_tracks", False))
+
+
+def _announce_playlistless(identity, opts, loved_tracks):
+    """Say why a job's participant cannot be mirrored to, rather than dropping
+    it in silence. A provider left out with no note reads as a sync that
+    quietly does nothing, so every exclusion is one warn event in the live feed.
+    """
+    from ..logs import log_warn
+
+    profiles = _profiles(opts)
+    provider = profiles.provider_of(identity) if profiles is not None else identity
+    cls = _CLASSES.get(provider)
+    if cls is None:
+        return
+    note = getattr(cls, "no_playlists_note", None)
+    label = (profiles.display_name(identity, cls.name)
+             if profiles is not None else cls.name)
+    still = (" Its loved tracks still sync." if loved_tracks else "")
+    log_warn(
+        f"{label} was left out of this pass: {note or 'it has no playlists to write.'}{still}",
+        tag=provider,
+    )
 
 
 def target_provider(target, default=None):
@@ -285,13 +305,19 @@ def build_targets(opts, sp=None):
     source = getattr(opts, "sync_source", None) or "spotify"
     if profiles is not None:
         source = profiles.canonical_id(source)
-    return [
-        target
-        for identity in _participant_ids(opts)
-        if identity != source and _writable(identity, opts)
-        for target in (build_one(identity, opts, sp, sync_peer=True),)
-        if target
-    ]
+    loved_tracks = bool(getattr(opts, "liked_tracks", False))
+    targets = []
+    for identity in _participant_ids(opts):
+        if identity == source:
+            continue
+        if not _writable(identity, opts):
+            if not playlists_for(identity, opts):
+                _announce_playlistless(identity, opts, loved_tracks)
+            continue
+        target = build_one(identity, opts, sp, sync_peer=True)
+        if target:
+            targets.append(target)
+    return targets
 
 
 def build_one(provider_id, opts, sp=None, *, sync_peer=False, songs=None):
@@ -342,10 +368,14 @@ def build_peers(opts, sp, songs=None):
     chosen) — so a job saved without touching the Services step still syncs rather
     than silently finding zero peers. Needs the Spotify client for the Spotify peer.
     `songs` (the archive conn) backs the Spotify peer's persistent ISRC cache."""
-    return [
-        peer
-        for identity in _participant_ids(opts)
-        if _writable(identity, opts)
-        for peer in (build_one(identity, opts, sp, sync_peer=True, songs=songs),)
-        if peer
-    ]
+    loved_tracks = bool(getattr(opts, "liked_tracks", False))
+    peers = []
+    for identity in _participant_ids(opts):
+        if not _writable(identity, opts):
+            if not playlists_for(identity, opts):
+                _announce_playlistless(identity, opts, loved_tracks)
+            continue
+        peer = build_one(identity, opts, sp, sync_peer=True, songs=songs)
+        if peer:
+            peers.append(peer)
+    return peers

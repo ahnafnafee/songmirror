@@ -105,7 +105,7 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 - 🔗 **Transfer from a link** — paste a public playlist URL from any connected service and copy it straight across. No need to save or follow it first.
 - 🌐 **Followed playlists** — sync and transfer playlists you follow but don't own, not just ones you created.
 - 📦 **Scheduled metadata backups** — archive an account's entire playlist library on its own schedule under persistent app data, with JSON/XML, retention limits, and visible success/failure history. One-off downloads and import-ready Soundiiz JSON remain available too.
-- 📻 **Last.fm**: sync your Loved Tracks, Top Tracks (six periods), and Recent Scrobbles out to any connected service, and once you authorize the account, sync other services' liked tracks back **into** Last.fm loves. Its API has no playlists, so playlists need a signed-in web session; without one it is never a playlist destination.
+- 📻 **Last.fm**: sync your Loved Tracks, Top Tracks (six periods), and Recent Scrobbles out to any connected service, and once you authorize the account, sync other services' liked tracks back **into** Last.fm loves. Playlist sync to Last.fm is not supported.
 - 💿 **Local download mirror**: keep offline audio, one folder per playlist in **Jellyfin's** `AlbumArtist/Album` layout, with covers and an auto-updated `.m3u8`. Point it at an existing music library and matching tracks are copied in **at their original quality** (a FLAC stays a FLAC), with downloads filling only the gaps.
 - 🛡️ **Safety rails** — dry-run by default, per-pass add/removal caps, net-loss protection, empty-snapshot guard, fail-closed on expired tokens.
 - 🗃️ **Ever-growing song archive** — every track ever seen is recorded in a local SQLite database (name, artist, album, ISRC, raw metadata, first/last seen).
@@ -507,7 +507,7 @@ Talks to the **official [YouTube Data API v3](https://developers.google.com/yout
 
 ### Last.fm
 
-Last.fm's API has no playlists, so by default it is never a playlist destination; paste a signed-in web session on the Accounts page to sync playlists to it as well. It contributes **listening history** as read-only collections, and its **Loved Tracks** is a liked-tracks collection like every other provider's, which becomes writable once you authorize the account.
+Last.fm playlist sync is not supported, so it is never a playlist destination. It contributes **listening history** as read-only collections, and its **Loved Tracks** is a liked-tracks collection like every other provider's, which becomes writable once you authorize the account.
 
 1. Create an API account at <https://www.last.fm/api/account/create>. Note both the **API key** and the **shared secret**.
 2. In Accounts → Last.fm, paste both, then click through the Last.fm authorization page.
@@ -533,7 +533,7 @@ Three limits worth knowing before you rely on it:
 
 - **No ISRC.** The `user.*` endpoints return artist and track names only, so Last.fm tracks match by name rather than on catalog identity. Expect the occasional wrong-version match that an ISRC-carrying provider would have avoided. Before loving a track, SongMirror asks `track.getInfo` for Last.fm's canonical spelling, so a near-miss title does not create a second loved entry.
 - **Ranked collections are undated.** Top Tracks has no per-track timestamp, so those tracks sync as undated and cannot drive date-added ordering.
-- **Liked tracks always take the native route.** A liked-tracks sync *into* Last.fm writes its loved collection, never a playlist, even when a web session is configured.
+- **Playlist routes do not apply.** A liked-tracks sync *into* Last.fm must use the native route. There is no playlist for the "create a named playlist" route to write to.
 
 Without the shared secret, the profile you point at must have its loved and top tracks public.
 

@@ -1,20 +1,23 @@
-"""Last.fm: history source, loved tracks, and website-backed playlists.
+"""Last.fm as a history source with a writable loved-tracks collection.
 
-Three surfaces, two of them on the documented API and one not.
+Last.fm's API has no playlist methods, so this adapter never creates or edits one:
+`supports_playlists` is False and the playlist write methods raise
+TargetCapabilityError, which the playlist and transfer layers already turn into
+a user-facing message.
 
-* **Read-only history** (the API): ranked top tracks per period and the recent
-  scrobble feed, as fixed virtual collections.
-* **Loved Tracks** (the API): the native favorites collection, writable once the
-  account is authorized.
-* **Playlists** (the website): only present when a signed-in web session is
-  configured, because Last.fm's API has no playlist methods at all. See
-  `lastfm_web` for the endpoints and for why the track names it stores are the
-  ones its own search supplied rather than the recording's.
+What it does expose:
 
-Track ids are ``<artist>␟<name>``. ``track.love`` addresses a track by artist
-and title, and a playlist entry keeps whatever strings its catalogue row
-carried, so in both cases an id has to round-trip to that pair rather than to a
-catalogue identifier, of which Last.fm has none.
+* **Seven read-only virtual playlists** for the ranked top-tracks periods and
+  the recent scrobble feed.
+* **Loved Tracks as the native favorites collection**, the same shape every
+  other provider uses for its liked tracks. With an authorized session it is
+  writable, so another service's liked tracks can sync into Last.fm loves.
+
+Track ids are ``<artist>␟<name>`` rather than the sometimes-present mbid,
+because ``track.love`` and ``track.unlove`` address a track by artist and title
+and an id has to round-trip to those. Canonical spelling drift would therefore
+re-key an id, but the engine's no-ISRC path diffs on the normalized
+``track_key``, which absorbs case and punctuation changes.
 """
 
 import os
@@ -27,10 +30,8 @@ from ...lastfm import (
     LastfmError,
     LastfmTransient,
 )
-from ...lastfm_web import LastfmWeb, LastfmWebAuthError, credentials_from
 from ..config import polite_sleep
 from ..logs import log_warn
-from ..matching import track_artist, track_key
 from .base import (
     MirrorTarget,
     TargetAuthError,
@@ -40,12 +41,10 @@ from .base import (
 
 RECENT_ID = "recent"
 TOP_PREFIX = "top:"
-WEB_PREFIX = "web:"
 #  U+241F SYMBOL FOR UNIT SEPARATOR: printable, and never part of a track title.
 ID_SEP = "␟"
 
-_NO_PLAYLISTS = ("Last.fm's API has no playlists. Paste a signed-in last.fm web "
-                 "session on the Accounts page to sync playlists to it.")
+_NO_PLAYLISTS = "Last.fm playlist sync is not supported; it cannot receive playlist changes"
 _NEEDS_AUTH = ("loving tracks on Last.fm needs the shared secret and an "
                "authorized session; reconnect the Last.fm account")
 
@@ -59,45 +58,26 @@ def split_id(value):
     return (artist.strip(), name.strip()) if name else ("", "")
 
 
-def web_credentials():
-    return credentials_from(os.getenv("LASTFM_WEB_SESSION") or "")
-
-
 class LastfmTarget(MirrorTarget):
     name = "Last.fm"
     tag = "lastfm"
     source = "lastfm"
     favorite_tracks_name = "Loved Tracks"
     favorite_tracks_id = "loved"
-    # No positional insert, so date-order repair cannot be performed here.
+    no_playlists_note = _NO_PLAYLISTS
+    # No playlist writes, which keeps this provider out of playlist mirroring
+    # and out of N-way while leaving its favorites collection usable.
+    supports_playlists = False
+    # No positional insert and no playlist writes, so date-order repair cannot
+    # be performed here; the engine appends in source order instead.
     replay_chronology = None
 
-    def __init__(self, client=None, web=None):
+    def __init__(self, client=None):
         self._api = client or Lastfm(
             api_secret=os.getenv("LASTFM_API_SECRET") or "",
             session_key=os.getenv("LASTFM_SESSION_KEY") or "",
         )
-        self._web = web if web is not None else self._build_web()
-        # search-catalogue is addressed per playlist even though its results are
-        # global, so resolve borrows whichever playlist was last seen.
-        self._search_scope = None
         self.cache_file = self.resolve_cache_path()
-
-    def _build_web(self):
-        credentials = web_credentials()
-        if not credentials:
-            return None
-        try:
-            return LastfmWeb(credentials, self._api.user)
-        except LastfmWebAuthError as exc:
-            log_warn(f"last.fm web session unusable: {exc}", tag="lastfm")
-            return None
-
-    @classmethod
-    def supports_playlists(cls):
-        """Evaluated, not read: Last.fm only has playlists when a web session is
-        configured, so this depends on settings rather than on the class."""
-        return bool(web_credentials())
 
     @classmethod
     def resolve_cache_path(cls, opts=None):
@@ -106,7 +86,7 @@ class LastfmTarget(MirrorTarget):
     # -- collections ----------------------------------------------------------
 
     @staticmethod
-    def _history_rows():
+    def _rows():
         rows = [{"id": RECENT_ID, "name": "Recent Scrobbles"}]
         rows.extend({"id": f"{TOP_PREFIX}{period}", "name": f"Top Tracks ({label})"}
                     for period, label in TOP_PERIODS.items())
@@ -116,48 +96,25 @@ class LastfmTarget(MirrorTarget):
         return rows
 
     def list_playlists(self):
-        """The read-only history collections, plus the account's real playlists
-        when a web session is configured. Loved Tracks is deliberately absent:
-        it is the native favorites resource, as on every other provider."""
-        rows = self._history_rows()
-        for row in self._web_playlists():
-            rows.append(row)
-        return {row["name"].casefold(): row for row in rows}
-
-    def _web_playlists(self):
-        if self._web is None:
-            return []
-        try:
-            found = self._web.list_playlists()
-        except LastfmWebAuthError as exc:
-            raise TargetAuthError(str(exc)) from exc
-        if found and self._search_scope is None:
-            self._search_scope = found[0]["id"]
-        return [{"id": f"{WEB_PREFIX}{row['id']}", "name": row["name"],
-                 "description": "", "images": [], "_web": True} for row in found]
-
-    @staticmethod
-    def _web_id(playlist_id):
-        value = str(playlist_id or "")
-        return value[len(WEB_PREFIX):] if value.startswith(WEB_PREFIX) else None
+        """The read-only virtual collections. Loved Tracks is deliberately
+        absent: it is the native favorites resource, as on every other
+        provider, so it is not also offered as a playlist."""
+        return {row["name"].casefold(): row for row in self._rows()}
 
     def is_editable(self, playlist):
-        return self._web_id(self.playlist_id(playlist)) is not None
+        return False
 
     def hydrate_playlist_counts(self, playlists):
-        """Browse-only enrichment. The history listing is synthetic, so each
-        count costs one ``limit=1`` request. Best-effort."""
+        """Browse-only enrichment: the listing is synthetic, so each count costs
+        one ``limit=1`` request. Best-effort."""
         for playlist in playlists:
             try:
                 playlist["count"] = self._count(str(self.playlist_id(playlist) or ""))
-            except (LastfmError, LastfmTransient, LastfmWebAuthError):
+            except (LastfmError, LastfmTransient):
                 playlist.setdefault("count", None)
         return playlists
 
     def _count(self, playlist_id):
-        web_id = self._web_id(playlist_id)
-        if web_id is not None:
-            return len(self._web.entries(web_id)) if self._web else None
         if playlist_id == self.favorite_tracks_id:
             return self._api.loved_total()
         if playlist_id == RECENT_ID:
@@ -178,18 +135,7 @@ class LastfmTarget(MirrorTarget):
     # -- reads ----------------------------------------------------------------
 
     def playlist_tracks(self, playlist):
-        playlist_id = str(self.playlist_id(playlist) or "")
-        web_id = self._web_id(playlist_id)
-        if web_id is not None:
-            self._search_scope = web_id
-            with _translated():
-                return [
-                    {"id": compose_id(row["artist"], row["name"]),
-                     "name": row["name"], "artist": row["artist"],
-                     "entry_id": row["entry_id"], "added_at": None}
-                    for row in self._web.entries(web_id)
-                ]
-        return self._identified(self._read(playlist_id))
+        return self._identified(self._read(str(self.playlist_id(playlist) or "")))
 
     def favorite_tracks(self):
         return self._identified(self._read(self.favorite_tracks_id))
@@ -217,21 +163,12 @@ class LastfmTarget(MirrorTarget):
         artist, name = track.get("artist") or "", track.get("name") or ""
         return compose_id(artist, name) if (artist and name) else existing
 
-    def occurrence_id(self, track):
-        """A playlist entry's own id, which is what a removal addresses."""
-        entry = track.get("entry_id")
-        return str(entry) if entry not in (None, "") else None
-
-    # -- resolving a foreign track --------------------------------------------
+    # -- resolving a foreign track to a Last.fm one ---------------------------
 
     def resolve(self, track, cache):
-        """Last.fm carries no ISRC, so this is always a name lookup.
-
-        With a web session the catalogue search is authoritative, because an
-        entry has to be added with the exact strings one of its rows supplied.
-        Without one, only loved tracks are writable, and track.getInfo's
-        canonical spelling is what stops a near-miss creating a second entry.
-        """
+        """Last.fm carries no ISRC, so this is always a name lookup. Asking
+        track.getInfo for the canonical spelling first is what stops a
+        near-miss title creating a second loved entry."""
         name = track.get("name") or ""
         artists = track.get("artists") or []
         primary = track.get("artist") or (artists[0] if artists else "")
@@ -240,73 +177,13 @@ class LastfmTarget(MirrorTarget):
             return cache["search"][key] or None, "search"
         if not (name and primary):
             return None, "search"
-        found = (self._resolve_web(name, primary) if self._web is not None
-                 else self._resolve_api(name, primary))
+        with _translated():
+            corrected = self._api.track_info(primary, name)
+        found = compose_id(*corrected) if corrected else None
         cache["search"][key] = found
         cache["dirty"] = True
         polite_sleep(0.25)
         return found, "search"
-
-    def _resolve_api(self, name, primary):
-        with _translated():
-            corrected = self._api.track_info(primary, name)
-        return compose_id(*corrected) if corrected else None
-
-    def _resolve_web(self, name, primary):
-        scope = self._search_scope or self._any_playlist_id()
-        if scope is None:
-            # Nothing to scope the catalogue search to yet; the playlist the
-            # engine is about to write will provide one on the next pass.
-            return None
-        with _translated():
-            rows = self._web.search(f"{primary} {name}", scope)
-        best = _best_row(rows, name, primary)
-        return compose_id(best["artist"], best["track"]) if best else None
-
-    def _any_playlist_id(self):
-        rows = self._web_playlists()
-        return self._web_id(rows[0]["id"]) if rows else None
-
-    # -- playlist writes ------------------------------------------------------
-
-    def create(self, sp_playlist):
-        if self._web is None:
-            raise TargetCapabilityError(_NO_PLAYLISTS)
-        name = sp_playlist.get("name") or "New Playlist"
-        with _translated():
-            created = self._web.create(name, sp_playlist.get("description") or "")
-        self._search_scope = created["id"]
-        return {"id": f"{WEB_PREFIX}{created['id']}", "name": created["name"],
-                "description": "", "images": [], "_web": True}
-
-    def add(self, playlist, target_ids):
-        web_id = self._require_web(playlist)
-        for target_id in target_ids:
-            artist, name = split_id(target_id)
-            if not (artist and name):
-                log_warn(f"skipped an unaddressable track id {target_id!r}", tag=self.tag)
-                continue
-            with _translated():
-                self._web.add(web_id, name, artist)
-            polite_sleep(0.3)
-
-    def remove(self, playlist, track):
-        web_id = self._require_web(playlist)
-        entry_id = self.occurrence_id(track)
-        if not entry_id:
-            log_warn("skipped a removal with no entry id", tag=self.tag)
-            return
-        with _translated():
-            self._web.remove(web_id, entry_id)
-
-    def remove_occurrence(self, playlist, track_id, occurrence_id):
-        self.remove(playlist, {"id": track_id, "entry_id": occurrence_id})
-
-    def _require_web(self, playlist):
-        web_id = self._web_id(self.playlist_id(playlist))
-        if self._web is None or web_id is None:
-            raise TargetCapabilityError(_NO_PLAYLISTS)
-        return web_id
 
     # -- favorites writes -----------------------------------------------------
 
@@ -344,26 +221,16 @@ class LastfmTarget(MirrorTarget):
                 return
             raise
 
+    # -- writes Last.fm cannot accept -----------------------------------------
 
-def _best_row(rows, name, artist):
-    """The catalogue row closest to the wanted recording.
+    def create(self, sp_playlist):
+        raise TargetCapabilityError(_NO_PLAYLISTS)
 
-    Its search returns video-ish titles, so the row whose own strings score
-    best against the source track is chosen rather than simply the first.
-    """
-    wanted = track_key(name, artist)
-    scored = []
-    for row in rows:
-        candidate = track_key(row["track"], row["artist"])
-        exact = candidate == wanted
-        contains = name.casefold() in row["track"].casefold()
-        artist_ok = artist.casefold() in f"{row['artist']} {row['track']}".casefold()
-        scored.append(((exact, contains and artist_ok, contains, artist_ok), row))
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-    for score, row in scored:
-        if any(score):
-            return row
-    return rows[0] if rows else None
+    def add(self, playlist, target_ids):
+        raise TargetCapabilityError(_NO_PLAYLISTS)
+
+    def remove(self, playlist, track):
+        raise TargetCapabilityError(_NO_PLAYLISTS)
 
 
 class _translated:
@@ -377,6 +244,6 @@ class _translated:
             return False
         if isinstance(value, LastfmTransient):
             raise TargetTransientError(str(value)) from value
-        if isinstance(value, (LastfmAuthError, LastfmWebAuthError)):
+        if isinstance(value, LastfmAuthError):
             raise TargetAuthError(str(value)) from value
         return False

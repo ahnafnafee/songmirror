@@ -179,6 +179,10 @@ function ProviderChip({
 }) {
   useTranslation()
   const connected = canParticipateInSync(account)
+  // Connected, but playlist writes are unsupported. Last.fm can still be a
+  // source and receive loves, so it stays togglable —
+  // the annotation is what stops the chip reading as a playlist destination.
+  const playlistless = connected && !hasPlaylists(account)
   const unavailableLabel = account.state === 'connected' ? t("catalog only") : t("not connected")
   const logoId = serviceLogoId(account.provider)
 
@@ -221,6 +225,7 @@ function ProviderChip({
           {{ source: t('source'), order: t('order'), authority: t('authority'), mirror: t('mirror') }[role]}
         </span>
       )}
+      {playlistless && <span className="font-normal text-text-3">{t("no playlists")}</span>}
       {!connected && <span className="font-normal text-text-3">{unavailableLabel}</span>}
     </button>
   )

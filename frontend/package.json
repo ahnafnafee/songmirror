@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "i18n:extract": "node scripts/extract-i18n.mjs",
     "i18n:check": "node scripts/check-i18n.mjs && node scripts/check-readmes.mjs",
-    "test:e2e": "node e2e/verify.cjs && node e2e/backup-folder-edit.cjs && node e2e/i18n.cjs && node e2e/playlist-creation.cjs",
+    "test:e2e": "node e2e/verify.cjs && node e2e/backup-folder-edit.cjs && node e2e/i18n.cjs && node e2e/playlist-creation.cjs && node e2e/lastfm-sync.cjs",
     "test:e2e:ci": "pnpm build && pnpm test:e2e"
   },
   "dependencies": {

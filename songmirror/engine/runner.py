@@ -498,8 +498,12 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
     cache = load_cache(target.cache_file)
     # A provider with no playlists (Last.fm) is kept as a target only for its
     # native favorites collection. Drop the playlist phase in one note rather
-    # than failing once per selected playlist.
-    if not getattr(target, "supports_playlists", True) and selected:
+    # than failing once per selected playlist. The flag can be evaluated (a
+    # classmethod answering from the account's own settings), so a plain
+    # truthiness read would see the bound method and never fire.
+    declared_playlists = getattr(target, "supports_playlists", True)
+    has_playlists = declared_playlists() if callable(declared_playlists) else declared_playlists
+    if not has_playlists and selected:
         log_note(f"{target.name} has no playlists; {len(selected)} skipped "
                  "(liked tracks still sync)", tag=target.tag)
         selected = []

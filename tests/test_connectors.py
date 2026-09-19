@@ -1,7 +1,5 @@
 """Account connectors: status + the connect entry point per auth kind."""
 
-import json
-
 import pytest
 
 from songmirror.services.accounts import CONNECTORS
@@ -374,57 +372,15 @@ def test_lastfm_grants_favorites_write_only_once_authorized(tmp_path, monkeypatc
 
     c._store.save({"LASTFM_SESSION_KEY": "sk-1"})
     assert c.status().capabilities == frozenset({"library_read", "favorites_write"})
-    # Playlist writes need the separate web session, which is not configured.
+    # Never playlist writes: this integration uses only Last.fm's API.
     assert "library_write" not in c.status().capabilities
 
 
-def test_lastfm_grants_library_write_only_with_a_web_session(tmp_path, monkeypatch):
-    """The sync wizard offers a playlist destination on `library_write` alone,
-    so the web session has to reach the grant set. Without this the pasted
-    session is inert: playlists work in the engine and can never be chosen."""
-    c = _conn("lastfm", tmp_path)
-    monkeypatch.setattr(c, "_validate", lambda: (True, "ahnaf"))
-    c.submit({"LASTFM_API_KEY": "k", "LASTFM_USER": "ahnaf"})
-
-    assert "library_write" not in c.status().capabilities
-
-    c.submit({"LASTFM_WEB_SESSION":
-              "curl 'https://www.last.fm/' -H 'Cookie: sessionid=s; csrftoken=c'"})
-    assert "library_write" in c.status().capabilities
-
-    c.submit({"LASTFM_WEB_SESSION": ""})
-    assert "library_write" not in c.status().capabilities
-
-
-def test_lastfm_stores_only_the_session_cookies_from_a_saved_paste(tmp_path):
-    """An oauth_redirect connector never reaches submit() from the wizard: the
-    fields are saved straight to config. The reduction therefore has to happen
-    in normalize_config, or the entire copied request is persisted."""
-    c = _conn("lastfm", tmp_path)
-    raw = ("curl 'https://www.last.fm/user/ahnafnafee' -H 'User-Agent: Mozilla/5.0' "
-           "-H 'Cookie: csrftoken=c; sessionid=s; _pk_id.1=tracking; ads=junk'")
-
-    stored = c.normalize_config({"LASTFM_WEB_SESSION": raw})["LASTFM_WEB_SESSION"]
-
-    assert json.loads(stored) == {"csrftoken": "c", "sessionid": "s"}
-    assert "tracking" not in stored and "Mozilla" not in stored
-
-    with pytest.raises(ValueError, match="sessionid"):
-        c.normalize_config({"LASTFM_WEB_SESSION": "curl 'https://www.last.fm/'"})
-    # An untouched field, and a cleared one, both pass through.
-    assert c.normalize_config({"LASTFM_API_KEY": "k"}) == {"LASTFM_API_KEY": "k"}
-    assert c.normalize_config({"LASTFM_WEB_SESSION": ""})["LASTFM_WEB_SESSION"] == ""
-
-
-def test_lastfm_playlist_support_follows_the_account_not_the_provider(monkeypatch):
+def test_lastfm_never_claims_playlist_support_in_the_payload():
     from songmirror.engine.targets import supports_playlists
 
-    monkeypatch.delenv("LASTFM_WEB_SESSION", raising=False)
     assert supports_playlists("lastfm") is False
     assert supports_playlists("spotify") is True
-
-    monkeypatch.setenv("LASTFM_WEB_SESSION", '{"sessionid":"s","csrftoken":"c"}')
-    assert supports_playlists("lastfm") is True
 
 
 def test_lastfm_reads_the_token_out_of_the_callback_url(tmp_path, monkeypatch):

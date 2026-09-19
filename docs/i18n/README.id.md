@@ -105,7 +105,7 @@ SongMirror menjaga daftar putar Anda tetap sama di mana saja tanpa menambahkan u
 - 🔗 **Transfer dari tautan** — tempelkan URL daftar putar publik dari layanan mana pun yang terhubung dan salin langsung. Tidak perlu menyimpan atau mengikutinya terlebih dahulu.
 - 🌐 **Daftar putar yang diikuti** — menyinkronkan dan mentransfer daftar putar yang Anda ikuti tetapi bukan milik Anda, bukan hanya daftar putar yang Anda buat.
 - 📦 **Pencadangan metadata terjadwal** — arsipkan seluruh pustaka daftar putar akun sesuai jadwalnya sendiri berdasarkan data aplikasi yang persisten, dengan JSON/XML, batas retensi, dan riwayat keberhasilan/kegagalan yang terlihat. unduhan satu kali dan siap impor Soundiiz JSON tetap tersedia juga.
-- 📻 **Last.fm**: kirim Loved Tracks, Top Tracks (enam periode), dan Recent Scrobbles Anda ke layanan mana pun yang terhubung, dan setelah akun diotorisasi, bawa lagu favorit dari layanan lain kembali **ke** Last.fm. API-nya tidak punya daftar putar, sehingga hal itu memerlukan sesi web yang sudah masuk; tanpa itu layanan ini tidak pernah menjadi tujuan daftar putar.
+- 📻 **Last.fm**: kirim Loved Tracks, Top Tracks (enam periode), dan Recent Scrobbles Anda ke layanan mana pun yang terhubung, dan setelah akun diotorisasi, bawa lagu favorit dari layanan lain kembali **ke** Last.fm. Sinkronisasi daftar putar ke layanan ini tidak didukung, jadi tidak pernah menjadi tujuan daftar putar.
 - 💿 **Cermin unduhan lokal** — simpan audio offline, satu folder per daftar putar dalam tata letak Jellyfin `AlbumArtist/Album`, dengan sampul dan `.m3u8` yang diperbarui secara otomatis. Arahkan ke pustaka musik yang sudah ada dan lagu yang cocok akan disalin **dengan kualitas aslinya** (FLAC tetap FLAC), sementara unduhan hanya menutup sisanya.
 - 🛡️ **Perlindungan keamanan** — simulasi secara default, batasan penambahan/penghapusan per pass, perlindungan kerugian bersih, pelindung snapshot kosong, dibatalkan tanpa menulis saat token kedaluwarsa.
 - 🗃️ **Arsip lagu yang terus bertambah** — setiap lagu yang pernah dilihat direkam dalam database SQLite lokal (nama, artis, album, ISRC, metadata mentah, pertama/terakhir dilihat).
@@ -507,7 +507,7 @@ Berbicara dengan [YouTube Data API v3](https://developers.google.com/youtube/v3)
 
 ### Last.fm
 
-API Last.fm tidak punya daftar putar, jadi secara bawaan ia tidak pernah menjadi tujuan daftar putar; tempel sesi web yang sudah masuk di halaman Akun untuk menyinkronkan daftar putar juga. Layanan ini menyumbang **riwayat mendengarkan** sebagai koleksi baca-saja, dan **Loved Tracks** miliknya adalah koleksi lagu favorit seperti pada penyedia lain, yang bisa ditulis begitu Anda mengotorisasi akun.
+Sinkronisasi daftar putar ke Last.fm tidak didukung, jadi tidak pernah menjadi tujuan daftar putar. Layanan ini menyumbang **riwayat mendengarkan** sebagai koleksi baca-saja, dan **Loved Tracks** miliknya adalah koleksi lagu favorit seperti pada penyedia lain, yang bisa ditulis begitu Anda mengotorisasi akun.
 
 1. Buat akun API di <https://www.last.fm/api/account/create>. Catat baik **kunci API** maupun **rahasia bersama**.
 2. Di Akun → Last.fm, tempel keduanya, lalu selesaikan halaman otorisasi Last.fm.
@@ -533,7 +533,7 @@ Tiga batas yang perlu diketahui sebelum Anda mengandalkannya:
 
 - **Tanpa ISRC.** Titik akhir `user.*` hanya mengembalikan nama artis dan lagu, jadi lagu Last.fm dipadankan berdasarkan nama, bukan identitas katalog. Bersiaplah untuk versi yang sesekali salah, yang akan dihindari penyedia bertag ISRC. Sebelum menyukai sebuah lagu, SongMirror menanyakan ejaan kanonis Last.fm lewat `track.getInfo`, sehingga judul yang nyaris sama tidak membuat entri kedua.
 - **Koleksi berperingkat tidak bertanggal.** Top Tracks tidak punya penanda waktu per lagu, jadi lagu-lagu itu disinkronkan tanpa tanggal dan tidak dapat menentukan urutan penambahan.
-- **Lagu favorit selalu memakai rute asli.** Sinkronisasi lagu favorit *ke dalam* Last.fm menulis ke koleksi Loved Tracks-nya, tidak pernah ke daftar putar, bahkan ketika sesi web sudah dikonfigurasi.
+- **Rute daftar putar tidak berlaku.** Sinkronisasi lagu favorit *ke dalam* Last.fm harus memakai rute asli. Tidak ada daftar putar yang bisa ditulis oleh rute pembuat daftar putar bernama.
 
 Tanpa rahasia bersama, profil yang Anda tunjuk harus menjadikan Loved Tracks dan Top Tracks miliknya publik.
 

@@ -105,7 +105,7 @@ SongMirror; manuel olarak tek tek şarkı eklemeye, kopyalamaya ya da kitaplığ
 - 🔗 **Bağlantıdan aktarma** — bağlı herhangi bir servisteki herkese açık bir çalma listesi URL'sini yapıştırarak doğrudan kopyalayın. Listeyi önceden kaydetmeniz veya takip etmeniz gerekmez.
 - 🌐 **Takip edilen çalma listeleri** — yalnızca kendi oluşturduğunuz değil, takip ettiğiniz ancak sahibi olmadığınız çalma listelerini de senkronize edin ve aktarın.
 - 📦 **Zamanlanmış meta veri yedeklemeleri** — bir hesabın çalma listesi kitaplığının tamamını JSON/XML formatında, saklama sınırları ve başarı/başarısızlık geçmişiyle kalıcı uygulama verileri altında düzenli olarak arşivleyin. Tek seferlik indirmeler ve içe aktarmaya hazır Soundiiz JSON da kullanılabilir.
-- 📻 **Last.fm**: Loved Tracks, Top Tracks (altı dönem) ve Recent Scrobbles koleksiyonlarınızı bağlı herhangi bir hizmete gönderin; hesabı yetkilendirdikten sonra diğer hizmetlerdeki beğenilen parçaları **Last.fm tarafına** geri taşıyın. API'sinde çalma listesi yoktur; bunun için oturum açılmış bir web oturumu gerekir, o olmadan asla çalma listesi hedefi olmaz.
+- 📻 **Last.fm**: Loved Tracks, Top Tracks (altı dönem) ve Recent Scrobbles koleksiyonlarınızı bağlı herhangi bir hizmete gönderin; hesabı yetkilendirdikten sonra diğer hizmetlerdeki beğenilen parçaları **Last.fm tarafına** geri taşıyın. Çalma listesi eşitlemesi desteklenmez, dolayısıyla asla çalma listesi hedefi olmaz.
 - 💿 **Yerel indirme aynası** — çevrimdışı ses dosyalarını, **Jellyfin'in** `AlbumArtist/Album` klasör yapısında, kapak resimleri ve otomatik güncellenen `.m3u8` dosyasıyla çalma listesi başına bir klasör halinde saklayın. Mevcut bir müzik kitaplığına yönlendirdiğinizde eşleşen parçalar **özgün kaliteleriyle** kopyalanır (bir FLAC yine FLAC kalır) ve indirmeler yalnızca eksikleri tamamlar.
 - 🛡️ **Güvenlik önlemleri** — varsayılan olarak simülasyon, geçiş başına ekleme/kaldırma sınırları, net kayıp koruması, boş anlık görüntü koruması ve belirteçlerin süresi dolduğunda yazmadan güvenle iptal etme.
 - 🗃️ **Sürekli büyüyen şarkı arşivi** — karşılaşılan her parça yerel bir SQLite veritabanına kaydedilir (isim, sanatçı, albüm, ISRC, ham meta veriler, ilk/son görülme).
@@ -507,7 +507,7 @@ OAuth yenileme belirteci dayanıklı olan ve yeniden başlatmalarda korunan resm
 
 ### Last.fm
 
-Last.fm'in API'sinde çalma listesi yoktur, bu yüzden varsayılan olarak asla çalma listesi hedefi olmaz; çalma listelerini de aktarmak için Hesaplar sayfasına oturum açılmış bir web isteği yapıştırın. **Dinleme geçmişinizi** salt okunur koleksiyonlar olarak sunar ve **Loved Tracks** koleksiyonu, diğer tüm sağlayıcılardaki gibi bir beğenilen parça koleksiyonudur; hesabı yetkilendirdiğinizde yazılabilir hale gelir.
+Last.fm ile çalma listesi eşitlemesi desteklenmez, dolayısıyla asla çalma listesi hedefi olmaz. **Dinleme geçmişinizi** salt okunur koleksiyonlar olarak sunar ve **Loved Tracks** koleksiyonu, diğer tüm sağlayıcılardaki gibi bir beğenilen parça koleksiyonudur; hesabı yetkilendirdiğinizde yazılabilir hale gelir.
 
 1. <https://www.last.fm/api/account/create> adresinde bir API hesabı oluşturun. Hem **API anahtarını** hem de **paylaşılan gizli anahtarı** not edin.
 2. Hesaplar → Last.fm bölümünde ikisini de yapıştırın, ardından Last.fm yetkilendirme sayfasını tamamlayın.
@@ -533,7 +533,7 @@ Buna güvenmeden önce bilinmesi gereken üç sınır:
 
 - **ISRC yok.** `user.*` uç noktaları yalnızca sanatçı ve parça adı döndürür, bu yüzden Last.fm parçaları katalog kimliği yerine ada göre eşleştirilir. ISRC taşıyan bir sağlayıcının önleyeceği hatalı sürümlerle ara sıra karşılaşabilirsiniz. Bir parçayı beğenmeden önce SongMirror, `track.getInfo` üzerinden Last.fm'in standart yazımını sorar; böylece çok benzer bir başlık ikinci bir kayıt oluşturmaz.
 - **Sıralanmış koleksiyonlarda tarih yoktur.** Top Tracks parça başına zaman damgası taşımaz, bu yüzden o parçalar tarihsiz eşitlenir ve eklenme sırasını belirleyemez.
-- **Beğenilen parçalar her zaman yerel yolu kullanır.** Beğenilen parçaların *Last.fm tarafına* eşitlenmesi, bir web oturumu yapılandırılmış olsa bile çalma listesine değil Loved Tracks koleksiyonuna yazar.
+- **Çalma listesi yolları geçerli değildir.** Beğenilen parçaların *Last.fm tarafına* eşitlenmesi yerel yolu kullanmak zorundadır. Adlandırılmış çalma listesi oluşturan yolun yazabileceği bir çalma listesi yoktur.
 
 Paylaşılan gizli anahtar olmadan, belirttiğiniz profilin Loved Tracks ve Top Tracks koleksiyonları herkese açık olmalıdır.
 

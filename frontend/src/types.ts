@@ -63,6 +63,8 @@ export interface Account {
    * is before any token exists, so the wizard shows it up front. Absent when
    * the connector needs no callback or the public URL is misconfigured. */
   callback_url?: string | null
+  /** A Last.fm API approval has started but its callback has not succeeded. */
+  authorization_pending?: boolean
   /** Whether this service can replay date-added order into an existing playlist.
    * False where the provider's writes can't express the repair safely (Deezer),
    * which greys out the transfer form's "preserve order" switch. */

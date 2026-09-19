@@ -288,7 +288,7 @@ pnpm -C frontend build
 
 ## Changes made during implementation
 
-What the design got wrong or left out.
+Three things the design got wrong or left out.
 
 ### Placement copies, it does not hard-link
 
@@ -389,38 +389,3 @@ Two consequences for track identity:
   second loved entry. Error code 6 stays a plain `LastfmError` rather than an
   auth failure, because on a write it means that one title was rejected; such a
   track is skipped with a warning instead of failing the collection.
-
-### Playlists arrived after all, through the website
-
-The section above concluded that a pasted cookie was not worth building, and for
-the API that still holds: `auth.getSession` is a better credential than a cookie
-for everything the API can do. What the reasoning missed is that the API cannot
-do playlists at all. There are no `playlist.*` write methods, so the cookie is
-not a worse route to the same place, it is the only route to a different one.
-
-So the cookie connector was built, narrowly:
-
-* `songmirror/lastfm_web.py` is an HTML client, separate from `lastfm.py`, and
-  it never touches `ws.audioscrobbler.com`. Its docstring records each endpoint
-  it depends on, because those are the parts most likely to move.
-* The connector takes a pasted request (headers or cURL) and keeps only
-  `sessionid` and `csrftoken`. Everything else in the paste is discarded.
-* Every write re-reads `csrfmiddlewaretoken` from the page it is about to post
-  to rather than reusing the pasted `csrftoken`, because the site issues a fresh
-  one per page.
-* `supports_playlists` became a **callable** the registry evaluates, so the
-  capability is per account: without a web session the target behaves exactly as
-  the rest of this document describes, and the runner drops the playlist phase
-  with one note instead of failing the pass.
-* Adding a track goes through `search-catalogue`, which is backed by video search
-  and returns rows like `01 Kanye West - Power` by `KanyeWestVEVO` beside the
-  canonical one. `_best_row` scores the rows instead of taking the first, and the
-  resolve cache keys each decision so a repeat pass does not re-search.
-
-Ids stay `<artist>␟<name>`, which now pays twice: `track.love` needs the pair,
-and the website's add form posts those same two fields. Playlist entries carry
-the site's own entry id as their occurrence id, since that is what removal
-addresses.
-
-Only the HTML parsing is covered by tests, against fixtures trimmed from real
-pages. The endpoints themselves were traced once by hand against a live account.

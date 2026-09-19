@@ -207,7 +207,7 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
     link: { href: 'https://console.cloud.google.com/apis/credentials', label: t("Open Google Cloud credentials") },
   },
   lastfm: {
-    intro: t("Last.fm needs a free API account. The signed-in web request at the end is optional and only adds playlists, which its API does not have."),
+    intro: t("Reads your listening history. Authorize it to read a private profile and love tracks."),
     steps: [
       <>
         <Trans i18nKey={"Open <link1/>, fill in any name and description, and paste the callback URL shown below into <strong2>Callback URL</strong2>."} components={{ link1: <GuideLink href="https://www.last.fm/api/account/create">last.fm/api/account/create</GuideLink>, strong2: <strong /> }} />
@@ -216,17 +216,7 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
         <Trans i18nKey={"Copy the <strong1>API key</strong1> and <strong2>Shared secret</strong2> it gives you into the two fields below."} components={{ strong1: <strong />, strong2: <strong /> }} />
       </>,
       <>{t("Save and continue, then approve SongMirror on the Last.fm page that opens. That fills in your username and enables loving tracks.")}</>,
-      <>
-        <Trans i18nKey={"<strong1>For playlists only</strong1>: open <link2/> while signed in, open dev tools (<code3/>) → <strong4>Network</strong4>, and reload the page."} components={{ strong1: <strong />, link2: <GuideLink href="https://www.last.fm">last.fm</GuideLink>, code3: <Code>F12</Code>, strong4: <strong /> }} />
-      </>,
-      <>
-        <Trans i18nKey={"Select the first request in the list (the page itself, named after your username or <code1/>), then choose <strong2>Copy → Copy as cURL</strong2> or <strong3>Copy request headers</strong3>."} components={{ code1: <Code>www.last.fm</Code>, strong2: <strong />, strong3: <strong /> }} />
-      </>,
-      <>
-        <Trans i18nKey={"Paste that into the last field. It only has to contain the <code1/> line with <code2/> and <code3/> in it."} components={{ code1: <Code>Cookie</Code>, code2: <Code>sessionid</Code>, code3: <Code>csrftoken</Code> }} />
-      </>,
     ],
-    note: t("The API key and secret never expire, and neither does the authorization. The web session does expire when you sign out of last.fm in that browser; re-paste it if playlist syncs start failing. Only the two session cookies are kept, and the rest of the paste is discarded."),
     link: { href: 'https://www.last.fm/api/account/create', label: t("Create a Last.fm API account") },
   },
   jellyfin: {
@@ -267,7 +257,6 @@ const RAW_SESSION_PLACEHOLDERS: Record<string, string> = {
   get DEEZER_REFRESH_TOKEN() { return t('{{headers}}\n—or paste the auth.deezer.com request as cURL—', { headers: 'Cookie: refresh-token=…' }) },
   AMAZON_MUSIC_WEB_HEADERS: '{\n  "accessToken": "…",\n  "deviceId": "…",\n  "deviceType": "…"\n}',
   get AMAZON_MUSIC_RENEWAL_REQUEST() { return t('{{headers}}\n—or paste config.json Copy as cURL—', { headers: 'User-Agent: Mozilla/5.0 …\nCookie: at-main-music=…; session-id=…' }) },
-  get LASTFM_WEB_SESSION() { return t('{{headers}}\n—or paste Copy as cURL—', { headers: 'Cookie: sessionid=…; csrftoken=…' }) },
 }
 
 /** Parses a raw "copy request headers" block (case-insensitive, line-based
@@ -311,6 +300,15 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
   const [deviceInfo, setDeviceInfo] = useState<ConnectDeviceResponse | null>(null)
   const [directResult, setDirectResult] = useState<DirectResult | null>(null)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [lastfmMode, setLastfmMode] = useState<'api' | 'public'>('api')
+  const isLastfm = account.provider === 'lastfm'
+  const setupAccount = useMemo(() => {
+    if (!isLastfm) return account
+    const keys = lastfmMode === 'public' ? ['LASTFM_API_KEY', 'LASTFM_USER']
+      : ['LASTFM_API_KEY', 'LASTFM_API_SECRET']
+    return { ...account, callback_url: lastfmMode === 'api' ? account.callback_url : null,
+      fields: account.fields.filter((field) => keys.includes(field.key)).map((field) => ({ ...field, required: true })) }
+  }, [account, isLastfm, lastfmMode])
 
   // onConnected fires from inside timeout chains below; storing it in a ref
   // means those effects don't need the (unstable, inline-function) prop in
@@ -334,6 +332,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     setDeviceInfo(null)
     setDirectResult(null)
     setShowSuccess(false)
+    setLastfmMode('api')
     // account.fields intentionally omitted — this snapshots the stored values on open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, account.id])
@@ -353,8 +352,8 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
   }, [showSuccess])
 
   const requiredMissing = useMemo(
-    () => account.fields.some((f) => f.required && !(canKeepBlank && f.configured) && !values[f.key]?.trim()),
-    [account.fields, values, canKeepBlank],
+    () => setupAccount.fields.some((f) => f.required && !(canKeepBlank && f.secret && f.configured) && !values[f.key]?.trim()),
+    [setupAccount.fields, values, canKeepBlank],
   )
 
   // oauth_device: once we have a device code, poll until the user authorizes
@@ -402,7 +401,9 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
       try {
         const accounts = await api.getAccounts()
         if (cancelled) return
-        if (accounts.find((a) => a.id === account.id)?.state === 'connected') {
+        const current = accounts.find((a) => a.id === account.id)
+        if (current?.state === 'connected' && (!isLastfm ||
+            (current.capabilities?.favorites_write && current.authorization_pending === false))) {
           setShowSuccess(true)
           return
         }
@@ -418,7 +419,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
       cancelled = true
       if (timer !== undefined) window.clearTimeout(timer)
     }
-  }, [redirectInfo, account.id])
+  }, [redirectInfo, account.id, isLastfm])
 
   function setFieldValue(key: string, value: string) {
     setValues((prev) => ({ ...prev, [key]: value }))
@@ -430,10 +431,10 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     setSaving(true)
     setError(null)
     try {
-      if (account.fields.length > 0) {
+      if (setupAccount.fields.length > 0) {
         // Don't overwrite a stored secret with a blank the user left in place to keep it.
         const payload = Object.fromEntries(
-          account.fields
+          setupAccount.fields
             .filter((f) => !(f.secret && f.configured && !(values[f.key] ?? '').trim()))
             .map((f) => [f.key, values[f.key] ?? '']),
         )
@@ -455,7 +456,10 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     setSaving(true)
     setError(null)
     try {
-      const res = await api.connectAccount(account.id, values)
+      const payload = isLastfm ? Object.fromEntries(setupAccount.fields
+        .filter((f) => !(f.secret && f.configured && !values[f.key]?.trim()))
+        .map((f) => [f.key, values[f.key] ?? ''])) : values
+      const res = await api.connectAccount(account.id, payload)
       if (res.kind === 'redirect' || res.kind === 'device') {
         setError(t("Unexpected response from the server."))
         return
@@ -474,7 +478,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
       open={open}
       onClose={onClose}
       title={t("Connect {{accountName}}", { accountName: account.name })}
-      description={AUTH_KIND_TITLES[account.auth_kind]}
+      description={isLastfm ? t("Choose what to connect") : AUTH_KIND_TITLES[account.auth_kind]}
     >
       <div className="flex flex-col gap-5">
         {showSuccess ? (
@@ -483,7 +487,35 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
           <>
             {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
-            {account.auth_kind === 'oauth_redirect' &&
+            {isLastfm && (
+              <>
+                <div className="flex flex-wrap gap-2" role="group" aria-label={t("Connection method")}>
+                  {(['api', 'public'] as const).map((mode) => (
+                    <Button key={mode} size="sm" variant={lastfmMode === mode ? 'primary' : 'secondary'}
+                      aria-pressed={lastfmMode === mode} disabled={saving}
+                      onClick={() => { setLastfmMode(mode); setRedirectInfo(null); setDirectResult(null); setError(null) }}>
+                      {{ api: t("API authorization"), public: t("Public history") }[mode]}
+                    </Button>
+                  ))}
+                </div>
+                {directResult && directResult.state !== 'connected' && (
+                  <p role="alert" className="rounded-control bg-warning-soft px-3 py-2 text-sm text-warning">{directResult.detail}</p>
+                )}
+                {redirectInfo ? <RedirectStep info={redirectInfo} /> : (
+                  <FieldsStep account={setupAccount} values={values} onChange={setFieldValue}
+                    disabled={saving || requiredMissing} loading={saving}
+                    onSubmit={() => void (lastfmMode === 'api' ? saveAndConnect() : submitDirect())}
+                    submitLabel={lastfmMode === 'api' ? t("Save and continue") : t("Connect")}
+                    guideOverride={lastfmMode === 'public' ? {
+                      intro: t("An API key and username let you read public listening history. This does not enable playlist creation or loving tracks."),
+                      steps: [],
+                      link: { href: 'https://www.last.fm/api/account/create', label: t("Create a Last.fm API account") },
+                    } : undefined} />
+                )}
+              </>
+            )}
+
+            {!isLastfm && account.auth_kind === 'oauth_redirect' &&
               (redirectInfo ? (
                 <RedirectStep info={redirectInfo} />
               ) : (
@@ -548,6 +580,7 @@ function FieldsStep({
   loading,
   onSubmit,
   submitLabel,
+  guideOverride,
 }: {
   account: Account
   values: Record<string, string>
@@ -556,9 +589,10 @@ function FieldsStep({
   loading: boolean
   onSubmit: () => void
   submitLabel: string
+  guideOverride?: ConnectGuideContent
 }) {
   useTranslation()
-  const guide = connectGuides()[account.provider]
+  const guide = guideOverride ?? connectGuides()[account.provider]
   const canKeepBlank = account.auth_kind === 'oauth_redirect' || account.auth_kind === 'oauth_device'
   return (
     <form
@@ -589,7 +623,7 @@ function FieldsStep({
         }}
       />
       {account.fields.map((field) => {
-        const keepable = canKeepBlank && field.configured
+        const keepable = canKeepBlank && field.secret && field.configured
         const required = field.required && !keepable
         if (RAW_SESSION_PLACEHOLDERS[field.key]) {
           return (
@@ -611,7 +645,7 @@ function FieldsStep({
                 dir="ltr"
                 value={values[field.key] ?? ''}
                 onChange={(e) => onChange(field.key, e.target.value)}
-                placeholder={RAW_SESSION_PLACEHOLDERS[field.key]}
+                placeholder={keepable ? t("saved — leave blank to keep") : RAW_SESSION_PLACEHOLDERS[field.key]}
                 className="w-full resize-y rounded-control border border-border-strong bg-field px-3 py-2 font-mono text-xs text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
               />
               {field.help && <p className="text-xs text-text-3">{linkify(t(field.help))}</p>}

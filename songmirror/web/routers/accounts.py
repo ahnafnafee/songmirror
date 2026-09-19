@@ -70,13 +70,8 @@ def _capabilities(provider, status):
 
 
 def _supports_playlists(provider):
-    """Whether this account has playlists at all.
-
-    False for a history service the sync wizard must offer as a source and as a
-    liked-tracks destination without ever offering it a playlist. Last.fm is
-    that by default and stops being it once a web session is configured, so the
-    answer depends on the account's own settings: call this with its profile
-    active, or it reports on the ambient process environment instead.
+    """Whether the provider supports playlist writes. Last.fm remains usable
+    as a history source and a Loved Tracks destination without this capability.
     """
     return targets_supports_playlists(provider)
 
@@ -143,10 +138,6 @@ def _status_payload(request, profile):
     connector = _conn(request, profile.id)
     store = profiles.settings_for(profile.id)
     with profiles.activate(profile.id):
-        # Every derived fact here can depend on this account's own stored
-        # settings rather than only on its provider (Last.fm gains playlists,
-        # and with them peer status, once a web session is configured), so all
-        # of them are answered inside the profile runtime.
         status = connector.status()
         status_values = _status_values(profile.provider, status)
         supports_playlists = _supports_playlists(profile.provider)
@@ -175,6 +166,7 @@ def _status_payload(request, profile):
         "source_capable": _source_capable(profile.provider),
         "preserves_order": _preserves_order(profile.provider),
         "callback_url": _callback_url(request, profile, connector),
+        "authorization_pending": bool(store.get("LASTFM_AUTH_PENDING")) if profile.provider == "lastfm" else False,
     }
 
 
@@ -243,6 +235,10 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
     profiles = request.app.state.account_profiles
     connector = _conn(request, profile.id)
     with profiles.activate(profile.id):
+        # Public history needs only a key and username, without API approval.
+        if profile.provider == "lastfm" and body is not None:
+            status = connector.submit(body)
+            return {"kind": "token_paste", **_status_values(profile.provider, status)}
         if connector.auth_kind == "oauth_redirect":
             # Deterministic defaults keep the provider callback registered by
             # existing installations even when the new UI addresses them by

@@ -1,6 +1,6 @@
 """Last.fm API client.
 
-Last.fm has no playlists. It exposes listening history: loved tracks, ranked
+Last.fm's documented API has no playlist writes. It exposes listening history: loved tracks, ranked
 top tracks per period, and the raw scrobble feed. Those are what this client
 reads, and the engine adapter surfaces them as fixed virtual playlists.
 

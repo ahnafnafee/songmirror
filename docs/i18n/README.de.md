@@ -105,7 +105,7 @@ SongMirror sorgt dafür, dass Ihre Wiedergabelisten überall identisch sind, ohn
 - 🔗 **Von einem Link übertragen** – fügen Sie eine öffentliche Playlist-URL von einem beliebigen verbundenen Dienst ein und kopieren Sie sie direkt rüber. Sie müssen es nicht erst speichern oder befolgen.
 - 🌐 **Gefolgte Playlists** – Synchronisieren und übertragen Sie Playlists, denen Sie folgen, die Sie aber nicht besitzen, und nicht nur die, die Sie erstellt haben.
 - 📦 **Geplante Metadatensicherungen** – Archivieren Sie die gesamte Playlist-Bibliothek eines Kontos nach eigenem Zeitplan unter persistenten App-Daten, mit JSON/XML, Aufbewahrungsgrenzen und sichtbarem Erfolgs-/Fehlerverlauf. einmalige Downloads und importfähige Soundiiz JSON bleiben ebenfalls verfügbar.
-- 📻 **Last.fm**: Übertragen Sie Ihre Loved Tracks, Top Tracks (sechs Zeiträume) und Recent Scrobbles an jeden verbundenen Dienst, und nach der Autorisierung fließen die Lieblingssongs anderer Dienste zurück **nach** Last.fm. Die API des Dienstes hat keine Playlists; dafür ist eine angemeldete Web-Sitzung nötig, ohne die er niemals ein Playlist-Ziel ist.
+- 📻 **Last.fm**: Übertragen Sie Ihre Loved Tracks, Top Tracks (sechs Zeiträume) und Recent Scrobbles an jeden verbundenen Dienst, und nach der Autorisierung fließen die Lieblingssongs anderer Dienste zurück **nach** Last.fm. Die Playlist-Synchronisierung mit diesem Dienst wird nicht unterstützt und ist daher niemals ein Playlist-Ziel.
 - 💿 **Lokaler Download-Spiegel** – Offline-Audio behalten, ein Ordner pro Playlist im `AlbumArtist/Album`-Layout von Jellyfin, mit Covern und einem automatisch aktualisierten `.m3u8`. Richten Sie ihn auf eine vorhandene Musikbibliothek, dann werden passende Titel **in ihrer ursprünglichen Qualität** übernommen (eine FLAC bleibt eine FLAC), und Downloads füllen nur die Lücken.
 - 🛡️ **Sicherheitsvorkehrungen** – Simulation standardmäßig, Hinzufügen/Entfernen-Obergrenzen pro Durchgang, Netzverlustschutz, Leer-Snapshot-Schutz, Abbruch ohne Schreiben, wenn Token ablaufen.
 - 🗃️ **Ständig wachsendes Songarchiv** – jeder jemals gesehene Titel wird in einer lokalen SQLite-Datenbank aufgezeichnet (Name, Künstler, Album, ISRC, rohe Metadaten, zuerst/zuletzt gesehen).
@@ -507,7 +507,7 @@ Spricht mit dem offiziellen [YouTube Data API v3](https://developers.google.com/
 
 ### Last.fm
 
-Die API von Last.fm hat keine Playlists, daher ist der Dienst standardmäßig niemals ein Playlist-Ziel; fügen Sie auf der Kontenseite eine angemeldete Web-Sitzung ein, um auch Playlists dorthin zu übertragen. Der Dienst liefert **Hörverlauf** als schreibgeschützte Sammlungen, und seine **Loved Tracks** sind eine Lieblingssong-Sammlung wie bei jedem anderen Anbieter, die nach der Autorisierung beschreibbar wird.
+Die Playlist-Synchronisierung mit Last.fm wird nicht unterstützt und ist daher niemals ein Playlist-Ziel. Der Dienst liefert **Hörverlauf** als schreibgeschützte Sammlungen, und seine **Loved Tracks** sind eine Lieblingssong-Sammlung wie bei jedem anderen Anbieter, die nach der Autorisierung beschreibbar wird.
 
 1. Erstellen Sie ein API-Konto unter <https://www.last.fm/api/account/create>. Notieren Sie sowohl den **API-Schlüssel** als auch das **gemeinsame Geheimnis**.
 2. Fügen Sie beide unter Konten → Last.fm ein und klicken Sie sich dann durch die Autorisierungsseite von Last.fm.
@@ -533,7 +533,7 @@ Drei Einschränkungen, die Sie vorher kennen sollten:
 
 - **Kein ISRC.** Die `user.*`-Endpunkte liefern nur Interpret und Titel, daher werden Last.fm-Titel über den Namen abgeglichen und nicht über die Katalogidentität. Rechnen Sie mit gelegentlich falschen Fassungen, die ein Anbieter mit ISRC vermieden hätte. Vor dem Setzen eines Lieblingssongs fragt SongMirror `track.getInfo` nach der kanonischen Schreibweise von Last.fm, damit eine knapp abweichende Schreibweise keinen zweiten Eintrag erzeugt.
 - **Nach Rang sortierte Sammlungen haben kein Datum.** Top Tracks enthält keinen Zeitstempel pro Titel, diese Titel werden also ohne Datum synchronisiert und können die Reihenfolge nach Hinzufügedatum nicht bestimmen.
-- **Lieblingssongs nehmen immer die native Route.** Eine Synchronisierung von Lieblingssongs *nach* Last.fm schreibt in die Loved-Tracks-Sammlung und niemals in eine Playlist, auch wenn eine Web-Sitzung eingerichtet ist.
+- **Playlist-Routen greifen nicht.** Eine Synchronisierung von Lieblingssongs *nach* Last.fm muss die native Route verwenden. Es gibt keine Playlist, in die die Route zum Erstellen einer benannten Playlist schreiben könnte.
 
 Ohne das gemeinsame Geheimnis muss das angegebene Profil seine Loved Tracks und Top Tracks öffentlich sichtbar haben.
 
