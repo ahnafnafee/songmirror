@@ -105,7 +105,7 @@ SongMirror mantém suas listas de reprodução idênticas em todos os lugares, s
 - 🔗 **Transferir de um link** – cole o URL de uma lista de reprodução pública de qualquer serviço conectado e copie-o diretamente. Não há necessidade de salvá-lo ou segui-lo primeiro.
 - 🌐 **Playlists seguidas** — sincronize e transfira playlists que você segue, mas não possui, e não apenas aquelas que você criou.
 - 📦 **Backups de metadados agendados** — arquive toda a biblioteca de playlists de uma conta de acordo com sua própria programação, em dados persistentes do aplicativo, com JSON/XML, limites de retenção e histórico visível de sucesso/falha. downloads únicos e prontos para importação Soundiiz JSON também permanecem disponíveis.
-- 📻 **Last.fm**: envie seus Loved Tracks, Top Tracks (seis períodos) e Recent Scrobbles para qualquer serviço conectado e, depois de autorizar a conta, traga as faixas favoritas dos outros serviços de volta **para** o Last.fm. Ele não tem playlists, portanto nunca é um destino de playlist.
+- 📻 **Last.fm**: envie seus Loved Tracks, Top Tracks (seis períodos) e Recent Scrobbles para qualquer serviço conectado e, depois de autorizar a conta, traga as faixas favoritas dos outros serviços de volta **para** o Last.fm. A API dele não tem playlists, que por isso exigem uma sessão web autenticada; sem ela ele nunca é um destino de playlist.
 - 💿 **Espelho de download local** - mantenha o áudio offline, uma pasta por lista de reprodução no layout `AlbumArtist/Album` de Jellyfin, com capas e um `.m3u8` atualizado automaticamente. Aponte-o para uma biblioteca musical existente e as faixas correspondentes são copiadas **na qualidade original** (um FLAC continua FLAC), com os downloads preenchendo apenas as lacunas.
 - 🛡️ **Proteções de segurança** — simulação por padrão, limites de adição/remoção por passagem, proteção contra perda líquida, proteção de instantâneo vazio, aborto sem gravação quando os tokens expiram.
 - 🗃️ **Arquivo de músicas cada vez maior** — cada faixa já vista é gravada em um banco de dados SQLite local (nome, artista, álbum, ISRC, metadados brutos, primeira/última vista).
@@ -507,7 +507,7 @@ Fala com o [YouTube Data API v3](https://developers.google.com/youtube/v3) ofici
 
 ### Last.fm
 
-O Last.fm não tem playlists, portanto nunca é um destino de playlist. Ele contribui com o seu **histórico de audição** como coleções somente de leitura, e os seus **Loved Tracks** são uma coleção de faixas favoritas como em qualquer outro fornecedor, que passa a aceitar escrita quando você autoriza a conta.
+A API do Last.fm não tem playlists, então por padrão ele nunca é um destino de playlist; cole uma sessão web autenticada na página de contas para sincronizar playlists também. Ele contribui com o seu **histórico de audição** como coleções somente de leitura, e os seus **Loved Tracks** são uma coleção de faixas favoritas como em qualquer outro fornecedor, que passa a aceitar escrita quando você autoriza a conta.
 
 1. Crie uma conta de API em <https://www.last.fm/api/account/create>. Anote tanto a **chave de API** quanto o **segredo compartilhado**.
 2. Em Contas → Last.fm, cole os dois e depois conclua a página de autorização do Last.fm.
@@ -533,7 +533,7 @@ Três limites que vale conhecer antes de depender disso:
 
 - **Sem ISRC.** Os pontos `user.*` devolvem apenas nomes de artista e faixa, então as faixas do Last.fm são casadas por nome e não por identidade de catálogo. Espere alguma versão errada que um fornecedor com ISRC teria evitado. Antes de marcar uma faixa, o SongMirror consulta `track.getInfo` para obter a grafia canônica do Last.fm, de modo que um título quase igual não crie uma segunda entrada.
 - **As coleções ordenadas não têm data.** Top Tracks não tem marca de tempo por faixa, então essas faixas sincronizam sem data e não podem definir a ordem de inclusão.
-- **As rotas de playlist não se aplicam.** Uma sincronização de faixas favoritas *para dentro* do Last.fm precisa usar a rota nativa. Não existe playlist na qual a rota que cria uma playlist com nome possa escrever.
+- **As faixas favoritas usam sempre a rota nativa.** Uma sincronização de faixas favoritas *para dentro* do Last.fm escreve na sua coleção Loved Tracks, nunca numa playlist, mesmo com uma sessão web configurada.
 
 Sem o segredo compartilhado, o perfil que você indicar precisa ter públicos os seus Loved Tracks e Top Tracks.
 

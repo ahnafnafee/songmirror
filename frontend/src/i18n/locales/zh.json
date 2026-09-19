@@ -1148,5 +1148,7 @@
   "Loved Tracks": "喜欢的歌曲",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "请先在账户页面授权 {{accountName}}，它才能接收喜欢的歌曲。",
   "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} 没有歌单，因此它自己的集合是唯一的目标。",
-  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "注册 API 应用时把这个粘贴为回调地址。它会在任何密钥生成之前就被询问，所以请先复制。"
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "注册 API 应用时把这个粘贴为回调地址。它会在任何密钥生成之前就被询问，所以请先复制。",
+  "Signed-in web request": "已登录的网页请求",
+  "Optional, and only for playlists: Last.fm's API has none. Copy request headers or cURL from any signed-in last.fm page; only the session cookies are kept": "可选，且仅用于歌单：Last.fm 的 API 没有歌单。从任意已登录的 last.fm 页面复制请求头或 cURL；只会保留会话 Cookie"
 }

@@ -1148,5 +1148,7 @@
   "Loved Tracks": "お気に入りのトラック",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "{{accountName}} がお気に入り曲を受け取れるようにするには、先にアカウント画面で認証してください。",
   "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} はプレイリストを持たないため、自身のコレクションが唯一の送り先です。",
-  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "API アプリケーションを登録するとき、これをコールバック URL として貼り付けてください。キーが存在する前に入力を求められるため、先にコピーしておきます。"
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "API アプリケーションを登録するとき、これをコールバック URL として貼り付けてください。キーが存在する前に入力を求められるため、先にコピーしておきます。",
+  "Signed-in web request": "ログイン済みのウェブリクエスト",
+  "Optional, and only for playlists: Last.fm's API has none. Copy request headers or cURL from any signed-in last.fm page; only the session cookies are kept": "任意で、プレイリスト専用です。Last.fm の API にプレイリストはありません。ログイン済みの last.fm ページからリクエストヘッダーまたは cURL をコピーしてください。保存されるのはセッションの Cookie だけです"
 }

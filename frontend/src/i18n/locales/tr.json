@@ -1148,5 +1148,7 @@
   "Loved Tracks": "Beğenilen parçalar",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "{{accountName}} beğenilen parçaları alabilmesi için önce Hesaplar sayfasında yetkilendirilmelidir.",
   "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} çalma listesi barındırmaz, bu yüzden tek hedef kendi koleksiyonudur.",
-  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "API uygulamasını kaydederken bunu geri çağırma adresi olarak yapıştırın. Henüz hiçbir anahtar yokken sorulur, bu yüzden önce kopyalayın."
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "API uygulamasını kaydederken bunu geri çağırma adresi olarak yapıştırın. Henüz hiçbir anahtar yokken sorulur, bu yüzden önce kopyalayın.",
+  "Signed-in web request": "Oturum açılmış web isteği",
+  "Optional, and only for playlists: Last.fm's API has none. Copy request headers or cURL from any signed-in last.fm page; only the session cookies are kept": "İsteğe bağlı ve yalnızca çalma listeleri için: Last.fm'in API'sinde çalma listesi yoktur. Oturum açılmış herhangi bir last.fm sayfasından istek başlıklarını veya cURL komutunu kopyalayın; yalnızca oturum çerezleri saklanır"
 }

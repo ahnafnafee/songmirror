@@ -1148,5 +1148,7 @@
   "Loved Tracks": "पसंदीदा ट्रैक",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "{{accountName}} पसंदीदा ट्रैक ले सके, इसके लिए पहले खाते पृष्ठ पर इसे अधिकृत करें।",
   "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} में प्लेलिस्ट नहीं हैं, इसलिए उसका अपना संग्रह ही एकमात्र गंतव्य है।",
-  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "API अनुप्रयोग पंजीकृत करते समय इसे कॉलबैक URL के रूप में चिपकाएँ। यह किसी भी कुंजी के बनने से पहले पूछा जाता है, इसलिए पहले इसे कॉपी कर लें।"
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "API अनुप्रयोग पंजीकृत करते समय इसे कॉलबैक URL के रूप में चिपकाएँ। यह किसी भी कुंजी के बनने से पहले पूछा जाता है, इसलिए पहले इसे कॉपी कर लें।",
+  "Signed-in web request": "साइन-इन किया हुआ वेब अनुरोध",
+  "Optional, and only for playlists: Last.fm's API has none. Copy request headers or cURL from any signed-in last.fm page; only the session cookies are kept": "वैकल्पिक, और केवल प्लेलिस्ट के लिए: Last.fm की API में प्लेलिस्ट नहीं हैं। किसी भी साइन-इन किए हुए last.fm पृष्ठ से अनुरोध हेडर या cURL कॉपी करें; केवल सत्र कुकीज़ सहेजी जाती हैं"
 }

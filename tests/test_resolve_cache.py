@@ -121,6 +121,7 @@ _CACHE_ENV = {
     "amazon": "AMAZON_MUSIC_CACHE_FILE",
     "apple": "APPLE_CACHE_FILE",
     "ytmusic": "YTMUSIC_CACHE_FILE",
+    "lastfm": "LASTFM_CACHE_FILE",
 }
 
 
@@ -144,7 +145,7 @@ _ROWS = {
 def test_providers_lists_only_services_with_a_cache_on_disk(tmp_path, monkeypatch):
     store, _path = _store(tmp_path, monkeypatch, _ROWS, manual=["sunrise|beacon"])
     rows = {row["id"]: row for row in store.providers()}
-    assert set(rows) == {"deezer"}    # the other six have no file
+    assert set(rows) == {"deezer"}    # the other seven have no file
     assert rows["deezer"] == {
         "id": "deezer", "name": "Deezer", "total": 4, "manual": 1, "unmatched": 2,
     }

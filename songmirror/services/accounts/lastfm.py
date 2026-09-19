@@ -20,6 +20,7 @@ from ...lastfm import (
     auth_url,
     get_session,
 )
+from ...lastfm_web import serialize_web_request
 from .base import ConnStatus, Connector, Field
 
 # Last.fm has no playlists, so it never grants `library_write`. Reading is
@@ -57,6 +58,11 @@ class LastfmConnector(Connector):
         Field("LASTFM_USER", "Username", required=False,
               help="Filled in automatically when you authorize; set it by hand "
                    "to read a different public profile"),
+        Field("LASTFM_WEB_SESSION", "Signed-in web request", secret=True,
+              required=False,
+              help="Optional, and only for playlists: Last.fm's API has none. "
+                   "Copy request headers or cURL from any signed-in last.fm "
+                   "page; only the session cookies are kept"),
     ]
 
     def _granted(self):
@@ -83,6 +89,16 @@ class LastfmConnector(Connector):
                           for key in ("LASTFM_API_KEY", "LASTFM_API_SECRET",
                                       "LASTFM_USER")
                           if key in values})
+        if "LASTFM_WEB_SESSION" in values:
+            raw = (values.get("LASTFM_WEB_SESSION") or "").strip()
+            if not raw:
+                self._store.save({"LASTFM_WEB_SESSION": ""})
+            else:
+                # Keep only the session cookies; the rest of the paste is dropped.
+                try:
+                    self._store.save({"LASTFM_WEB_SESSION": serialize_web_request(raw)})
+                except ValueError as exc:
+                    return ConnStatus("error", str(exc), capabilities=self._granted())
         if not self._store.get("LASTFM_USER"):
             return ConnStatus("unconfigured",
                               "authorize the account to read private data and "
@@ -126,7 +142,8 @@ class LastfmConnector(Connector):
 
     def disconnect(self) -> None:
         self._store.save({"LASTFM_API_KEY": "", "LASTFM_API_SECRET": "",
-                          "LASTFM_USER": "", "LASTFM_SESSION_KEY": ""})
+                          "LASTFM_USER": "", "LASTFM_SESSION_KEY": "",
+                          "LASTFM_WEB_SESSION": ""})
 
     # -- validation ----------------------------------------------------------
 

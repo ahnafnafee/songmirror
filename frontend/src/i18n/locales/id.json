@@ -1148,5 +1148,7 @@
   "Loved Tracks": "Lagu favorit",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "Otorisasi {{accountName}} di halaman Akun sebelum layanan ini bisa menerima lagu favorit.",
   "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} tidak punya daftar putar, jadi koleksinya sendiri adalah satu-satunya tujuan.",
-  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "Tempel ini sebagai URL callback saat Anda mendaftarkan aplikasi API. Ini diminta sebelum ada kunci apa pun, jadi salin lebih dulu."
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "Tempel ini sebagai URL callback saat Anda mendaftarkan aplikasi API. Ini diminta sebelum ada kunci apa pun, jadi salin lebih dulu.",
+  "Signed-in web request": "Permintaan web yang sudah masuk",
+  "Optional, and only for playlists: Last.fm's API has none. Copy request headers or cURL from any signed-in last.fm page; only the session cookies are kept": "Opsional dan hanya untuk daftar putar: API Last.fm tidak punya. Salin header permintaan atau cURL dari halaman last.fm mana pun yang sudah masuk; hanya cookie sesi yang disimpan"
 }

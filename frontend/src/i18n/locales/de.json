@@ -1148,5 +1148,7 @@
   "Loved Tracks": "Lieblingssongs",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "Autorisieren Sie {{accountName}} auf der Kontenseite, bevor der Dienst Lieblingssongs empfangen kann.",
   "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} hat keine Playlists, daher ist die eigene Sammlung das einzige Ziel.",
-  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "Tragen Sie dies als Callback-URL ein, wenn Sie die API-Anwendung registrieren. Sie wird abgefragt, bevor ein Schlüssel existiert, kopieren Sie sie also zuerst."
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "Tragen Sie dies als Callback-URL ein, wenn Sie die API-Anwendung registrieren. Sie wird abgefragt, bevor ein Schlüssel existiert, kopieren Sie sie also zuerst.",
+  "Signed-in web request": "Angemeldete Web-Anfrage",
+  "Optional, and only for playlists: Last.fm's API has none. Copy request headers or cURL from any signed-in last.fm page; only the session cookies are kept": "Optional und nur für Playlists: Die API von Last.fm hat keine. Kopieren Sie Request-Header oder cURL von einer angemeldeten last.fm-Seite; nur die Sitzungscookies werden gespeichert"
 }

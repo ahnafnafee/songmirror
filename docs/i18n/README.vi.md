@@ -105,7 +105,7 @@ SongMirror giữ cho danh sách phát của bạn giống hệt nhau ở mọi n
 - 🔗 **Chuyển từ một liên kết** — dán URL danh sách phát công khai từ bất kỳ dịch vụ được kết nối nào và sao chép trực tiếp. Không cần phải lưu hoặc theo dõi nó trước.
 - 🌐 **Danh sách phát đã theo dõi** — đồng bộ hóa và chuyển danh sách phát bạn theo dõi nhưng không sở hữu, không chỉ những danh sách bạn đã tạo.
 - 📦 **Sao lưu siêu dữ liệu theo lịch trình** — lưu trữ toàn bộ thư viện danh sách phát của tài khoản theo lịch riêng theo dữ liệu ứng dụng liên tục, với JSON/XML, giới hạn lưu giữ và lịch sử thành công/thất bại rõ ràng. tải xuống một lần và sẵn sàng nhập Soundiiz JSON vẫn có sẵn.
-- 📻 **Last.fm**: đưa Loved Tracks, Top Tracks (sáu khoảng thời gian) và Recent Scrobbles của bạn tới bất kỳ dịch vụ đã kết nối, và sau khi cấp quyền cho tài khoản, mang các bài hát yêu thích từ dịch vụ khác trở lại **vào** Last.fm. Nó không có danh sách phát nên không bao giờ là đích đến của danh sách phát.
+- 📻 **Last.fm**: đưa Loved Tracks, Top Tracks (sáu khoảng thời gian) và Recent Scrobbles của bạn tới bất kỳ dịch vụ đã kết nối, và sau khi cấp quyền cho tài khoản, mang các bài hát yêu thích từ dịch vụ khác trở lại **vào** Last.fm. API của nó không có danh sách phát, nên việc này cần một phiên web đã đăng nhập; không có phiên đó thì nó không bao giờ là đích đến của danh sách phát.
 - 💿 **Bản sao tải xuống cục bộ** - giữ âm thanh ngoại tuyến, một thư mục cho mỗi danh sách phát theo bố cục `AlbumArtist/Album` của Jellyfin, có bìa và `.m3u8` được cập nhật tự động. Trỏ nó tới một thư viện nhạc có sẵn thì các bài khớp sẽ được sao chép **ở chất lượng gốc** (FLAC vẫn là FLAC), còn phần tải về chỉ bù cho những chỗ còn thiếu.
 - 🛡️ **Các biện pháp bảo vệ an toàn** — mô phỏng theo mặc định, giới hạn thêm/xóa mỗi lần vượt qua, bảo vệ chống mất mạng, bảo vệ ảnh chụp nhanh trống, hủy bỏ mà không ghi khi mã thông báo hết hạn.
 - 🗃️ **Kho lưu trữ bài hát ngày càng phát triển** - mọi bản nhạc từng xem đều được ghi lại trong cơ sở dữ liệu SQLite cục bộ (tên, nghệ sĩ, album, ISRC, siêu dữ liệu thô, nhìn thấy lần đầu/lần cuối).
@@ -507,7 +507,7 @@ Nói chuyện với [YouTube Data API v3](https://developers.google.com/youtube/
 
 ### Last.fm
 
-Last.fm không có danh sách phát nên không bao giờ là đích đến của danh sách phát. Nó góp **lịch sử nghe** dưới dạng các bộ sưu tập chỉ đọc, và **Loved Tracks** của nó là một bộ sưu tập bài hát yêu thích giống như ở mọi nhà cung cấp khác, và trở nên ghi được khi bạn cấp quyền cho tài khoản.
+API của Last.fm không có danh sách phát, nên mặc định nó không bao giờ là đích đến của danh sách phát; hãy dán một phiên web đã đăng nhập ở trang Tài khoản để đồng bộ cả danh sách phát. Nó góp **lịch sử nghe** dưới dạng các bộ sưu tập chỉ đọc, và **Loved Tracks** của nó là một bộ sưu tập bài hát yêu thích giống như ở mọi nhà cung cấp khác, và trở nên ghi được khi bạn cấp quyền cho tài khoản.
 
 1. Tạo tài khoản API tại <https://www.last.fm/api/account/create>. Ghi lại cả **khóa API** và **khóa bí mật chia sẻ**.
 2. Trong Tài khoản → Last.fm, dán cả hai rồi hoàn tất trang cấp quyền của Last.fm.
@@ -533,7 +533,7 @@ Ba giới hạn nên biết trước khi dựa vào nó:
 
 - **Không có ISRC.** Các điểm cuối `user.*` chỉ trả về tên nghệ sĩ và tên bài, nên bài của Last.fm được khớp theo tên chứ không theo danh tính danh mục. Hãy chuẩn bị cho vài trường hợp sai bản mà một nhà cung cấp có ISRC sẽ tránh được. Trước khi đánh dấu yêu thích, SongMirror hỏi `track.getInfo` để lấy cách viết chuẩn của Last.fm, nhờ đó một tên bài gần giống không tạo thêm mục thứ hai.
 - **Các bộ sưu tập xếp hạng không có ngày.** Top Tracks không mang dấu thời gian cho từng bài, nên những bài đó đồng bộ mà không có ngày và không thể quyết định thứ tự theo ngày thêm.
-- **Các tuyến danh sách phát không áp dụng.** Việc đồng bộ bài hát yêu thích *vào* Last.fm buộc phải dùng tuyến gốc. Không có danh sách phát nào để tuyến tạo danh sách phát theo tên ghi vào.
+- **Bài hát yêu thích luôn dùng tuyến gốc.** Việc đồng bộ bài hát yêu thích *vào* Last.fm ghi vào bộ sưu tập Loved Tracks của nó, không bao giờ vào danh sách phát, kể cả khi đã cấu hình phiên web.
 
 Nếu không có khóa bí mật chia sẻ, trang cá nhân bạn trỏ tới phải công khai Loved Tracks và Top Tracks của nó.
 

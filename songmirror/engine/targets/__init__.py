@@ -123,9 +123,17 @@ def provider_ids():
 
 def supports_playlists(provider_id):
     """Whether this provider has playlists at all. The single authority is the
-    target class, so nothing here restates the list."""
+    target class, so nothing here restates the list.
+
+    A class may expose this as a callable rather than a constant when the answer
+    depends on configuration: Last.fm has no playlists through its API and gains
+    them only when a signed-in web session is configured.
+    """
     target = _CLASSES.get(provider_id)
-    return True if target is None else bool(getattr(target, "supports_playlists", True))
+    if target is None:
+        return True
+    declared = getattr(target, "supports_playlists", True)
+    return bool(declared() if callable(declared) else declared)
 
 
 def _writable(identity, opts):

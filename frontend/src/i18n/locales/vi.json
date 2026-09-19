@@ -1148,5 +1148,7 @@
   "Loved Tracks": "Bài hát yêu thích",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "Hãy cấp quyền cho {{accountName}} ở trang Tài khoản trước khi nó có thể nhận bài hát yêu thích.",
   "{{accountName}} has no playlists, so its own collection is the only destination.": "{{accountName}} không có danh sách phát, nên bộ sưu tập của chính nó là đích duy nhất.",
-  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "Hãy dán mục này làm địa chỉ gọi lại khi bạn đăng ký ứng dụng API. Nó được hỏi trước khi có bất kỳ khóa nào, nên hãy sao chép trước."
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "Hãy dán mục này làm địa chỉ gọi lại khi bạn đăng ký ứng dụng API. Nó được hỏi trước khi có bất kỳ khóa nào, nên hãy sao chép trước.",
+  "Signed-in web request": "Yêu cầu web đã đăng nhập",
+  "Optional, and only for playlists: Last.fm's API has none. Copy request headers or cURL from any signed-in last.fm page; only the session cookies are kept": "Tùy chọn và chỉ dành cho danh sách phát: API của Last.fm không có. Hãy sao chép tiêu đề yêu cầu hoặc cURL từ bất kỳ trang last.fm nào bạn đã đăng nhập; chỉ cookie phiên được lưu"
 }

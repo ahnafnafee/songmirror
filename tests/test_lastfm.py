@@ -354,17 +354,32 @@ def test_seven_virtual_playlists_and_loved_is_the_favorites_resource():
     assert all(not target.is_editable(p) for p in playlists.values())
 
 
-def test_playlist_writes_still_raise_because_lastfm_has_no_playlists():
-    target = _target()
+def test_playlist_writes_raise_without_a_web_session(monkeypatch):
+    """The API has no playlist methods at all, so without a pasted web session
+    Last.fm must refuse rather than appear to accept playlist writes."""
+    monkeypatch.delenv("LASTFM_WEB_SESSION", raising=False)
+    target = LastfmTarget(client=_Api(), web=None)
     playlist = {"id": "recent", "name": "Recent Scrobbles"}
 
-    assert target.supports_playlists is False
+    assert LastfmTarget.supports_playlists() is False
     with pytest.raises(TargetCapabilityError):
         target.create(playlist)
     with pytest.raises(TargetCapabilityError):
         target.add(playlist, ["x"])
     with pytest.raises(TargetCapabilityError):
         target.remove(playlist, {"id": "x"})
+
+
+def test_playlist_support_follows_the_configured_web_session(monkeypatch):
+    monkeypatch.delenv("LASTFM_WEB_SESSION", raising=False)
+    assert LastfmTarget.supports_playlists() is False
+
+    monkeypatch.setenv("LASTFM_WEB_SESSION", '{"sessionid":"s","csrftoken":"c"}')
+    assert LastfmTarget.supports_playlists() is True
+
+    # A paste that carries neither cookie is not a session.
+    monkeypatch.setenv("LASTFM_WEB_SESSION", '{"other":"junk"}')
+    assert LastfmTarget.supports_playlists() is False
 
 
 def test_tracks_are_identified_by_artist_and_title_not_mbid():
@@ -545,3 +560,150 @@ def test_lastfm_is_only_a_target_for_a_liked_tracks_job():
     assert targets._writable("lastfm", playlists_only) is False
     assert targets._writable("lastfm", likes) is True
     assert targets._writable("tidal", playlists_only) is True
+
+
+# -- web playlists -----------------------------------------------------------
+
+
+class _Web:
+    """Stand-in for the signed-in website client."""
+
+    def __init__(self, playlists=(), entries=(), results=()):
+        self._playlists = [dict(p) for p in playlists]
+        self._entries = {k: [dict(e) for e in v] for k, v in dict(entries).items()}
+        self._results = list(results)
+        self.added, self.removed, self.created, self.searched = [], [], [], []
+
+    def list_playlists(self):
+        return [dict(p) for p in self._playlists]
+
+    def entries(self, playlist_id):
+        return [dict(e) for e in self._entries.get(playlist_id, [])]
+
+    def search(self, query, playlist_id, limit=10):
+        self.searched.append((query, playlist_id))
+        return [dict(r) for r in self._results]
+
+    def create(self, name, description=""):
+        self.created.append((name, description))
+        row = {"id": f"new-{len(self.created)}", "name": name}
+        self._playlists.append(row)
+        return dict(row)
+
+    def add(self, playlist_id, track, artist):
+        self.added.append((playlist_id, track, artist))
+
+    def remove(self, playlist_id, entry_id):
+        self.removed.append((playlist_id, entry_id))
+
+
+def _web_target(web, api=None):
+    return LastfmTarget(client=api or _Api(), web=web)
+
+
+def test_web_playlists_join_the_history_collections():
+    web = _Web(playlists=[{"id": "42", "name": "Road Trip"}])
+
+    listed = _web_target(web).list_playlists()
+
+    assert "road trip" in listed
+    assert listed["road trip"]["id"] == "web:42"
+    # The read-only history collections are still there.
+    assert "recent scrobbles" in listed
+    assert sum(1 for k in listed if k.startswith("top tracks")) == 6
+
+
+def test_only_web_playlists_are_editable():
+    target = _web_target(_Web(playlists=[{"id": "42", "name": "Road Trip"}]))
+    listed = target.list_playlists()
+
+    assert target.is_editable(listed["road trip"]) is True
+    assert target.is_editable(listed["recent scrobbles"]) is False
+
+
+def test_playlist_tracks_carry_the_entry_id_a_removal_needs():
+    web = _Web(playlists=[{"id": "42", "name": "Road Trip"}],
+               entries={"42": [{"entry_id": "900", "name": "Radiohead - Creep", "artist": "Radiohead"}]})
+
+    rows = _web_target(web).playlist_tracks({"id": "web:42"})
+
+    assert rows[0]["id"] == compose_id("Radiohead", "Radiohead - Creep")
+    assert rows[0]["entry_id"] == "900"
+
+
+def test_create_makes_a_web_playlist_and_scopes_later_searches():
+    web = _Web()
+    target = _web_target(web)
+
+    created = target.create({"name": "From Spotify", "description": "d"})
+
+    assert web.created == [("From Spotify", "d")]
+    assert created["id"] == "web:new-1"
+    # resolve needs a playlist to scope search-catalogue against; the new one serves.
+    target.resolve({"name": "Creep", "artists": ["Radiohead"]},
+                   {"search": {}, "dirty": False})
+    assert web.searched and web.searched[0][1] == "new-1"
+
+
+def test_add_sends_the_exact_strings_the_catalogue_row_supplied():
+    web = _Web(playlists=[{"id": "42", "name": "Road Trip"}])
+    target = _web_target(web)
+
+    target.add({"id": "web:42"}, [compose_id("Radiohead", "Radiohead - Creep"), "junk-id"])
+
+    # artist and track are sent the way the row carried them, and the
+    # unaddressable id is skipped rather than guessed at.
+    assert web.added == [("42", "Radiohead - Creep", "Radiohead")]
+
+
+def test_remove_addresses_the_entry_not_the_track():
+    web = _Web(playlists=[{"id": "42", "name": "Road Trip"}])
+    target = _web_target(web)
+
+    target.remove({"id": "web:42"}, {"id": compose_id("Radiohead", "Creep"), "entry_id": "900"})
+    target.remove({"id": "web:42"}, {"id": compose_id("Radiohead", "Creep")})  # no entry id
+
+    assert web.removed == [("42", "900")]
+
+
+def test_resolve_prefers_the_row_matching_the_source_track():
+    """Its catalogue is video search, so the first row is often a different
+    upload; the closest row wins instead."""
+    web = _Web(playlists=[{"id": "42", "name": "Road Trip"}], results=[
+        {"track": "Creep (Live at Glastonbury)", "artist": "RadioheadVEVO"},
+        {"track": "Creep", "artist": "Radiohead"},
+    ])
+    cache = {"search": {}, "dirty": False}
+
+    found, method = _web_target(web).resolve({"name": "Creep", "artists": ["Radiohead"]}, cache)
+
+    assert (found, method) == (compose_id("Radiohead", "Creep"), "search")
+    assert cache["search"][track_key("Creep", "Radiohead")] == found
+
+
+def test_resolve_falls_back_to_the_first_row_when_nothing_matches():
+    web = _Web(playlists=[{"id": "42", "name": "x"}],
+               results=[{"track": "Something Else", "artist": "Nobody"}])
+
+    found, _ = _web_target(web).resolve({"name": "Creep", "artists": ["Radiohead"]},
+                                        {"search": {}, "dirty": False})
+
+    assert found == compose_id("Nobody", "Something Else")
+
+
+def test_web_playlist_writes_survive_a_round_trip_without_duplicating():
+    """The id written and the id read back must agree, or every pass would see
+    the track as absent and add it again."""
+    web = _Web(playlists=[{"id": "42", "name": "Road Trip"}],
+               results=[{"track": "Radiohead - Creep", "artist": "Radiohead"}])
+    target = _web_target(web)
+    cache = {"search": {}, "dirty": False}
+
+    resolved, _ = target.resolve({"name": "Creep", "artists": ["Radiohead"]}, cache)
+    target.add({"id": "web:42"}, [resolved])
+
+    playlist_id, track, artist = web.added[0]
+    web._entries["42"] = [{"entry_id": "900", "name": track, "artist": artist}]
+    read_back = target.playlist_tracks({"id": "web:42"})
+
+    assert read_back[0]["id"] == resolved

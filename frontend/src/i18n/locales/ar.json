@@ -1276,5 +1276,7 @@
   "Loved Tracks": "المقطوعات المفضلة",
   "Authorize {{accountName}} on the Accounts page before it can receive liked tracks.": "فوّض {{accountName}} من صفحة الحسابات قبل أن يتمكن من استقبال المقطوعات المفضلة.",
   "{{accountName}} has no playlists, so its own collection is the only destination.": "لا توجد في {{accountName}} قوائم تشغيل، لذلك مجموعته الخاصة هي الوجهة الوحيدة.",
-  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "الصق هذا كعنوان استدعاء عند تسجيل تطبيق API. يُطلب منك قبل وجود أي مفتاح، لذا انسخه أولًا."
+  "Paste this as the callback URL when you register the API application. It is asked for before any key exists, so copy it first.": "الصق هذا كعنوان استدعاء عند تسجيل تطبيق API. يُطلب منك قبل وجود أي مفتاح، لذا انسخه أولًا.",
+  "Signed-in web request": "طلب ويب من جلسة مسجَّلة",
+  "Optional, and only for playlists: Last.fm's API has none. Copy request headers or cURL from any signed-in last.fm page; only the session cookies are kept": "اختياري ولقوائم التشغيل فقط: لا توجد قوائم تشغيل في واجهة Last.fm البرمجية. انسخ ترويسات الطلب أو أمر cURL من أي صفحة last.fm مسجَّل الدخول فيها؛ ولا يُحفظ سوى ملفات تعريف ارتباط الجلسة"
 }
