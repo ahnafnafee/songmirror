@@ -12,7 +12,7 @@ other provider automatically, no per-pair code.
 The core (`mirror_pair`, `reconcile`, `browse`, `transfer`, the runner, the web routers)
 is provider-agnostic and never changes.
 
-## The five touchpoints
+## The six touchpoints
 
 ### 1. Engine target — `songmirror/engine/targets/<svc>.py`
 
@@ -90,20 +90,49 @@ Subclass `Connector` (`accounts/base.py`). Pick an `auth_kind`
 kind (e.g. `begin_redirect`/`complete_redirect` for OAuth, or `submit` for a pasted
 token/key). The engine reads whatever the connector saves to the `SettingsStore`.
 
+If a field needs cleaning before it is stored — reducing a pasted browser request to
+the few values you actually keep, say — put that in `normalize_config`, not in
+`submit`. The wizard saves an `oauth_redirect` connector's fields straight to config
+and never reaches `submit`, so a reduction written only there stores the whole paste.
+Raise `ValueError` from it to reject the input; the route turns that into a 422.
+
 ### 4. Connectors registry — `songmirror/services/accounts/__init__.py`
 
 One line in `CONNECTORS`. The service now appears in the accounts wizard, the
 source/target pickers, and transfers automatically.
 
-### 5. Frontend branding — `frontend/src/lib/constants.ts` (+ two more)
+### 5. Account profile registry — `songmirror/services/account_profiles.py`
+
+Three entries, and **the service is invisible in the UI without the first one**.
+`AccountProfileStore` seeds one default profile per provider it knows about, and
+`/api/accounts` lists profiles rather than connectors, so a provider missing here
+never appears however correctly it is registered in steps 2 and 4.
+
+- `PROVIDER_KEYS`: every settings key the connector, target, or auth helper reads.
+  A custom profile clears this whole slice before applying its own values, so a
+  key left out here can leak across accounts.
+- `_FILE_DEFAULTS`: per-profile filenames (the resolve cache, any token file).
+- `_provider_label`: the default profile's label. Leave it out and the profile is
+  labelled with the raw provider id, which the accounts page then renders as
+  `Last.fm . lastfm`.
+
+`tests/test_connectors.py` asserts `CONNECTORS` and `PROVIDER_KEYS` cover the same
+providers, and that each label matches its connector's `name`.
+
+### 6. Frontend branding — `frontend/src/lib/constants.ts` (+ four more)
 
 - `SERVICE_STYLES`: a `{ label, dot, soft, text }` entry keyed by the provider id.
 - `serviceLogoId()`: map the id to a logo id.
 - `--color-svc-<svc>` / `-soft` CSS vars (where the other `svc-*` colors are defined) and
-  the brand SVG in the `ServiceLogo` component.
+  the brand SVG + `ServiceId` union in the `ServiceLogo` component.
+- `components/accounts/AccountCard.tsx`: a `SERVICE_BLURBS` entry, or the account card
+  shows no description where every other provider has one.
+- `pages/Accounts.tsx`: a `PROVIDERS` entry, or the service is absent from the
+  "Add profile" picker.
 
-Skip this and the provider still works — it just falls back to a neutral dot/label
-(`DEFAULT_SERVICE_STYLE`) instead of its brand color and mark.
+Skip the colors and mark and the provider still works — it just falls back to a neutral
+dot/label (`DEFAULT_SERVICE_STYLE`). The blurb and picker entries are not cosmetic in the
+same way: their absence is visible as a missing description and a missing menu option.
 
 ## Why the `== "spotify"` branches aren't your problem
 
@@ -126,4 +155,23 @@ to make a *new* provider a second canonical hub, which isn't needed.
 - Unit-test your target's dict-shape accessors and any resolve/matching quirks — see
   `tests/test_targets_accessors.py` (accessors) and `tests/test_reconcile.py` (merge
   behavior). Fakes there are the template.
-- `.venv/Scripts/python.exe -m pytest tests/ -q` and `pnpm -C frontend build`.
+- `.venv/Scripts/python.exe -m pytest tests/ -q`
+- `pnpm -C frontend lint`
+- `pnpm -C frontend i18n:check`, then `pnpm -C frontend i18n:extract` when it reports a
+  stale catalog. **Your connector's `Field` labels and help text are translated copy**:
+  the extractor scans `songmirror/services/accounts/*.py` for `Field(` calls, and every
+  one of the 15 locale catalogs must carry each new string. Any `SERVICE_BLURBS` entry
+  counts too.
+- `pnpm -C frontend build` (typecheck + bundle) and `pnpm -C frontend test:e2e`.
+- Anything you add to `README.md` must be mirrored into all 14 files under `docs/i18n/`.
+  `check-readmes.mjs` compares code blocks, the inline-code multiset, anchors, heading and
+  table structure, brand-name counts and link targets against English, and rejects any
+  untranslated English phrase, so a new README section is a translation task, not a copy.
+  It also resolves every local link, and that check passes locally for a file that exists
+  on disk but is gitignored, then fails in CI's fresh checkout. Link only to paths
+  `git ls-files` lists. A localized file sits one level deeper, so `docs/x.md` in English
+  is `../x.md` there.
+
+Running the app is worth a pass of its own: the profile-registry and frontend-list
+omissions above all typecheck, pass the Python suite, and only show up as a missing
+row or a missing description once the accounts page is open.

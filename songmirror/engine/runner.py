@@ -496,6 +496,17 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
            "chronology_replayed": 0, "skipped": 0, "created": 0, "failed": 0,
            "held_removals": [], "change_diagnostics": [], "failures": []}
     cache = load_cache(target.cache_file)
+    # A provider with no playlists (Last.fm) is kept as a target only for its
+    # native favorites collection. Drop the playlist phase in one note rather
+    # than failing once per selected playlist. The flag can be evaluated (a
+    # classmethod answering from the account's own settings), so a plain
+    # truthiness read would see the bound method and never fire.
+    declared_playlists = getattr(target, "supports_playlists", True)
+    has_playlists = declared_playlists() if callable(declared_playlists) else declared_playlists
+    if not has_playlists and selected:
+        log_note(f"{target.name} has no playlists; {len(selected)} skipped "
+                 "(liked tracks still sync)", tag=target.tag)
+        selected = []
     try:
         liked_route = (
             (getattr(opts, "liked_routes", None) or {}).get(target.source)
@@ -858,9 +869,8 @@ def run_pass(opts, should_continue=None):
             return _summary(opts, [], pass_started)
         from . import downloads
 
-        source_sp = getattr(source, "_sp", sp)
         with _target_activation(source):
-            downloads.refresh(source_sp, selected, opts.download_dir)
+            downloads.refresh(_mirror_source(source, sp), selected, opts.download_dir)
         return _summary(opts, [], pass_started)
 
     if opts.sync_mode in {"nway", "group"}:
@@ -879,7 +889,7 @@ def run_pass(opts, should_continue=None):
                 _post_sync(
                     opts, source_sp, selected,
                     source_is_spotify=target_provider(source) == "spotify",
-                    should_continue=ctrl,
+                    should_continue=ctrl, source=source,
                 )
         return _summary(opts, per_target, pass_started, interrupted=(None if c == "run" else c))
 
@@ -1051,7 +1061,7 @@ def run_pass(opts, should_continue=None):
         with _target_activation(source):
             _post_sync(
                 opts, source_sp, selected, source_is_spotify=src_is_spotify,
-                should_continue=ctrl,
+                should_continue=ctrl, source=source,
             )
     per_target = [
         _summary_entry(results[target.tag]["name"], results[target.tag])
@@ -1062,20 +1072,40 @@ def run_pass(opts, should_continue=None):
                     interrupted=(None if c == "run" else c))
 
 
-def _post_sync(opts, sp, selected, source_is_spotify=True, should_continue=None):
-    """Local download mirror + Jellyfin covers — shared by one-way and N-way.
-    Both read Spotify playlist data (spotDL by Spotify track; covers from Spotify
-    art), so they run only when Spotify is the source; a note flags the skip."""
-    if not source_is_spotify:
+def _mirror_source(source, sp):
+    """The download mirror's view of this job's source.
+
+    Spotify is handed its own client, so spotDL keeps resolving catalog URLs
+    directly. Any other source is handed its target, which the mirror reads
+    through `playlist_tracks` and searches for by artist and title.
+    """
+    from . import downloads
+
+    if target_provider(source) == "spotify":
+        return getattr(source, "_sp", sp)
+    return downloads.TargetSource(source)
+
+
+def _post_sync(opts, sp, selected, source_is_spotify=True, should_continue=None,
+               source=None):
+    """Local download mirror + Jellyfin covers, shared by one-way and N-way.
+
+    A non-Spotify source reaches the mirror through its own target. Jellyfin
+    covers need real playlist art, and a source that supplies none (Last.fm's
+    virtual collections) simply keeps Jellyfin's auto-tiled cover.
+    """
+    if not source_is_spotify and source is None:
         if (opts.download_dir or os.getenv("JELLYFIN_URL")) and opts.execute:
-            log_note("download mirror + Jellyfin covers currently require Spotify as the source — skipped",
+            log_note("download mirror skipped: the job did not supply a source target",
                      tag="local")
         return
     if opts.download_dir and opts.execute:
         try:
             from . import downloads
 
-            downloads.run(sp, selected, opts.download_dir, should_continue=should_continue)
+            mirror = sp if source_is_spotify else _mirror_source(source, sp)
+            downloads.run(mirror, selected, opts.download_dir,
+                          should_continue=should_continue)
         except Exception as e:
             log_warn(f"local download mirror failed (playlist sync unaffected): {e!r}", tag="local")
 

@@ -93,7 +93,8 @@ def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
     with TestClient(_app(tmp_path)) as client:
         accounts = client.get("/api/accounts").json()
         assert {a["provider"] for a in accounts} == {
-            "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic", "jellyfin"
+            "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
+            "lastfm", "jellyfin"
         }
         assert all(a["id"].startswith("profile_default_") for a in accounts)
         assert all(a["id"] != a["provider"] for a in accounts)
@@ -180,6 +181,7 @@ def test_accounts_report_catalog_only_apple_capabilities(tmp_path, monkeypatch):
         "library_read": False,
         "library_write": False,
         "public_playlist_read": True,
+        "favorites_write": False,
     }
 
 
@@ -292,6 +294,7 @@ def test_spotify_connect_accepts_web_session_without_oauth_redirect(tmp_path, mo
             "library_read": True,
             "library_write": True,
             "public_playlist_read": True,
+            "favorites_write": True,
         },
     }
 
@@ -848,3 +851,57 @@ def test_transfer_preview_returns_the_services_own_message_on_failure(tmp_path):
         response = client.post("/api/transfers/preview", json={"url": "https://x"})
     assert response.status_code == 422
     assert response.json() == {"detail": "Spotify is not connected."}
+
+
+def test_lastfm_oauth_callback_completes_the_session(tmp_path, monkeypatch):
+    """End to end through the real route, because the bug this guards was a
+    mismatch between what the route passes and what the connector read: the
+    route hands over {"url": <full callback>}, never a parsed "token"."""
+    from songmirror.services.accounts import lastfm as connector_module
+
+    monkeypatch.setattr(connector_module, "get_session",
+                        lambda key, secret, token: (f"sk-for-{token}", "ahnaf"))
+    monkeypatch.setattr(connector_module.LastfmConnector, "_validate",
+                        lambda self: (True, "ahnaf"))
+
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        app.state.account_profiles.settings_for("profile_default_lastfm").save(
+            {"LASTFM_API_KEY": "k", "LASTFM_API_SECRET": "s"})
+
+        response = client.get("/oauth/lastfm/callback", params={"token": "tok-xyz"})
+
+        assert response.status_code == 200
+        assert "connected" in response.text
+        assert "no token" not in response.text
+        store = app.state.account_profiles.settings_for("profile_default_lastfm")
+        assert store.get("LASTFM_SESSION_KEY") == "sk-for-tok-xyz"
+        assert store.get("LASTFM_USER") == "ahnaf"
+
+
+def test_lastfm_oauth_callback_reports_a_missing_token(tmp_path, monkeypatch):
+    from songmirror.services.accounts import lastfm as connector_module
+
+    monkeypatch.setattr(connector_module.LastfmConnector, "_validate",
+                        lambda self: (True, "ahnaf"))
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        app.state.account_profiles.settings_for("profile_default_lastfm").save(
+            {"LASTFM_API_KEY": "k", "LASTFM_API_SECRET": "s"})
+
+        response = client.get("/oauth/lastfm/callback")
+
+        assert response.status_code == 200
+        assert "no token" in response.text
+
+
+def test_accounts_report_the_callback_url_only_for_redirect_connectors(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        by_provider = {a["provider"]: a for a in client.get("/api/accounts").json()}
+
+        lastfm = by_provider["lastfm"]
+        assert lastfm["auth_kind"] == "oauth_redirect"
+        assert lastfm["callback_url"].endswith("/oauth/lastfm/callback")
+        # A connector that never redirects has nothing to whitelist.
+        assert by_provider["jellyfin"]["callback_url"] is None
+        assert by_provider["ytmusic"]["callback_url"] is None

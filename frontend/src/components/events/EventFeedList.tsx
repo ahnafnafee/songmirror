@@ -40,7 +40,14 @@ export function EventFeedList({ events, emptyTitle, emptyDescription, ariaLabel,
         tabIndex={0}
         role="log"
         aria-label={ariaLabel}
-        className="thin-scrollbar flex max-h-80 flex-col gap-0.5 overflow-y-auto overflow-x-hidden rounded-card border border-border bg-inset p-1.5 focus:outline-none sm:max-h-[28rem]"
+        // `relative` is load-bearing: rows carry sr-only labels, which are
+        // position:absolute with auto offsets. Without a positioned ancestor
+        // INSIDE this scroll container, their containing block becomes the
+        // outer relative wrapper, they escape the ul's clip, and their static
+        // positions (one per row, in unscrolled content coordinates) extend
+        // the document's scrollable area by the feed's full height — an
+        // endlessly scrollable page of blank.
+        className="thin-scrollbar relative flex max-h-80 flex-col gap-0.5 overflow-y-auto overflow-x-hidden rounded-card border border-border bg-inset p-1.5 focus:outline-none sm:max-h-[28rem]"
       >
         {events.map((event, i) => (
           // No backend id exists, so combine immutable event fields. The index

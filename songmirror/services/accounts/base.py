@@ -9,12 +9,18 @@ from dataclasses import dataclass
 from typing import Literal
 
 AuthKind = Literal["oauth_redirect", "oauth_device", "token_paste", "api_key"]
-AccountCapability = Literal["library_read", "library_write", "public_playlist_read"]
+# `library_write` is playlist writing. `favorites_write` is the provider's own
+# liked/loved collection, which is a separate grant because a service can have
+# one without the other: Last.fm can love a track but has no playlists at all.
+AccountCapability = Literal[
+    "library_read", "library_write", "public_playlist_read", "favorites_write",
+]
 
 FULL_PEER_CAPABILITIES = frozenset({
     "library_read",
     "library_write",
     "public_playlist_read",
+    "favorites_write",
 })
 
 
@@ -81,6 +87,16 @@ class Connector:
     # token_paste / api_key
     def submit(self, values: dict) -> ConnStatus:
         raise NotImplementedError
+
+    def normalize_config(self, values: dict) -> dict:
+        """Clean a field's raw input before it is stored.
+
+        The wizard saves config directly for an oauth_redirect connector, whose
+        `submit` is never reached, so a connector that reduces a pasted browser
+        request to the few values it actually needs has to do it here or the
+        whole paste is persisted. Raise ValueError to reject the input.
+        """
+        return values
 
     def disconnect(self) -> None:
         """Clear connector-managed settings; providers may override for extras."""

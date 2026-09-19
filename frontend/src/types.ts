@@ -25,6 +25,10 @@ export interface AccountCapabilities {
   library_write: boolean
   /** The credentials can open a public playlist URL as a transfer source. */
   public_playlist_read: boolean
+  /** The credentials can add to and remove from the provider's own liked /
+   * loved collection. Separate from `library_write` because a service can have
+   * one without the other: Last.fm can love a track but has no playlists. */
+  favorites_write?: boolean
 }
 
 export interface Account {
@@ -43,8 +47,24 @@ export interface Account {
   detail: string | null
   /** Whether this service can be a sync/transfer peer (reads and writes tracks).
    * False for browse-only services like Jellyfin, which the download mirror
-   * feeds — the sync and transfer pickers filter on this. */
+   * feeds, and for history services like Last.fm, which have no playlists to
+   * write. The transfer pickers filter on this. */
   transferable: boolean
+  /** Whether the provider has playlists at all. False for Last.fm, which still
+   * contributes read-only collections as a sync source and can receive loves,
+   * so the sync wizard offers it while never offering it a playlist. */
+  supports_playlists?: boolean
+  /** Whether the provider can supply tracks to a sync. This separates the two
+   * kinds of non-peer: Last.fm is input-only and readable, while Jellyfin is
+   * output-only and is fed by the download mirror rather than read from. */
+  source_capable?: boolean
+  /** Where the provider must redirect back to, for `oauth_redirect` connectors.
+   * Last.fm asks for this while its API application is being registered, which
+   * is before any token exists, so the wizard shows it up front. Absent when
+   * the connector needs no callback or the public URL is misconfigured. */
+  callback_url?: string | null
+  /** A Last.fm API approval has started but its callback has not succeeded. */
+  authorization_pending?: boolean
   /** Whether this service can replay date-added order into an existing playlist.
    * False where the provider's writes can't express the repair safely (Deezer),
    * which greys out the transfer form's "preserve order" switch. */

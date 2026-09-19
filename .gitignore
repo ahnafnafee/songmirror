@@ -14,14 +14,12 @@ wheels/
 *.log
 .cache
 .cache-*
-apple_resolve_cache.json
-spotify_resolve_cache.json
+*_resolve_cache.json
 song_cache.db
 spotify_tracks_cache.json
 download_state.json
 ytmusic_browser.json
 ytmusic_oauth.json
-ytmusic_resolve_cache.json
 data/
 downloads/
 
@@ -41,6 +39,7 @@ promo/out
 .unlazy/
 .unlazy-hook-state.json
 .claude/settings.local.json
+.claude/launch.json
 
 # Local AI workflow state and project-local tool bootstrap
 .claude-flow/

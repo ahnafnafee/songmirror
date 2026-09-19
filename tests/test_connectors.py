@@ -13,7 +13,8 @@ def _conn(cid, tmp_path):
 
 def test_registry_has_all_supported_services():
     assert set(CONNECTORS) == {
-        "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic", "jellyfin"
+        "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
+        "lastfm", "jellyfin"
     }
 
 
@@ -89,11 +90,11 @@ def test_apple_paid_library_validation_keeps_full_access(tmp_path, monkeypatch):
 
     assert status.state == "connected"
     assert status.detail == ""
-    assert status.capabilities == frozenset({
-        "library_read",
-        "library_write",
-        "public_playlist_read",
-    })
+    # Derived, so adding a capability to the contract does not require editing
+    # this expectation.
+    from songmirror.services.accounts.base import FULL_PEER_CAPABILITIES
+
+    assert status.capabilities == FULL_PEER_CAPABILITIES
 
 
 def test_apple_catalog_fallback_must_validate_the_storefront(tmp_path, monkeypatch):
@@ -332,3 +333,86 @@ def test_spotify_status_reports_a_refused_isrc_app(tmp_path, monkeypatch):
     assert st.state == "error"                 # -> dashboard "needs a look" card
     assert "Premium" in st.detail
     assert "continue" in st.detail             # and says the sync is degraded, not stopped
+
+
+def test_every_connector_has_a_profile_key_slice():
+    """A connector with no PROVIDER_KEYS entry gets no default profile, so it
+    never appears in /api/accounts however correctly it is registered."""
+    from songmirror.services.account_profiles import PROVIDER_KEYS
+
+    assert set(CONNECTORS) == set(PROVIDER_KEYS)
+
+
+def test_profile_file_defaults_name_only_known_providers():
+    from songmirror.services.account_profiles import _FILE_DEFAULTS, PROVIDER_KEYS
+
+    assert set(_FILE_DEFAULTS) <= set(PROVIDER_KEYS)
+    for provider, defaults in _FILE_DEFAULTS.items():
+        assert set(defaults) <= PROVIDER_KEYS[provider], provider
+
+
+def test_default_profile_label_matches_each_connector_name():
+    """A provider missing from the label map is labelled with its raw id, and
+    the accounts UI then renders "Last.fm . lastfm" instead of "Last.fm"."""
+    from songmirror.services.account_profiles import AccountProfileStore
+
+    for provider, connector in CONNECTORS.items():
+        assert AccountProfileStore._provider_label(provider) == connector.name, provider
+
+
+def test_lastfm_grants_favorites_write_only_once_authorized(tmp_path, monkeypatch):
+    """Loving needs the session key, so the grant set has to follow it: without
+    this the sync wizard would offer Last.fm as a loves destination and every
+    write would fail."""
+    c = _conn("lastfm", tmp_path)
+    monkeypatch.setattr(c, "_validate", lambda: (True, "ahnaf"))
+
+    c.submit({"LASTFM_API_KEY": "k", "LASTFM_API_SECRET": "s", "LASTFM_USER": "ahnaf"})
+    assert c.status().capabilities == frozenset({"library_read"})
+
+    c._store.save({"LASTFM_SESSION_KEY": "sk-1"})
+    assert c.status().capabilities == frozenset({"library_read", "favorites_write"})
+    # Never playlist writes: this integration uses only Last.fm's API.
+    assert "library_write" not in c.status().capabilities
+
+
+def test_lastfm_never_claims_playlist_support_in_the_payload():
+    from songmirror.engine.targets import supports_playlists
+
+    assert supports_playlists("lastfm") is False
+    assert supports_playlists("spotify") is True
+
+
+def test_lastfm_reads_the_token_out_of_the_callback_url(tmp_path, monkeypatch):
+    """The OAuth callback route passes {"url": <full callback>}, not parsed
+    query params. Reading a "token" key instead silently rejected every real
+    authorization with "Last.fm returned no token"."""
+    from songmirror.services.accounts import lastfm as connector_module
+
+    c = _conn("lastfm", tmp_path)
+    c._store.save({"LASTFM_API_KEY": "k", "LASTFM_API_SECRET": "s"})
+    seen = {}
+
+    def fake_get_session(key, secret, token):
+        seen.update(key=key, secret=secret, token=token)
+        return "sk-1", "ahnaf"
+
+    monkeypatch.setattr(connector_module, "get_session", fake_get_session)
+    monkeypatch.setattr(c, "_validate", lambda: (True, "ahnaf"))
+
+    status = c.complete_redirect(
+        {"url": "http://127.0.0.1:8888/oauth/lastfm/callback?token=tok-abc"})
+
+    assert seen["token"] == "tok-abc"
+    assert status.state == "connected"
+    assert c._store.get("LASTFM_SESSION_KEY") == "sk-1"
+    assert c._store.get("LASTFM_USER") == "ahnaf"
+    assert status.capabilities == frozenset({"library_read", "favorites_write"})
+
+
+def test_lastfm_callback_without_a_token_is_an_error(tmp_path):
+    c = _conn("lastfm", tmp_path)
+    c._store.save({"LASTFM_API_KEY": "k", "LASTFM_API_SECRET": "s"})
+
+    assert c.complete_redirect({"url": "http://127.0.0.1:8888/oauth/lastfm/callback"}).state == "error"
+    assert c.complete_redirect({}).state == "error"

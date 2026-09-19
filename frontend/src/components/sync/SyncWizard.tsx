@@ -13,7 +13,13 @@ import { TextField } from '@/components/ui/TextField'
 import { Toggle } from '@/components/ui/Toggle'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { useSettings } from '@/hooks/useSettings'
-import { canSyncAccount } from '@/lib/accountCapabilities'
+import {
+  canBeSyncSource,
+  canParticipateInSync,
+  canReceiveLikedTracks,
+  canSyncAccount,
+  hasPlaylists,
+} from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { serviceLogoId, tagDot, tagText } from '@/lib/constants'
 import { intervalSeconds, isValidIntervalText, isValidPositiveInt } from '@/lib/format'
@@ -24,7 +30,6 @@ import {
   enabledProvidersOf,
   lockedProvidersOf,
   parseCsv,
-  syncPeersOf,
 } from '@/lib/syncSummary'
 import { PlaylistFilterField } from '../settings/PlaylistFilterField'
 import { MergeDestinationFields, MergeSourcesFields } from './MergeFields'
@@ -122,10 +127,14 @@ function normalizedLikedRoutes(
   routes: LikedTrackRoutes,
   providerIds: Iterable<string>,
   sourceId: string,
+  receivesLikes: (providerId: string) => boolean,
 ): LikedTrackRoutes {
   const normalized: LikedTrackRoutes = {}
   for (const providerId of providerIds) {
     if (providerId === sourceId) continue
+    // A participant that cannot write its own liked collection gets no route
+    // at all. Staging a default one here would save a job that fails per pass.
+    if (!receivesLikes(providerId)) continue
     const current = routes[providerId]
     normalized[providerId] = current?.kind === 'playlist'
       ? { kind: 'playlist', name: current.name }
@@ -144,6 +153,14 @@ const STEPS = [
   { get label() { return t("Limits & downloads") }, get intro() { return t("Guardrails so one pass can't make a huge change, plus an optional offline copy of what's synced.") } },
 ] as const
 
+/** Everything the wizard may offer. Wider than `syncPeersOf`, which is the
+ * playlist-peer set: a history service with no playlists of its own is still a
+ * valid one-way source and can still receive loves, so it belongs here while
+ * staying out of the transfer and playlist-link pickers. */
+function syncCandidates(accounts: Account[]): Account[] {
+  return accounts.filter((account) => account.transferable || canParticipateInSync(account))
+}
+
 /** A followers/services toggle chip — `locked` marks whichever service is
  * currently this job's sync source, which is always included and can't be
  * toggled off. */
@@ -161,7 +178,11 @@ function ProviderChip({
   onToggle: () => void
 }) {
   useTranslation()
-  const connected = canSyncAccount(account)
+  const connected = canParticipateInSync(account)
+  // Connected, but playlist writes are unsupported. Last.fm can still be a
+  // source and receive loves, so it stays togglable —
+  // the annotation is what stops the chip reading as a playlist destination.
+  const playlistless = connected && !hasPlaylists(account)
   const unavailableLabel = account.state === 'connected' ? t("catalog only") : t("not connected")
   const logoId = serviceLogoId(account.provider)
 
@@ -204,6 +225,7 @@ function ProviderChip({
           {{ source: t('source'), order: t('order'), authority: t('authority'), mirror: t('mirror') }[role]}
         </span>
       )}
+      {playlistless && <span className="font-normal text-text-3">{t("no playlists")}</span>}
       {!connected && <span className="font-normal text-text-3">{unavailableLabel}</span>}
     </button>
   )
@@ -214,7 +236,9 @@ function ProviderChip({
  * exclusive-choice (radio) rather than a toggle set. */
 function SourceChip({ account, selected, onSelect }: { account: Account; selected: boolean; onSelect: () => void }) {
   useTranslation()
-  const connected = canSyncAccount(account)
+  // Reading is enough to be the source of truth, so a history service with no
+  // playlists of its own still qualifies.
+  const connected = canBeSyncSource(account)
   const unavailableLabel = account.state === 'connected' ? t("catalog only") : t("not connected")
   const logoId = serviceLogoId(account.provider)
 
@@ -337,7 +361,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     if (!job) {
       // Snapshot the connected peers now. Persisting an empty sentinel would
       // make this job silently gain every provider connected in the future.
-      const connected = syncPeersOf(accounts).filter(canSyncAccount)
+      const connected = syncCandidates(accounts).filter(canSyncAccount)
       initial.providers = connected.map((account) => account.id).join(',')
       initial.source = connected.find((account) => account.provider === 'spotify')?.id ?? connected[0]?.id ?? initial.source
     }
@@ -357,7 +381,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  const syncPeers = syncPeersOf(accounts)
+  const syncPeers = syncCandidates(accounts)
   const jellyfinConnected = accounts.some((a) => a.provider === 'jellyfin' && a.state === 'connected')
 
   // One-way uses this as its source of truth. In group mode it is the order
@@ -376,6 +400,10 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     form.mode !== 'nway' && sourceAccount?.provider !== 'spotify' && (form.download || jellyfinConnected)
 
   const enabledProviders = enabledProvidersOf({ providers: form.providers }, syncPeers)
+  // Which participants can actually write their own liked collection. Last.fm
+  // only can once its session is authorized, so this is state, not a constant.
+  const likeReceivers = new Set(accounts.filter(canReceiveLikedTracks).map((account) => account.id))
+  const receivesLikes = (providerId: string) => likeReceivers.has(providerId)
   const connectedPeerIds = new Set(syncPeers.filter(canSyncAccount).map((account) => account.id))
 
   function csvInPeerOrder(ids: Set<string>) {
@@ -418,7 +446,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
         next.mirror_removals = next.removal_strategy === 'mirror'
       }
       if (next.liked_tracks) {
-        next.liked_routes = normalizedLikedRoutes(next.liked_routes, parseCsv(next.providers), next.source)
+        next.liked_routes = normalizedLikedRoutes(next.liked_routes, parseCsv(next.providers), next.source, receivesLikes)
       }
       return next
     })
@@ -435,7 +463,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
           source: id,
           providers: providerCsv,
           liked_routes: prev.liked_tracks
-            ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), id)
+            ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), id, receivesLikes)
             : prev.liked_routes,
         }
       }
@@ -448,7 +476,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
         authorities: csvInPeerOrder(authorities),
         providers: providerCsv,
         liked_routes: prev.liked_tracks
-          ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), id)
+          ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), id, receivesLikes)
           : prev.liked_routes,
       }
     })
@@ -472,7 +500,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
         authorities: csvInPeerOrder(authorities),
         providers: providerCsv,
         liked_routes: prev.liked_tracks
-          ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), prev.source)
+          ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), prev.source, receivesLikes)
           : prev.liked_routes,
       }
     })
@@ -494,6 +522,8 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
 
   const likedSourceName = syncPeers.find((account) => account.id === syncSource)?.name ?? syncSource
   const likedPlaylistSuggestion = providerLikedTracksLabel(sourceAccount?.provider, likedSourceName)
+  // Every enabled participant is listed, including one that cannot receive
+  // loves yet, so the reason is visible instead of the service just missing.
   const likedDestinations = syncPeers.filter(
     (account) => enabledProviders.has(account.id) && account.id !== syncSource,
   )
@@ -513,7 +543,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
         providers: providerCsv,
         sync_playlists: prev.playlists.trim().length > 0,
         liked_tracks: true,
-        liked_routes: normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), source),
+        liked_routes: normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), source, receivesLikes),
       }
     })
   }
@@ -544,7 +574,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
       ...prev,
       providers: providerCsv,
       liked_routes: prev.liked_tracks
-        ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), prev.source)
+        ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), prev.source, receivesLikes)
         : prev.liked_routes,
     }))
   }
@@ -561,7 +591,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     !form.liked_tracks ||
     (enabledProviders.has(syncSource) &&
       [...enabledProviders]
-        .filter((providerId) => providerId !== syncSource)
+        .filter((providerId) => providerId !== syncSource && receivesLikes(providerId))
         .every((providerId) => {
           const route = form.liked_routes[providerId]
           return route?.kind === 'native' || (route?.kind === 'playlist' && route.name.trim().length > 0)
@@ -923,36 +953,51 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                               )}
                               {account.name}
                             </div>
-                            <div
-                              role="radiogroup"
-                              aria-label={t("{{accountName}} liked-track destination", { accountName: account.name })}
-                              className="grid gap-2 sm:grid-cols-2"
-                            >
-                              <RadioCard
-                                name={`liked-route-${account.id}`}
-                                value="native"
-                                checked={route.kind === 'native'}
-                                onChange={() => setLikedRoute(account.id, { kind: 'native' })}
-                                title={t("Use {{accountName}} {{nativeLikedTracksName}}", { accountName: account.name, nativeLikedTracksName: nativeLikedTracksName(account.provider) })}
-                                description={t("Sync directly into this service's built-in liked collection.")}
-                              />
-                              <RadioCard
-                                name={`liked-route-${account.id}`}
-                                value="playlist"
-                                checked={route.kind === 'playlist'}
-                                onChange={() => setLikedRoute(account.id, { kind: 'playlist', name: likedPlaylistSuggestion })}
-                                title={t("Create a new playlist on {{accountName}}", { accountName: account.name })}
-                                description={t("Use a regular playlist with a name you can edit.")}
-                              />
-                            </div>
-                            {route.kind === 'playlist' && (
-                              <TextField
-                                label={t("{{accountName}} playlist name", { accountName: account.name })}
-                                value={playlistName}
-                                aria-required="true"
-                                onChange={(event) => setLikedRoute(account.id, { kind: 'playlist', name: event.target.value })}
-                                error={!playlistName.trim() ? t("Enter a playlist name.") : undefined}
-                              />
+                            {!canReceiveLikedTracks(account) ? (
+                              <p className="rounded-control border border-dashed border-border-strong px-3 py-2.5 text-xs text-text-3">
+                                {t("Authorize {{accountName}} on the Accounts page before it can receive liked tracks.", { accountName: account.name })}
+                              </p>
+                            ) : (
+                              <>
+                                <div
+                                  role="radiogroup"
+                                  aria-label={t("{{accountName}} liked-track destination", { accountName: account.name })}
+                                  className={cn('grid gap-2', hasPlaylists(account) && 'sm:grid-cols-2')}
+                                >
+                                  <RadioCard
+                                    name={`liked-route-${account.id}`}
+                                    value="native"
+                                    checked={route.kind === 'native'}
+                                    onChange={() => setLikedRoute(account.id, { kind: 'native' })}
+                                    title={t("Use {{accountName}} {{nativeLikedTracksName}}", { accountName: account.name, nativeLikedTracksName: nativeLikedTracksName(account.provider) })}
+                                    description={t("Sync directly into this service's built-in liked collection.")}
+                                  />
+                                  {hasPlaylists(account) && (
+                                    <RadioCard
+                                      name={`liked-route-${account.id}`}
+                                      value="playlist"
+                                      checked={route.kind === 'playlist'}
+                                      onChange={() => setLikedRoute(account.id, { kind: 'playlist', name: likedPlaylistSuggestion })}
+                                      title={t("Create a new playlist on {{accountName}}", { accountName: account.name })}
+                                      description={t("Use a regular playlist with a name you can edit.")}
+                                    />
+                                  )}
+                                </div>
+                                {!hasPlaylists(account) && (
+                                  <p className="text-xs text-text-3">
+                                    {t("{{accountName}} has no playlists, so its own collection is the only destination.", { accountName: account.name })}
+                                  </p>
+                                )}
+                                {route.kind === 'playlist' && (
+                                  <TextField
+                                    label={t("{{accountName}} playlist name", { accountName: account.name })}
+                                    value={playlistName}
+                                    aria-required="true"
+                                    onChange={(event) => setLikedRoute(account.id, { kind: 'playlist', name: event.target.value })}
+                                    error={!playlistName.trim() ? t("Enter a playlist name.") : undefined}
+                                  />
+                                )}
+                              </>
                             )}
                           </div>
                         )

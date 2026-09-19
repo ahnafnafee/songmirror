@@ -23,6 +23,7 @@ const SERVICE_BLURBS: Record<string, string> = {
   get amazon() { return t("Syncs playlists using an auto-renewing session from your signed-in Amazon Music web player.") },
   get apple() { return t("Paste a couple of tokens from the Apple Music web player. No developer account needed.") },
   get ytmusic() { return t("Sign in with a Google account using a short code. Approve it from your phone or another tab.") },
+  get lastfm() { return t("Reads your listening history. Authorize it to read a private profile and love tracks.") },
   get jellyfin() { return t("Optional. Pushes real playlist cover art to your Jellyfin server.") },
 }
 
@@ -41,7 +42,13 @@ function borderClass(state: Account['state']): string {
   return 'border-border'
 }
 
-export function AccountCard({ account, onChanged }: { account: Account; onChanged: () => void }) {
+export function AccountCard({ account, onChanged }: {
+  account: Account
+  /** Awaited before the card leaves its pending state, so a disconnect cannot
+   * keep rendering the stale "Connected" while the account list reloads. That
+   * reload revalidates every provider live and takes seconds. */
+  onChanged: () => void | Promise<void>
+}) {
   useTranslation()
   const [wizardOpen, setWizardOpen] = useState(false)
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
@@ -62,8 +69,8 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
     setError(null)
     try {
       await api.disconnectAccount(account.id)
+      await onChanged()
       setConfirmingDisconnect(false)
-      onChanged()
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -76,8 +83,8 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
     setError(null)
     try {
       await api.removeAccount(account.id)
+      await onChanged()
       setConfirmingRemove(false)
-      onChanged()
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -91,8 +98,8 @@ export function AccountCard({ account, onChanged }: { account: Account; onChange
     setError(null)
     try {
       await api.renameAccount(account.id, label.trim())
+      await onChanged()
       setEditingLabel(false)
-      onChanged()
     } catch (err) {
       setError(errorMessage(err))
     } finally {

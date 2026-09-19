@@ -281,3 +281,86 @@ if __name__ == "__main__":
         globals()[name]()
         print(f"ok {name}")
     print("all download checks passed")
+
+
+# -- mirror sources ----------------------------------------------------------
+
+
+class _FakeTarget:
+    """Stand-in MirrorTarget with non-Spotify track ids."""
+
+    source = "lastfm"
+
+    def __init__(self, tracks):
+        self._tracks = tracks
+        self.read_for = []
+
+    def playlist_tracks(self, playlist):
+        self.read_for.append(playlist.get("id"))
+        return list(self._tracks)
+
+
+def test_as_source_accepts_a_bare_spotify_client_or_none():
+    assert isinstance(lm._as_source(None), lm._SpotifySource)
+    assert isinstance(lm._as_source(FakeSp([])), lm._SpotifySource)
+    target = lm.TargetSource(_FakeTarget([]))
+    assert lm._as_source(target) is target
+
+
+def test_spotify_source_keeps_addressing_tracks_by_url():
+    source = lm._SpotifySource(None)
+    playlist = {"id": "pl1", "external_urls": {"spotify": "https://open.spotify.com/playlist/pl1"}}
+
+    assert source.playlist_query(playlist).endswith("/playlist/pl1")
+    assert source.track_queries(["t1"], []) == ["https://open.spotify.com/track/t1"]
+
+
+def test_target_source_searches_by_artist_and_title():
+    target = _FakeTarget([{"id": "a", "name": "Song", "artist": "X"},
+                          {"id": "b", "name": "Solo", "artist": ""}])
+    source = lm.TargetSource(target)
+    tracks = source.read({"id": "loved"})
+
+    assert target.read_for == ["loved"]
+    # No playlist URL exists for a virtual collection, so downloads go per track.
+    assert source.playlist_query({"id": "loved"}) is None
+    assert source.track_queries(["a", "b"], tracks) == ["X - Song", "Solo"]
+
+
+def test_target_source_skips_unknown_ids_and_leading_dashes():
+    tracks = [{"id": "a", "name": "Song", "artist": "-X"}]
+    source = lm.TargetSource(_FakeTarget(tracks))
+
+    assert source.track_queries(["a", "ghost"], tracks) == ["X - Song"]
+
+
+def test_post_sync_reaches_the_mirror_for_a_non_spotify_source(monkeypatch, tmp_path):
+    """The mirror used to be skipped outright unless Spotify was the source."""
+    from songmirror.engine import runner
+
+    seen = {}
+    monkeypatch.setattr(lm, "run",
+                        lambda source, playlists, download_dir, should_continue=None:
+                        seen.update(source=source, playlists=playlists))
+    opts = types.SimpleNamespace(download_dir=str(tmp_path), execute=True)
+    target = _FakeTarget([])
+    monkeypatch.setattr(runner, "target_provider", lambda src, default=None: "lastfm")
+    monkeypatch.delenv("JELLYFIN_URL", raising=False)
+
+    runner._post_sync(opts, None, [{"id": "loved"}], source_is_spotify=False,
+                      source=target)
+
+    assert isinstance(seen["source"], lm.TargetSource)
+    assert seen["playlists"] == [{"id": "loved"}]
+
+
+def test_post_sync_without_a_source_target_skips_rather_than_crashing(monkeypatch, tmp_path):
+    from songmirror.engine import runner
+
+    called = []
+    monkeypatch.setattr(lm, "run", lambda *a, **k: called.append(1))
+    opts = types.SimpleNamespace(download_dir=str(tmp_path), execute=True)
+
+    runner._post_sync(opts, None, [{"id": "x"}], source_is_spotify=False, source=None)
+
+    assert called == []

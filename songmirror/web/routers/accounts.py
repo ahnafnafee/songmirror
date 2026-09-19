@@ -15,12 +15,14 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from ...engine.targets import is_peer, target_class
+from ...engine.targets import supports_playlists as targets_supports_playlists
 from ...services.accounts import CONNECTORS
 from ...services.accounts.base import FULL_PEER_CAPABILITIES, ConnStatus, DeviceCode
 
 router = APIRouter()
 
-_CAPABILITY_KEYS = ("library_read", "library_write", "public_playlist_read")
+_CAPABILITY_KEYS = ("library_read", "library_write", "public_playlist_read",
+                    "favorites_write")
 
 
 def _profile(request: Request, identity: str):
@@ -65,6 +67,24 @@ def _capabilities(provider, status):
             # but cannot participate in track-level syncs or transfers.
             granted = {"library_read"}
     return {key: key in granted for key in _CAPABILITY_KEYS}
+
+
+def _supports_playlists(provider):
+    """Whether the provider supports playlist writes. Last.fm remains usable
+    as a history source and a Loved Tracks destination without this capability.
+    """
+    return targets_supports_playlists(provider)
+
+
+def _source_capable(provider):
+    """Whether the provider can supply tracks to a sync.
+
+    True when it has a MirrorTarget to read through. This is what separates the
+    two kinds of non-peer: Last.fm is input-only and has a target, while
+    Jellyfin is output-only, has no target, and is fed by the download mirror
+    rather than read from.
+    """
+    return target_class(provider) is not None
 
 
 def _status_values(provider, status):
@@ -119,6 +139,9 @@ def _status_payload(request, profile):
     store = profiles.settings_for(profile.id)
     with profiles.activate(profile.id):
         status = connector.status()
+        status_values = _status_values(profile.provider, status)
+        supports_playlists = _supports_playlists(profile.provider)
+        transferable = is_peer(profile.provider)
         fields = []
         for field in connector.config_fields:
             data = asdict(field)
@@ -137,10 +160,32 @@ def _status_payload(request, profile):
         "removable": not profile.is_default,
         "auth_kind": connector.auth_kind,
         "fields": fields,
-        **_status_values(profile.provider, status),
-        "transferable": is_peer(profile.provider),
+        **status_values,
+        "transferable": transferable,
+        "supports_playlists": supports_playlists,
+        "source_capable": _source_capable(profile.provider),
         "preserves_order": _preserves_order(profile.provider),
+        "callback_url": _callback_url(request, profile, connector),
+        "authorization_pending": bool(store.get("LASTFM_AUTH_PENDING")) if profile.provider == "lastfm" else False,
     }
+
+
+def _callback_url(request, profile, connector):
+    """Where the provider must redirect back to, for a connector whose provider
+    asks for the callback while the API application is being registered (as
+    Last.fm does). Reported by the server because the path rule and the
+    public-URL handling live here, so the browser never restates them.
+
+    Best-effort: a misconfigured SONGMIRROR_PUBLIC_URL must not take down the
+    whole accounts list, so the field is simply absent.
+    """
+    if connector.auth_kind != "oauth_redirect":
+        return None
+    callback_id = profile.provider if profile.is_default else profile.id
+    try:
+        return _redirect_uri(request, callback_id)
+    except HTTPException:
+        return None
 
 
 @router.get("/api/accounts")
@@ -176,6 +221,10 @@ def rename_account(account_id: str, request: Request, body: dict = Body(...)):
 @router.post("/api/accounts/{account_id}/config")
 def save_config(account_id: str, request: Request, values: dict = Body(...)):
     profile = _profile(request, account_id)
+    try:
+        values = _conn(request, profile.id).normalize_config(values)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     request.app.state.account_profiles.settings_for(profile.id).save(values)
     return {"ok": True}
 
@@ -186,6 +235,10 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
     profiles = request.app.state.account_profiles
     connector = _conn(request, profile.id)
     with profiles.activate(profile.id):
+        # Public history needs only a key and username, without API approval.
+        if profile.provider == "lastfm" and body is not None:
+            status = connector.submit(body)
+            return {"kind": "token_paste", **_status_values(profile.provider, status)}
         if connector.auth_kind == "oauth_redirect":
             # Deterministic defaults keep the provider callback registered by
             # existing installations even when the new UI addresses them by

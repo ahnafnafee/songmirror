@@ -72,6 +72,7 @@
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [Last.fm](#lastfm)
 - [🖥️没有图形界面CLI](#headless-cli)
 - [🛡️安全保障](#safety-rails)
 - [🗃️ 缓存和歌曲存档](#caching-song-archive)
@@ -104,7 +105,8 @@ SongMirror 使您的播放列表在任何地方都保持相同，无需手动重
 - 🔗 **从链接传输** — 从任何连接的服务粘贴公共播放列表 URL 并直接复制。无需先保存或遵循它。
 - 🌐 **关注的播放列表** — 同步和传输您关注但不拥有的播放列表，而不仅仅是您创建的播放列表。
 - 📦 **计划元数据备份** — 根据自己的计划在持久性应用程序数据下存档帐户的整个播放列表库，具有 JSON/XML、保留限制和可见的成功/失败历史记录。一次性下载和导入就绪 Soundiiz JSON 也仍然可用。
-- 💿 **本地下载镜像** — 保留离线音频，每个播放列表一个文件夹，采用 Jellyfin 的 `AlbumArtist/Album` 布局，带有封面和自动更新的 `.m3u8`。
+- 📻 **Last.fm**：把你的 Loved Tracks、Top Tracks（六个时间段）和 Recent Scrobbles 同步到任意已连接的服务；授权账户后，还能把其他服务的喜欢歌曲同步回 **Last.fm**。不支持向它同步歌单，因此永远不会成为歌单目标。
+- 💿 **本地下载镜像** — 保留离线音频，每个播放列表一个文件夹，采用 Jellyfin 的 `AlbumArtist/Album` 布局，带有封面和自动更新的 `.m3u8`。 把它指向已有的音乐库，匹配到的歌曲会**按原始音质**复制进来（FLAC 仍是 FLAC），下载只补齐缺口。
 - 🛡️ **安全保障** — 默认模拟、每次添加/删除上限、净损失保护、空快照防护、令牌过期时不写入而中止。
 - 🗃️ **不断增长的歌曲档案** - 每首看过的曲目都记录在本地 SQLite 数据库中（姓名、艺术家、专辑、ISRC、原始元数据、首次/最后一次看到）。
 - 🧭 **可编辑的比赛历史记录** - 从“映射”页面浏览、更正和删除每个服务的每个缓存的赛道比赛，包括“不匹配”结果，否则这些结果将永远保持不匹配。
@@ -383,9 +385,11 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - 增量 - 第一次完整下载后，仅获取新添加的曲目；删除的曲目（及其清空的专辑文件夹）将被修剪。中断的运行将在下一次传递中继续。
 - 最新在先 `.m3u8` — 按添加日期的顺序书写，最新的位于顶部（设置 `LOCAL_MIRROR_ORDER=oldest` 为翻转）。使用`uv run main.py --refresh-local`从现有文件重建封面/标签/mtimes。
 - Jellyfin - Jellyfin 中的播放列表封面会忽略 m3u 旁边的封面文件，因此设置 `JELLYFIN_URL` + `JELLYFIN_API_KEY`，并且每次传递都会通过 Jellyfin API 上传真实的播放列表封面。
-- 音频质量 — 源为 YouTube，因此如果没有 YT Music Premium cookie，上限约为 128–160 kbps。 `LOCAL_MIRROR_FORMAT=opus` 保留 YouTube 的本机流，无需 mp3 重新编码； Premium cookie (`LOCAL_MIRROR_COOKIE_FILE`) 解锁 256 kbps AAC。选择 `flac` 会更改输出容器，但无法将有损源转换为无损音频。
+- **任意来源，不只是 Spotify**：镜像会读取同步所使用的来源服务。Spotify 歌单仍按目录地址下载；其他来源（包括 Last.fm）按艺人和曲名搜索。
+- **先用你自己的音乐库（真正的 FLAC）**：把 `LOCAL_LIBRARY_DIR` 指向已有的音乐目录树，在那里找到的每首歌都会**按原始格式复制到歌单文件夹**，所以 FLAC 仍是 FLAC。只有本地没有匹配的歌曲才会交给 spotDL。匹配先看 ISRC 标签，再看曲名加艺人，规则与同步引擎完全一致。这里刻意选择复制而非硬链接：镜像会写入修改时间并补全标签，硬链接会改写你的原始文件。留空表示关闭。
+- 音频质量 — 源为 YouTube，因此如果没有 YT Music Premium cookie，上限约为 128–160 kbps。 `LOCAL_MIRROR_FORMAT=opus` 保留 YouTube 的本机流，无需 mp3 重新编码； Premium cookie (`LOCAL_MIRROR_COOKIE_FILE`) 解锁 256 kbps AAC。选择 `flac` 会更改输出容器，但无法将有损源转换为无损音频。 需要真正的无损音频时，请使用 `LOCAL_LIBRARY_DIR`。
 
-Monochrome当前的FLAC路径使用浏览器控制的一次性播放资源，而不是稳定的、提供商授权的文件导出API，因此SongMirror不会自动化它。仅将本地镜像用于您拥有或被授权复制的内容。
+SongMirror 不会自动从流媒体目录中提取 FLAC。任何新的音频来源都必须先满足 `docs/monochrome-flac-assessment.md` 中的条件：服务方公开且有版本的下载或导出接口、面向用户的授权、明确的永久复制权利、对地区、有效期与离线使用的成文规定，以及不绕过 DRM 或访问控制。本地镜像只应用于你拥有或已获授权复制的内容。
 
 <div align="right">
 
@@ -414,6 +418,7 @@ SongMirror 及时刷新凭据，而不是使用单独的令牌刷新计时器。
 | Amazon Music | Web 访问令牌使用捕获的浏览器用户代理、引用者和白名单 cookie 通过 `/pandaToken` 进行更新。当前的 `POST config.json?skipToken=false` 流会在需要时引导设备上下文，并保留旋转的 cookie。注销、安全更改或服务器端撤销仍然需要重新捕获。 |
 | Apple Music |粘贴的Bearer和Media-User-Token无法通过SongMirror续订，必须在拒绝后重新捕获。 |
 | YouTube Music | Data API OAuth 到期后 60 秒内自动刷新。每当构建同步目标时，浏览器模式都会尝试 Google 的 cookie 轮换；必须再次导出已过期的浏览器会话。 |
+| Last.fm | API 密钥和会话密钥都不会过期，因此无需任何续期。只有在你于 Last.fm 账户设置中撤销该应用的访问权限后，才需要重新授权。 |
 | Jellyfin | API密钥没有访问令牌刷新周期；仅当其被撤销或删除时才予以替换。 |
 
 <a id="spotify"></a>
@@ -491,6 +496,46 @@ SongMirror在本地导出相同的`AmznMusic`授权值，并在到期前或身�
 3. 在应用程序中，粘贴客户端 ID + 密钥并完成屏幕上的设备代码。
 
 > 配额：Data API允许10,000个单位/天（搜索费用100，添加/删除50）。稳态维护成本低廉；大量的首次积压可能会达到上限并在第二天恢复。
+
+<div align="right">
+
+[![][back-to-top]](#readme-top)
+
+</div>
+
+<a id="lastfm"></a>
+
+### Last.fm
+
+不支持向 Last.fm 同步歌单，因此永远不会成为歌单目标。它以只读集合的形式提供你的**收听记录**，其中的 **Loved Tracks** 与其他所有服务的喜欢歌曲集合一样，在你授权账户后即可写入。
+
+1. 在 <https://www.last.fm/api/account/create> 创建 API 账户，同时记下 **API 密钥** 和 **共享密钥**。
+2. 在账户 → Last.fm 中粘贴两者，然后走完 Last.fm 的授权页面。
+
+凭据分两级，开启写入的是第二级：
+
+| 你提供 | 你获得 |
+| --- | --- |
+| API 密钥 + 用户名 | 对该资料的公开读取 |
+| + 共享密钥 + 授权 | **私密**读取，以及添加和取消喜欢歌曲 |
+
+授权只需经过浏览器一次：SongMirror 把你带到 Last.fm，你确认该应用，返回的令牌随后被换成一个**永不过期的会话密钥**。与上表中所有粘贴式凭据不同，它永远不需要重新获取。你可以在 Last.fm 账户设置中撤销它。
+
+这样就能使用以下内容：
+
+| 集合 | 内容 |
+| --- | --- |
+| **Loved Tracks** | 喜欢歌曲集合。始终可读；授权后**可写**，因此你在 Spotify、TIDAL 或 Apple 的喜欢歌曲可以同步*进入* Last.fm |
+| **Top Tracks（7 天 … 全部时间）** | 六个按排名排列的只读集合，对应 Last.fm 的每个时间段 |
+| **Recent Scrobbles** | 播放记录，不含正在播放的那一条 |
+
+在依赖它之前，有三个限制值得了解：
+
+- **没有 ISRC。** `user.*` 接口只返回艺人名和曲名，因此 Last.fm 的歌曲按名称匹配，而不是按目录标识匹配。偶尔会匹配到错误版本，而带 ISRC 的服务本可避免。在标记喜欢之前，SongMirror 会通过 `track.getInfo` 查询 Last.fm 的标准写法，这样几乎相同的标题就不会生成第二条记录。
+- **按排名排列的集合没有日期。** Top Tracks 不带逐曲时间戳，因此这些歌曲在同步时没有日期，也无法决定加入顺序。
+- **歌单路线不适用。** 把喜欢歌曲同步*进入* Last.fm 必须使用原生路线。创建具名歌单的那条路线没有可写入的歌单。
+
+如果没有共享密钥，你指定的资料必须把 Loved Tracks 和 Top Tracks 设为公开。
 
 <div align="right">
 

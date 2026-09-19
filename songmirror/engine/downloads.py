@@ -26,8 +26,9 @@ from pathlib import Path
 import requests
 import spotipy
 
-from . import spotify, spotify_cookie, spotify_web
+from . import local_library, spotify, spotify_cookie, spotify_web
 from .logs import fmt_secs, log_download, log_miss, log_note, log_section, log_summary, log_warn
+from .matching import track_artist
 from .matching import normalize_text as _norm
 
 AUDIO_EXTS = {".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav"}
@@ -579,7 +580,63 @@ def _delete_removed(folder, removed_ids, prev_files):
     return deleted
 
 
-def _download_one(sp, playlist, folder, timeout_s, tracks, new_ids, removed_ids, prev_files):
+class _SpotifySource:
+    """The mirror's original source: a Spotify client, or None in cookie mode.
+    Downloads address one track by its Spotify URL and a whole playlist by the
+    playlist's own URL."""
+
+    def __init__(self, sp):
+        self._sp = sp
+
+    def read(self, playlist):
+        return read_tracks(self._sp, playlist.get("id", ""))
+
+    def playlist_query(self, playlist):
+        return ((playlist.get("external_urls") or {}).get("spotify")
+                or f"https://open.spotify.com/playlist/{playlist['id']}")
+
+    def track_queries(self, ids, tracks):
+        return [f"https://open.spotify.com/track/{i}" for i in ids]
+
+
+class TargetSource:
+    """Any MirrorTarget as a mirror source. Its track ids are not Spotify ids,
+    so spotDL is given free-text `artist - title` searches, and there is no
+    whole-playlist URL to hand it."""
+
+    def __init__(self, target):
+        self._target = target
+
+    def read(self, playlist):
+        return self._target.playlist_tracks(playlist)
+
+    def playlist_query(self, playlist):
+        return None
+
+    def track_queries(self, ids, tracks):
+        by_id = {str(t["id"]): t for t in tracks if t.get("id")}
+        queries = []
+        for track_id in ids:
+            track = by_id.get(str(track_id))
+            if not track:
+                continue
+            name = (track.get("name") or "").strip()
+            artist = (track_artist(track) or "").strip()
+            if not name:
+                continue
+            query = f"{artist} - {name}" if artist else name
+            # A leading dash would be read as a spotDL flag.
+            queries.append(query.lstrip("-").strip() or name)
+        return queries
+
+
+def _as_source(sp_or_source):
+    """Accept a mirror source, or a bare Spotify client / None as before."""
+    return (sp_or_source if hasattr(sp_or_source, "read")
+            else _SpotifySource(sp_or_source))
+
+
+def _download_one(source, playlist, folder, timeout_s, tracks, new_ids, removed_ids, prev_files):
     """Delete removed tracks, download only the new ones (whole-playlist on the
     first/large sync, otherwise just the new tracks' URLs so spotDL skips its
     whole-playlist re-processing), then finalize. Returns
@@ -592,14 +649,20 @@ def _download_one(sp, playlist, folder, timeout_s, tracks, new_ids, removed_ids,
 
     removed = _delete_removed(folder, removed_ids, prev_files)
     downloaded = code = 0
-    if new_ids:
-        if not prev_files or len(new_ids) > 40:  # first download or a big change
-            pl_url = (playlist.get("external_urls") or {}).get("spotify") or f"https://open.spotify.com/playlist/{playlist['id']}"
-            log_note(f"'{name}': downloading {len(new_ids)} track(s) (full playlist)...", tag="local")
+    # Anything the local library already holds is copied in first, keeping its
+    # own format, so only the genuine gaps reach spotDL.
+    pending = local_library.serve(folder, tracks, new_ids)
+    served = len(new_ids) - len(pending)
+    if pending:
+        pl_url = source.playlist_query(playlist)
+        # The whole-playlist download is only a win when nothing was served
+        # locally; otherwise it re-processes the tracks just placed.
+        if pl_url and not served and (not prev_files or len(pending) > 40):
+            log_note(f"'{name}': downloading {len(pending)} track(s) (full playlist)...", tag="local")
             downloaded, _, code = _stream_spotdl(build_download_cmd([pl_url]), folder, timeout_s)
-        else:  # just the new tracks — no whole-playlist re-processing
-            log_note(f"'{name}': downloading {len(new_ids)} new track(s)...", tag="local")
-            for chunk in _chunks([f"https://open.spotify.com/track/{i}" for i in new_ids], 40):
+        else:  # just the new tracks, no whole-playlist re-processing
+            log_note(f"'{name}': downloading {len(pending)} new track(s)...", tag="local")
+            for chunk in _chunks(source.track_queries(pending, tracks), 40):
                 d, _, c = _stream_spotdl(build_download_cmd(chunk), folder, timeout_s)
                 downloaded += d
                 code = c or code
@@ -608,7 +671,8 @@ def _download_one(sp, playlist, folder, timeout_s, tracks, new_ids, removed_ids,
 
     stamped, _, tagged, id_to_file, missing = finalize_folder(folder, tracks, newest_first)
     order = "newest-first" if newest_first else "oldest-first"
-    parts = [p for p in (f"{downloaded} downloaded" if downloaded else "",
+    parts = [p for p in (f"{served} from library" if served else "",
+                         f"{downloaded} downloaded" if downloaded else "",
                          f"{removed} removed" if removed else "",
                          f"{tagged} tagged" if tagged else "",
                          f"{len(missing)} unavailable" if missing else "") if p]
@@ -627,11 +691,14 @@ def _folder_for(base, playlist, used):
     return base / folder_name
 
 
-def refresh(sp, spotify_playlists, download_dir):
+def refresh(source, spotify_playlists, download_dir):
     """Rebuild covers, mtimes and the newest-first m3u from ALREADY-downloaded
-    files — no spotDL, no mirrors. For when you just want the playlist files
-    regenerated. Never raises out."""
+    files: no spotDL, no mirrors. For when you just want the playlist files
+    regenerated. Never raises out.
+
+    `source` is a mirror source, or a bare Spotify client / None as before."""
     try:
+        source = _as_source(source)
         if importlib.util.find_spec("mutagen") is None:
             log_note("refresh skipped: mutagen not installed (uv sync --extra download)", tag="local")
             return
@@ -650,7 +717,7 @@ def refresh(sp, spotify_playlists, download_dir):
                 continue
             try:
                 save_cover(playlist, folder)
-                stamped, _, tagged, _, _ = finalize_folder(folder, read_tracks(sp, playlist["id"]), newest_first)
+                stamped, _, tagged, _, _ = finalize_folder(folder, source.read(playlist), newest_first)
                 order = "newest-first" if newest_first else "oldest-first"
                 extra = f", {tagged} tagged" if tagged else ""
                 log_summary(f"{name}: m3u {order}, {stamped} date-stamped{extra}", tag="local")
@@ -660,8 +727,10 @@ def refresh(sp, spotify_playlists, download_dir):
         log_warn(f"refresh failed: {e!r}", tag="local")
 
 
-def run(sp, spotify_playlists, download_dir, should_continue=None):
+def run(source, spotify_playlists, download_dir, should_continue=None):
     """Never raises out; logs one skip line if spotdl/ffmpeg aren't set up.
+
+    `source` is a mirror source, or a bare Spotify client / None as before.
 
     Per-playlist download state (Spotify snapshot_id, track ids, and the set of
     tracks spotDL couldn't source) lives in a JSON file so spotDL is invoked
@@ -669,6 +738,7 @@ def run(sp, spotify_playlists, download_dir, should_continue=None):
     and a changed one runs spotDL only if a genuinely new/removed track appears
     (not merely because some already-known-unavailable tracks are 'missing')."""
     try:
+        source = _as_source(source)
         if _spotdl_cmd() is None:
             log_note("local mirror skipped: spotdl not found "
                      "(install it: `uv tool install spotdl` or `pipx install spotdl`)", tag="local")
@@ -698,14 +768,14 @@ def run(sp, spotify_playlists, download_dir, should_continue=None):
                 log_note(f"'{name}': unchanged since last download - skipped", tag="local")
                 continue
             try:
-                tracks = read_tracks(sp, pid)
+                tracks = source.read(playlist)
                 current_ids = [t["id"] for t in tracks if t.get("id")]
                 prev_files = prev.get("files", {})
                 new_ids, removed_ids = _diff_ids(current_ids, prev_files, prev.get("unavailable", []))
                 if not new_ids and not removed_ids and prev:
                     log_note(f"'{name}': no new or removed tracks - refreshing m3u only", tag="local")
                 clean, id_to_file, unavailable = _download_one(
-                    sp, playlist, folder, timeout_s, tracks, new_ids, removed_ids, prev_files)
+                    source, playlist, folder, timeout_s, tracks, new_ids, removed_ids, prev_files)
                 if clean:
                     state[pid] = {"snapshot": snapshot, "files": id_to_file, "unavailable": sorted(unavailable)}
                     dirty = True

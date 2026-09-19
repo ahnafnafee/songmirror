@@ -14,7 +14,7 @@ import { useAccounts } from '@/hooks/useAccounts'
 const PROVIDERS = [
   ['spotify', 'Spotify'], ['tidal', 'TIDAL'], ['qobuz', 'Qobuz'], ['deezer', 'Deezer'],
   ['amazon', 'Amazon Music'], ['apple', 'Apple Music'], ['ytmusic', 'YouTube Music'],
-  ['jellyfin', 'Jellyfin'],
+  ['lastfm', 'Last.fm'], ['jellyfin', 'Jellyfin'],
 ] as const
 
 export default function Accounts() {
@@ -82,7 +82,7 @@ export default function Accounts() {
       ) : accounts && accounts.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {accounts.map((account) => (
-            <AccountCard key={account.id} account={account} onChanged={() => void refresh()} />
+            <AccountCard key={account.id} account={account} onChanged={refresh} />
           ))}
         </div>
       ) : (
