@@ -581,8 +581,8 @@ def _fit_chronology_writes(ordered_keys, current_by_key, additions, addition_key
                 # can an entirely unplaced recovery be assumed to be new.
                 return not existing or (False in comparisons and True not in comparisons)
 
-            # Missing old tracks must not become the newest entries merely
-            # because a provider cannot safely replay the newer suffix.
+            # Replay-capable providers temporarily blocked by conflicting
+            # identities must wait until the newer suffix is safe to replay.
             eligible = [item for item in additions if can_append(item)]
         selected = eligible[:max(0, max_writes)]
         return selected, [], len(additions) - len(selected), len(additions)
@@ -843,7 +843,7 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
         max_adds,
         replay_write_cost=replay_write_cost,
         can_replay=can_replay,
-        preserve_chronology=not is_favorite_resource,
+        preserve_chronology=can_replay,
         order_evidence={id(track): track_addition_order_key(track, playlist_position=position)
                         for position, track in enumerate(ordered_source)},
     )
@@ -856,12 +856,6 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
             log_warn(
                 f"preserving Recently Added order would require {full_write_cost} ordered writes; "
                 f"--max-adds={max_adds}, deferring {cap_deferred} addition(s)",
-                tag=tag,
-            )
-        elif not can_replay and not is_favorite_resource:
-            log_warn(
-                f"deferring {cap_deferred} addition(s): older playlist gaps require an ordered "
-                f"repair before they can be filled (write cap {max_adds})",
                 tag=tag,
             )
         else:
@@ -1934,9 +1928,12 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             favorite_check(resource) if favorite_check is not None
             else resource.get("_kind") == "liked_tracks"
         )
-        can_replay = callable(getattr(p, "replay_chronology", None)) and not is_favorite_resource
+        # Permanently append-only providers must still converge on membership.
+        # Keep this capability separate from the per-pass safety checks below:
+        # a collision on a replay-capable provider still holds older recoveries.
+        preserve_chronology = callable(getattr(p, "replay_chronology", None)) and not is_favorite_resource
         replay_write_cost = getattr(p, "chronology_replay_write_cost", len)
-        if chronology_collision and additions:
+        if preserve_chronology and chronology_collision and additions:
             # Disputed identities prevent suffix replay. Only additions newer
             # than the current playlist can append without changing chronology.
             log_warn(
@@ -1944,7 +1941,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 "prevent an ordered repair",
                 tag=p.tag,
             )
-        can_replay = can_replay and not chronology_collision and not (cur[p.source] & conflicting_cids)
+        can_replay = preserve_chronology and not chronology_collision and not (cur[p.source] & conflicting_cids)
         additions, chronology_replay, cap_deferred, full_write_cost = _fit_chronology_writes(
             ordered_desired,
             current_by_cid,
@@ -1954,7 +1951,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             addition_target_id=lambda item: item[1],
             replay_write_cost=replay_write_cost,
             can_replay=can_replay,
-            preserve_chronology=not is_favorite_resource,
+            preserve_chronology=preserve_chronology,
             order_evidence=order_evidence,
             position_evidence=position_evidence,
         )
@@ -1969,7 +1966,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                     f"deferring {cap_deferred} addition(s)",
                     tag=p.tag,
                 )
-            elif not can_replay and not is_favorite_resource:
+            elif not can_replay and preserve_chronology:
                 log_warn(
                     f"{p.name}/{name}: deferring {cap_deferred} addition(s): older playlist gaps "
                     f"require an ordered repair before they can be filled (write cap {max_adds})",

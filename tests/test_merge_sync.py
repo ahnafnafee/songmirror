@@ -5,10 +5,12 @@ import json
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+import pytest
 
 from songmirror.engine.aggregation import AggregateSourceSnapshot, aggregate_source_tracks
 from songmirror.engine.runner import _run_merge
 from songmirror.engine.targets.base import MirrorTarget
+from songmirror.engine.targets.deezer import DeezerTarget
 from songmirror.services.account_profiles import AccountProfileStore
 from songmirror.services.events import EventBus
 from songmirror.services.settings import SettingsStore
@@ -328,6 +330,42 @@ def test_append_only_strategy_never_removes_destination_only_track(monkeypatch, 
     assert result[0]["removals_skipped"] == 1
     assert aggregate["removals_guarded"] is True
     assert [track["name"] for track in destination.rows["dest"]] == ["Keep"]
+
+
+@pytest.mark.parametrize("max_adds", [0, 1, 500])
+@pytest.mark.parametrize("execute", [False, True])
+def test_deezer_aggregate_fills_older_gaps_across_passes(monkeypatch, tmp_path, max_adds, execute):
+    source = _Provider("spotify", tmp_path)
+    destination = _Provider("deezer", tmp_path)
+    destination.replay_chronology = DeezerTarget.replay_chronology
+    older = [_track("First", isrc="FIRST"), _track("Second", isrc="SECOND")]
+    newest = {**_track("Newest", isrc="NEWEST"), "added_at": "2026-02-01T00:00:00Z"}
+    source.add_playlist("source", [*older, newest])
+    destination.add_playlist("dest", [{**newest, "id": "deezer:newest"}], name="Daily")
+    _install_providers(monkeypatch, {p.source: p for p in (source, destination)})
+    opts = _opts(tmp_path, [{"provider": "spotify", "playlist_id": "source"}],
+                 {"provider": "deezer", "playlist_id": "dest", "name": "Daily"})
+    opts.max_adds = max_adds
+    opts.execute = execute
+
+    first, _, _, _ = _run_merge(opts, None)
+
+    assert first[0]["added"] == min(max_adds, 2)
+    assert first[0]["deferred"] == 2 - min(max_adds, 2)
+    assert first[0]["chronology_replayed"] == 0
+    assert first[0]["removed"] == 0
+    expected = ["Newest"] + (["First", "Second"][:max_adds] if execute else [])
+    assert [track["name"] for track in destination.rows["dest"]] == expected
+
+    if execute and max_adds:
+        second, _, _, _ = _run_merge(opts, None)
+        assert second[0]["added"] == 2 - min(max_adds, 2)
+        assert second[0]["deferred"] == 0
+        assert second[0]["removed"] == 0
+        assert [track["name"] for track in destination.rows["dest"]] == ["Newest", "First", "Second"]
+        third, _, _, _ = _run_merge(opts, None)
+        assert third[0]["added"] == 0
+        assert third[0]["deferred"] == 0
 
 
 def test_failed_source_allows_additions_but_guards_every_removal(monkeypatch, tmp_path):
