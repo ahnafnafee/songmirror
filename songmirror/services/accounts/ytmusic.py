@@ -5,7 +5,9 @@ another device, then persist the refresh token where the engine reads it.
 """
 
 import inspect
+import json
 import os
+import tempfile
 
 from ...ytmusic_auth import oauth_token_path
 from .base import ConnStatus, Connector, DeviceCode, Field
@@ -66,23 +68,42 @@ class YTMusicConnector(Connector):
 
     def enable_browser(self, headers_raw: str) -> ConnStatus:
         """Turn on the no-quota (youtubei) backend from pasted music.youtube.com
-        request headers: parse them into a ytmusicapi browser-auth file, validate
-        the cookies with one authenticated call, then flip YTMUSIC_PREFER_BROWSER."""
+        request headers. Validate the candidate session before replacing the
+        saved credentials or enabling YTMUSIC_PREFER_BROWSER."""
         import ytmusicapi
         from ytmusicapi import YTMusic
 
         if not (headers_raw or "").strip():
             return ConnStatus("error", "paste the request headers from music.youtube.com first")
         path = self._browser_path()
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         try:
-            ytmusicapi.setup(filepath=path, headers_raw=headers_raw)
+            auth = json.loads(ytmusicapi.setup(headers_raw=headers_raw))
         except Exception as e:
             return ConnStatus("error", f"couldn't parse those headers ({e!r})")
         try:
-            YTMusic(path).get_library_playlists(limit=1)  # cookies valid?
+            api = YTMusic(auth)
+            # A signed-out library can return [] with HTTP 200. Confirm the
+            # account too, while still allowing a genuinely empty library.
+            if not (api.get_account_info() or {}).get("accountName"):
+                return ConnStatus("error", "YouTube Music returned a signed-out account; paste fresh request headers")
+            api.get_library_playlists(limit=1)
         except Exception as e:
-            return ConnStatus("error", f"YouTube Music rejected the cookies ({e!r})")
+            # Parser exceptions may include an entire account response. Keep
+            # those details out of the browser-facing connection error.
+            return ConnStatus("error", f"couldn't validate the YouTube Music cookies ({type(e).__name__}); "
+                              "paste fresh request headers and retry")
+        try:
+            parent = os.path.dirname(path) or "."
+            os.makedirs(parent, exist_ok=True)
+            # Close before replacing on Windows; the context manager removes
+            # the private temporary file if serialization or replacement fails.
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=parent,
+                                             prefix=".ytmusic-browser-", delete_on_close=False) as candidate:
+                json.dump(auth, candidate, indent=2)
+                candidate.close()
+                os.replace(candidate.name, path)
+        except OSError as e:
+            return ConnStatus("error", f"couldn't save the YouTube Music cookies ({type(e).__name__})")
         self._store.save({"YTMUSIC_BROWSER_AUTH": path, "YTMUSIC_PREFER_BROWSER": "1"})
         return ConnStatus("connected", "no-quota (browser cookies) mode")
 
