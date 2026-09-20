@@ -1528,7 +1528,8 @@ def test_unrelated_catalog_collision_does_not_block_valid_new_songs(max_adds, ex
 
 
 @pytest.mark.parametrize("collision", [False, True])
-def test_older_recoveries_wait_when_playlist_order_cannot_be_repaired(collision):
+@pytest.mark.parametrize("can_replay", [False, True])
+def test_older_recoveries_append_without_replay_but_wait_on_unsafe_repairs(collision, can_replay):
     def track(tid, name, date):
         return dict(id=tid, name=name, isrc=tid.upper(), artists=["Artist"],
                     duration_ms=180000, added_at=date)
@@ -1539,7 +1540,12 @@ def test_older_recoveries_wait_when_playlist_order_cannot_be_repaired(collision)
     conflict = track("conflict", "Unrelated recording", "2021-01-01T00:00:00Z")
 
     class Mirror(_ManyPeer):
-        replay_chronology = None
+        def replay_chronology(self, playlist, ordered_entries):
+            assert not collision, "A catalog collision must prevent replay"
+            self.added.extend(tid for tid, original in ordered_entries if original is None)
+
+    if not can_replay:
+        Mirror.replay_chronology = None
 
     conn = archive.connect(":memory:")
     source = _ManyPeer("spotify", [recovered, *([conflict] if collision else []), cutoff, new],
@@ -1552,9 +1558,11 @@ def test_older_recoveries_wait_when_playlist_order_cannot_be_repaired(collision)
                       _caches(*(p.source for p in peers)), conn, execute=True,
                       authority_sources={"spotify", "apple"}, max_adds=200, max_removals=200)
 
-    assert all(peer.added == ["new"] for peer in destinations)
+    expected = ["new"] if can_replay and collision else ["recovered", "new"]
+    assert all(peer.added == expected for peer in destinations)
     assert all(peer.removed == [] for peer in peers)
-    assert stats["deferred"] == 6 * (2 if collision else 1)
+    assert stats["deferred"] == 6 * (int(collision) + int(can_replay and collision))
+    assert stats["chronology_replayed"] == (6 if can_replay and not collision else 0)
     conn.close()
 
 
@@ -1594,12 +1602,13 @@ def test_undated_existing_authority_track_does_not_block_new_spotify_additions(
     assert {peer.source: peer.added for peer in destinations} == {
         peer.source: [f"new{i}" for i in range(min(4, max_adds))] for peer in destinations
     }
-    assert spotify.added == []  # The undated Apple entry is still an older recovery.
+    # This peer has no replay capability, so old recoveries also append.
+    assert spotify.added == (["undated"] if max_adds else [])
     assert all(peer.removed == [] for peer in peers)
     conn.close()
 
 
-def test_undated_authority_additions_use_shared_playlist_positions():
+def test_append_only_undated_authority_additions_keep_source_order():
     def track(tid, date=""):
         return dict(id=tid, name=f"Song {tid}", isrc=tid.upper(), artists=["Artist"],
                     duration_ms=180000, added_at=date)
@@ -1617,7 +1626,7 @@ def test_undated_authority_additions_use_shared_playlist_positions():
               _caches(*(p.source for p in peers)), conn, execute=True,
               authority_sources={"spotify", "apple"}, max_adds=200, max_removals=0)
 
-    assert spotify.added == ["new"]
+    assert spotify.added == ["old", "new"]
     assert all(peer.removed == [] for peer in peers)
     conn.close()
 
