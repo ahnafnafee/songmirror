@@ -7,6 +7,7 @@ another device, then persist the refresh token where the engine reads it.
 import inspect
 import os
 
+from ...ytmusic_auth import oauth_token_path
 from .base import ConnStatus, Connector, DeviceCode, Field
 
 
@@ -22,9 +23,7 @@ class YTMusicConnector(Connector):
     ]
 
     def _auth_file(self):
-        # os.getenv first so Docker's YTMUSIC_AUTH_FILE=/data/... (the persistent
-        # volume) wins over a relative default that would land in an ephemeral dir.
-        return os.getenv("YTMUSIC_AUTH_FILE") or self._store.get("YTMUSIC_AUTH_FILE") or "data/ytmusic_oauth.json"
+        return oauth_token_path(self._store.get("YTMUSIC_AUTH_FILE"))
 
     def _creds(self):
         from ytmusicapi.auth.oauth import OAuthCredentials

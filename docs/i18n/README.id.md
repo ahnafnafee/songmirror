@@ -492,7 +492,7 @@ ID Apple tanpa langganan Apple Music yang aktif masih dapat terhubung dalam mode
 Berbicara dengan [YouTube Data API v3](https://developers.google.com/youtube/v3) resmi, yang token penyegarannya OAuth tahan lama dan bertahan saat dimulai ulang.
 
 1. Di [Google Konsol awan](https://console.cloud.google.com), buat proyek, aktifkan YouTube Data API v3, dan buat klien OAuth jenis TV dan perangkat Input Terbatas.
-2. Pada layar persetujuan OAuth, atur Status penerbitan → Dalam produksi (biarkan dalam "Pengujian", token akan habis masa berlakunya setelah 7 hari).
+2. Mode **Pengujian** dapat digunakan untuk pengembangan: tambahkan akun Google Anda sebagai pengguna uji pada layar persetujuan OAuth, lalu hubungkan kembali saat token penyegaran kedaluwarsa setelah tujuh hari. Mode **Dalam produksi** bersifat opsional untuk operasi otomatis yang lebih lama; lihat [aturan masa berlaku token Google](https://developers.google.com/identity/protocols/oauth2#expiration).
 3. Di aplikasi, tempel ID klien + rahasia dan lengkapi kode perangkat di layar.
 
 > Kuota: Data API memungkinkan 10.000 unit/hari (biaya pencarian 100, tambah/hapus 50). Pemeliharaan dalam kondisi tunak itu murah; simpanan pertama yang besar dapat mencapai batasnya dan dilanjutkan keesokan harinya.

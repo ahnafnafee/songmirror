@@ -492,7 +492,7 @@ Eine Apple-ID ohne aktives Apple Music-Abonnement kann weiterhin eine Verbindung
 Spricht mit dem offiziellen [YouTube Data API v3](https://developers.google.com/youtube/v3), dessen Aktualisierungstoken OAuth dauerhaft ist und Neustarts übersteht.
 
 1. Erstellen Sie im [Google Cloud-Konsole](https://console.cloud.google.com) ein Projekt, aktivieren Sie YouTube Data API v3 und erstellen Sie einen OAuth-Client vom Typ „TVs“ und „Limited Input Devices“.
-2. Legen Sie auf dem Zustimmungsbildschirm OAuth den Veröffentlichungsstatus → In Produktion fest (wenn Sie ihn auf „Testen“ belassen, läuft das Token nach 7 Tagen ab).
+2. Für die Entwicklung genügt **Testen**: Fügen Sie Ihr Google-Konto auf dem OAuth-Zustimmungsbildschirm als Testnutzer hinzu und verbinden Sie es erneut, wenn das Aktualisierungstoken nach sieben Tagen abläuft. **In Produktion** ist für längeren unbeaufsichtigten Betrieb optional; siehe [Googles Regeln zur Token-Gültigkeit](https://developers.google.com/identity/protocols/oauth2#expiration).
 3. Fügen Sie in der App die Client-ID + das Geheimnis ein und geben Sie den Gerätecode auf dem Bildschirm ein.
 
 > Kontingent: Data API erlaubt 10.000 Einheiten/Tag (eine Suche kostet 100, ein Hinzufügen/Entfernen 50). Die dauerhafte Wartung ist kostengünstig; Ein großer Rückstand beim ersten Mal kann die Obergrenze erreichen und am nächsten Tag wieder anhalten.
