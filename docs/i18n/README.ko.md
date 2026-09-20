@@ -492,7 +492,7 @@ Apple 개발자 계정이 필요하지 않습니다. `music.apple.com`의 헤더
 OAuth 갱신 토큰이 내구성이 있고 다시 시작해도 유지되는 공식 [YouTube Data API v3](https://developers.google.com/youtube/v3)과 대화합니다.
 
 1. [Google 클라우드 콘솔](https://console.cloud.google.com)에서 프로젝트를 생성하고, YouTube Data API v3를 활성화하고, TV 및 제한된 입력 장치 유형의 OAuth 클라이언트를 생성합니다.
-2. OAuth 동의 화면에서 게시 상태 → 프로덕션 중으로 설정합니다('테스트' 상태로 두면 7일 후에 토큰이 만료됩니다).
+2. 개발 중에는 **테스트** 모드를 사용할 수 있습니다. OAuth 동의 화면에서 Google 계정을 테스트 사용자로 추가하고, 7일 후 새로고침 토큰이 만료되면 다시 연결하세요. 장기간 무인 운영이 필요하면 **프로덕션** 모드를 선택할 수 있습니다. [Google의 토큰 만료 규칙](https://developers.google.com/identity/protocols/oauth2#expiration)을 참고하세요.
 3. 앱에서 클라이언트 ID + 비밀번호를 붙여넣고 화면에 표시되는 장치 코드를 완성하세요.
 
 > 할당량: Data API는 하루 10,000개 단위를 허용합니다(검색 비용은 100, 추가/제거 비용은 50). 정상 상태 유지 비용이 저렴합니다. 큰 규모의 최초 백로그가 한도에 도달하고 다음날 재개될 수 있습니다.

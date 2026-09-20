@@ -492,7 +492,7 @@ An Apple ID without an active Apple Music subscription can still connect in **Ca
 Talks to the **official [YouTube Data API v3](https://developers.google.com/youtube/v3)**, whose OAuth refresh token is durable and survives restarts.
 
 1. In the [Google Cloud console](https://console.cloud.google.com), create a project, enable **YouTube Data API v3**, and create an OAuth client of type **TVs and Limited Input devices**.
-2. On the **OAuth consent screen**, set **Publishing status → In production** (leaving it in "Testing" expires the token after 7 days).
+2. **Testing** works for development: add your Google account as a test user on the **OAuth consent screen**, then reconnect when its refresh token expires after seven days. **In production** is optional for longer unattended use; see [Google's token expiration rules](https://developers.google.com/identity/protocols/oauth2#expiration).
 3. In the app, paste the client ID + secret and complete the on-screen device code.
 
 > **Quota**: the Data API allows 10,000 units/day (a search costs 100, an add/remove 50). Steady-state upkeep is cheap; a big first-time backlog can hit the cap and resume the next day.

@@ -492,7 +492,7 @@ Etkin bir Apple Music aboneliği olmayan bir Apple Kimliği yine de **Yalnızca 
 OAuth yenileme belirteci dayanıklı olan ve yeniden başlatmalarda korunan resmi [YouTube Data API v3](https://developers.google.com/youtube/v3) ile iletişim kurar.
 
 1. [Google Bulut konsolu](https://console.cloud.google.com) üzerinde bir proje oluşturun, **YouTube Data API v3**'ü etkinleştirin ve **TVs and Limited Input devices** türünde bir OAuth istemcisi oluşturun.
-2. **OAuth consent screen** ekranında **Publishing status → In production** (Yayınlama durumu → Yayında) seçeneğini ayarlayın ("Testing" durumunda bırakmak belirtecin geçerliliğini 7 gün sonra sona erdirir).
+2. Geliştirme için **Testing** (Test) modu yeterlidir: **OAuth consent screen** ekranında Google hesabınızı test kullanıcısı olarak ekleyin ve yenileme belirteci yedi gün sonra sona erdiğinde yeniden bağlanın. Daha uzun gözetimsiz kullanım için **In production** (Yayında) moduna geçmek isteğe bağlıdır; [Google'ın belirteç geçerlilik kurallarına](https://developers.google.com/identity/protocols/oauth2#expiration) bakın.
 3. Uygulamada istemci kimliğini + gizli anahtarını yapıştırın ve ekrandaki cihaz kodunu onaylayın.
 
 > **Kota**: Data API günde 10.000 birime izin verir (arama maliyeti 100, ekleme/çıkarma maliyeti 50). Rutin bakım işlemleri oldukça ekonomiktir; ilk çalıştırmadaki büyük bir aktarım limite ulaşıp ertesi gün devam edebilir.

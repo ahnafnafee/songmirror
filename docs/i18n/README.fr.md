@@ -492,7 +492,7 @@ Un identifiant Apple sans abonnement Apple Music actif peut toujours se connecte
 Parle au officiel [YouTube Data API v3](https://developers.google.com/youtube/v3), dont le jeton d'actualisation OAuth est durable et survit aux redémarrages.
 
 1. Dans le [GoogleConsole cloud](https://console.cloud.google.com), créez un projet, activez YouTube Data API v3 et créez un client OAuth de type téléviseurs et périphériques d'entrée limités.
-2. Sur l'écran de consentement OAuth, définissez le statut de publication → En production (le laisser dans « Test » fait expirer le jeton après 7 jours).
+2. Le mode **Test** convient au développement : ajoutez votre compte Google comme utilisateur test sur l'écran de consentement OAuth, puis reconnectez-le à l'expiration du jeton d'actualisation après sept jours. Le mode **En production** reste facultatif pour un fonctionnement autonome plus long ; consultez les [règles d'expiration des jetons de Google](https://developers.google.com/identity/protocols/oauth2#expiration).
 3. Dans l'application, collez l'ID client + le secret et complétez le code de l'appareil à l'écran.
 
 > Quota : le Data API autorise 10 000 unités/jour (une recherche coûte 100, un ajout/suppression 50). L’entretien à l’état d’équilibre est bon marché ; un retard important pour la première fois peut atteindre le plafond et reprendre le lendemain.

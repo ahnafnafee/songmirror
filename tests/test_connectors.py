@@ -270,15 +270,15 @@ def test_ytmusic_begin_device_surfaces_code(tmp_path, monkeypatch):
 
 def test_ytmusic_enable_disable_browser_mode(tmp_path, monkeypatch):
     # Pasting music.youtube.com headers writes a browser-auth file, validates the
-    # cookies with one call, and flips on the no-quota (youtubei) mode; disable reverts.
+    # cookies, and flips on the no-quota (youtubei) mode; disable reverts.
     import ytmusicapi
 
     c = _conn("ytmusic", tmp_path)
     monkeypatch.setenv("YTMUSIC_BROWSER_AUTH", str(tmp_path / "browser.json"))
 
     def fake_setup(filepath=None, headers_raw=None):
-        with open(filepath, "w") as f:
-            f.write("{}")
+        assert filepath is None
+        return "{}"
 
     monkeypatch.setattr(ytmusicapi, "setup", fake_setup)
     monkeypatch.setattr("ytmusicapi.YTMusic",

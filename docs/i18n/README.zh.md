@@ -492,7 +492,7 @@ SongMirror在本地导出相同的`AmznMusic`授权值，并在到期前或身�
 与官方 [YouTubeData APIv3](https://developers.google.com/youtube/v3) 对话，其 OAuth 刷新令牌是持久的并且可以在重新启动后继续存在。
 
 1. 在[Google 云控制台](https://console.cloud.google.com)中，创建一个项目，启用YouTubeData APIv3，并创建电视和有限输入设备类型的OAuth客户端。
-2. 在 OAuth 同意屏幕上，设置发布状态 → 生产中（将其保留为“测试”会使令牌在 7 天后过期）。
+2. 开发时可以使用**测试**模式：在 OAuth 同意屏幕上将您的 Google 账号添加为测试用户，并在刷新令牌七天后过期时重新连接。如需更长时间的无人值守运行，可选择切换到**正式发布**；请参阅 [Google 的令牌过期规则](https://developers.google.com/identity/protocols/oauth2#expiration)。
 3. 在应用程序中，粘贴客户端 ID + 密钥并完成屏幕上的设备代码。
 
 > 配额：Data API允许10,000个单位/天（搜索费用100，添加/删除50）。稳态维护成本低廉；大量的首次积压可能会达到上限并在第二天恢复。

@@ -29,6 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
+from ...ytmusic_auth import oauth_token_path
 from ..config import REQUEST_TIMEOUT, polite_sleep
 from ..logs import log, log_note, log_warn
 from ..matching import (
@@ -38,7 +39,6 @@ from ..matching import (
 from .base import MirrorTarget, TargetAuthError, TargetTransientError
 from .provider_utils import source_playlist_details
 
-DEFAULT_AUTH_FILE = "ytmusic_oauth.json"
 API = "https://www.googleapis.com/youtube/v3"
 
 _TOPIC_RE = re.compile(r"\s*-\s*Topic$", re.IGNORECASE)
@@ -162,7 +162,7 @@ def build():
             return YTMusicBrowserTarget(browser)
         except Exception as e:
             log_warn(f"YouTube Music no-quota (browser) mode failed ({e!r}); falling back to the Data API", tag="yt")
-    auth = os.getenv("YTMUSIC_AUTH_FILE", DEFAULT_AUTH_FILE)
+    auth = oauth_token_path()
     cid, secret = os.getenv("YTMUSIC_OAUTH_CLIENT_ID"), os.getenv("YTMUSIC_OAUTH_CLIENT_SECRET")
     if not os.path.exists(auth):
         log_note(f"YouTube Music skipped: no OAuth token '{auth}' (create with: "

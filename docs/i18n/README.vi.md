@@ -492,7 +492,7 @@ ID Apple không có đăng ký Apple Music đang hoạt động vẫn có thể 
 Nói chuyện với [YouTube Data API v3](https://developers.google.com/youtube/v3) chính thức, có mã thông báo làm mới OAuth bền và vẫn tồn tại sau khi khởi động lại.
 
 1. Trong [Google Bảng điều khiển đám mây](https://console.cloud.google.com), tạo dự án, bật YouTube Data API v3 và tạo ứng dụng khách OAuth thuộc loại TV và thiết bị Đầu vào hạn chế.
-2. Trên màn hình đồng ý OAuth, đặt trạng thái Xuất bản → Đang sản xuất (để ở trạng thái "Thử nghiệm" thì mã thông báo sẽ hết hạn sau 7 ngày).
+2. Chế độ **Thử nghiệm** dùng được khi phát triển: thêm tài khoản Google của bạn làm người dùng thử trên màn hình chấp thuận OAuth, rồi kết nối lại khi mã làm mới hết hạn sau bảy ngày. Chế độ **Chính thức** là tùy chọn để chạy tự động lâu hơn; xem [quy định của Google về thời hạn mã](https://developers.google.com/identity/protocols/oauth2#expiration).
 3. Trong ứng dụng, dán ID khách hàng + bí mật và hoàn thành mã thiết bị trên màn hình.
 
 > Hạn ngạch: Data API cho phép 10.000 đơn vị/ngày (một lần tìm kiếm tốn 100, thêm/xóa 50). Bảo trì trạng thái ổn định là rẻ; lượng tồn đọng lớn lần đầu có thể đạt đến giới hạn và tiếp tục vào ngày hôm sau.
