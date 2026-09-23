@@ -86,9 +86,10 @@ _COMMON_RENEWAL_COOKIES = {
     "session-token",
 }
 
-# These cookies are scoped to music.amazon.com; the remaining allowlisted
-# cookies use Amazon's parent domain so redirects cannot widen their scope.
-_MUSIC_SCOPED_COOKIES = {"am-token", "at-main-music", "sid"}
+# These cookies are kept on the Music host. Amazon's config.json sets am-token
+# on the parent marketplace domain, so it must use that same domain for
+# response-cookie rotation instead of leaving a stale Music-host copy behind.
+_MUSIC_SCOPED_COOKIES = {"at-main-music", "sid"}
 _ALLOWED_RENEWAL_BROWSER_HEADERS = {"accept-language", "referer", "user-agent"}
 
 

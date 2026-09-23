@@ -1686,10 +1686,13 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
                 assert kwargs["params"] == {"skipToken": "false"}
                 assert self.cookies.get("at-acbfr", domain=".amazon.fr") == "french-auth"
                 assert self.cookies.get("at-main", domain=".amazon.fr") == "shared-auth"
+                assert self.cookies.get("am-token", domain=".amazon.fr") == "initial-music-token"
                 assert self.cookies.get("at-main", domain=".amazon.com") is None
                 assert "at-acbfr=french-auth" in self.sent_cookies(url)
                 assert "at-main=shared-auth" in self.sent_cookies(url)
+                assert "am-token=initial-music-token" in self.sent_cookies(url)
                 self.cookies.set("at-acbfr", "rotated-auth", domain=".amazon.fr", path="/")
+                self.cookies.set("am-token", "rotated-music-token", domain=".amazon.fr", path="/")
                 return Response({
                     "deviceId": "french-device", "deviceType": "web-player",
                     "musicTerritory": "FR",
@@ -1706,8 +1709,10 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
             assert kwargs["headers"]["Origin"] == "https://music.amazon.fr"
             assert self.cookies.get("at-acbfr", domain=".amazon.fr") == "rotated-auth"
             assert self.cookies.get("at-main", domain=".amazon.fr") == "shared-auth"
+            assert self.cookies.get("am-token", domain=".amazon.fr") == "rotated-music-token"
             assert "at-acbfr=rotated-auth" in self.sent_cookies(url)
             assert "at-main=shared-auth" in self.sent_cookies(url)
+            assert "am-token=rotated-music-token" in self.sent_cookies(url)
             return Response({"accessToken": "fresh-access", "expiresIn": 3600})
 
     sessions = []
@@ -1728,7 +1733,7 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
         "Referer: https://music.amazon.fr/\n"
         "Cookie: session-id=french-session; at-acbfr=french-auth; "
         "sess-at-acbfr=french-session-auth; at-main=shared-auth; "
-        "ubid-main=shared-identity; tracking=discard"
+        "ubid-main=shared-identity; am-token=initial-music-token; tracking=discard"
     )
     with TestClient(create_app(settings=settings)) as web:
         response = web.post("/api/accounts/amazon/connect", json={
@@ -1750,6 +1755,7 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
     assert renewal["renewal_cookies"]["sess-at-acbfr"] == "french-session-auth"
     assert renewal["renewal_cookies"]["at-main"] == "shared-auth"
     assert renewal["renewal_cookies"]["ubid-main"] == "shared-identity"
+    assert renewal["renewal_cookies"]["am-token"] == "rotated-music-token"
     assert "tracking" not in renewal["renewal_cookies"]
     persisted = json.loads(token_file.read_text(encoding="utf-8"))
     assert persisted["music_host"] == "music.amazon.fr"
@@ -1843,6 +1849,28 @@ def test_amazon_renewal_keeps_captured_retail_families_only():
     assert client._allowed_cookies >= {"sess-at-acbfr", "sess-at-main"}
     assert "at-acbde" not in client._allowed_cookies
     assert "tracking" not in client._allowed_cookies
+
+
+def test_amazon_french_config_rotates_parent_domain_am_token():
+    import requests
+
+    from songmirror.amazon_music_web import AmazonMusicWebClient
+
+    session = requests.Session()
+    client = AmazonMusicWebClient(
+        renewal_request=(
+            "Host: music.amazon.fr\n"
+            "Cookie: at-acbfr=french; am-token=initial-music-token"
+        ),
+        session=session,
+    )
+    assert session.cookies.get("am-token", domain=".amazon.fr") == "initial-music-token"
+    assert session.cookies.get("am-token", domain=".music.amazon.fr") is None
+
+    session.cookies.set("am-token", "rotated-music-token", domain=".amazon.fr", path="/")
+    client._sync_response_cookies(object())
+
+    assert client.renewal_cookies["am-token"] == "rotated-music-token"
 
 
 def test_amazon_session_does_not_rescope_foreign_cookie_names_to_amazon():
