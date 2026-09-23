@@ -1851,7 +1851,7 @@ def test_amazon_renewal_keeps_captured_retail_families_only():
     assert "tracking" not in client._allowed_cookies
 
 
-def test_amazon_french_config_rotates_parent_domain_am_token():
+def test_amazon_french_session_rotates_parent_domain_music_cookies():
     import requests
 
     from songmirror.amazon_music_web import AmazonMusicWebClient
@@ -1860,17 +1860,56 @@ def test_amazon_french_config_rotates_parent_domain_am_token():
     client = AmazonMusicWebClient(
         renewal_request=(
             "Host: music.amazon.fr\n"
-            "Cookie: at-acbfr=french; am-token=initial-music-token"
+            "Cookie: at-acbfr=french; am-token=initial-music-token; sid=initial-sid"
         ),
         session=session,
     )
     assert session.cookies.get("am-token", domain=".amazon.fr") == "initial-music-token"
     assert session.cookies.get("am-token", domain=".music.amazon.fr") is None
+    assert session.cookies.get("sid", domain=".amazon.fr") == "initial-sid"
+    assert session.cookies.get("sid", domain=".music.amazon.fr") is None
 
     session.cookies.set("am-token", "rotated-music-token", domain=".amazon.fr", path="/")
+    session.cookies.set("sid", "rotated-sid", domain=".amazon.fr", path="/")
     client._sync_response_cookies(object())
 
     assert client.renewal_cookies["am-token"] == "rotated-music-token"
+    assert client.renewal_cookies["sid"] == "rotated-sid"
+
+
+def test_amazon_french_config_sign_in_redirect_is_an_auth_error():
+    import requests
+
+    from songmirror.amazon_music_web import AmazonMusicWebAuthError, AmazonMusicWebClient
+
+    class Response:
+        status_code = 200
+        cookies = requests.cookies.RequestsCookieJar()
+        history = []
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"redirectUrl": "https://www.amazon.fr/ap/signin"}
+
+    class Session:
+        def __init__(self):
+            self.cookies = requests.cookies.RequestsCookieJar()
+
+        def post(self, url, **kwargs):
+            assert url == "https://music.amazon.fr/config.json"
+            return Response()
+
+        def get(self, url, **kwargs):
+            raise AssertionError("pandaToken must not be called after a sign-in redirect")
+
+    client = AmazonMusicWebClient(
+        renewal_request="Host: music.amazon.fr\nCookie: at-acbfr=stale-auth",
+        session=Session(),
+    )
+    with pytest.raises(AmazonMusicWebAuthError, match="asked to sign in again"):
+        client.validate(require_renewal=True)
 
 
 def test_amazon_session_does_not_rescope_foreign_cookie_names_to_amazon():

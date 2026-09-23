@@ -86,10 +86,10 @@ _COMMON_RENEWAL_COOKIES = {
     "session-token",
 }
 
-# These cookies are kept on the Music host. Amazon's config.json sets am-token
-# on the parent marketplace domain, so it must use that same domain for
-# response-cookie rotation instead of leaving a stale Music-host copy behind.
-_MUSIC_SCOPED_COOKIES = {"at-main-music", "sid"}
+# Only this cookie is kept on the Music host. Amazon sets am-token and sid on
+# the parent marketplace domain, so their response rotations must use that
+# same scope instead of leaving stale Music-host copies behind.
+_MUSIC_SCOPED_COOKIES = {"at-main-music"}
 _ALLOWED_RENEWAL_BROWSER_HEADERS = {"accept-language", "referer", "user-agent"}
 
 
@@ -653,7 +653,15 @@ class AmazonMusicWebClient:
                 "Amazon Music config renewal rejected the copied browser session."
             )
         response.raise_for_status()
-        return self._response_json(response, "config renewal")
+        config = self._response_json(response, "config renewal")
+        if config.get("redirectUrl") and not (
+            config.get("deviceId") and config.get("deviceType")
+        ):
+            raise AmazonMusicWebAuthError(
+                "Amazon Music asked to sign in again when loading config.json; "
+                "copy a fresh request from a signed-in Music player."
+            )
+        return config
 
     def _request_panda_token(self) -> dict:
         try:
