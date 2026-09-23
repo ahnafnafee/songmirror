@@ -1645,9 +1645,13 @@ def test_amazon_renewal_rejects_unsupported_or_mixed_marketplace_hosts(renewal_r
 
 def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monkeypatch):
     import requests
+    from fastapi.testclient import TestClient
 
     import songmirror.amazon_music_web as amazon_web
     from songmirror.services.accounts.amazon_music import AmazonMusicConnector
+    from songmirror.web import create_app
+
+    real_session = requests.Session
 
     class Response:
         status_code = 200
@@ -1669,6 +1673,11 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
             self.cookies = requests.cookies.RequestsCookieJar()
             self.calls = []
 
+        def sent_cookies(self, url):
+            prepared = real_session()
+            prepared.cookies = self.cookies
+            return prepared.prepare_request(requests.Request("GET", url)).headers.get("Cookie", "")
+
         def post(self, url, **kwargs):
             self.calls.append(("POST", url))
             assert kwargs["headers"]["Origin"] == "https://music.amazon.fr"
@@ -1678,12 +1687,16 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
                 assert self.cookies.get("at-acbfr", domain=".amazon.fr") == "french-auth"
                 assert self.cookies.get("at-main", domain=".amazon.fr") == "shared-auth"
                 assert self.cookies.get("at-main", domain=".amazon.com") is None
+                assert "at-acbfr=french-auth" in self.sent_cookies(url)
+                assert "at-main=shared-auth" in self.sent_cookies(url)
                 self.cookies.set("at-acbfr", "rotated-auth", domain=".amazon.fr", path="/")
                 return Response({
                     "deviceId": "french-device", "deviceType": "web-player",
                     "musicTerritory": "FR",
                 })
             assert url == amazon_web.ENDPOINT
+            assert "at-acbfr" not in self.sent_cookies(url)
+            assert "at-main" not in self.sent_cookies(url)
             assert kwargs["headers"]["music-territory"] == "FR"
             return Response({"data": {"user": {"id": "french-user"}}})
 
@@ -1693,6 +1706,8 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
             assert kwargs["headers"]["Origin"] == "https://music.amazon.fr"
             assert self.cookies.get("at-acbfr", domain=".amazon.fr") == "rotated-auth"
             assert self.cookies.get("at-main", domain=".amazon.fr") == "shared-auth"
+            assert "at-acbfr=rotated-auth" in self.sent_cookies(url)
+            assert "at-main=shared-auth" in self.sent_cookies(url)
             return Response({"accessToken": "fresh-access", "expiresIn": 3600})
 
     sessions = []
@@ -1707,7 +1722,7 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
     monkeypatch.setenv("AMAZON_MUSIC_RENEWAL_REQUEST", "")
     token_file = tmp_path / "amazon-session.json"
     monkeypatch.setenv("AMAZON_MUSIC_WEB_SESSION_FILE", str(token_file))
-    connector = AmazonMusicConnector(SettingsStore(dir=tmp_path))
+    settings = SettingsStore(dir=tmp_path)
     request = (
         "Host: music.amazon.fr\n"
         "Referer: https://music.amazon.fr/\n"
@@ -1715,12 +1730,15 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
         "sess-at-acbfr=french-session-auth; at-main=shared-auth; "
         "ubid-main=shared-identity; tracking=discard"
     )
-    status = connector.submit({
-        "AMAZON_MUSIC_WEB_HEADERS": "",
-        "AMAZON_MUSIC_RENEWAL_REQUEST": request,
-    })
-
-    assert status.state == "connected", status.detail
+    with TestClient(create_app(settings=settings)) as web:
+        response = web.post("/api/accounts/amazon/connect", json={
+            "AMAZON_MUSIC_WEB_HEADERS": "",
+            "AMAZON_MUSIC_RENEWAL_REQUEST": request,
+        })
+    assert response.status_code == 200
+    assert response.json()["kind"] == "token_paste"
+    assert response.json()["state"] == "connected", response.json()["detail"]
+    connector = AmazonMusicConnector(settings)
     assert sessions[0].calls == [
         ("POST", "https://music.amazon.fr/config.json"),
         ("GET", "https://music.amazon.fr/pandaToken"),
