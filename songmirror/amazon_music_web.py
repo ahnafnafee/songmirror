@@ -255,22 +255,18 @@ def _music_host_from_renewal(raw: str) -> str:
     return next(iter(candidates), "music.amazon.com")
 
 
-def _retail_cookie_suffix(cookies: dict[str, str]) -> str | None:
+def _allowed_renewal_cookies(cookies: dict[str, str]) -> set[str]:
+    allowed = set(_COMMON_RENEWAL_COOKIES)
+    # Amazon can send multiple retail families in one Music request (for
+    # example main and acbfr on music.amazon.fr). Allow rotation only for
+    # families actually present in the captured request.
     suffixes = {
         match.group(1)
         for name in cookies
         if name not in _COMMON_RENEWAL_COOKIES
         if (match := _RETAIL_COOKIE_RE.fullmatch(name))
     }
-    if len(suffixes) > 1:
-        raise ValueError("Amazon Music request mixes retail authentication cookie families")
-    return next(iter(suffixes), None)
-
-
-def _allowed_renewal_cookies(cookies: dict[str, str]) -> set[str]:
-    allowed = set(_COMMON_RENEWAL_COOKIES)
-    suffix = _retail_cookie_suffix(cookies)
-    if suffix:
+    for suffix in suffixes:
         allowed.update(f"{name}-{suffix}" for name in _RETAIL_COOKIE_NAMES)
     return allowed
 
@@ -313,9 +309,9 @@ def parse_renewal_cookies(raw: str, *, music_host: str | None = None) -> dict[st
     music_host = music_host or _music_host_from_renewal(raw)
     if music_host not in _MUSIC_HOSTS:
         raise ValueError("unsupported Amazon Music marketplace host")
-    # Collect only Amazon's account/session cookie families. A copied request
-    # can carry one retail suffix (for example main or acbfr), which is then
-    # retained for response-cookie rotation without guessing locale aliases.
+    # Collect only Amazon's account/session cookie families. Retain the
+    # families present in the copied request for response-cookie rotation
+    # without guessing locale aliases.
     allowed = None
     out: dict[str, str] = {}
     try:
@@ -357,7 +353,6 @@ def parse_renewal_cookies(raw: str, *, music_host: str | None = None) -> dict[st
             "no supported Amazon Music authentication cookies found; copy a signed-in "
             "config.json or /pandaToken request's headers or cURL"
         )
-    _retail_cookie_suffix(out)
     return out
 
 
