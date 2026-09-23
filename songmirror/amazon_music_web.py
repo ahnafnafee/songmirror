@@ -30,6 +30,19 @@ CONFIG_ENDPOINT = "https://music.amazon.com/config.json"
 PANDA_TOKEN_ENDPOINT = "https://music.amazon.com/pandaToken"
 MUSIC_HOME_URL = "https://music.amazon.com/"
 DEFAULT_WEB_SESSION_FILE = "data/amazon_music_web_session.json"
+# Only first-party Music hosts may receive replayed account cookies. These
+# storefronts serve the Music player; the UI's language is independent of the
+# account marketplace.
+_MUSIC_HOSTS = {
+    "music.amazon.com", "music.amazon.co.uk", "music.amazon.de", "music.amazon.fr",
+    "music.amazon.it", "music.amazon.es", "music.amazon.co.jp", "music.amazon.ca",
+    "music.amazon.com.au", "music.amazon.com.br", "music.amazon.com.mx",
+    "music.amazon.in", "music.amazon.ae", "music.amazon.sa", "music.amazon.eg",
+}
+_RETAIL_COOKIE_NAMES = ("at", "sess-at", "sso-state", "sst", "ubid", "x")
+_RETAIL_COOKIE_RE = re.compile(
+    r"^(?:at|sess-at|sso-state|sst|ubid|x)-([a-z0-9]+(?:-[a-z0-9]+)*)$"
+)
 
 _DEFAULT_BROWSER_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -64,19 +77,13 @@ _REQUIRED_HEADERS = {"authorization", "x-api-key"}
 # authentication/session cookies observed on the Music request, never the
 # complete amazon.com cookie jar.  These can still grant account access and
 # therefore live only in SongMirror's owner-only settings/session files.
-_ALLOWED_RENEWAL_COOKIES = {
+_COMMON_RENEWAL_COOKIES = {
     "am-token",
-    "at-main",
     "at-main-music",
-    "sess-at-main",
     "sid",
     "session-id",
     "session-id-time",
     "session-token",
-    "sso-state-main",
-    "sst-main",
-    "ubid-main",
-    "x-main",
 }
 
 # These cookies are scoped to music.amazon.com; the remaining allowlisted
@@ -200,9 +207,81 @@ def serialize_web_headers(raw: str) -> str:
     return json.dumps(parse_web_headers(raw), separators=(",", ":"), sort_keys=True)
 
 
-def _add_cookie(out: dict[str, str], name, value) -> None:
+def _music_host_from_url(value: str) -> str:
+    parsed = urlsplit(str(value).strip())
+    host = parsed.hostname
+    if parsed.scheme != "https" or host not in _MUSIC_HOSTS or parsed.netloc.casefold() != host:
+        raise ValueError("Amazon Music request must use a supported https://music.amazon marketplace")
+    return host
+
+
+def _music_host_from_renewal(raw: str) -> str:
+    """Bind a copied request to one supported Music marketplace."""
+    if not isinstance(raw, str) or not raw.strip():
+        return "music.amazon.com"
+    candidates: set[str] = set()
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        parsed = None
+    if isinstance(parsed, dict):
+        if parsed.get("music_host"):
+            host = str(parsed["music_host"]).strip().casefold()
+            if host not in _MUSIC_HOSTS:
+                raise ValueError("unsupported Amazon Music marketplace host")
+            candidates.add(host)
+        browser_headers = parsed.get("browser_headers")
+        if isinstance(browser_headers, dict):
+            for name, value in browser_headers.items():
+                if str(name).casefold() in {"referer", "origin"} and value:
+                    candidates.add(_music_host_from_url(value))
+    for name, value in _header_pairs(raw):
+        key = str(name).strip().casefold()
+        if key in {"referer", "origin"} and value:
+            candidates.add(_music_host_from_url(value))
+        elif key == "host" and value:
+            host = str(value).strip().casefold()
+            if host not in _MUSIC_HOSTS:
+                raise ValueError("unsupported Amazon Music marketplace host")
+            candidates.add(host)
+    # Copy-as-cURL includes the request URL, which can be the only host clue
+    # when the browser omits Referer and Host from its copied headers.
+    for match in re.finditer(r"https://[^\s'\"\\]+", raw):
+        url = match.group().rstrip(")")
+        if urlsplit(url).path in {"/config.json", "/pandaToken"}:
+            candidates.add(_music_host_from_url(url))
+    if len(candidates) > 1:
+        raise ValueError("Amazon Music request mixes marketplace hosts")
+    return next(iter(candidates), "music.amazon.com")
+
+
+def _retail_cookie_suffix(cookies: dict[str, str]) -> str | None:
+    suffixes = {
+        match.group(1)
+        for name in cookies
+        if name not in _COMMON_RENEWAL_COOKIES
+        if (match := _RETAIL_COOKIE_RE.fullmatch(name))
+    }
+    if len(suffixes) > 1:
+        raise ValueError("Amazon Music request mixes retail authentication cookie families")
+    return next(iter(suffixes), None)
+
+
+def _allowed_renewal_cookies(cookies: dict[str, str]) -> set[str]:
+    allowed = set(_COMMON_RENEWAL_COOKIES)
+    suffix = _retail_cookie_suffix(cookies)
+    if suffix:
+        allowed.update(f"{name}-{suffix}" for name in _RETAIL_COOKIE_NAMES)
+    return allowed
+
+
+def _is_renewal_cookie(name: str) -> bool:
+    return name in _COMMON_RENEWAL_COOKIES or bool(_RETAIL_COOKIE_RE.fullmatch(name))
+
+
+def _add_cookie(out: dict[str, str], name, value, allowed: set[str] | None) -> None:
     key = str(name).strip().casefold()
-    if key not in _ALLOWED_RENEWAL_COOKIES or value is None:
+    if (key not in allowed if allowed is not None else not _is_renewal_cookie(key)) or value is None:
         return
     normalized = str(value).strip().strip('"')
     if not normalized:
@@ -212,14 +291,14 @@ def _add_cookie(out: dict[str, str], name, value) -> None:
     out[key] = normalized
 
 
-def _cookies_from_header(out: dict[str, str], value) -> None:
+def _cookies_from_header(out: dict[str, str], value, allowed: set[str] | None) -> None:
     for part in str(value or "").split(";"):
         name, separator, cookie_value = part.strip().partition("=")
         if separator:
-            _add_cookie(out, name, cookie_value)
+            _add_cookie(out, name, cookie_value, allowed)
 
 
-def parse_renewal_cookies(raw: str) -> dict[str, str]:
+def parse_renewal_cookies(raw: str, *, music_host: str | None = None) -> dict[str, str]:
     """Extract the minimized cookie set used by Amazon Music ``/pandaToken``.
 
     Accepted inputs are copied request headers, Copy-as-cURL text, a bare
@@ -231,6 +310,13 @@ def parse_renewal_cookies(raw: str) -> dict[str, str]:
             "paste a signed-in Amazon Music config.json or /pandaToken request (headers or cURL)"
         )
 
+    music_host = music_host or _music_host_from_renewal(raw)
+    if music_host not in _MUSIC_HOSTS:
+        raise ValueError("unsupported Amazon Music marketplace host")
+    # Collect only Amazon's account/session cookie families. A copied request
+    # can carry one retail suffix (for example main or acbfr), which is then
+    # retained for response-cookie rotation without guessing locale aliases.
+    allowed = None
     out: dict[str, str] = {}
     try:
         parsed = json.loads(raw)
@@ -240,35 +326,38 @@ def parse_renewal_cookies(raw: str) -> dict[str, str]:
         nested = parsed.get("renewal_cookies") or parsed.get("cookies")
         if isinstance(nested, dict):
             for name, value in nested.items():
-                _add_cookie(out, name, value)
+                _add_cookie(out, name, value, allowed)
         for name, value in parsed.items():
             if str(name).strip().casefold() == "cookie":
-                _cookies_from_header(out, value)
+                _cookies_from_header(out, value, allowed)
             else:
-                _add_cookie(out, name, value)
+                _add_cookie(out, name, value, allowed)
 
     for name, value in _header_pairs(raw):
         key = str(name).strip().casefold()
         if key == "cookie":
-            _cookies_from_header(out, value)
+            _cookies_from_header(out, value, allowed)
         else:
-            _add_cookie(out, name, value)
+            _add_cookie(out, name, value, allowed)
 
     # Some Copy-as-cURL variants use ``-b``/``--cookie`` rather than a Cookie
     # header, and Firefox can copy only the Cookie header's bare value.
     for match in re.finditer(r"(?:^|\s)(?:-b|--cookie)\s+(?:'([^']*)'|\"([^\"]*)\")", raw):
-        _cookies_from_header(out, match.group(1) if match.group(1) is not None else match.group(2))
+        _cookies_from_header(
+            out, match.group(1) if match.group(1) is not None else match.group(2), allowed
+        )
     # Only apply the bare-value fallback when no structured request/header
     # parser found cookies.  Re-parsing a complete header block here made its
     # final cookie absorb every following request-header line.
     if not out:
-        _cookies_from_header(out, raw)
+        _cookies_from_header(out, raw, allowed)
 
     if not out:
         raise ValueError(
             "no supported Amazon Music authentication cookies found; copy a signed-in "
             "config.json or /pandaToken request's headers or cURL"
         )
+    _retail_cookie_suffix(out)
     return out
 
 
@@ -289,8 +378,7 @@ def _add_renewal_browser_header(out: dict[str, str], name, value) -> None:
         raise ValueError(f"{key} request header is too long")
     if key == "referer":
         parsed = urlsplit(normalized)
-        if parsed.scheme != "https" or parsed.hostname != "music.amazon.com":
-            raise ValueError("Amazon Music referer must use https://music.amazon.com")
+        _music_host_from_url(normalized)
     out[key] = normalized
 
 
@@ -315,8 +403,10 @@ def parse_renewal_browser_headers(raw: str) -> dict[str, str]:
 
 
 def serialize_renewal_request(raw: str) -> str:
-    payload: dict[str, dict[str, str]] = {
-        "renewal_cookies": parse_renewal_cookies(raw),
+    music_host = _music_host_from_renewal(raw)
+    payload = {
+        "music_host": music_host,
+        "renewal_cookies": parse_renewal_cookies(raw, music_host=music_host),
     }
     browser_headers = parse_renewal_browser_headers(raw)
     if browser_headers:
@@ -343,16 +433,29 @@ class AmazonMusicWebClient:
         prefer_persisted: bool = True,
         session=None,
         endpoint: str = ENDPOINT,
-        config_endpoint: str = CONFIG_ENDPOINT,
-        panda_token_endpoint: str = PANDA_TOKEN_ENDPOINT,
+        config_endpoint: str | None = None,
+        panda_token_endpoint: str | None = None,
     ):
         self.endpoint = endpoint
-        self.config_endpoint = config_endpoint
-        self.panda_token_endpoint = panda_token_endpoint
         self.session = session or requests.Session()
         self._token_file = str(token_file or "")
 
         persisted = read_token(self._token_file) if self._token_file else {}
+        supplied_host = _music_host_from_renewal(renewal_request)
+        stored_host = _music_host_from_renewal(json.dumps({
+            "music_host": persisted.get("music_host"),
+            "browser_headers": persisted.get("browser_headers"),
+        }))
+        has_stored_cookies = isinstance(persisted.get("renewal_cookies"), dict) and bool(
+            persisted["renewal_cookies"]
+        )
+        self.music_host = (
+            stored_host if prefer_persisted and has_stored_cookies
+            else supplied_host if str(renewal_request or "").strip() else stored_host
+        )
+        self.music_home_url = f"https://{self.music_host}/"
+        self.config_endpoint = config_endpoint or f"{self.music_home_url}config.json"
+        self.panda_token_endpoint = panda_token_endpoint or f"{self.music_home_url}pandaToken"
         supplied_headers = parse_web_headers(raw_headers) if str(raw_headers or "").strip() else {}
         stored_headers = persisted.get("headers") if isinstance(persisted.get("headers"), dict) else {}
         if stored_headers:
@@ -365,11 +468,12 @@ class AmazonMusicWebClient:
             self._expires_at = 0
 
         supplied_cookies = (
-            parse_renewal_cookies(renewal_request) if str(renewal_request or "").strip() else {}
+            parse_renewal_cookies(renewal_request, music_host=supplied_host)
+            if str(renewal_request or "").strip() else {}
         )
         stored_cookies = persisted.get("renewal_cookies")
         if isinstance(stored_cookies, dict) and stored_cookies:
-            stored_cookies = parse_renewal_cookies(json.dumps(stored_cookies))
+            stored_cookies = parse_renewal_cookies(json.dumps(stored_cookies), music_host=stored_host)
         else:
             stored_cookies = {}
         self.renewal_cookies = (
@@ -377,6 +481,7 @@ class AmazonMusicWebClient:
             if prefer_persisted and stored_cookies
             else supplied_cookies or stored_cookies
         )
+        self._allowed_cookies = _allowed_renewal_cookies(self.renewal_cookies)
         supplied_browser_headers = parse_renewal_browser_headers(renewal_request)
         stored_browser_headers = persisted.get("browser_headers")
         if not isinstance(stored_browser_headers, dict):
@@ -387,11 +492,15 @@ class AmazonMusicWebClient:
             )
         self.browser_headers = (
             stored_browser_headers
-            if prefer_persisted and stored_browser_headers
-            else supplied_browser_headers or stored_browser_headers
+            if prefer_persisted and has_stored_cookies and stored_browser_headers
+            else supplied_browser_headers or (
+                stored_browser_headers if stored_host == self.music_host else {}
+            )
         )
         self.browser_headers.setdefault("user-agent", _DEFAULT_BROWSER_USER_AGENT)
-        self.browser_headers.setdefault("referer", MUSIC_HOME_URL)
+        self.browser_headers.setdefault("referer", self.music_home_url)
+        if _music_host_from_url(self.browser_headers["referer"]) != self.music_host:
+            raise ValueError("Amazon Music request mixes marketplace hosts")
         self._seed_session_cookies()
 
         if not self.headers and not self.renewal_cookies:
@@ -417,9 +526,10 @@ class AmazonMusicWebClient:
             raise AmazonMusicWebAuthError(f"Amazon Music {label} returned an invalid response.")
         return body
 
-    @staticmethod
-    def _cookie_domain(name: str) -> str:
-        return ".music.amazon.com" if name in _MUSIC_SCOPED_COOKIES else ".amazon.com"
+    def _cookie_domain(self, name: str) -> str:
+        if name in _MUSIC_SCOPED_COOKIES:
+            return f".{self.music_host}"
+        return f".{self.music_host.removeprefix('music.')}"
 
     def _session_cookie_jar(self):
         jar = getattr(self.session, "cookies", None)
@@ -437,7 +547,7 @@ class AmazonMusicWebClient:
         if jar is None:
             return
         for cookie in list(jar):
-            if str(cookie.name).casefold() in _ALLOWED_RENEWAL_COOKIES:
+            if _is_renewal_cookie(str(cookie.name).casefold()):
                 self._clear_jar_cookie(jar, cookie)
         for name, value in self.renewal_cookies.items():
             jar.set(
@@ -455,7 +565,7 @@ class AmazonMusicWebClient:
             for cookie in session_jar:
                 name = str(cookie.name).casefold()
                 value = str(cookie.value or "").strip()
-                if name not in _ALLOWED_RENEWAL_COOKIES or not value:
+                if name not in self._allowed_cookies or not value:
                     continue
                 expected_domain = self._cookie_domain(name).lstrip(".")
                 actual_domain = str(cookie.domain or "").lstrip(".").casefold()
@@ -484,12 +594,12 @@ class AmazonMusicWebClient:
                     continue
             for name, value in values.items():
                 key = str(name).strip().casefold()
-                if key not in _ALLOWED_RENEWAL_COOKIES:
+                if key not in self._allowed_cookies:
                     continue
                 if value is None or not str(value).strip():
                     self.renewal_cookies.pop(key, None)
                 else:
-                    _add_cookie(self.renewal_cookies, key, value)
+                    _add_cookie(self.renewal_cookies, key, value, self._allowed_cookies)
 
     def _cookie_kwargs(self) -> dict:
         if self._session_cookie_jar() is not None:
@@ -503,6 +613,7 @@ class AmazonMusicWebClient:
             "headers": self.headers,
             "renewal_cookies": self.renewal_cookies,
             "browser_headers": self.browser_headers,
+            "music_host": self.music_host,
         }
         if self._expires_at:
             state["expires_at"] = self._expires_at
@@ -521,8 +632,8 @@ class AmazonMusicWebClient:
     def _api_browser_headers(self) -> dict[str, str]:
         headers = {
             "Accept": "*/*",
-            "Origin": MUSIC_HOME_URL.rstrip("/"),
-            "Referer": self.browser_headers.get("referer", MUSIC_HOME_URL),
+            "Origin": self.music_home_url.rstrip("/"),
+            "Referer": self.browser_headers.get("referer", self.music_home_url),
             "User-Agent": self.browser_headers.get("user-agent", _DEFAULT_BROWSER_USER_AGENT),
         }
         if self.browser_headers.get("accept-language"):
@@ -651,9 +762,13 @@ class AmazonMusicWebClient:
                 "Amazon Music /pandaToken did not return an access token with the copied browser "
                 "context; reconnect after signing in."
             )
-        if require_panda_token and not self.renewal_cookies.get("at-main-music"):
+        has_account_cookie = any(
+            name == "at-main-music" or name.startswith("at-")
+            for name in self.renewal_cookies
+        )
+        if require_panda_token and not has_account_cookie:
             raise AmazonMusicWebAuthError(
-                "Amazon Music revoked the Music renewal cookie during validation; reconnect and "
+                "Amazon Music revoked the renewal authentication cookie during validation; reconnect and "
                 "copy the complete config.json request from the same signed-in browser."
             )
         if not device_id or not device_type:
@@ -666,6 +781,17 @@ class AmazonMusicWebClient:
         refreshed_config.update(
             {"accessToken": access_token, "deviceId": device_id, "deviceType": device_type}
         )
+        # A routine panda-only renewal does not fetch config.json. Keep the
+        # authenticated marketplace and client context from the last config
+        # response instead of silently dropping it on the next token refresh.
+        for header, config_key in (
+            ("music-territory", "musicTerritory"),
+            ("x-amzn-session-id", "sessionId"),
+            ("x-amzn-client-app-version", "version"),
+            ("accept-language", "locale"),
+        ):
+            if not refreshed_config.get(config_key) and self.headers.get(header):
+                refreshed_config[config_key] = self.headers[header]
         self.headers = parse_web_headers(json.dumps(refreshed_config))
         expires_in = self._number(token.get("expiresIn") or token.get("expires_in"))
         self._expires_at = time.time() + expires_in if expires_in > 0 else 0
@@ -685,6 +811,7 @@ class AmazonMusicWebClient:
         return json.dumps(
             {
                 "browser_headers": self.browser_headers,
+                "music_host": self.music_host,
                 "renewal_cookies": self.renewal_cookies,
             },
             separators=(",", ":"),
@@ -731,8 +858,8 @@ class AmazonMusicWebClient:
                 **self.headers,
                 "Accept": "application/json",
                 "Content-Type": "application/json",
-                "Origin": "https://music.amazon.com",
-                "Referer": "https://music.amazon.com/",
+                "Origin": self.music_home_url.rstrip("/"),
+                "Referer": self.browser_headers.get("referer", self.music_home_url),
             }
             try:
                 response = self.session.post(

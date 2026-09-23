@@ -463,12 +463,14 @@ OAuth 클라이언트 ID는 요청 메타데이터이며 TIDAL 액세스 토큰�
 
 기본 커넥터에는 개발자 승인이 필요하지 않습니다. Amazon Music 웹 플레이어와 동일한 인증된 GraphQL 및 토큰 갱신 경로를 사용합니다.
 
-1. <https://music.amazon.com>에 로그인하고 DevTools → 네트워크를 엽니다.
+1. 거주 지역의 Amazon Music 사이트에 로그인하고 DevTools → 네트워크를 엽니다.
 2. 페이지를 다시 로드하고 `config.json`로 필터링한 후 로그인된 요청을 선택하세요. (`pandaToken`가 나타날 때도 작동하지만 필수는 아닙니다.)
 3. 요청 헤더 복사 또는 cURL로 복사를 선택한 다음 갱신 필드에 붙여넣습니다. `User-Agent`, `Referer`, `Cookie` 헤더 전체를 유지하여 SongMirror이 동일한 브라우저 컨텍스트를 재생할 수 있도록 하세요.
 4. 선택적으로 로그인된 `config.json` 응답을 부트스트랩 필드에 복사합니다. SongMirror는 일반적으로 갱신 세션을 사용하여 해당 장치 컨텍스트를 가져올 수 있습니다.
 
-SongMirror는 동일한 `AmznMusic` 인증 값을 로컬에서 파생하고 만료 전 또는 인증 거부 후 한 번 `music.amazon.com/pandaToken`을 통해 새로 고칩니다. 연결하는 동안 장치 컨텍스트가 필요할 때 현재 브라우저 스타일 구성 요청을 사용하고 액세스 토큰을 생성하기 위해 `/pandaToken`를 요구하며 Amazon이 음악 갱신 쿠키를 취소하면 연결을 거부합니다. 브라우저 사용자 에이전트, 언어, 음악 참조자, Amazon 인증/세션 쿠키의 명명된 허용 목록 및 제한된 음악 클라이언트 장치 컨텍스트만 저장합니다. 분석, 실험, AWS 콘솔, CSRF 및 기타 관련 없는 브라우저 데이터는 삭제됩니다. 보관된 쿠키는 여전히 민감하므로 LAN에서 SongMirror를 비공개로 유지하세요. 로그아웃, 비밀번호/보안 변경 또는 Amazon 측 취소에는 여전히 한 번의 새로운 캡처가 필요할 수 있습니다.
+SongMirror는 동일한 `AmznMusic` 인증 값을 로컬에서 파생하고 만료 전 또는 인증 거부 후 한 번 `/pandaToken`을 통해 새로 고칩니다. 연결하는 동안 장치 컨텍스트가 필요할 때 현재 브라우저 스타일 구성 요청을 사용하고 액세스 토큰을 생성하기 위해 `/pandaToken`를 요구하며 Amazon이 음악 갱신 쿠키를 취소하면 연결을 거부합니다. 브라우저 사용자 에이전트, 언어, 음악 참조자, Amazon 인증/세션 쿠키의 명명된 허용 목록 및 제한된 음악 클라이언트 장치 컨텍스트만 저장합니다. 분석, 실험, AWS 콘솔, CSRF 및 기타 관련 없는 브라우저 데이터는 삭제됩니다. 보관된 쿠키는 여전히 민감하므로 LAN에서 SongMirror를 비공개로 유지하세요. 로그아웃, 비밀번호/보안 변경 또는 Amazon 측 취소에는 여전히 한 번의 새로운 캡처가 필요할 수 있습니다.
+
+지원되는 지역 사이트: `amazon.com`, `amazon.co.uk`, `amazon.de`, `amazon.fr`, `amazon.it`, `amazon.es`, `amazon.co.jp`, `amazon.ca`, `amazon.com.au`, `amazon.com.br`, `amazon.com.mx`, `amazon.in`, `amazon.ae`, `amazon.sa`, `amazon.eg`. SongMirror의 인터페이스 언어는 계정의 마켓플레이스를 결정하지 않습니다.
 
 이는 지원되지 않는 자사 웹 클라이언트 인터페이스이며 Amazon에서는 사전 통지 없이 이를 변경할 수 있습니다. 문서화된 [Amazon Music 웹 API](https://developer.amazon.com/docs/music/API_web_overview.html)은 아직 비공개 베타 버전입니다. 승인된 파트너 자격 증명은 환경 변수를 통해 구성할 때 선택적 대체 상태로 유지됩니다.
 

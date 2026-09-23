@@ -463,12 +463,14 @@ OAuth クライアント ID はリクエストのメタデータであり、TIDA
 
 デフォルトのコネクタには開発者の承認は必要ありません。これは、Amazon Music Web プレーヤーと同じ認証済みの GraphQL およびトークン更新ルートを使用します。
 
-1. <https://music.amazon.com> でサインインし、DevTools → ネットワークを開きます。
+1. お住まいの地域のAmazon Musicサイトでサインインし、DevTools → ネットワークを開きます。
 2. ページをリロードし、`config.json` でフィルターし、サインイン要求を選択します。 (`pandaToken` が表示されている場合も機能しますが、必須ではありません。)
 3. [リクエスト ヘッダーをコピー] または [cURL としてコピー] を選択し、それを更新フィールドに貼り付けます。 SongMirror が同じブラウザー コンテキストを再生できるように、完全な `User-Agent`、`Referer`、および `Cookie` ヘッダーを保持します。
 4. 必要に応じて、サインインした `config.json` 応答をブートストラップ フィールドにコピーします。 SongMirror は通常、更新セッションを使用してそのデバイス コンテキストを取得できます。
 
-SongMirror は同じ `AmznMusic` 認証値をローカルで生成し、有効期限の直前、または認証拒否の後に 1 回、`music.amazon.com/pandaToken` 経由で更新します。接続時にデバイス情報が必要な場合は、現在のブラウザと同じ形式の設定リクエストを使います。アクセストークンは必ず `/pandaToken` で発行し、Amazon が Music の更新用 Cookie を失効させている場合は接続を拒否します。保存するのはブラウザのユーザーエージェント、言語、Music の参照元、明示的に許可した Amazon の認証・セッション Cookie、および限定的な Music クライアントのデバイス情報だけです。分析、実験、AWS コンソール、CSRF などの無関係なブラウザデータは破棄します。保存する Cookie も機密情報なので、SongMirror は LAN 内で非公開にしてください。ログアウト、パスワードやセキュリティの変更、または Amazon 側の失効処理によって、再取得が必要になることがあります。
+SongMirror は同じ `AmznMusic` 認証値をローカルで生成し、有効期限の直前、または認証拒否の後に 1 回、`/pandaToken` 経由で更新します。接続時にデバイス情報が必要な場合は、現在のブラウザと同じ形式の設定リクエストを使います。アクセストークンは必ず `/pandaToken` で発行し、Amazon が Music の更新用 Cookie を失効させている場合は接続を拒否します。保存するのはブラウザのユーザーエージェント、言語、Music の参照元、明示的に許可した Amazon の認証・セッション Cookie、および限定的な Music クライアントのデバイス情報だけです。分析、実験、AWS コンソール、CSRF などの無関係なブラウザデータは破棄します。保存する Cookie も機密情報なので、SongMirror は LAN 内で非公開にしてください。ログアウト、パスワードやセキュリティの変更、または Amazon 側の失効処理によって、再取得が必要になることがあります。
+
+対応する地域別サイト: `amazon.com`, `amazon.co.uk`, `amazon.de`, `amazon.fr`, `amazon.it`, `amazon.es`, `amazon.co.jp`, `amazon.ca`, `amazon.com.au`, `amazon.com.br`, `amazon.com.mx`, `amazon.in`, `amazon.ae`, `amazon.sa`, `amazon.eg`. SongMirrorの画面言語ではアカウントのマーケットプレイスは決まりません。
 
 これはサポートされていないファーストパーティ Web クライアント インターフェイスであり、Amazon は予告なく変更することがあります。文書化された [Amazon Music ウェブ API](https://developer.amazon.com/docs/music/API_web_overview.html) はまだクローズドベータ版です。承認されたパートナーの認証情報は、環境変数を通じて構成された場合、オプションのフォールバックのままになります。
 

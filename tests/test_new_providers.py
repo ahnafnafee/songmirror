@@ -1630,6 +1630,188 @@ def test_amazon_connection_replays_browser_context_and_proves_panda_renewal(tmp_
     assert renewal["renewal_cookies"]["at-main-music"] == "renewable-music"
 
 
+@pytest.mark.parametrize("renewal_request", [
+    "Referer: https://music.amazon.fr.evil.example/\nCookie: session-id=value",
+    "Referer: http://music.amazon.fr/\nCookie: session-id=value",
+    "Host: music.amazon.com\nReferer: https://music.amazon.fr/\nCookie: session-id=value",
+    "curl 'https://music.amazon.fr.evil.example/config.json' -H 'cookie: session-id=value'",
+])
+def test_amazon_renewal_rejects_unsupported_or_mixed_marketplace_hosts(renewal_request):
+    from songmirror.amazon_music_web import serialize_renewal_request
+
+    with pytest.raises(ValueError, match="marketplace"):
+        serialize_renewal_request(renewal_request)
+
+
+def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monkeypatch):
+    import requests
+
+    import songmirror.amazon_music_web as amazon_web
+    from songmirror.services.accounts.amazon_music import AmazonMusicConnector
+
+    class Response:
+        status_code = 200
+        headers = {}
+
+        def __init__(self, body):
+            self.body = body
+            self.history = []
+            self.cookies = requests.cookies.RequestsCookieJar()
+
+        def json(self):
+            return self.body
+
+        def raise_for_status(self):
+            pass
+
+    class Session:
+        def __init__(self):
+            self.cookies = requests.cookies.RequestsCookieJar()
+            self.calls = []
+
+        def post(self, url, **kwargs):
+            self.calls.append(("POST", url))
+            assert kwargs["headers"]["Origin"] == "https://music.amazon.fr"
+            assert kwargs["headers"]["Referer"] == "https://music.amazon.fr/"
+            if url == "https://music.amazon.fr/config.json":
+                assert kwargs["params"] == {"skipToken": "false"}
+                assert self.cookies.get("at-acbfr", domain=".amazon.fr") == "french-auth"
+                assert self.cookies.get("at-main", domain=".amazon.com") is None
+                self.cookies.set("at-acbfr", "rotated-auth", domain=".amazon.fr", path="/")
+                return Response({
+                    "deviceId": "french-device", "deviceType": "web-player",
+                    "musicTerritory": "FR",
+                })
+            assert url == amazon_web.ENDPOINT
+            assert kwargs["headers"]["music-territory"] == "FR"
+            return Response({"data": {"user": {"id": "french-user"}}})
+
+        def get(self, url, **kwargs):
+            self.calls.append(("GET", url))
+            assert url == "https://music.amazon.fr/pandaToken"
+            assert kwargs["headers"]["Origin"] == "https://music.amazon.fr"
+            assert self.cookies.get("at-acbfr", domain=".amazon.fr") == "rotated-auth"
+            return Response({"accessToken": "fresh-access", "expiresIn": 3600})
+
+    sessions = []
+
+    def make_session():
+        session = Session()
+        sessions.append(session)
+        return session
+
+    monkeypatch.setattr(amazon_web.requests, "Session", make_session)
+    monkeypatch.setenv("AMAZON_MUSIC_WEB_HEADERS", "")
+    monkeypatch.setenv("AMAZON_MUSIC_RENEWAL_REQUEST", "")
+    token_file = tmp_path / "amazon-session.json"
+    monkeypatch.setenv("AMAZON_MUSIC_WEB_SESSION_FILE", str(token_file))
+    connector = AmazonMusicConnector(SettingsStore(dir=tmp_path))
+    request = (
+        "Host: music.amazon.fr\n"
+        "Referer: https://music.amazon.fr/\n"
+        "Cookie: session-id=french-session; at-acbfr=french-auth; "
+        "sess-at-acbfr=french-session-auth; tracking=discard"
+    )
+    status = connector.submit({
+        "AMAZON_MUSIC_WEB_HEADERS": "",
+        "AMAZON_MUSIC_RENEWAL_REQUEST": request,
+    })
+
+    assert status.state == "connected", status.detail
+    assert sessions[0].calls == [
+        ("POST", "https://music.amazon.fr/config.json"),
+        ("GET", "https://music.amazon.fr/pandaToken"),
+        ("POST", amazon_web.ENDPOINT),
+    ]
+    renewal = json.loads(connector._store.get("AMAZON_MUSIC_RENEWAL_REQUEST"))
+    assert renewal["music_host"] == "music.amazon.fr"
+    assert renewal["renewal_cookies"]["at-acbfr"] == "rotated-auth"
+    assert renewal["renewal_cookies"]["sess-at-acbfr"] == "french-session-auth"
+    assert "tracking" not in renewal["renewal_cookies"]
+    persisted = json.loads(token_file.read_text(encoding="utf-8"))
+    assert persisted["music_host"] == "music.amazon.fr"
+    persisted["expires_at"] = 1
+    token_file.write_text(json.dumps(persisted), encoding="utf-8")
+    assert connector.status().state == "connected"
+    assert sessions[1].calls == [
+        ("GET", "https://music.amazon.fr/pandaToken"),
+        ("POST", amazon_web.ENDPOINT),
+    ]
+
+
+def test_amazon_french_curl_url_selects_marketplace_without_referer():
+    from songmirror.amazon_music_web import serialize_renewal_request
+
+    renewal = json.loads(serialize_renewal_request(
+        "curl 'https://music.amazon.fr/config.json?skipToken=false' "
+        "-H 'cookie: at-acbfr=french-auth; sess-at-acbfr=session-auth'"
+    ))
+    assert renewal["music_host"] == "music.amazon.fr"
+    assert renewal["renewal_cookies"] == {
+        "at-acbfr": "french-auth", "sess-at-acbfr": "session-auth",
+    }
+
+
+@pytest.mark.parametrize("host", [
+    "music.amazon.com", "music.amazon.co.uk", "music.amazon.de", "music.amazon.fr",
+    "music.amazon.it", "music.amazon.es", "music.amazon.co.jp", "music.amazon.ca",
+    "music.amazon.com.au", "music.amazon.com.br", "music.amazon.com.mx",
+    "music.amazon.in", "music.amazon.ae", "music.amazon.sa", "music.amazon.eg",
+])
+def test_amazon_marketplace_session_stays_on_its_captured_host(host):
+    import requests
+
+    from songmirror.amazon_music_web import AmazonMusicWebClient, serialize_renewal_request
+
+    renewal = serialize_renewal_request(
+        f"Referer: https://{host}/\n"
+        "Cookie: at-regional=account; sess-at-regional=session; analytics=discard"
+    )
+    client = AmazonMusicWebClient(renewal_request=renewal, session=requests.Session())
+
+    assert client.music_host == host
+    assert client.config_endpoint == f"https://{host}/config.json"
+    assert client.panda_token_endpoint == f"https://{host}/pandaToken"
+    assert client._api_browser_headers()["Origin"] == f"https://{host}"
+    assert client.session.cookies.get(
+        "at-regional", domain=f".{host.removeprefix('music.')}") == "account"
+    assert "analytics" not in client.renewal_cookies
+
+
+def test_amazon_marketplace_switch_does_not_reuse_old_referer(tmp_path):
+    import requests
+
+    from songmirror.amazon_music_web import AmazonMusicWebClient
+
+    token_file = tmp_path / "amazon-session.json"
+    token_file.write_text(json.dumps({
+        "music_host": "music.amazon.com",
+        "browser_headers": {"referer": "https://music.amazon.com/"},
+        "renewal_cookies": {"at-main-music": "old-auth"},
+    }), encoding="utf-8")
+    client = AmazonMusicWebClient(
+        renewal_request=(
+            "curl 'https://music.amazon.fr/config.json?skipToken=false' "
+            "-H 'cookie: at-acbfr=french-auth'"
+        ),
+        token_file=str(token_file),
+        prefer_persisted=False,
+        session=requests.Session(),
+    )
+    assert client.music_host == "music.amazon.fr"
+    assert client.browser_headers["referer"] == "https://music.amazon.fr/"
+    assert client.renewal_cookies == {"at-acbfr": "french-auth"}
+
+
+def test_amazon_renewal_rejects_mixed_retail_cookie_families():
+    from songmirror.amazon_music_web import serialize_renewal_request
+
+    with pytest.raises(ValueError, match="cookie families"):
+        serialize_renewal_request(
+            "Host: music.amazon.fr\nCookie: at-acbfr=french; at-main=us"
+        )
+
+
 def test_amazon_session_does_not_rescope_foreign_cookie_names_to_amazon():
     import requests
 
@@ -1959,6 +2141,7 @@ def test_amazon_connector_accepts_web_session_without_beta_approval(tmp_path, mo
     stored = json.loads(connector._store.get("AMAZON_MUSIC_WEB_HEADERS"))
     assert set(stored) == {"authorization", "x-api-key"}
     assert json.loads(connector._store.get("AMAZON_MUSIC_RENEWAL_REQUEST")) == {
+        "music_host": "music.amazon.com",
         "renewal_cookies": {"at-main-music": "renew-me"}
     }
 
