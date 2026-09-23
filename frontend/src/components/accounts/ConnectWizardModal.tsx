@@ -144,7 +144,7 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
     intro: t("Use a signed-in Amazon Music request to keep its short-lived web-player token current automatically."),
     steps: [
       <>
-        <Trans i18nKey={"Open <link1/>, sign in, and open your browser’s dev tools (<code2/>, or <code3/> on Mac)."} components={{ link1: <GuideLink href="https://music.amazon.com">music.amazon.com</GuideLink>, code2: <Code>F12</Code>, code3: <Code>⌥⌘I</Code> }} />
+        <Trans i18nKey={"Open <link1/>, sign in, and open your browser’s dev tools (<code2/>, or <code3/> on Mac)."} components={{ link1: <strong>{'Amazon Music'}</strong>, code2: <Code>F12</Code>, code3: <Code>⌥⌘I</Code> }} />
       </>,
       <>
         <Trans i18nKey={"In <strong1>Network</strong1>, reload the page, filter for <code2/>, and select that request."} components={{ strong1: <strong />, code2: <Code>config.json</Code> }} />

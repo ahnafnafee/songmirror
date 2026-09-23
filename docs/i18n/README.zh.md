@@ -463,12 +463,14 @@ OAuth 客户端 ID 是请求元数据，而不是 TIDAL 访问令牌内的数字
 
 默认连接器不需要开发人员批准。它使用与 Amazon Music 网络播放器相同的身份验证 GraphQL 和令牌更新路由：
 
-1. 登录<https://music.amazon.com>并打开DevTools→网络。
+1. 登录您所在地区的 Amazon Music 网站并打开DevTools→网络。
 2. 重新加载页面，筛选 `config.json`，然后选择登录请求。 （`pandaToken`出现时也可以工作，但不是必需的。）
 3. 选择复制请求标头或复制为 cURL，然后将其粘贴到续订字段中。保留完整的 `User-Agent`、`Referer` 和 `Cookie` 标头，以便 SongMirror 可以重播相同的浏览器上下文。
 4. （可选）将登录的 `config.json` 响应复制到引导字段中； SongMirror 可以正常使用更新会话获取该设备上下文。
 
-SongMirror在本地导出相同的`AmznMusic`授权值，并在到期前或身份验证拒绝后通过`music.amazon.com/pandaToken`刷新它。在连接过程中，当需要设备上下文时，它会使用当前浏览器样式的配置请求，需要 `/pandaToken` 创建访问令牌，并在 Amazon 撤销音乐续订 cookie 时拒绝连接。它仅存储浏览器用户代理、语言、音乐引用、亚马逊身份验证/会话 cookie 的指定允许列表以及有限的音乐客户端设备上下文；分析、实验、AWS 控制台、CSRF 和其他不相关的浏览器数据将被丢弃。这些保留的 cookie 仍然很敏感，因此请在您的 LAN 上保留 SongMirror 的私密性。注销、密码/安全更改或亚马逊端撤销仍可能需要一次新的捕获。
+SongMirror在本地导出相同的`AmznMusic`授权值，并在到期前或身份验证拒绝后通过`/pandaToken`刷新它。在连接过程中，当需要设备上下文时，它会使用当前浏览器样式的配置请求，需要 `/pandaToken` 创建访问令牌，并在 Amazon 撤销音乐续订 cookie 时拒绝连接。它仅存储浏览器用户代理、语言、音乐引用、亚马逊身份验证/会话 cookie 的指定允许列表以及有限的音乐客户端设备上下文；分析、实验、AWS 控制台、CSRF 和其他不相关的浏览器数据将被丢弃。这些保留的 cookie 仍然很敏感，因此请在您的 LAN 上保留 SongMirror 的私密性。注销、密码/安全更改或亚马逊端撤销仍可能需要一次新的捕获。
+
+支持的区域站点： `amazon.com`, `amazon.co.uk`, `amazon.de`, `amazon.fr`, `amazon.it`, `amazon.es`, `amazon.co.jp`, `amazon.ca`, `amazon.com.au`, `amazon.com.br`, `amazon.com.mx`, `amazon.in`, `amazon.ae`, `amazon.sa`, `amazon.eg`. SongMirror 的界面语言不会决定账号所属的商城。
 
 这是不受支持的第一方 Web 客户端界面，亚马逊可以更改它，恕不另行通知。已记录的[Amazon Music 网页 API](https://developer.amazon.com/docs/music/API_web_overview.html)仍处于封闭测试阶段；通过环境变量进行配置时，批准的合作伙伴凭据仍然是可选的后备方案。
 

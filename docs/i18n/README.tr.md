@@ -463,12 +463,14 @@ Bağdaştırıcı yalnızca katalog arama ve çalma listesi uç noktalarını ku
 
 Varsayılan bağlayıcı için geliştirici onayı gerekmez. Amazon Music web oynatıcısıyla aynı kimliği doğrulanmış GraphQL ve belirteç yenileme rotalarını kullanır:
 
-1. <https://music.amazon.com> adresinde oturum açın ve DevTools → **Network** sekmesini açın.
+1. bölgenizdeki Amazon Music sitesinde oturum açın ve DevTools → **Network** sekmesini açın.
 2. Sayfayı yenileyin, `config.json` için filtreleyin ve oturum açma isteğini seçin. (`pandaToken` göründüğünde de çalışır, ancak zorunlu değildir.)
 3. **Copy request headers** veya **Copy as cURL** seçeneğini belirleyin ve ardından bunu yenileme alanına yapıştırın. `User-Agent`, `Referer` ve `Cookie` başlıklarını eksiksiz tutun, böylece SongMirror aynı tarayıcı bağlamını yeniden oynatabilir.
 4. İsteğe bağlı olarak, oturum açılmış olan `config.json` yanıtını başlangıç alanına kopyalayın; SongMirror normalde yenileme oturumunu kullanarak bu cihaz bağlamını kendisi alabilir.
 
-SongMirror aynı `AmznMusic` yetkilendirme değerini yerel olarak türetir ve süre dolmadan önce veya kimlik doğrulama reddinden sonra bunu `music.amazon.com/pandaToken` aracılığıyla yeniler. Bağlantı sırasında cihaz bağlamı gerektiğinde tarayıcı tarzı yapılandırma isteğini kullanır, bir erişim belirteci oluşturmak için `/pandaToken` rotasını çağırır ve Amazon yenileme çerezini iptal ederse bağlantıyı reddeder. Yalnızca tarayıcı kullanıcı aracısını, dili, Müzik yönlendirenini, Amazon kimlik doğrulama/oturum çerezlerinin izin verilenler listesini ve sınırlı istemci cihazı bağlamını saklar; analizler, denemeler, AWS konsolu, CSRF ve diğer ilgisiz veriler atılır. Saklanan çerezler hassas olduğundan SongMirror'yi yerel ağınızda gizli tutun. Oturum kapatma, parola/güvenlik değişikliği veya sunucu tarafı iptali yeni bir yakalama gerektirebilir.
+SongMirror aynı `AmznMusic` yetkilendirme değerini yerel olarak türetir ve süre dolmadan önce veya kimlik doğrulama reddinden sonra bunu `/pandaToken` aracılığıyla yeniler. Bağlantı sırasında cihaz bağlamı gerektiğinde tarayıcı tarzı yapılandırma isteğini kullanır, bir erişim belirteci oluşturmak için `/pandaToken` rotasını çağırır ve Amazon yenileme çerezini iptal ederse bağlantıyı reddeder. Yalnızca tarayıcı kullanıcı aracısını, dili, Müzik yönlendirenini, Amazon kimlik doğrulama/oturum çerezlerinin izin verilenler listesini ve sınırlı istemci cihazı bağlamını saklar; analizler, denemeler, AWS konsolu, CSRF ve diğer ilgisiz veriler atılır. Saklanan çerezler hassas olduğundan SongMirror'yi yerel ağınızda gizli tutun. Oturum kapatma, parola/güvenlik değişikliği veya sunucu tarafı iptali yeni bir yakalama gerektirebilir.
+
+Desteklenen bölgesel siteler: `amazon.com`, `amazon.co.uk`, `amazon.de`, `amazon.fr`, `amazon.it`, `amazon.es`, `amazon.co.jp`, `amazon.ca`, `amazon.com.au`, `amazon.com.br`, `amazon.com.mx`, `amazon.in`, `amazon.ae`, `amazon.sa`, `amazon.eg`. SongMirror arayüz dili hesabınızın pazar yerini belirlemez.
 
 Bu, desteklenmeyen bir birinci taraf web istemcisi arayüzüdür ve Amazon bunu bildirimde bulunmaksızın değiştirebilir. Belgelenen [Amazon Music İnternet API](https://developer.amazon.com/docs/music/API_web_overview.html) hâlâ kapalı betadadır; onaylanan iş ortağı kimlik bilgileri ortam değişkenleri aracılığıyla yapılandırıldığında isteğe bağlı bir alternatif olarak kalır.
 

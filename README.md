@@ -463,12 +463,14 @@ Sign in at <https://www.deezer.com>, open DevTools → **Network**, and reload t
 
 No developer approval is required for the default connector. It uses the same authenticated GraphQL and token-renewal routes as the Amazon Music web player:
 
-1. Sign in at <https://music.amazon.com> and open DevTools → **Network**.
+1. Sign in at the Amazon Music site for your account's marketplace and open DevTools → **Network**.
 2. Reload the page, filter for `config.json`, and select the signed-in request. (`pandaToken` works too when it appears, but it is not required.)
 3. Choose **Copy request headers** or **Copy as cURL**, then paste it into the renewal field. Keep the complete `User-Agent`, `Referer`, and `Cookie` headers so SongMirror can replay the same browser context.
 4. Optionally copy the signed-in `config.json` **Response** into the bootstrap field; SongMirror can normally fetch that device context using the renewal session.
 
-SongMirror derives the same `AmznMusic` authorization value locally and refreshes it through `music.amazon.com/pandaToken` before expiry or once after an authentication rejection. During connection it uses the current browser-style config request when device context is needed, requires `/pandaToken` to mint an access token, and rejects the connection if Amazon revokes the Music renewal cookie. It stores only the browser user agent, language, Music referer, a named allowlist of Amazon authentication/session cookies, and limited Music-client device context; analytics, experiment, AWS-console, CSRF, and other unrelated browser data are discarded. Those retained cookies are still sensitive, so keep SongMirror private on your LAN. A logout, password/security change, or Amazon-side revocation can still require one fresh capture.
+SongMirror derives the same `AmznMusic` authorization value locally and refreshes it through the captured marketplace's `/pandaToken` before expiry or once after an authentication rejection. During connection it uses the current browser-style config request when device context is needed, requires `/pandaToken` to mint an access token, and rejects the connection if Amazon revokes the renewal authentication cookie. It stores only the browser user agent, language, Music referer, Amazon authentication/session cookies from one retail cookie family, and limited Music-client device context; analytics, experiment, AWS-console, CSRF, and other unrelated browser data are discarded. Those retained cookies are still sensitive, so keep SongMirror private on your LAN. A logout, password/security change, or Amazon-side revocation can still require one fresh capture.
+
+Supported marketplace sites: `amazon.com`, `amazon.co.uk`, `amazon.de`, `amazon.fr`, `amazon.it`, `amazon.es`, `amazon.co.jp`, `amazon.ca`, `amazon.com.au`, `amazon.com.br`, `amazon.com.mx`, `amazon.in`, `amazon.ae`, `amazon.sa`, and `amazon.eg`. Choose the site where your account is signed in; SongMirror's interface language does not select the marketplace.
 
 This is an unsupported first-party web-client interface and Amazon can change it without notice. The documented [Amazon Music Web API](https://developer.amazon.com/docs/music/API_web_overview.html) is still a closed beta; approved partner credentials remain an optional fallback when configured through environment variables.
 
