@@ -86,9 +86,10 @@ _COMMON_RENEWAL_COOKIES = {
     "session-token",
 }
 
-# These cookies are scoped to music.amazon.com; the remaining allowlisted
-# cookies use Amazon's parent domain so redirects cannot widen their scope.
-_MUSIC_SCOPED_COOKIES = {"am-token", "at-main-music", "sid"}
+# Only this cookie is kept on the Music host. Amazon sets am-token and sid on
+# the parent marketplace domain, so their response rotations must use that
+# same scope instead of leaving stale Music-host copies behind.
+_MUSIC_SCOPED_COOKIES = {"at-main-music"}
 _ALLOWED_RENEWAL_BROWSER_HEADERS = {"accept-language", "referer", "user-agent"}
 
 
@@ -255,22 +256,18 @@ def _music_host_from_renewal(raw: str) -> str:
     return next(iter(candidates), "music.amazon.com")
 
 
-def _retail_cookie_suffix(cookies: dict[str, str]) -> str | None:
+def _allowed_renewal_cookies(cookies: dict[str, str]) -> set[str]:
+    allowed = set(_COMMON_RENEWAL_COOKIES)
+    # Amazon can send multiple retail families in one Music request (for
+    # example main and acbfr on music.amazon.fr). Allow rotation only for
+    # families actually present in the captured request.
     suffixes = {
         match.group(1)
         for name in cookies
         if name not in _COMMON_RENEWAL_COOKIES
         if (match := _RETAIL_COOKIE_RE.fullmatch(name))
     }
-    if len(suffixes) > 1:
-        raise ValueError("Amazon Music request mixes retail authentication cookie families")
-    return next(iter(suffixes), None)
-
-
-def _allowed_renewal_cookies(cookies: dict[str, str]) -> set[str]:
-    allowed = set(_COMMON_RENEWAL_COOKIES)
-    suffix = _retail_cookie_suffix(cookies)
-    if suffix:
+    for suffix in suffixes:
         allowed.update(f"{name}-{suffix}" for name in _RETAIL_COOKIE_NAMES)
     return allowed
 
@@ -313,9 +310,9 @@ def parse_renewal_cookies(raw: str, *, music_host: str | None = None) -> dict[st
     music_host = music_host or _music_host_from_renewal(raw)
     if music_host not in _MUSIC_HOSTS:
         raise ValueError("unsupported Amazon Music marketplace host")
-    # Collect only Amazon's account/session cookie families. A copied request
-    # can carry one retail suffix (for example main or acbfr), which is then
-    # retained for response-cookie rotation without guessing locale aliases.
+    # Collect only Amazon's account/session cookie families. Retain the
+    # families present in the copied request for response-cookie rotation
+    # without guessing locale aliases.
     allowed = None
     out: dict[str, str] = {}
     try:
@@ -357,7 +354,6 @@ def parse_renewal_cookies(raw: str, *, music_host: str | None = None) -> dict[st
             "no supported Amazon Music authentication cookies found; copy a signed-in "
             "config.json or /pandaToken request's headers or cURL"
         )
-    _retail_cookie_suffix(out)
     return out
 
 
@@ -657,7 +653,15 @@ class AmazonMusicWebClient:
                 "Amazon Music config renewal rejected the copied browser session."
             )
         response.raise_for_status()
-        return self._response_json(response, "config renewal")
+        config = self._response_json(response, "config renewal")
+        if config.get("redirectUrl") and not (
+            config.get("deviceId") and config.get("deviceType")
+        ):
+            raise AmazonMusicWebAuthError(
+                "Amazon Music asked to sign in again when loading config.json; "
+                "copy a fresh request from a signed-in Music player."
+            )
+        return config
 
     def _request_panda_token(self) -> dict:
         try:

@@ -1645,9 +1645,13 @@ def test_amazon_renewal_rejects_unsupported_or_mixed_marketplace_hosts(renewal_r
 
 def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monkeypatch):
     import requests
+    from fastapi.testclient import TestClient
 
     import songmirror.amazon_music_web as amazon_web
     from songmirror.services.accounts.amazon_music import AmazonMusicConnector
+    from songmirror.web import create_app
+
+    real_session = requests.Session
 
     class Response:
         status_code = 200
@@ -1669,6 +1673,11 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
             self.cookies = requests.cookies.RequestsCookieJar()
             self.calls = []
 
+        def sent_cookies(self, url):
+            prepared = real_session()
+            prepared.cookies = self.cookies
+            return prepared.prepare_request(requests.Request("GET", url)).headers.get("Cookie", "")
+
         def post(self, url, **kwargs):
             self.calls.append(("POST", url))
             assert kwargs["headers"]["Origin"] == "https://music.amazon.fr"
@@ -1676,13 +1685,21 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
             if url == "https://music.amazon.fr/config.json":
                 assert kwargs["params"] == {"skipToken": "false"}
                 assert self.cookies.get("at-acbfr", domain=".amazon.fr") == "french-auth"
+                assert self.cookies.get("at-main", domain=".amazon.fr") == "shared-auth"
+                assert self.cookies.get("am-token", domain=".amazon.fr") == "initial-music-token"
                 assert self.cookies.get("at-main", domain=".amazon.com") is None
+                assert "at-acbfr=french-auth" in self.sent_cookies(url)
+                assert "at-main=shared-auth" in self.sent_cookies(url)
+                assert "am-token=initial-music-token" in self.sent_cookies(url)
                 self.cookies.set("at-acbfr", "rotated-auth", domain=".amazon.fr", path="/")
+                self.cookies.set("am-token", "rotated-music-token", domain=".amazon.fr", path="/")
                 return Response({
                     "deviceId": "french-device", "deviceType": "web-player",
                     "musicTerritory": "FR",
                 })
             assert url == amazon_web.ENDPOINT
+            assert "at-acbfr" not in self.sent_cookies(url)
+            assert "at-main" not in self.sent_cookies(url)
             assert kwargs["headers"]["music-territory"] == "FR"
             return Response({"data": {"user": {"id": "french-user"}}})
 
@@ -1691,6 +1708,11 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
             assert url == "https://music.amazon.fr/pandaToken"
             assert kwargs["headers"]["Origin"] == "https://music.amazon.fr"
             assert self.cookies.get("at-acbfr", domain=".amazon.fr") == "rotated-auth"
+            assert self.cookies.get("at-main", domain=".amazon.fr") == "shared-auth"
+            assert self.cookies.get("am-token", domain=".amazon.fr") == "rotated-music-token"
+            assert "at-acbfr=rotated-auth" in self.sent_cookies(url)
+            assert "at-main=shared-auth" in self.sent_cookies(url)
+            assert "am-token=rotated-music-token" in self.sent_cookies(url)
             return Response({"accessToken": "fresh-access", "expiresIn": 3600})
 
     sessions = []
@@ -1705,19 +1727,23 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
     monkeypatch.setenv("AMAZON_MUSIC_RENEWAL_REQUEST", "")
     token_file = tmp_path / "amazon-session.json"
     monkeypatch.setenv("AMAZON_MUSIC_WEB_SESSION_FILE", str(token_file))
-    connector = AmazonMusicConnector(SettingsStore(dir=tmp_path))
+    settings = SettingsStore(dir=tmp_path)
     request = (
         "Host: music.amazon.fr\n"
         "Referer: https://music.amazon.fr/\n"
         "Cookie: session-id=french-session; at-acbfr=french-auth; "
-        "sess-at-acbfr=french-session-auth; tracking=discard"
+        "sess-at-acbfr=french-session-auth; at-main=shared-auth; "
+        "ubid-main=shared-identity; am-token=initial-music-token; tracking=discard"
     )
-    status = connector.submit({
-        "AMAZON_MUSIC_WEB_HEADERS": "",
-        "AMAZON_MUSIC_RENEWAL_REQUEST": request,
-    })
-
-    assert status.state == "connected", status.detail
+    with TestClient(create_app(settings=settings)) as web:
+        response = web.post("/api/accounts/amazon/connect", json={
+            "AMAZON_MUSIC_WEB_HEADERS": "",
+            "AMAZON_MUSIC_RENEWAL_REQUEST": request,
+        })
+    assert response.status_code == 200
+    assert response.json()["kind"] == "token_paste"
+    assert response.json()["state"] == "connected", response.json()["detail"]
+    connector = AmazonMusicConnector(settings)
     assert sessions[0].calls == [
         ("POST", "https://music.amazon.fr/config.json"),
         ("GET", "https://music.amazon.fr/pandaToken"),
@@ -1727,6 +1753,9 @@ def test_amazon_french_connection_renews_on_the_same_marketplace(tmp_path, monke
     assert renewal["music_host"] == "music.amazon.fr"
     assert renewal["renewal_cookies"]["at-acbfr"] == "rotated-auth"
     assert renewal["renewal_cookies"]["sess-at-acbfr"] == "french-session-auth"
+    assert renewal["renewal_cookies"]["at-main"] == "shared-auth"
+    assert renewal["renewal_cookies"]["ubid-main"] == "shared-identity"
+    assert renewal["renewal_cookies"]["am-token"] == "rotated-music-token"
     assert "tracking" not in renewal["renewal_cookies"]
     persisted = json.loads(token_file.read_text(encoding="utf-8"))
     assert persisted["music_host"] == "music.amazon.fr"
@@ -1803,13 +1832,84 @@ def test_amazon_marketplace_switch_does_not_reuse_old_referer(tmp_path):
     assert client.renewal_cookies == {"at-acbfr": "french-auth"}
 
 
-def test_amazon_renewal_rejects_mixed_retail_cookie_families():
-    from songmirror.amazon_music_web import serialize_renewal_request
+def test_amazon_renewal_keeps_captured_retail_families_only():
+    import requests
 
-    with pytest.raises(ValueError, match="cookie families"):
-        serialize_renewal_request(
-            "Host: music.amazon.fr\nCookie: at-acbfr=french; at-main=us"
-        )
+    from songmirror.amazon_music_web import AmazonMusicWebClient, serialize_renewal_request
+
+    renewal = serialize_renewal_request(
+        "Host: music.amazon.fr\nCookie: at-acbfr=french; at-main=shared; "
+        "ubid-main=identity; tracking=discard"
+    )
+    client = AmazonMusicWebClient(renewal_request=renewal, session=requests.Session())
+
+    assert client.renewal_cookies == {
+        "at-acbfr": "french", "at-main": "shared", "ubid-main": "identity",
+    }
+    assert client._allowed_cookies >= {"sess-at-acbfr", "sess-at-main"}
+    assert "at-acbde" not in client._allowed_cookies
+    assert "tracking" not in client._allowed_cookies
+
+
+def test_amazon_french_session_rotates_parent_domain_music_cookies():
+    import requests
+
+    from songmirror.amazon_music_web import AmazonMusicWebClient
+
+    session = requests.Session()
+    client = AmazonMusicWebClient(
+        renewal_request=(
+            "Host: music.amazon.fr\n"
+            "Cookie: at-acbfr=french; am-token=initial-music-token; sid=initial-sid"
+        ),
+        session=session,
+    )
+    assert session.cookies.get("am-token", domain=".amazon.fr") == "initial-music-token"
+    assert session.cookies.get("am-token", domain=".music.amazon.fr") is None
+    assert session.cookies.get("sid", domain=".amazon.fr") == "initial-sid"
+    assert session.cookies.get("sid", domain=".music.amazon.fr") is None
+
+    session.cookies.set("am-token", "rotated-music-token", domain=".amazon.fr", path="/")
+    session.cookies.set("sid", "rotated-sid", domain=".amazon.fr", path="/")
+    client._sync_response_cookies(object())
+
+    assert client.renewal_cookies["am-token"] == "rotated-music-token"
+    assert client.renewal_cookies["sid"] == "rotated-sid"
+
+
+def test_amazon_french_config_sign_in_redirect_is_an_auth_error():
+    import requests
+
+    from songmirror.amazon_music_web import AmazonMusicWebAuthError, AmazonMusicWebClient
+
+    class Response:
+        status_code = 200
+        cookies = requests.cookies.RequestsCookieJar()
+        history = []
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"redirectUrl": "https://www.amazon.fr/ap/signin"}
+
+    class Session:
+        def __init__(self):
+            self.cookies = requests.cookies.RequestsCookieJar()
+
+        def post(self, url, **kwargs):
+            assert url == "https://music.amazon.fr/config.json"
+            return Response()
+
+        def get(self, url, **kwargs):
+            raise AssertionError("pandaToken must not be called after a sign-in redirect")
+
+    client = AmazonMusicWebClient(
+        renewal_request="Host: music.amazon.fr\nCookie: at-acbfr=stale-auth",
+        session=Session(),
+    )
+    with pytest.raises(AmazonMusicWebAuthError, match="asked to sign in again"):
+        client.validate(require_renewal=True)
 
 
 def test_amazon_session_does_not_rescope_foreign_cookie_names_to_amazon():
