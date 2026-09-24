@@ -1,5 +1,8 @@
 """build_one registry helper + PlaylistService."""
 
+import sqlite3
+import time
+
 import pytest
 
 from songmirror.engine import targets
@@ -506,6 +509,97 @@ def test_browse_prunes_cache_for_a_deleted_or_recreated_playlist(monkeypatch, tm
     conn = archive.connect(str(tmp_path / "song_cache.db"))
     assert archive.get_playlist_detail_cache(conn, "apple", "deleted-id") is None
     conn.close()
+
+
+def test_browse_defers_cache_pruning_while_sync_owns_database_writer(monkeypatch, tmp_path):
+    from songmirror.engine import archive
+    from songmirror.services.playlists import PlaylistService
+    from songmirror.services.settings import SettingsStore
+
+    path = tmp_path / "song_cache.db"
+    conn = archive.connect(str(path))
+    archive.set_playlist_detail_cache(conn, {
+        "provider": "profile_default_apple",
+        "id": "deleted-id",
+        "name": "Old playlist",
+        "description": "",
+        "image": "",
+        "owned": True,
+        "editable": True,
+        "external_url": "",
+        "tracks": [],
+    })
+    conn.close()
+
+    class Target:
+        def browse_playlists(self):
+            return [{"id": "current-id", "attributes": {"name": "Current playlist"}}]
+
+        def playlist_count(self, playlist):
+            return None
+
+    class Profiles:
+        def provider_of(self, account_id):
+            return "apple"
+
+        def canonical_id(self, account_id):
+            return "profile_default_apple"
+
+        def archive_aliases(self):
+            return {"apple": "profile_default_apple"}
+
+    service = PlaylistService(SettingsStore(dir=tmp_path), profiles=Profiles())
+    monkeypatch.setattr(service, "_target", lambda provider: Target())
+    warnings = []
+    monkeypatch.setattr("songmirror.services.playlists.log_warn", lambda *args, **kwargs: warnings.append(args))
+
+    writer = sqlite3.connect(path)
+    try:
+        writer.execute("BEGIN IMMEDIATE")
+        start = time.monotonic()
+        assert service.browse("apple")[0]["id"] == "current-id"
+        assert time.monotonic() - start < 3
+        assert warnings == []
+        assert writer.execute(
+            "SELECT 1 FROM playlist_cache WHERE provider = ? AND playlist_id = ?",
+            ("profile_default_apple", "deleted-id"),
+        ).fetchone() is not None
+    finally:
+        writer.rollback()
+        writer.close()
+
+    assert service.browse("apple")[0]["id"] == "current-id"
+    conn = archive.connect(str(path))
+    assert archive.get_playlist_detail_cache(conn, "profile_default_apple", "deleted-id") is None
+    conn.close()
+
+
+def test_playlist_cache_open_migrates_legacy_profile_rows(tmp_path):
+    from songmirror.engine import archive
+
+    path = tmp_path / "song_cache.db"
+    conn = archive.connect(str(path))
+    archive.set_playlist_detail_cache(conn, {
+        "provider": "apple",
+        "id": "old-id",
+        "name": "Old playlist",
+        "description": "",
+        "image": "",
+        "owned": True,
+        "editable": True,
+        "external_url": "",
+        "tracks": [],
+    })
+    conn.close()
+
+    conn = archive.connect_playlist_cache(
+        str(path), source_aliases={"apple": "profile_default_apple"}
+    )
+    try:
+        assert archive.get_playlist_detail_cache(conn, "profile_default_apple", "old-id")
+        assert archive.get_playlist_detail_cache(conn, "apple", "old-id") is None
+    finally:
+        conn.close()
 
 
 def test_remove_track_checks_the_read_position_before_mutating(monkeypatch, tmp_path):
