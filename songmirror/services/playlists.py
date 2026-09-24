@@ -7,6 +7,7 @@ same-name matching. Services tier — drives the engine (build_one), never the w
 
 import json
 import os
+import sqlite3
 import uuid
 from dataclasses import asdict, dataclass, field
 from contextlib import nullcontext
@@ -207,7 +208,7 @@ class PlaylistService:
         cache_file = os.getenv("SONG_CACHE_FILE") or str(
             self._settings.data_dir / "song_cache.db"
         )
-        conn = archive.connect(
+        conn = archive.connect_playlist_cache(
             cache_file,
             source_aliases=(
                 self._profiles.archive_aliases() if self._profiles is not None else None
@@ -218,6 +219,17 @@ class PlaylistService:
         finally:
             conn.close()
 
+    @staticmethod
+    def _cache_warning(action, exc):
+        # A sync may hold the only SQLite writer slot. Cache maintenance can
+        # retry on the next browse; the live provider response is still valid.
+        code = getattr(exc, "sqlite_errorcode", None)
+        if isinstance(exc, sqlite3.OperationalError) and code is not None and (
+            code & 0xFF
+        ) in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+            return
+        log_warn(f"playlist cache {action} failed: {exc!r}", tag="cache")
+
     def _cached_detail(self, provider_id, playlist_id):
         provider_id = self._account(provider_id)
         try:
@@ -227,7 +239,7 @@ class PlaylistService:
                 )
             )
         except Exception as exc:
-            log_warn(f"playlist cache read failed: {exc!r}", tag="cache")
+            self._cache_warning("read", exc)
             return None
 
     def _cache_detail(self, detail):
@@ -235,7 +247,7 @@ class PlaylistService:
         try:
             self._with_cache(lambda conn: archive.set_playlist_detail_cache(conn, detail))
         except Exception as exc:
-            log_warn(f"playlist cache write failed: {exc!r}", tag="cache")
+            self._cache_warning("write", exc)
 
     def _invalidate_detail(self, provider_id, playlist_id):
         provider_id = self._account(provider_id)
@@ -246,7 +258,7 @@ class PlaylistService:
                 )
             )
         except Exception as exc:
-            log_warn(f"playlist cache invalidation failed: {exc!r}", tag="cache")
+            self._cache_warning("invalidation", exc)
 
     def _prune_details(self, provider_id, playlist_ids):
         provider_id = self._account(provider_id)
@@ -257,7 +269,7 @@ class PlaylistService:
                 )
             )
         except Exception as exc:
-            log_warn(f"playlist cache pruning failed: {exc!r}", tag="cache")
+            self._cache_warning("pruning", exc)
 
     def browse(self, provider_id):
         """[{id, name, count, image, owned}] for one connected provider (empty if

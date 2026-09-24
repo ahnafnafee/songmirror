@@ -367,6 +367,42 @@ def connect(path, source_aliases=None):
     return conn
 
 
+def connect_playlist_cache(path, *, source_aliases=None, timeout=0.25):
+    """Open the web playlist cache without the engine's write-heavy migrations.
+
+    Browsing can overlap a sync pass. Its cache reads and writes are best effort,
+    so they must not wait for the engine's writer lock for 30 seconds just to
+    return a provider's playlist list. A new or legacy database still takes the
+    normal initialization path once; subsequent cache opens are lightweight.
+    """
+    conn = sqlite3.connect(path, timeout=timeout, check_same_thread=False)
+    try:
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(playlist_track_cache)")
+        }
+    except Exception:
+        conn.close()
+        raise
+    if "isrc" in columns:
+        aliases = tuple(source_aliases or ())
+        if not aliases:
+            return conn
+        marks = ",".join("?" for _ in aliases)
+        try:
+            legacy_cache = conn.execute(
+                f"SELECT 1 FROM playlist_cache WHERE provider IN ({marks}) LIMIT 1",
+                aliases,
+            ).fetchone()
+        except Exception:
+            conn.close()
+            raise
+        if legacy_cache is None:
+            return conn
+    conn.close()
+    return connect(path, source_aliases=source_aliases)
+
+
 def _table_columns(conn, table):
     return [row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')]
 
