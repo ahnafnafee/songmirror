@@ -343,6 +343,7 @@ class DeezerWebClient:
             except ValueError as exc:
                 raise RuntimeError("Deezer web API returned a non-JSON response") from exc
             errors = body.get("errors") if isinstance(body, dict) else None
+            data = body.get("data") if isinstance(body, dict) else None
             if errors:
                 message = "; ".join(str(error.get("message", error)) for error in errors)
                 error_context = " ".join(
@@ -364,8 +365,16 @@ class DeezerWebClient:
                         "Deezer web session expired or was rejected; reconnect with a fresh "
                         "auth.deezer.com renewal request."
                     )
+                has_usable_data = isinstance(data, dict) and any(v is not None for v in data.values())
+                non_fatal = all(
+                    "Artist does not exist" in str(error.get("message", ""))
+                    for error in errors
+                    if isinstance(error, dict)
+                )
+                if has_usable_data and non_fatal:
+                    return data
                 raise RuntimeError(f"Deezer web API error: {message}")
-            return body.get("data") or {}
+            return data or {}
         raise RuntimeError("Deezer web request retry budget exhausted")
 
     def validate(self) -> str:

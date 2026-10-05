@@ -2527,6 +2527,43 @@ def test_deezer_web_recognizes_auth_error_from_graphql_extensions():
         raise AssertionError("GraphQL extension auth failures must expire the Deezer connection")
 
 
+def test_deezer_web_allows_partial_data_with_non_fatal_artist_errors():
+    from songmirror.deezer_web import DeezerWebClient
+
+    class Response:
+        status_code = 200
+        headers = {}
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "data": {"playlist": {"tracks": {"edges": [{"node": {"id": "123"}}]}}},
+                "errors": [
+                    {
+                        "message": "Artist does not exist",
+                        "path": ["playlist", "tracks", "edges", 1, "node", "artist"],
+                    }
+                ],
+            }
+
+    class Session:
+        def post(self, *args, **kwargs):
+            return Response()
+
+    client = DeezerWebClient.__new__(DeezerWebClient)
+    client.headers = {"authorization": "Bearer redacted"}
+    client._access_token = "redacted"
+    client.refresh_token = ""
+    client._token_file = ""
+    client.endpoint = "https://pipe.deezer.com/api"
+    client.session = Session()
+
+    data = client.execute("GetPlaylist", "query GetPlaylist { playlist { id } }")
+    assert data == {"playlist": {"tracks": {"edges": [{"node": {"id": "123"}}]}}}
+
+
 def test_amazon_web_playlist_contract_has_art_and_omits_empty_optional_create_values(monkeypatch):
     import songmirror.engine.targets.amazon_music as amazon_module
     from songmirror.engine.targets.amazon_music import AmazonMusicTarget
