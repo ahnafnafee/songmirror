@@ -105,8 +105,8 @@ SongMirror; manuel olarak tek tek şarkı eklemeye, kopyalamaya ya da kitaplığ
 - 🔗 **Bağlantıdan aktarma** — bağlı herhangi bir servisteki herkese açık bir çalma listesi URL'sini yapıştırarak doğrudan kopyalayın. Listeyi önceden kaydetmeniz veya takip etmeniz gerekmez.
 - 🌐 **Takip edilen çalma listeleri** — yalnızca kendi oluşturduğunuz değil, takip ettiğiniz ancak sahibi olmadığınız çalma listelerini de senkronize edin ve aktarın.
 - 📦 **Zamanlanmış meta veri yedeklemeleri** — bir hesabın çalma listesi kitaplığının tamamını JSON/XML formatında, saklama sınırları ve başarı/başarısızlık geçmişiyle kalıcı uygulama verileri altında düzenli olarak arşivleyin. Tek seferlik indirmeler ve içe aktarmaya hazır Soundiiz JSON da kullanılabilir.
-- 📻 **Last.fm**: Loved Tracks, Top Tracks (altı dönem) ve Recent Scrobbles koleksiyonlarınızı bağlı herhangi bir hizmete gönderin; hesabı yetkilendirdikten sonra diğer hizmetlerdeki beğenilen parçaları **Last.fm tarafına** geri taşıyın. Çalma listesi eşitlemesi desteklenmez, dolayısıyla asla çalma listesi hedefi olmaz.
-- 💿 **Yerel indirme aynası** — çevrimdışı ses dosyalarını, **Jellyfin'in** `AlbumArtist/Album` klasör yapısında, kapak resimleri ve otomatik güncellenen `.m3u8` dosyasıyla çalma listesi başına bir klasör halinde saklayın. Mevcut bir müzik kitaplığına yönlendirdiğinizde eşleşen parçalar **özgün kaliteleriyle** kopyalanır (bir FLAC yine FLAC kalır) ve indirmeler yalnızca eksikleri tamamlar.
+- 📻 **Last.fm**: Loved Tracks, Top Tracks (altı dönem) ve Recent Scrobbles koleksiyonlarınızı bağlı herhangi bir servise gönderin; hesabı yetkilendirdikten sonra diğer servislerdeki beğenilen şarkıları **Last.fm tarafına** geri taşıyın. Çalma listesi senkronizasyonu desteklenmez, dolayısıyla asla bir çalma listesi hedefi olamaz.
+- 💿 **Yerel indirme aynası** — çevrimdışı ses dosyalarını, **Jellyfin'in** `AlbumArtist/Album` klasör yapısında, kapak resimleri ve otomatik güncellenen `.m3u8` dosyasıyla çalma listesi başına bir klasör halinde saklayın. Mevcut bir müzik kitaplığına yönlendirdiğinizde eşleşen şarkılar **özgün kaliteleriyle** kopyalanır (bir FLAC yine FLAC kalır) ve indirmeler yalnızca eksikleri tamamlar.
 - 🛡️ **Güvenlik önlemleri** — varsayılan olarak simülasyon, geçiş başına ekleme/kaldırma sınırları, net kayıp koruması, boş anlık görüntü koruması ve belirteçlerin süresi dolduğunda yazmadan güvenle iptal etme.
 - 🗃️ **Sürekli büyüyen şarkı arşivi** — karşılaşılan her parça yerel bir SQLite veritabanına kaydedilir (isim, sanatçı, albüm, ISRC, ham meta veriler, ilk/son görülme).
 - 🧭 **Düzenlenebilir eşleşme geçmişi** — servis başına önbelleğe alınmış tüm parça eşleşmelerini (ve aksi halde sonsuza kadar eşleşmeyecek olan "eşleşme yok" sonuçlarını) Eşlemeler sayfasından inceleyin, düzeltin ve silin.
@@ -292,7 +292,7 @@ Aynı mantıksal çalma listesini iki veya daha fazla serviste aktif olarak düz
 - **Güvenli ilk geçiş** — her yetki kümesinin kendi temel çizgisi vardır. İlk başarılı geçişi eksik parçaları ekleyebilir, ancak daha sonraki bir geçiş temel çizginin stabil olduğunu kanıtlayana kadar tüm kaldırma işlemlerini sürdürür.
 - **Başarısız kapatma** — herhangi bir otoritenin bağlantısı kesilirse, okunamazsa veya çalma listesi açılamıyor/oluşturulamıyorsa, sessizce daha az sayıda otoriteye geri dönmek yerine bu mantıksal çalma listesi atlanır.
 
-Silme işlemlerinin açıkça etkinleştirilmesi gerekir ve bu işlemler bir üst sınıra tabidir. Aynalardaki fazla parçaların kaldırılarak yetkili kaynak kümesiyle eşleşmesini istiyorsanız iş için **Silinen şarkıları eşitle** seçeneğini etkinleştirin veya grafik arayüz olmadan çalıştırırken `MAX_REMOVALS` değerini ayarlayın.
+Silme işlemlerinin açıkça etkinleştirilmesi gerekir ve bu işlemler bir üst sınıra tabidir. Aynalardaki fazla parçaların kaldırılarak yetkili kaynak kümesiyle eşleşmesini istiyorsanız iş için **Silinen şarkıları aynala** seçeneğini etkinleştirin veya grafik arayüz olmadan çalıştırırken `MAX_REMOVALS` değerini ayarlayın.
 
 <a id="bidirectional-n-way-sync"></a>
 
@@ -306,17 +306,17 @@ Varsayılan olarak tek bir sağlayıcı gerçeğin kaynağıdır ve düzenlemele
 - Çatışma durumunda **ek kazançlar** — bir şarkıyı kaybetmek, fazladan bir şarkıyı tutmaktan daha kötüdür.
 - **Okuma-çökme koruması** — eğer bir sağlayıcı aniden taban çizgisinden çok daha az parça okursa (geçici bir API hıçkırık), bu geçiş atlanır, böylece hatalı bir okuma toplu silmeyi basamaklandıramaz.
 - **Tek yönlü güvenlik önlemlerinin aynısı** — geçiş başına `MAX_ADDS` / `MAX_REMOVALS` sınırlar ve net kayıp koruması her yazma tarafında geçerlidir.
-- **Silme işlemleri isteğe bağlıdır** — `MAX_REMOVALS` varsayılan olarak 0 olduğundan bir sağlayıcıdan kaybolan parça, orada silinmiş veya lisans nedeniyle kaldırılmış olsa bile, diğerlerinde tutulur ve yalnızca günlüğe kaydedilir. Silmeleri diğer hizmetlere yansıtmak için bir üst sınır belirleyin veya arayüzdeki **Silinen şarkıları eşitle** seçeneğini açın.
+- **Silme işlemleri isteğe bağlıdır** — `MAX_REMOVALS` varsayılan olarak 0 olduğundan bir sağlayıcıdan kaybolan parça, orada silinmiş veya lisans nedeniyle kaldırılmış olsa bile, diğerlerinde tutulur ve yalnızca günlüğe kaydedilir. Silmeleri diğer hizmetlere yansıtmak için bir üst sınır belirleyin veya arayüzdeki **Silinen şarkıları aynala** seçeneğini açın.
 
 > **Her zaman önce simülasyon.** `--execute` olmadan çalıştırın (veya kullanıcı arayüzünde **Önizleme**'yi kullanın) ve planı okuyun — herhangi bir şey yazılmadan önce her sağlayıcıda önerilen her ekleme/kaldırma işlemini yazdırır.
 
 <a id="liked-and-favorite-tracks"></a>
 
-### Beğenilen ve favori parçalar
+### Beğenilen ve favori şarkılar
 
 Bir senkronizasyonun **Çalma Listeleri** adımında, kaynak servisin yerleşik beğenilenler koleksiyonunu seçin. SongMirror daha sonra seçilen her varış noktasında nereye gitmesi gerektiğini sorar: doğrudan o hizmetin kendi beğenilen/favori koleksiyonuna veya önerilen adını düzenleyebileceğiniz yeni bir çalma listesine. Yeni bir seçki yalnızca beğenilenlere yöneliktir; Ayrıca her normal çalma listesini senkronize et seçeneğini açın veya her ikisini de dahil etmek için ayrı çalma listeleri seçin.
 
-Bu, Spotify **Beğenilen Şarkılar**, TIDAL/Qobuz/Deezer **Favori Parçalar**, Amazon Music **Beğendiklerim**, Apple Music **Favori Şarkılar** ve YouTube Music **Beğenilen Müzik**'te işe yarar. Aynı tek yönlü, yetkili grup ve N yönlü mutabakat yolları ve güvenlik sınırları geçerlidir. Sıradan çalma listelerinde olduğu gibi, **Silinen şarkıları eşitle** seçeneği açılana kadar silme işlemleri varsayılan olarak kapalı kalır.
+Bu, Spotify **Beğenilen Şarkılar**, TIDAL/Qobuz/Deezer **Favori Şarkılar**, Amazon Music **Beğendiklerim**, Apple Music **Favori Şarkılar** ve YouTube Music **Beğenilen Müzik**'te işe yarar. Aynı tek yönlü, yetkili grup ve N yönlü mutabakat yolları ve güvenlik sınırları geçerlidir. Sıradan çalma listelerinde olduğu gibi, **Silinen şarkıları aynala** seçeneği açılana kadar silme işlemleri varsayılan olarak kapalı kalır.
 
 TIDAL'nin oturum açtığı web oynatıcısı izni, `r_usr` ve `w_usr` taşıdığında hem sıradan çalma listelerini hem de yerel **Favori Parçalar** koleksiyonunu yönetir. Oturum açma jetonu yanıtının tamamının yakalanması, SongMirror yenileme jetonunun yanı sıra kısa ömürlü Bearer verir, böylece oturum otomatik olarak yenilenebilir.
 
@@ -385,9 +385,9 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - **Artımlı** — ilk tam indirmeden sonra yalnızca yeni eklenen parçalar getirilir; kaldırılan parçalar (ve bunların boşaltılan albüm klasörleri) budanır. Kesintiye uğrayan çalışma bir sonraki geçişte devam eder.
 - **En yeni ilk `.m3u8`** — eklenme tarihine göre yazılır, en yeni en üsttedir (çevirmek için `LOCAL_MIRROR_ORDER=oldest` olarak ayarlayın). `uv run main.py --refresh-local` ile mevcut dosyalardan kapakları / etiketleri / mtime'ları yeniden oluşturun.
 - **Çalma listesi kapakları Jellyfin** — Jellyfin m3u'nun yanındaki kapak dosyasını yok sayar, bu nedenle `JELLYFIN_URL` + `JELLYFIN_API_KEY` değerini ayarlayın ve her geçiş, Jellyfin API aracılığıyla gerçek çalma listesi kapağını yükler.
-- **Yalnızca Spotify değil, her kaynak**: Ayna, eşitlemenin kaynak olarak kullandığı hizmeti okur. Spotify çalma listeleri hâlâ katalog adresinden indirilir; diğer her kaynak (Last.fm dahil) sanatçı ve parça adına göre aranır.
-- **Önce kendi kitaplığınız (gerçek FLAC)**: `LOCAL_LIBRARY_DIR` değişkenini mevcut bir müzik ağacına yönlendirin; orada bulunan her parça **özgün biçimiyle çalma listesi klasörüne kopyalanır**, yani bir FLAC yine FLAC kalır. Yalnızca yerelde eşi bulunmayan parçalar spotDL tarafına düşer. Eşleştirme önce ISRC etiketiyle, sonra parça adı ve sanatçıyla yapılır; eşitleme motorunun kurallarıyla aynıdır. Sabit bağlantı yerine kopyalama bilinçli bir tercihtir: ayna değişiklik tarihlerini yazar ve etiketleri tamamlar, sabit bağlantı ise özgün dosyalarınızı değiştirirdi. Boş bırakmak kapalı anlamına gelir.
-- **Ses kalitesi** — kaynak YouTube'dir, yani YT Music **Premium** çerezi olmadan tavan ~128–160 kbps'dir. `LOCAL_MIRROR_FORMAT=opus`, YouTube'nin yerel akışını mp3 yeniden kodlaması olmadan tutar; bir Premium çerez (`LOCAL_MIRROR_COOKIE_FILE`), 256 kbps AAC'nin kilidini açar. `flac` seçeneğinin seçilmesi çıkış kabını değiştirir ancak kayıplı bir kaynağı kayıpsız sese dönüştüremez. Gerçek kayıpsız ses için `LOCAL_LIBRARY_DIR` kullanın.
+- **Yalnızca Spotify değil, her kaynak**: Ayna, senkronizasyonun kaynak olarak kullandığı servisi okur. Spotify çalma listeleri hâlâ katalog adresinden indirilir; diğer her kaynak (Last.fm dahil) sanatçı ve şarkı adına göre aranır.
+- **Önce kendi kitaplığınız (gerçek FLAC)**: `LOCAL_LIBRARY_DIR` değişkenini mevcut bir müzik ağacına yönlendirin; orada bulunan her şarkı **özgün biçimiyle çalma listesi klasörüne kopyalanır**, yani bir FLAC yine FLAC kalır. Yalnızca yerelde eşi bulunmayan şarkılar spotDL tarafına düşer. Eşleştirme önce ISRC etiketiyle, sonra şarkı adı ve sanatçıyla yapılır; senkronizasyon motorunun kurallarıyla aynıdır. Sabit bağlantı yerine kopyalama bilinçli bir tercihtir: ayna değişiklik tarihlerini yazar ve etiketleri tamamlar, sabit bağlantı ise özgün dosyalarınızı değiştirirdi. Boş bırakmak kapalı anlamına gelir.
+- **Ses kalitesi** — kaynak YouTube'dur, yani YT Music **Premium** çerezi olmadan tavan ~128–160 kbps'dir. `LOCAL_MIRROR_FORMAT=opus`, YouTube'un yerel akışını mp3 yeniden kodlaması olmadan tutar; bir Premium çerez (`LOCAL_MIRROR_COOKIE_FILE`), 256 kbps AAC'nin kilidini açar. `flac` seçeneğinin seçilmesi çıkış kabını değiştirir ancak kayıplı bir kaynağı kayıpsız sese dönüştüremez. Gerçek kayıpsız ses için `LOCAL_LIBRARY_DIR` kullanın.
 
 SongMirror, bir akış kataloğundan FLAC çıkarmayı otomatikleştirmez. Yeni her ses kaynağı önce `docs/monochrome-flac-assessment.md` belgesindeki koşulları karşılamalıdır: sağlayıcının yayımladığı, sürümlenmiş bir indirme veya dışa aktarma uç noktası, kullanıcıya bağlı yetkilendirme, kalıcı kopya için açık haklar, bölge, son kullanma ve çevrimdışı kullanım kurallarının belgelenmiş olması ve DRM ile erişim denetiminin aşılmaması. Yerel aynayı yalnızca size ait olan veya kopyalamaya yetkili olduğunuz içerik için kullanın.
 
@@ -411,14 +411,14 @@ SongMirror kimlik bilgilerini ayrı bir belirteç yenileme zamanlayıcısıyla d
 
 | Hizmet | Yenilenme davranışı |
 | --- | --- |
-| **Spotify** | Varsayılan bağlantı, isteğe bağlı olarak kayıtlı `sp_dc` çerezinden bir web oynatıcı erişim jetonu basar ve `401`'den sonra yeni bir jetonla yeniden dener; temel oturum açma oturumu yine de iptal edilebilir. Eski geliştirici uygulaması OAuth mevcut yüklemeler için desteklenmeye devam ediyor. |
-| **TIDAL** | İçe aktarılan web oynatıcısı erişim belirteci, oturum açma yanıtındaki yenileme belirteci kullanılarak `auth.tidal.com` aracılığıyla otomatik olarak yenilenir. SongMirror bir yanıt onu atladığında mevcut yenileme jetonunu korur ve TIDAL bir tane döndürdüğünde döndürülmüş jetonu sürdürür. Oturumu kapatma veya iptal etme yine de yeni bir yakalama gerektirir. |
+| **Spotify** | Varsayılan bağlantı, isteğe bağlı olarak kayıtlı `sp_dc` çerezinden bir web oynatıcı erişim belirteci üretir ve `401`'den sonra yeni bir belirteçle yeniden dener; temel oturum açma oturumu yine de iptal edilebilir. Eski geliştirici uygulaması OAuth mevcut yüklemeler için desteklenmeye devam ediyor. |
+| **TIDAL** | İçe aktarılan web oynatıcısı erişim belirteci, oturum açma yanıtındaki yenileme belirteci kullanılarak `auth.tidal.com` aracılığıyla otomatik olarak yenilenir. SongMirror bir yanıt onu atladığında mevcut yenileme belirtecini korur ve TIDAL bir tane döndürdüğünde döndürülmüş belirteci sürdürür. Oturumu kapatma veya iptal etme yine de yeni bir yakalama gerektirir. |
 | **Qobuz** | Yapıştırılan `X-User-Auth-Token`, Qobuz reddedene kadar kullanılır, ardından tekrar yakalanması gerekir. |
 | **Deezer** | Kısa ömürlü Pipe JWT, kullanımdan önce ve `401/403` sonrasında kaydedilen `refresh-token`'den otomatik olarak yenilenir; dönüşümlü yenileme durumu sürdürülür. |
-| **Amazon Music** | Web erişim belirteci, yakalanan tarayıcı kullanıcı aracısı, yönlendiren ve izin verilenler listesine eklenen çerezler kullanılarak `/pandaToken` aracılığıyla yenilenir. Mevcut `POST config.json?skipToken=false` akış, gerektiğinde cihaz bağlamını önyükler ve döndürülen çerezler kalıcı olur. Oturum kapatma, güvenlik değişiklikleri veya sunucu tarafı iptali hâlâ yeni bir yakalama gerektiriyor. |
-| **Apple Music** | Yapıştırılan Bearer ve Media-User-Token, SongMirror tarihine kadar yenilenemez ve reddedildikten sonra yeniden yakalanmalıdır. |
-| **YouTube Music** | Data API OAuth sürenin dolmasından itibaren 60 saniye içinde otomatik olarak yenilenir. Tarayıcı modu, bir senkronizasyon hedefi oluşturulduğunda Google'nin çerez rotasyonunu dener; süresi dolmuş bir tarayıcı oturumunun yeniden dışa aktarılması gerekir. |
-| Last.fm | Ne API anahtarı ne de oturum anahtarı sona erer, dolayısıyla hiçbir şey yenilenmez. Yalnızca uygulamanın erişimini Last.fm hesap ayarlarınızdan geri aldıysanız yeniden yetkilendirin. |
+| **Amazon Music** | Web erişim belirteci, yakalanan tarayıcı kullanıcı aracısı, yönlendiren ve izin verilenler listesine eklenen çerezler kullanılarak `/pandaToken` aracılığıyla yenilenir. Mevcut `POST config.json?skipToken=false` akışı, gerektiğinde cihaz bağlamını önyükler ve döndürülen çerezler kalıcı olur. Oturum kapatma, güvenlik değişiklikleri veya sunucu tarafı iptali hâlâ yeni bir yakalama gerektirir. |
+| **Apple Music** | Yapıştırılan Bearer ve Media-User-Token, SongMirror tarafından yenilenemez ve reddedildikten sonra yeniden yakalanmalıdır. |
+| **YouTube Music** | Data API OAuth sürenin dolmasından itibaren 60 saniye içinde otomatik olarak yenilenir. Tarayıcı modu, bir senkronizasyon hedefi oluşturulduğunda Google'ın çerez rotasyonunu dener; süresi dolmuş bir tarayıcı oturumunun yeniden dışa aktarılması gerekir. |
+| **Last.fm** | Ne API anahtarı ne de oturum anahtarı sona erer, dolayısıyla hiçbir şey yenilenmez. Yalnızca uygulamanın erişimini Last.fm hesap ayarlarınızdan geri aldıysanız yeniden yetkilendirin. |
 | **Jellyfin** | API anahtarının erişim belirteci yenileme döngüsü yoktur; yalnızca iptal edilmesi veya silinmesi durumunda değiştirin. |
 
 <a id="spotify"></a>
@@ -509,7 +509,7 @@ OAuth yenileme belirteci dayanıklı olan ve yeniden başlatmalarda korunan resm
 
 ### Last.fm
 
-Last.fm ile çalma listesi eşitlemesi desteklenmez, dolayısıyla asla çalma listesi hedefi olmaz. **Dinleme geçmişinizi** salt okunur koleksiyonlar olarak sunar ve **Loved Tracks** koleksiyonu, diğer tüm sağlayıcılardaki gibi bir beğenilen parça koleksiyonudur; hesabı yetkilendirdiğinizde yazılabilir hale gelir.
+Last.fm ile çalma listesi senkronizasyonu desteklenmez, dolayısıyla asla bir çalma listesi hedefi olamaz. **Dinleme geçmişinizi** salt okunur koleksiyonlar olarak sunar ve **Loved Tracks** koleksiyonu, diğer tüm sağlayıcılardaki gibi bir beğenilen şarkı koleksiyonudur; hesabı yetkilendirdiğinizde yazılabilir hale gelir.
 
 1. <https://www.last.fm/api/account/create> adresinde bir API hesabı oluşturun. Hem **API anahtarını** hem de **paylaşılan gizli anahtarı** not edin.
 2. Hesaplar → Last.fm bölümünde ikisini de yapıştırın, ardından Last.fm yetkilendirme sayfasını tamamlayın.
@@ -519,23 +519,23 @@ Last.fm ile çalma listesi eşitlemesi desteklenmez, dolayısıyla asla çalma l
 | Verdiğiniz | Aldığınız |
 | --- | --- |
 | API anahtarı + kullanıcı adı | o profilin herkese açık okumaları |
-| + paylaşılan gizli anahtar + yetkilendirme | **özel** okumalar ve beğenilen parça ekleyip kaldırma |
+| + paylaşılan gizli anahtar + yetkilendirme | **özel** okumalar ve beğenilen şarkı ekleyip kaldırma |
 
-Yetkilendirme tarayıcı üzerinden tek seferlik bir gidiş dönüştür: SongMirror sizi Last.fm'e yönlendirir, uygulamayı onaylarsınız ve dönen belirteç **süresiz ömürlü bir oturum anahtarıyla** değiştirilir. Yukarıdaki tablodaki yapıştırılan tüm kimlik bilgilerinin aksine bunun yeniden alınması hiç gerekmez. Last.fm hesap ayarlarınızdan geri alabilirsiniz.
+Yetkilendirme, tarayıcı üzerinden tek seferlik bir gidiş-dönüş işlemidir: SongMirror sizi Last.fm'e yönlendirir, uygulamayı onaylarsınız ve dönen belirteç **süresiz ömürlü bir oturum anahtarıyla** değiştirilir. Yukarıdaki tablodaki yapıştırılan tüm kimlik bilgilerinin aksine bunun yeniden alınması hiç gerekmez. Last.fm hesap ayarlarınızdan geri alabilirsiniz.
 
 Bu, şunları kullanıma açar:
 
 | Koleksiyon | İçerik |
 | --- | --- |
-| **Loved Tracks** | beğenilen parça koleksiyonu. Her zaman okunabilir; yetkilendirmeden sonra **yazılabilir**, böylece Spotify, TIDAL veya Apple beğenileriniz *Last.fm tarafına* eşitlenebilir |
+| **Loved Tracks** | beğenilen şarkı koleksiyonu. Her zaman okunabilir; yetkilendirmeden sonra **yazılabilir**, böylece Spotify, TIDAL veya Apple beğenileriniz *Last.fm'e* aktarılabilir |
 | **Top Tracks (7 gün … tüm zamanlar)** | her Last.fm dönemi için bir tane olmak üzere, sıralanmış altı salt okunur koleksiyon |
 | **Recent Scrobbles** | o anda çalan satır dışında kalan dinleme akışı |
 
 Buna güvenmeden önce bilinmesi gereken üç sınır:
 
-- **ISRC yok.** `user.*` uç noktaları yalnızca sanatçı ve parça adı döndürür, bu yüzden Last.fm parçaları katalog kimliği yerine ada göre eşleştirilir. ISRC taşıyan bir sağlayıcının önleyeceği hatalı sürümlerle ara sıra karşılaşabilirsiniz. Bir parçayı beğenmeden önce SongMirror, `track.getInfo` üzerinden Last.fm'in standart yazımını sorar; böylece çok benzer bir başlık ikinci bir kayıt oluşturmaz.
-- **Sıralanmış koleksiyonlarda tarih yoktur.** Top Tracks parça başına zaman damgası taşımaz, bu yüzden o parçalar tarihsiz eşitlenir ve eklenme sırasını belirleyemez.
-- **Çalma listesi yolları geçerli değildir.** Beğenilen parçaların *Last.fm tarafına* eşitlenmesi yerel yolu kullanmak zorundadır. Adlandırılmış çalma listesi oluşturan yolun yazabileceği bir çalma listesi yoktur.
+- **ISRC yok.** `user.*` uç noktaları yalnızca sanatçı ve şarkı adı döndürür, bu yüzden Last.fm şarkıları katalog kimliği yerine ada göre eşleştirilir. ISRC taşıyan bir sağlayıcının önleyeceği hatalı sürümlerle ara sıra karşılaşabilirsiniz. Bir şarkıyı beğenmeden önce SongMirror, `track.getInfo` üzerinden Last.fm'in standart yazımını sorar; böylece çok benzer bir başlık ikinci bir kayıt oluşturmaz.
+- **Sıralanmış koleksiyonlarda tarih yoktur.** Top Tracks şarkı başına zaman damgası taşımaz, bu yüzden o şarkılar tarihsiz senkronize edilir ve eklenme sırasını belirleyemez.
+- **Çalma listesi rotaları geçerli değildir.** Beğenilen şarkıların *Last.fm'e* senkronizasyonu yerel yolu kullanmak zorundadır. Adlandırılmış çalma listesi oluşturan rotanın yazabileceği bir çalma listesi bulunmaz.
 
 Paylaşılan gizli anahtar olmadan, belirttiğiniz profilin Loved Tracks ve Top Tracks koleksiyonları herkese açık olmalıdır.
 
@@ -584,7 +584,7 @@ Kaldırma işlemleri yıkıcıdır, bu nedenle korunurlar:
 
 - **Simülasyon varsayılandır** — `--execute` (veya arayüzün gerçek senkronizasyon eylemi) olmadan hiçbir şey değişmez.
 - Kaynak, hedefin boş olmadığını gösterdiği bir çalma listesi için 0 parça döndürürse, bu geçişte kaldırma işlemleri atlanır (geçici bir API hatası, çalma listesini boşaltamaz).
-- **Silme işlemleri varsayılan olarak kapalıdır** — `MAX_REMOVALS=0` tüm silmeleri bekletir; işlemler günlüğe kaydedilir ancak uygulanmaz. Böylece bir platformdaki lisans kaynaklı kaldırma diğer platformlarda zincirleme silmeye yol açamaz. Her senkronizasyon için **Silinen şarkıları eşitle** seçeneğini açın veya `MAX_REMOVALS` değerini ayarlayın. Etkinleştirilmiş olsa bile, bir çalıştırmada bekleyen silme sayısı üst sınırı aşarsa tüm silmeler atlanır ve günlüğe kaydedilir.
+- **Silme işlemleri varsayılan olarak kapalıdır** — `MAX_REMOVALS=0` tüm silmeleri bekletir; işlemler günlüğe kaydedilir ancak uygulanmaz. Böylece bir platformdaki lisans kaynaklı kaldırma diğer platformlarda zincirleme silmeye yol açamaz. Her senkronizasyon için **Silinen şarkıları aynala** seçeneğini açın veya `MAX_REMOVALS` değerini ayarlayın. Etkinleştirilmiş olsa bile, bir çalıştırmada bekleyen silme sayısı üst sınırı aşarsa tüm silmeler atlanır ve günlüğe kaydedilir.
 - `MAX_ADDS` kronoloji onarımı da dahil olmak üzere bir **senkronizasyon** geçişinde zaman damgası üreten her türlü yazmayı sınırlar. Kurtarılan daha eski bir eşleşme, sınırın izin verdiğinden daha büyük bir sonek tekrarına ihtiyaç duyuyorsa, SongMirror onu en yeni görünmesini sağlamak veya büyük bir sağlayıcı patlamasına neden olmak yerine bir sonraki geçişe erteler. Bir **tek seferlik aktarımın** bir sonraki geçişi yoktur; bu nedenle asla ertelemez: İstenilen her parçayı kopyalar, siz söz konusu aktarım için "Son Eklenenleri Koru" seçeneğini açmadığınız sürece kaynak sırasına göre ekler.
 - Kronoloji onarımı, orijinali kullanımdan kaldırmadan önce yedek bir kopyayı hazırlar. Silme işleminin bir şarkının tüm kopyalarını kaldırdığı bir serviste, korunan kopya sayısının tam doğru olması gerekir; bu nedenle Apple Music aşamalı kopyalar görünene kadar yeniden okur ve hâlâ kendi yazmalarını takip eden bir okumaya karşı herhangi bir şeyi silmeyi reddeder. Deezer onarımı tamamen atlar ve her zaman sona ekler: konumsal ekleme desteği de yoktur, bu nedenle yansıtamadığı bir sırayı zorlamak hedefe yönelik riske değmez. Aktarım formu oradaki sıralama seçeneğini devre dışı bırakır ve nedenini açıklar.
 - **Net kayıp koruması** — söz konusu serviste eşleşmesi olmayan, kaynak parçaya benzeyen hedef taraftaki parça silinmez, bekletilir.
