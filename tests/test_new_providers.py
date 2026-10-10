@@ -2337,6 +2337,42 @@ def test_deezer_web_adds_tracks_one_at_a_time_in_order(monkeypatch):
     ]
 
 
+def test_deezer_add_skips_invalid_track_ids(monkeypatch):
+    from songmirror.engine.targets import deezer
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    calls = []
+    target = DeezerTarget.__new__(DeezerTarget)
+    target.tag = "deezer"
+    target._web = type("Web", (), {
+        "add": lambda self, playlist_id, track_ids: calls.append((playlist_id, track_ids)),
+    })()
+    monkeypatch.setattr(deezer, "polite_sleep", lambda _: None)
+
+    # Mixed list containing valid IDs, URLs, and invalid IDs/None/spaces
+    target.add(
+        {"id": "playlist-1"},
+        ["12", "invalid_id", None, "https://www.deezer.com/tr/track/34", "   ", "56"],
+    )
+
+    assert calls == [
+        ("playlist-1", ["12"]),
+        ("playlist-1", ["34"]),
+        ("playlist-1", ["56"]),
+    ]
+
+
+def test_deezer_validate_link():
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+    assert target.validate_link({}, "12345", {}) == ("12345", "link")
+    assert target.validate_link({}, "https://www.deezer.com/tr/track/12345", {}) == ("12345", "link")
+    assert target.validate_link({}, "not-an-id", {}) == (None, None)
+    assert target.validate_link({}, None, {}) == (None, None)
+    assert target.validate_link({}, "", {}) == (None, None)
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
