@@ -2454,6 +2454,79 @@ def test_deezer_normalizes_legacy_manual_url_from_resolve_cache():
     assert cache["dirty"] is True
 
 
+def test_deezer_remove_skips_rejected_track_on_web_mode(monkeypatch):
+    from songmirror.deezer_web import DeezerWebAuthError
+    from songmirror.engine.targets import deezer
+    from songmirror.engine.targets.base import TargetAuthError, TargetTransientError
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+    target.tag = "deezer"
+
+    class _Web:
+        def remove(self, playlist_id, track_ids):
+            if "fail" in track_ids:
+                raise RuntimeError("Deezer web API error: Playlist removetracks failed")
+            if "auth" in track_ids:
+                raise DeezerWebAuthError("expired")
+            if "transient" in track_ids:
+                raise TargetTransientError("retry")
+
+    target._web = _Web()
+    monkeypatch.setattr(deezer, "polite_sleep", lambda _: None)
+    warnings = []
+    monkeypatch.setattr(deezer, "log_warn", lambda msg, tag=None: warnings.append((msg, tag)))
+
+    # A rejected removal logs a warning and does not raise
+    target.remove({"id": "p1"}, {"id": "fail"})
+    assert len(warnings) == 1
+    assert "Deezer refused removal of track fail" in warnings[0][0]
+    assert "Playlist removetracks failed" in warnings[0][0]
+
+    # Auth and transient errors are still raised
+    with pytest.raises(TargetAuthError):
+        target.remove({"id": "p1"}, {"id": "auth"})
+
+    with pytest.raises(TargetTransientError):
+        target.remove({"id": "p1"}, {"id": "transient"})
+
+
+def test_deezer_remove_skips_rejected_track_on_rest_mode(monkeypatch):
+    from songmirror.engine.targets import deezer
+    from songmirror.engine.targets.base import TargetAuthError, TargetTransientError
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+    target.tag = "deezer"
+    target._web = None
+
+    def request(method, path, params=None):
+        songs = (params or {}).get("songs")
+        if songs == "fail":
+            raise RuntimeError("Deezer API error 500: API error")
+        if songs == "auth":
+            raise TargetAuthError("unauthorized")
+        if songs == "transient":
+            raise TargetTransientError("rate limit")
+
+    monkeypatch.setattr(target, "_request", request)
+    monkeypatch.setattr(deezer, "polite_sleep", lambda _: None)
+    warnings = []
+    monkeypatch.setattr(deezer, "log_warn", lambda msg, tag=None: warnings.append((msg, tag)))
+
+    # A rejected removal logs a warning and does not raise
+    target.remove({"id": "p2"}, {"id": "fail"})
+    assert len(warnings) == 1
+    assert "Deezer refused removal of track fail" in warnings[0][0]
+
+    # Auth and transient errors are still raised
+    with pytest.raises(TargetAuthError):
+        target.remove({"id": "p2"}, {"id": "auth"})
+
+    with pytest.raises(TargetTransientError):
+        target.remove({"id": "p2"}, {"id": "transient"})
+
+
 def test_new_provider_create_helpers_accept_non_spotify_shapes():
     from songmirror.engine.targets.provider_utils import source_playlist_details
 
