@@ -2454,6 +2454,255 @@ def test_deezer_normalizes_legacy_manual_url_from_resolve_cache():
     assert cache["dirty"] is True
 
 
+def test_deezer_remove_skips_rejected_track_on_web_mode(monkeypatch):
+    from songmirror.deezer_web import DeezerWebAuthError
+    from songmirror.engine.targets import deezer
+    from songmirror.engine.targets.base import TargetAuthError, TargetTransientError
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+    target.tag = "deezer"
+
+    class _Web:
+        def remove(self, playlist_id, track_ids):
+            if "fail" in track_ids:
+                raise RuntimeError("Deezer web API error: Playlist removetracks failed")
+            if "auth" in track_ids:
+                raise DeezerWebAuthError("expired")
+            if "transient" in track_ids:
+                raise TargetTransientError("retry")
+
+    target._web = _Web()
+    monkeypatch.setattr(deezer, "polite_sleep", lambda _: None)
+    warnings = []
+    monkeypatch.setattr(deezer, "log_warn", lambda msg, tag=None: warnings.append((msg, tag)))
+
+    # A rejected removal logs a warning and returns False
+    assert target.remove({"id": "p1"}, {"id": "fail"}) is False
+    assert len(warnings) == 1
+    assert "Deezer refused removal of track fail" in warnings[0][0]
+    assert "Playlist removetracks failed" in warnings[0][0]
+
+    # A successful removal returns True
+    assert target.remove({"id": "p1"}, {"id": "ok"}) is True
+
+    # Missing track id returns False
+    assert target.remove({"id": "p1"}, {}) is False
+
+    # Auth and transient errors are still raised
+    with pytest.raises(TargetAuthError):
+        target.remove({"id": "p1"}, {"id": "auth"})
+
+    with pytest.raises(TargetTransientError):
+        target.remove({"id": "p1"}, {"id": "transient"})
+
+
+def test_deezer_remove_skips_rejected_track_on_rest_mode(monkeypatch):
+    from songmirror.engine.targets import deezer
+    from songmirror.engine.targets.base import TargetAuthError, TargetTransientError
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+    target.tag = "deezer"
+    target._web = None
+
+    def request(method, path, params=None):
+        songs = (params or {}).get("songs")
+        if songs == "fail":
+            raise RuntimeError("Deezer API error 500: API error")
+        if songs == "auth":
+            raise TargetAuthError("unauthorized")
+        if songs == "transient":
+            raise TargetTransientError("rate limit")
+
+    monkeypatch.setattr(target, "_request", request)
+    monkeypatch.setattr(deezer, "polite_sleep", lambda _: None)
+    warnings = []
+    monkeypatch.setattr(deezer, "log_warn", lambda msg, tag=None: warnings.append((msg, tag)))
+
+    # A rejected removal logs a warning and returns False
+    assert target.remove({"id": "p2"}, {"id": "fail"}) is False
+    assert len(warnings) == 1
+    assert "Deezer refused removal of track fail" in warnings[0][0]
+
+    # A successful removal returns True
+    assert target.remove({"id": "p2"}, {"id": "ok"}) is True
+
+    # Missing track id returns False
+    assert target.remove({"id": "p2"}, {}) is False
+
+    # Auth and transient errors are still raised
+    with pytest.raises(TargetAuthError):
+        target.remove({"id": "p2"}, {"id": "auth"})
+
+    with pytest.raises(TargetTransientError):
+        target.remove({"id": "p2"}, {"id": "transient"})
+
+
+def test_deezer_remove_occurrences_skips_keeper_add_when_removal_fails(monkeypatch):
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+    target.tag = "deezer"
+
+    # Playlist has 2 copies of track "T1"
+    target.playlist_tracks = lambda pl: [{"id": "T1"}, {"id": "T1"}]
+    target.track_id = lambda t: t.get("id")
+
+    added = []
+    removed = []
+
+    def mock_remove(playlist, track):
+        removed.append(track["id"])
+        return False  # Deezer refused removal
+
+    def mock_add(playlist, ids):
+        added.extend(ids)
+
+    target.remove = mock_remove
+    target.add = mock_add
+
+    # Flag 1 copy of "T1" for duplicate removal
+    positioned = [(0, {"id": "T1"})]
+    assert target.remove_occurrences({"id": "p1"}, positioned) == 0
+
+    # remove was attempted
+    assert removed == ["T1"]
+    # Since remove returned False, add MUST NOT be called (preventing 2 copies from becoming 3)
+    assert added == []
+
+
+def test_deezer_remove_occurrences_restores_keeper_when_removal_succeeds(monkeypatch):
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+    target.tag = "deezer"
+
+    target.playlist_tracks = lambda pl: [{"id": "T1"}, {"id": "T1"}]
+    target.track_id = lambda t: t.get("id")
+
+    added = []
+    removed = []
+
+    def mock_remove(playlist, track):
+        removed.append(track["id"])
+        return True
+
+    def mock_add(playlist, ids):
+        added.extend(ids)
+
+    target.remove = mock_remove
+    target.add = mock_add
+
+    # Flag 1 copy of "T1" for duplicate removal
+    positioned = [(0, {"id": "T1"})]
+    assert target.remove_occurrences({"id": "p1"}, positioned) == 1
+
+    assert removed == ["T1"]
+    # 2 total - 1 flagged = 1 keeper restored
+    assert added == ["T1"]
+
+
+def test_deezer_remove_occurrences_keeper_add_failure_does_not_abort_subsequent_removals(monkeypatch):
+    from songmirror.engine.targets import deezer
+    from songmirror.engine.targets.deezer import DeezerTarget
+
+    target = DeezerTarget.__new__(DeezerTarget)
+    target.tag = "deezer"
+
+    # Playlist has 2 copies of T1 and 2 copies of T2
+    target.playlist_tracks = lambda pl: [{"id": "T1"}, {"id": "T1"}, {"id": "T2"}, {"id": "T2"}]
+    target.track_id = lambda t: t.get("id")
+
+    added = []
+    removed = []
+    warnings = []
+    monkeypatch.setattr(deezer, "log_warn", lambda msg, tag=None: warnings.append((msg, tag)))
+
+    def mock_remove(playlist, track):
+        removed.append(track["id"])
+        return True
+
+    def mock_add(playlist, ids):
+        if "T1" in ids:
+            raise RuntimeError("Deezer add keeper error")
+        added.extend(ids)
+
+    target.remove = mock_remove
+    target.add = mock_add
+
+    positioned = [(0, {"id": "T1"}), (2, {"id": "T2"})]
+    with pytest.raises(RuntimeError, match="could not restore keeper copies.*T1"):
+        target.remove_occurrences({"id": "p1"}, positioned)
+
+    # Both T1 and T2 removals were executed
+    assert removed == ["T1", "T2"]
+    # T2 keeper was added despite T1 keeper raising
+    assert added == ["T2"]
+    # Warning was logged for T1
+    assert any("Deezer failed restoring 1 keeper copy/copies for track T1" in w[0] for w in warnings)
+
+
+def test_mirror_pair_handles_skipped_removal_with_guard(tmp_path):
+    from songmirror.engine import archive
+    from songmirror.engine.targets.base import mirror_pair
+
+    conn = archive.connect(str(tmp_path / "mirror_pair_skip.db"))
+
+    # Spotify has track A. Destination has A and B. Track B should be removed, but target.remove returns False.
+    sp_tracks = [{"id": "A", "name": "A", "artists": ["X"], "artist": "X", "duration_ms": 1000}]
+    tgt_tracks = [
+        {"id": "A", "name": "A", "artists": ["X"], "artist": "X", "duration_ms": 1000},
+        {"id": "B", "name": "B", "artists": ["Y"], "artist": "Y", "duration_ms": 1000},
+    ]
+
+    class FakeTarget:
+        name = "Deezer"
+        tag = "deezer"
+        source = "deezer"
+
+        def playlist_tracks(self, pl):
+            return list(tgt_tracks)
+
+        def track_id(self, t):
+            return t.get("id")
+
+        def expected_ids(self, tracks, links, cache):
+            return {t["id"]: {t["id"]} for t in tracks}
+
+        def resolve(self, norm, cache):
+            return norm.get("id"), "search"
+
+        def prefetch(self, norms, cache):
+            pass
+
+        def remove(self, pl, track):
+            return False  # Skipped / refused
+
+        def is_favorite_tracks_resource(self, pl):
+            return False
+
+    tgt = FakeTarget()
+
+    stats = mirror_pair(
+        tgt,
+        sp_tracks,
+        {"id": "sp_pl"},
+        {"id": "tgt_pl"},
+        {"isrc": {}, "search": {}},
+        conn,
+        execute=True,
+        max_removals=10,
+        max_adds=10,
+    )
+
+    # Outcome False must set clean=False, guard=True, removals_skipped=1, removed=0
+    assert stats["clean"] is False
+    assert stats["removals_skipped"] == 1
+    assert stats["removed"] == 0
+    conn.close()
+
+
 def test_new_provider_create_helpers_accept_non_spotify_shapes():
     from songmirror.engine.targets.provider_utils import source_playlist_details
 

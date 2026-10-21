@@ -110,14 +110,20 @@ def apply(peers, playlists, caches, songs, state_key, plan):
     """Execute a dup_plan: remove the flagged copies, clear the playlist's
     stored N-way baseline (so the next pass re-bootstraps from the cleaned
     reality instead of reading the removals as user deletions), then re-read
-    and snapshot each provider. Returns {source: (removed, count_after)}."""
+    and snapshot each provider. Rejected removals keep the existing baseline
+    and pending deletions intact. Returns {source: (removed, count_after)}.
+    """
     out = {}
+    complete = True
     for p in peers:
         dups = plan.get(p.source) or []
+        removed = 0
         if dups:
-            p.remove_occurrences(playlists[p.source], [(i, raw) for i, _, raw, _ in dups])
-        out[p.source] = [len(dups), None]
-    if any(n for n, _ in out.values()):
+            result = p.remove_occurrences(playlists[p.source], [(i, raw) for i, _, raw, _ in dups])
+            removed = len(dups) if result is None else result
+        complete = complete and removed == len(dups)
+        out[p.source] = [removed, None]
+    if complete and any(n for n, _ in out.values()):
         archive.clear_playlist_state(songs, state_key)
     for p in peers:
         raw = p.playlist_tracks(playlists[p.source])

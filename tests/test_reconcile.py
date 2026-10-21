@@ -2350,6 +2350,51 @@ def test_reconcile_interrupt_freezes_baseline(tmp_path):
     conn.close()
 
 
+def test_reconcile_nway_skipped_removal_does_not_resurrect_on_subsequent_passes(tmp_path):
+    class DeezerSkipPeer(_P):
+        def remove(self, pl, raw):
+            # Deezer refuses to remove track D
+            if raw.get("isrc") == "D":
+                return False
+            return super().remove(pl, raw)
+
+    conn = archive.connect(str(tmp_path / "nway-skipped-removal.db"))
+    key = "aurora"
+    archive.set_playlist_state(conn, key, "spotify", {f"i:{i}" for i in "ABCD"})
+    archive.set_playlist_state(conn, key, "deezer", {f"i:{i}" for i in "ABCD"})
+
+    # User deleted D on Spotify. Deezer still has D.
+    sp = _P("spotify", list("ABC"))
+    dz = DeezerSkipPeer("deezer", list("ABCD"))
+    peers = [sp, dz]
+    playlists = {p.source: {"id": p.source} for p in peers}
+
+    def run():
+        return reconcile(
+            peers, "Aurora", playlists, _caches("spotify", "deezer"), conn,
+            execute=True, max_removals=25, max_adds=200,
+        )
+
+    # Pass 1: Deezer skips removal of D
+    stats1 = run()
+    assert stats1["clean"] is False
+    assert stats1["removals_skipped"] == 1
+    assert stats1["removed"] == 0
+    # Deezer still has D physically because removal failed
+    assert "D" in dz._isrcs
+    # Spotify has not added D
+    assert sp.added == []
+
+    # Pass 2 & 3: Deezer still has D physically, but Spotify must NOT re-add D!
+    for _ in range(2):
+        run()
+        assert "D" not in sp.added
+
+    # Spotify's deletion was never undone
+    assert "D" not in sp._isrcs
+    conn.close()
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for t in tests:
