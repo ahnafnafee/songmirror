@@ -13,6 +13,7 @@ import requests
 
 from ...qobuz_web import parse_web_request
 from ..config import REQUEST_TIMEOUT, polite_sleep, required_env
+from ..logs import log_warn
 from ..matching import normalize_text, romanized, track_key
 from .base import MirrorTarget, TargetAuthError, TargetTransientError
 from .provider_utils import best_candidate, compatible_isrc_candidates, source_playlist_details, title_with_version
@@ -55,6 +56,30 @@ def _normalized_track(track):
 
 def _flag(value):
     return "true" if value else "false"
+
+
+def _available(track):
+    """Qobuz search still lists tracks the account can't play (region or
+    rights). Those can't be added to a playlist, so they never count as a match."""
+    return track.get("streamable") is not False and track.get("displayable") is not False
+
+
+class QobuzRequestRejected(RuntimeError):
+    """Qobuz refused a request with a 4xx that isn't auth or rate limiting."""
+
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+
+
+def _error_message(response):
+    try:
+        body = response.json()
+    except ValueError:
+        return (response.text or "").strip()[:200]
+    if isinstance(body, dict):
+        return str(body.get("message") or body.get("error") or "").strip()
+    return ""
 
 
 class QobuzTarget(MirrorTarget):
@@ -131,7 +156,12 @@ class QobuzTarget(MirrorTarget):
                 raise TargetTransientError(
                     f"Qobuz kept returning HTTP {response.status_code} for {method} {short}"
                 )
-            response.raise_for_status()
+            if response.status_code >= 400:
+                detail = _error_message(response) or response.reason or "no details"
+                raise QobuzRequestRejected(
+                    response.status_code,
+                    f"Qobuz returned HTTP {response.status_code} for {method} {short}: {detail}",
+                )
             body = response.json()
             if isinstance(body, dict) and body.get("code") and body.get("message"):
                 code, message = body.get("code"), body.get("message")
@@ -344,7 +374,8 @@ class QobuzTarget(MirrorTarget):
 
     def _search(self, query, limit=20):
         body = self._request("GET", "catalog/search", params={"query": query, "type": "tracks", "limit": limit})
-        return [_normalized_track(track) for track in ((body.get("tracks") or {}).get("items") or [])]
+        items = (body.get("tracks") or {}).get("items") or []
+        return [_normalized_track(track) for track in items if _available(track)]
 
     def search_candidates(self, query, *, limit=5):
         query = str(query or "").strip()
@@ -434,17 +465,35 @@ class QobuzTarget(MirrorTarget):
         return best, "search"
 
     def _add(self, playlist, target_ids, *, allow_duplicates):
+        """Add tracks one at a time and return the ids Qobuz accepted.
+
+        A 400 for one track (say, one no longer available in the account's
+        region) skips just that track so the caller moves it to Needs review.
+        If nothing has been accepted after several refusals, the problem is the
+        playlist or session rather than the tracks, so the error is raised."""
+        confirmed, refused = [], []
         for target_id in target_ids:
-            self._request(
-                "POST",
-                "playlist/addTracks",
-                params={
-                    "playlist_id": playlist["id"],
-                    "track_ids": str(target_id),
-                    "no_duplicate": "false" if allow_duplicates else "true",
-                },
-            )
+            try:
+                self._request(
+                    "POST",
+                    "playlist/addTracks",
+                    params={
+                        "playlist_id": playlist["id"],
+                        "track_ids": str(target_id),
+                        "no_duplicate": "false" if allow_duplicates else "true",
+                    },
+                )
+            except QobuzRequestRejected as exc:
+                if exc.status != 400:
+                    raise
+                refused.append(str(target_id))
+                if not confirmed and len(refused) >= 5:
+                    raise
+                log_warn(f"Qobuz refused track {target_id}: {exc}", tag=self.tag)
+            else:
+                confirmed.append(str(target_id))
             polite_sleep(0.3)
+        return confirmed
 
     def add(self, playlist, target_ids):
         return self._add(playlist, target_ids, allow_duplicates=False)

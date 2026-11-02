@@ -826,6 +826,49 @@ def test_qobuz_only_allows_duplicate_adds_for_chronology_staging(monkeypatch):
     assert [call["no_duplicate"] for call in calls] == ["true", "false"]
 
 
+def test_qobuz_add_skips_a_refused_track_and_reports_the_rest(monkeypatch):
+    from songmirror.engine.targets import qobuz as qobuz_module
+    from songmirror.engine.targets.qobuz import QobuzRequestRejected, QobuzTarget
+
+    def request(method, endpoint, params=None):
+        if params["track_ids"] == "gone":
+            raise QobuzRequestRejected(400, "Qobuz returned HTTP 400: track unavailable")
+
+    target = QobuzTarget.__new__(QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    assert target.add({"id": "playlist"}, ["a", "gone", "b"]) == ["a", "b"]
+
+
+def test_qobuz_add_raises_when_every_track_is_refused(monkeypatch):
+    from songmirror.engine.targets import qobuz as qobuz_module
+    from songmirror.engine.targets.qobuz import QobuzRequestRejected, QobuzTarget
+
+    def request(method, endpoint, params=None):
+        raise QobuzRequestRejected(400, "Qobuz returned HTTP 400: bad playlist")
+
+    target = QobuzTarget.__new__(QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    with pytest.raises(QobuzRequestRejected):
+        target.add({"id": "playlist"}, [str(n) for n in range(8)])
+
+
+def test_qobuz_search_ignores_tracks_the_account_cannot_play():
+    from songmirror.engine.targets.qobuz import QobuzTarget
+
+    target = QobuzTarget.__new__(QobuzTarget)
+    target._request = lambda method, endpoint, params=None: {"tracks": {"items": [
+        {"id": 1, "title": "Ethereal", "streamable": False, "displayable": False},
+        {"id": 2, "title": "Ethereal", "streamable": True, "displayable": True},
+        {"id": 3, "title": "Ethereal"},
+    ]}}
+
+    assert [track["id"] for track in target._search("Ethereal")] == ["2", "3"]
+
+
 @pytest.mark.parametrize("module_name,class_name", [
     ("songmirror.engine.targets.apple", "AppleMusicTarget"),
 ])
