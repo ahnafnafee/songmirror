@@ -243,7 +243,7 @@ class MirrorTarget:
 
     def remove_occurrence(self, playlist, track_id, occurrence_id):
         """Delete one entry addressed by its provider-stable occurrence id."""
-        self.remove(playlist, {
+        return self.remove(playlist, {
             "id": track_id,
             "videoId": track_id,
             "relationship_id": occurrence_id,
@@ -483,7 +483,10 @@ class MirrorTarget:
         return target_id
 
     def remove(self, playlist, track):
-        """Remove one existing target track."""
+        """Remove one existing target track; False means a confirmed rejection.
+
+        None remains the all-succeeded contract for existing providers.
+        """
         raise NotImplementedError
 
     def remove_occurrences(self, playlist, positioned):
@@ -493,9 +496,17 @@ class MirrorTarget:
         is entry-scoped on YT (playlist-item id / setVideoId). Spotify overrides
         with a position-addressed call (its remove() drops every occurrence of a
         uri); Apple overrides with delete-then-re-append (its DELETE addresses
-        the library song, taking every copy with it)."""
+        the library song, taking every copy with it).
+
+        Return the number of selected entries successfully removed. Legacy
+        overrides returning None confirm every requested entry. A permanent
+        rejection may return fewer; auth and transient failures must raise.
+        """
+        removed = 0
         for _, raw in positioned:
-            self.remove(playlist, raw)
+            if self.remove(playlist, raw) is not False:
+                removed += 1
+        return removed
 
 
 def _resource_call(target, method_name, playlist_method_name, resource, *args):
@@ -1035,6 +1046,7 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
     for track in not_found:
         log_miss(f"not on {target.name}: {track['name']} - {', '.join(track['artists'])}", tag=tag)
 
+    applied_removals = []
     if execute:
         if (source_provider or source_key) == "spotify":
             actual_id = getattr(target, "added_id", lambda target_id: target_id)
@@ -1046,14 +1058,20 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
                  for source_id, target_id in new_links.items()},
             )
         for track in removals:
-            _resource_call(target, "resource_remove", "remove", tgt_playlist, track)
+            outcome = _resource_call(target, "resource_remove", "remove", tgt_playlist, track)
+            if outcome is not False:
+                applied_removals.append(track)
+            else:
+                removals_skipped += 1
+                guard = True
     elif (source_provider or source_key) == "spotify":
         # A dry run may still warm proven cross-provider mappings, but there is
         # no write-time provider repair to account for.
         archive.set_links(songs, target.source, new_links)
 
+    executed_removals = applied_removals if execute else removals
     via = ", ".join(f"{n} {m}" for m, n in sorted(methods.items(), key=lambda kv: -kv[1]))
-    counts = fmt_counts(len(additions), len(removals), len(not_found), len(held), deferred)
+    counts = fmt_counts(len(additions), len(executed_removals), len(not_found), len(held), deferred)
     log_summary(
         f"{name}: {counts}  {paint('in ' + fmt_secs(time.monotonic() - started), 'grey')}"
         + (paint(f"  via {via}", "grey") if via else ""),
@@ -1074,13 +1092,13 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
             ),
         })
     return {
-        "clean": execute and not guard, "added": len(additions), "removed": len(removals),
+        "clean": execute and not guard, "added": len(additions), "removed": len(executed_removals),
         "missing": len(not_found), "held": len(held), "deferred": deferred,
         "uncertain_matches": len(uncertain_matches),
         "chronology_replayed": chronology_replayed,
         "removals_skipped": removals_skipped, "held_removals": held_back,
         "change_diagnostics": change_diagnostics,
-        "target_count": len(tgt_tracks) + len(additions) - len(removals),
+        "target_count": len(tgt_tracks) + len(additions) - len(executed_removals),
     }
 
 
@@ -2227,27 +2245,43 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
         for norm in not_found:
             log_miss(f"not on {p.name}: {norm['name']} - {', '.join(norm['artists'])}", tag=p.tag)
 
+        actually_removed_cids = set()
+        actually_removed_count = 0
         if execute:
+            norm_cids = {}
+            for cid, norm in remove_pairs:
+                if id(norm) in safe_ids:
+                    norm_cids.setdefault(id(norm), []).append(cid)
             for norm in safe:
-                _resource_call(
+                outcome = _resource_call(
                     p,
                     "resource_remove",
                     "remove",
                     playlists[p.source],
                     norm["_raw"],
                 )
-            if removed_cids:
-                applied_removals[p.source] = removed_cids
+                if outcome is not False:
+                    actually_removed_cids.update(norm_cids.get(id(norm), []))
+                    actually_removed_count += 1
+                else:
+                    baseline_blocked = True
+                    stats["clean"] = False
+                    stats["removals_skipped"] += 1
+            if actually_removed_cids:
+                applied_removals[p.source] = actually_removed_cids
+        else:
+            actually_removed_cids = removed_cids
+            actually_removed_count = len(safe)
 
         # This provider's membership after the pass = what it has now, minus what
         # we removed. Added tracks re-materialize (under their own canonical) on
         # the next read — recording only what's actually present avoids a stale
         # snapshot ever triggering a phantom removal.
-        new_state[p.source] = cur[p.source] - removed_cids
+        new_state[p.source] = cur[p.source] - actually_removed_cids
 
         stats["added"] += len(additions)
         stats["chronology_replayed"] += chronology_replayed
-        stats["removed"] += len(safe)
+        stats["removed"] += actually_removed_count
         stats["missing"] += len(not_found) + unrepresented
         stats["held"] += len(held)
         stats["deferred"] += deferred

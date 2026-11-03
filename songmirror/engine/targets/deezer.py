@@ -594,10 +594,29 @@ class DeezerTarget(MirrorTarget):
                     self._web.remove(str(playlist["id"]), [target_id])
                 except DeezerWebAuthError as exc:
                     raise TargetAuthError(str(exc)) from exc
+                except (TargetAuthError, TargetTransientError):
+                    raise
+                except RuntimeError as exc:
+                    log_warn(
+                        f"Deezer refused removal of track {target_id} ({exc}); skipping",
+                        tag=self.tag,
+                    )
+                    return False
                 polite_sleep(0.25)
-                return
-            self._request("DELETE", f"playlist/{playlist['id']}/tracks", params={"songs": target_id})
+                return True
+            try:
+                self._request("DELETE", f"playlist/{playlist['id']}/tracks", params={"songs": target_id})
+            except (TargetAuthError, TargetTransientError):
+                raise
+            except RuntimeError as exc:
+                log_warn(
+                    f"Deezer refused removal of track {target_id} ({exc}); skipping",
+                    tag=self.tag,
+                )
+                return False
             polite_sleep(0.25)
+            return True
+        return False
 
     def remove_occurrences(self, playlist, positioned):
         # Deezer deletes by catalog track id rather than entry id. Preserve any
@@ -611,13 +630,42 @@ class DeezerTarget(MirrorTarget):
         for _, track in positioned:
             tid = self.track_id(track)
             flagged[tid] = flagged.get(tid, 0) + 1
+        removed_count = 0
+        unrestored = []
         for tid, count in flagged.items():
             if not tid:
                 continue
-            self.remove(playlist, {"id": tid})
+            removed = self.remove(playlist, {"id": tid})
+            if removed is False:
+                continue
             keep = max(0, totals.get(tid, count) - count)
             if keep:
-                self.add(playlist, [tid] * keep)
+                try:
+                    restored = self.add(playlist, [tid] * keep)
+                    if restored is not None and len(restored) != keep:
+                        raise RuntimeError("Deezer rejected keeper copies")
+                except (TargetAuthError, TargetTransientError):
+                    raise
+                except requests.RequestException as exc:
+                    raise TargetTransientError(
+                        f"Deezer transport failed while restoring keeper copies for track {tid}; "
+                        "refresh the playlist before retrying."
+                    ) from exc
+                except RuntimeError as exc:
+                    unrestored.append(tid)
+                    log_warn(
+                        f"Deezer failed restoring {keep} keeper copy/copies for track {tid}: {exc}",
+                        tag=self.tag,
+                    )
+                    continue
+            removed_count += count
+        if unrestored:
+            raise RuntimeError(
+                "Deezer could not restore keeper copies for track(s) "
+                + ", ".join(unrestored)
+                + "; refresh the playlist to review the partial cleanup."
+            )
+        return removed_count
 
     # Deezer has no positional insert, and its delete addresses the catalog
     # track id, so an ordered repair would have to delete every copy of a song

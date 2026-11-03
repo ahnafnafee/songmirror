@@ -50,6 +50,15 @@ class PlaylistChangedError(PlaylistServiceError):
     status_code = 409
 
 
+def _removal_result(requested, removed):
+    if removed != requested:
+        raise PlaylistServiceError(
+            f"Removed {removed} of {requested} selected tracks. "
+            "The provider rejected the remaining removals; refresh the playlist before retrying."
+        )
+    return {"ok": True, "removed": removed}
+
+
 class _PlainTextParser(HTMLParser):
     """Extract provider-authored description text without rendering markup."""
 
@@ -696,13 +705,16 @@ class PlaylistService:
                 # Invalidate before the first provider write: a later transient
                 # failure can leave a valid partial result that must be reread.
                 self._invalidate_detail(provider_id, playlist_id)
+                removed = 0
                 for selection in selections:
-                    target.remove_occurrence(
+                    outcome = target.remove_occurrence(
                         playlist,
                         str(selection["track_id"]),
                         str(selection["occurrence_id"]),
                     )
-                return {"ok": True, "removed": len(selections)}
+                    if outcome is not False:
+                        removed += 1
+                return _removal_result(len(selections), removed)
 
             tracks = target.playlist_tracks(playlist)
             positioned = []
@@ -719,8 +731,9 @@ class PlaylistService:
                     )
                 positioned.append((position, track))
             self._invalidate_detail(provider_id, playlist_id)
-            target.remove_occurrences(playlist, positioned)
-            return {"ok": True, "removed": len(positioned)}
+            outcome = target.remove_occurrences(playlist, positioned)
+            removed = len(positioned) if outcome is None else outcome
+            return _removal_result(len(positioned), removed)
         except PlaylistServiceError:
             raise
         except Exception as exc:
