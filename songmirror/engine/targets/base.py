@@ -382,6 +382,10 @@ class MirrorTarget:
         staged before old entries are retired, so a failed add never removes the
         playlist's only copy. The actual historical timestamps cannot be set by
         provider APIs; replay preserves their relative order instead.
+
+        Proven rejections of new tracks are returned through the accepted-id
+        contract so callers can report them for review. A rejected copy of an
+        existing entry still rolls back the replay and retains every original.
         """
         ordered_entries = list(ordered_entries)
         before = list(self.playlist_tracks(playlist))
@@ -389,11 +393,12 @@ class MirrorTarget:
             result = self.add_chronology_copies(
                 playlist, [target_id for target_id, _original in ordered_entries]
             )
-            _confirmed, rejected = _split_add_results(
+            confirmed, rejected = _split_add_results(
                 ordered_entries, result, lambda item: item[0]
             )
-            if rejected:
-                labels = ", ".join(str(target_id) for target_id, _original in rejected[:3])
+            rejected_originals = [entry for entry in rejected if entry[1] is not None]
+            if rejected_originals:
+                labels = ", ".join(str(target_id) for target_id, _original in rejected_originals[:3])
                 raise RuntimeError(
                     "provider rejected part of an ordered chronology replay"
                     + (f" ({labels})" if labels else "")
@@ -416,13 +421,15 @@ class MirrorTarget:
                 )
             raise
 
-        originals = [original for _target_id, original in ordered_entries if original is not None]
+        originals = [original for _target_id, original in confirmed if original is not None]
         if originals:
             # Spotify positions remain valid after an append, but its pre-add
             # snapshot token does not. Other adapters simply ignore this field.
             removal_playlist = dict(playlist)
             removal_playlist.pop("snapshot_id", None)
             self.retire_chronology_originals(removal_playlist, originals)
+        if result is not None:
+            return [target_id for target_id, original in confirmed if original is None]
 
     def retire_chronology_originals(self, playlist, positioned):
         """Retire old suffix entries after every staged copy was confirmed."""

@@ -817,13 +817,166 @@ def test_qobuz_only_allows_duplicate_adds_for_chronology_staging(monkeypatch):
 
     calls = []
     target = QobuzTarget.__new__(QobuzTarget)
-    target._request = lambda method, endpoint, params=None: calls.append(params)
+    def request(method, endpoint, params=None):
+        if endpoint == "playlist/get":
+            return {"id": "playlist", "tracks_count": 1}
+        calls.append(params)
+        return {"id": "playlist", "tracks_count": 2}
+    target._request = request
     monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
 
     target.add({"id": "playlist"}, ["ordinary"])
     target.add_chronology_copies({"id": "playlist"}, ["replayed"])
 
     assert [call["no_duplicate"] for call in calls] == ["true", "false"]
+
+
+@pytest.mark.parametrize("unavailable", [True, False])
+def test_qobuz_chronology_requires_an_acknowledged_new_occurrence(monkeypatch, unavailable):
+    from songmirror.engine.targets import qobuz as qobuz_module
+
+    def request(method, endpoint, params=None):
+        if endpoint == "playlist/get":
+            return {"id": "playlist", "tracks_count": 0}
+        if endpoint == "track/get":
+            return {"id": params["track_id"], "streamable": not unavailable}
+        # Qobuz can return HTTP 200 without appending an unavailable track.
+        return {"id": "playlist", "tracks_count": 1 if params["track_ids"] == "available" else 0}
+
+    target = qobuz_module.QobuzTarget.__new__(qobuz_module.QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    if unavailable:
+        assert target.add_chronology_copies({"id": "playlist"}, ["ignored", "available"]) == ["available"]
+    else:
+        with pytest.raises(RuntimeError, match="did not confirm"):
+            target.add_chronology_copies({"id": "playlist"}, ["ignored", "available"])
+
+
+def test_qobuz_add_skips_a_refused_track_and_reports_the_rest(monkeypatch):
+    from songmirror.engine.targets import qobuz as qobuz_module
+    from songmirror.engine.targets.qobuz import QobuzRequestRejected, QobuzTarget
+
+    def request(method, endpoint, params=None):
+        if endpoint == "track/get":
+            return {"id": params["track_id"], "streamable": False}
+        if params["track_ids"] == "gone":
+            raise QobuzRequestRejected(400, "Qobuz returned HTTP 400: track unavailable")
+
+    target = QobuzTarget.__new__(QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    assert target.add({"id": "playlist"}, ["a", "gone", "b"]) == ["a", "b"]
+
+
+@pytest.mark.parametrize("count", [1, 4, 8])
+@pytest.mark.parametrize("prefix", [[], ["accepted"]])
+def test_qobuz_add_raises_for_a_playlist_failure_at_any_batch_size(monkeypatch, count, prefix):
+    from songmirror.engine.targets import qobuz as qobuz_module
+    from songmirror.engine.targets.qobuz import QobuzRequestRejected, QobuzTarget
+
+    def request(method, endpoint, params=None):
+        if endpoint == "track/get":
+            return {"id": params["track_id"], "streamable": True, "displayable": True}
+        if params["track_ids"] == "accepted":
+            return {}
+        raise QobuzRequestRejected(400, "Qobuz returned HTTP 400: bad playlist")
+
+    target = QobuzTarget.__new__(QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    with pytest.raises(QobuzRequestRejected, match="bad playlist"):
+        target.add({"id": "playlist"}, [*prefix, *(str(n) for n in range(count))])
+
+
+def test_qobuz_add_continues_after_five_confirmed_unavailable_tracks(monkeypatch):
+    from songmirror.engine.targets import qobuz as qobuz_module
+
+    def request(method, endpoint, params=None):
+        if endpoint == "track/get":
+            return {"id": params["track_id"], "displayable": False}
+        if params["track_ids"] != "available":
+            raise qobuz_module.QobuzRequestRejected(400, "track unavailable")
+
+    target = qobuz_module.QobuzTarget.__new__(qobuz_module.QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    assert target.add({"id": "playlist"}, ["1", "2", "3", "4", "5", "available"]) == ["available"]
+
+
+def test_qobuz_add_skips_a_rejected_track_missing_from_the_catalog(monkeypatch):
+    from songmirror.engine.targets import qobuz as qobuz_module
+
+    def request(method, endpoint, params=None):
+        if endpoint == "track/get":
+            raise qobuz_module.QobuzRequestRejected(404, "No result matching given argument")
+        if params["track_ids"] == "gone":
+            raise qobuz_module.QobuzRequestRejected(400, "Invalid track id")
+
+    target = qobuz_module.QobuzTarget.__new__(qobuz_module.QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    assert target.add({"id": "playlist"}, ["gone", "available"]) == ["available"]
+
+
+@pytest.mark.parametrize("metadata", [None, {}, {"id": "gone"},
+                                     {"id": "different", "streamable": False}])
+def test_qobuz_add_preserves_a_refusal_without_availability_proof(monkeypatch, metadata):
+    from songmirror.engine.targets import qobuz as qobuz_module
+
+    def request(method, endpoint, params=None):
+        if endpoint == "track/get":
+            return metadata
+        raise qobuz_module.QobuzRequestRejected(400, "unclassified refusal")
+
+    target = qobuz_module.QobuzTarget.__new__(qobuz_module.QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    with pytest.raises(qobuz_module.QobuzRequestRejected, match="unclassified refusal"):
+        target.add({"id": "playlist"}, ["gone"])
+
+
+@pytest.mark.parametrize("error_type", ["auth", "transient", "rejected"])
+def test_qobuz_add_propagates_a_failed_availability_check(monkeypatch, error_type):
+    from songmirror.engine.targets import qobuz as qobuz_module
+
+    failure = {
+        "auth": qobuz_module.TargetAuthError("expired session"),
+        "transient": qobuz_module.TargetTransientError("catalog temporarily unavailable"),
+        "rejected": qobuz_module.QobuzRequestRejected(422, "track lookup failed"),
+    }[error_type]
+
+    def request(method, endpoint, params=None):
+        if endpoint == "track/get":
+            raise failure
+        raise qobuz_module.QobuzRequestRejected(400, "unclassified refusal")
+
+    target = qobuz_module.QobuzTarget.__new__(qobuz_module.QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    with pytest.raises(type(failure)) as error:
+        target.add({"id": "playlist"}, ["gone"])
+    assert error.value is failure
+
+
+def test_qobuz_search_ignores_tracks_the_account_cannot_play():
+    from songmirror.engine.targets.qobuz import QobuzTarget
+
+    target = QobuzTarget.__new__(QobuzTarget)
+    target._request = lambda method, endpoint, params=None: {"tracks": {"items": [
+        {"id": 1, "title": "Ethereal", "streamable": False, "displayable": False},
+        {"id": 2, "title": "Ethereal", "streamable": True, "displayable": True},
+        {"id": 3, "title": "Ethereal"},
+    ]}}
+
+    assert [track["id"] for track in target._search("Ethereal")] == ["2", "3"]
 
 
 @pytest.mark.parametrize("module_name,class_name", [

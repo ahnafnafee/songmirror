@@ -606,6 +606,85 @@ def test_transfer_preserving_order_spends_past_the_write_budget():
     assert result["chronology_replayed"] == 2               # s4 and s5 were already there
 
 
+def _qobuz_transfer_destination(monkeypatch, unavailable):
+    from songmirror.engine.targets import qobuz
+
+    target = qobuz.QobuzTarget.__new__(qobuz.QobuzTarget)
+    rows = [
+        {"id": f"s{index}", "name": f"T{index}", "artists": ["Artist"],
+         "duration_ms": 1, "relationship_id": f"old-{index}"}
+        for index in (4, 5)
+    ]
+    removed = []
+    target.playlist_tracks = lambda _playlist: list(rows)
+    target.resolve = lambda track, _cache: (f"s{track['name'][1:]}", "search")
+    monkeypatch.setattr(qobuz, "polite_sleep", lambda _seconds: None)
+
+    def request(method, endpoint, params=None):
+        if endpoint == "playlist/get":
+            return {"id": params["playlist_id"], "tracks_count": len(rows)}
+        if endpoint == "track/get":
+            track_id = params["track_id"]
+            return {"id": track_id, "streamable": track_id not in unavailable}
+        if endpoint == "playlist/addTracks":
+            track_id = params["track_ids"]
+            if track_id in unavailable:
+                if params["no_duplicate"] == "false":
+                    return {"id": params["playlist_id"], "tracks_count": len(rows)}
+                raise qobuz.QobuzRequestRejected(400, "track unavailable")
+            rows.append({"id": track_id, "name": f"T{track_id[1:]}",
+                         "artists": ["Artist"], "duration_ms": 1,
+                         "relationship_id": f"new-{track_id}"})
+            return {"id": params["playlist_id"], "tracks_count": len(rows)}
+        assert endpoint == "playlist/deleteTracks"
+        relationship_id = params["playlist_track_ids"]
+        removed.append(relationship_id)
+        rows[:] = [row for row in rows if row["relationship_id"] != relationship_id]
+        return {}
+
+    target._request = request
+    return target, rows, removed
+
+
+@pytest.mark.parametrize("preserve_order", [False, True])
+@pytest.mark.parametrize("unavailable", [{"s0", "s2"}, {"s0", "s1", "s2", "s3"}])
+def test_qobuz_transfer_keeps_available_tracks_and_reports_refusals(
+    monkeypatch, preserve_order, unavailable,
+):
+    target, rows, removed = _qobuz_transfer_destination(monkeypatch, unavailable)
+
+    result = transfer(
+        _OrderedSource(), target, {"id": "source"}, {"id": "destination"},
+        {"search": {}, "isrc": {}, "dirty": False},
+        execute=True, max_adds=100, preserve_order=preserve_order,
+    )
+
+    accepted = [f"s{index}" for index in range(4) if f"s{index}" not in unavailable]
+    assert result["completed"] is True
+    assert result["added"] == len(accepted)
+    assert {conflict["name"] for conflict in result["not_found"]} == {
+        f"T{track_id[1:]}" for track_id in unavailable
+    }
+    assert [row["id"] for row in rows] == (
+        [*accepted, "s4", "s5"] if preserve_order else ["s4", "s5", *accepted]
+    )
+    assert removed == (["old-4", "old-5"] if preserve_order else [])
+
+
+def test_qobuz_ordered_transfer_retains_originals_when_a_replay_copy_is_refused(monkeypatch):
+    target, rows, removed = _qobuz_transfer_destination(monkeypatch, {"s4"})
+
+    with pytest.raises(RuntimeError, match="rejected part"):
+        transfer(
+            _OrderedSource(), target, {"id": "source"}, {"id": "destination"},
+            {"search": {}, "isrc": {}, "dirty": False},
+            execute=True, max_adds=100, preserve_order=True,
+        )
+
+    assert [row["relationship_id"] for row in rows] == ["old-4", "old-5"]
+    assert set(removed) == {"new-s0", "new-s1", "new-s2", "new-s3", "new-s5"}
+
+
 class _DeezerChronologySource:
     source = "spotify"
 

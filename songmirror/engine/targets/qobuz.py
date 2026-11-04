@@ -13,6 +13,7 @@ import requests
 
 from ...qobuz_web import parse_web_request
 from ..config import REQUEST_TIMEOUT, polite_sleep, required_env
+from ..logs import log_warn
 from ..matching import normalize_text, romanized, track_key
 from .base import MirrorTarget, TargetAuthError, TargetTransientError
 from .provider_utils import best_candidate, compatible_isrc_candidates, source_playlist_details, title_with_version
@@ -55,6 +56,30 @@ def _normalized_track(track):
 
 def _flag(value):
     return "true" if value else "false"
+
+
+def _available(track):
+    """Qobuz search still lists tracks the account can't play (region or
+    rights). Those can't be added to a playlist, so they never count as a match."""
+    return track.get("streamable") is not False and track.get("displayable") is not False
+
+
+class QobuzRequestRejected(RuntimeError):
+    """Qobuz refused a request with a 4xx that isn't auth or rate limiting."""
+
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+
+
+def _error_message(response):
+    try:
+        body = response.json()
+    except ValueError:
+        return (response.text or "").strip()[:200]
+    if isinstance(body, dict):
+        return str(body.get("message") or body.get("error") or "").strip()
+    return ""
 
 
 class QobuzTarget(MirrorTarget):
@@ -131,7 +156,12 @@ class QobuzTarget(MirrorTarget):
                 raise TargetTransientError(
                     f"Qobuz kept returning HTTP {response.status_code} for {method} {short}"
                 )
-            response.raise_for_status()
+            if response.status_code >= 400:
+                detail = _error_message(response) or response.reason or "no details"
+                raise QobuzRequestRejected(
+                    response.status_code,
+                    f"Qobuz returned HTTP {response.status_code} for {method} {short}: {detail}",
+                )
             body = response.json()
             if isinstance(body, dict) and body.get("code") and body.get("message"):
                 code, message = body.get("code"), body.get("message")
@@ -344,7 +374,8 @@ class QobuzTarget(MirrorTarget):
 
     def _search(self, query, limit=20):
         body = self._request("GET", "catalog/search", params={"query": query, "type": "tracks", "limit": limit})
-        return [_normalized_track(track) for track in ((body.get("tracks") or {}).get("items") or [])]
+        items = (body.get("tracks") or {}).get("items") or []
+        return [_normalized_track(track) for track in items if _available(track)]
 
     def search_candidates(self, query, *, limit=5):
         query = str(query or "").strip()
@@ -433,18 +464,65 @@ class QobuzTarget(MirrorTarget):
         polite_sleep(0.2)
         return best, "search"
 
+    def _track_unavailable(self, target_id):
+        try:
+            track = self._request("GET", "track/get", params={"track_id": str(target_id)})
+        except QobuzRequestRejected as exc:
+            if exc.status == 404:
+                return True
+            raise
+        return (isinstance(track, dict)
+                and self.track_id(track) == str(target_id)
+                and not _available(track))
+
     def _add(self, playlist, target_ids, *, allow_duplicates):
+        """Add tracks one at a time and return the ids Qobuz accepted.
+
+        A 400 skips a track only when a fresh catalog lookup reports it missing
+        or explicitly unavailable. Playlist and unclassified request failures
+        still raise, including when the batch contains only one track. Duplicate
+        staging also checks the returned count: Qobuz can acknowledge a missing
+        track without appending it when no_duplicate is false."""
+        confirmed = []
+        count = None
+        if allow_duplicates:
+            current = self._request("GET", "playlist/get", params={"playlist_id": playlist["id"]})
+            count = current.get("tracks_count") if isinstance(current, dict) else None
+            if (type(count) is not int or count < 0
+                    or str(current.get("id")) != str(playlist["id"])):
+                raise RuntimeError("Qobuz did not confirm the playlist count before chronology replay")
         for target_id in target_ids:
-            self._request(
-                "POST",
-                "playlist/addTracks",
-                params={
-                    "playlist_id": playlist["id"],
-                    "track_ids": str(target_id),
-                    "no_duplicate": "false" if allow_duplicates else "true",
-                },
-            )
+            try:
+                response = self._request(
+                    "POST",
+                    "playlist/addTracks",
+                    params={
+                        "playlist_id": playlist["id"],
+                        "track_ids": str(target_id),
+                        "no_duplicate": "false" if allow_duplicates else "true",
+                    },
+                )
+            except QobuzRequestRejected as exc:
+                if exc.status != 400 or not self._track_unavailable(target_id):
+                    raise
+                log_warn(f"Qobuz refused track {target_id}: {exc}", tag=self.tag)
+            else:
+                written = True
+                if allow_duplicates:
+                    next_count = response.get("tracks_count") if isinstance(response, dict) else None
+                    if (type(next_count) is not int
+                            or str(response.get("id")) != str(playlist["id"])):
+                        raise RuntimeError(f"Qobuz did not confirm the chronology copy of track {target_id}")
+                    if next_count != count + 1:
+                        if next_count != count or not self._track_unavailable(target_id):
+                            raise RuntimeError(f"Qobuz did not confirm the chronology copy of track {target_id}")
+                        written = False
+                        log_warn(f"Qobuz skipped unavailable chronology track {target_id}", tag=self.tag)
+                    count = next_count
+                if written:
+                    confirmed.append(str(target_id))
             polite_sleep(0.3)
+        return confirmed
 
     def add(self, playlist, target_ids):
         return self._add(playlist, target_ids, allow_duplicates=False)
