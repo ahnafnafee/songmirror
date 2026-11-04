@@ -26,6 +26,8 @@ OpenSubsonic's optional ISRC and artist fields are retained when returned. Moder
 
 Playlist additions are appended in source order. Removals address selected positions after a fresh read, so removing one repeated song keeps its other occurrences. Incomplete playlist reads and provider error envelopes stop the operation. A new playlist's requested visibility is set explicitly because server defaults can differ. Saved manual matches for this provider use the server's song IDs.
 
+During bidirectional or authoritative-group sync, a conflicting match can make an ordered repair unsafe. SongMirror then appends other successfully resolved tracks, including older tracks recovered through manual mappings, within the addition cap. Existing entries keep their order, and the disputed match remains deferred for correction in **Mappings**. These recovered tracks appear at the end instead of waiting indefinitely for an exact insertion position.
+
 Environment-managed connections use `SUBSONIC_URL`, `SUBSONIC_USER`, and `SUBSONIC_PASSWORD`. Prefer HTTPS outside a trusted local network. The password is stored in the account's private settings, never returned to the browser, and used to generate a fresh salted authentication token for each request. Custom accounts keep their credentials and resolve caches separate.
 
 ## API references

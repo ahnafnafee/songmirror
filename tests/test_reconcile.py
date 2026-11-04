@@ -5,12 +5,14 @@ decides adds vs removes across providers) and the persistence helpers."""
 import os
 import sqlite3
 import tempfile
+from types import SimpleNamespace
 
 import pytest
 
 from songmirror.engine import archive
 from songmirror.engine.matching import spotify_track_keys, track_key
 from songmirror.engine.targets.base import TargetTransientError, _entry_cids, _merge, reconcile
+from songmirror.engine.targets.subsonic import SubsonicTarget
 
 
 # --- merge: the safety-critical set logic (per-provider prev + cur) ----------
@@ -1527,9 +1529,67 @@ def test_unrelated_catalog_collision_does_not_block_valid_new_songs(max_adds, ex
     conn.close()
 
 
+@pytest.mark.parametrize("execute", [False, True])
+@pytest.mark.parametrize("authority_sources", [None, {"qobuz", "tidal"}])
+def test_subsonic_manual_recovery_progresses_despite_an_unrelated_catalog_collision(
+    monkeypatch, execute, authority_sources,
+):
+    def track(tid, title, date):
+        return dict(id=tid, name=title, isrc=tid.upper(), artists=["Artist"],
+                    duration_ms=180000, added_at=date)
+
+    recovered = track("recovered", "Older song", "2020-01-01T00:00:00Z")
+    conflict = track("conflict", "Another recording", "2021-01-01T00:00:00Z")
+    cutoff = track("cutoff", "Existing song", "2022-01-01T00:00:00Z")
+    rows = [{"id": "cutoff", "title": "Existing song", "artist": "Artist",
+             "duration": 180, "isrc": ["CUTOFF"]}]
+    writes = []
+
+    def call(endpoint, **params):
+        if endpoint == "getPlaylist":
+            return {"playlist": {"id": "test", "songCount": len(rows), "entry": list(rows)}}
+        assert endpoint == "updatePlaylist"
+        assert params == {"playlistId": "test", "songIdToAdd": "recovered"}
+        writes.append(params)
+        rows.append({"id": "recovered", "title": "Older song", "artist": "Artist",
+                     "duration": 180, "isrc": ["RECOVERED"]})
+        return {}
+
+    monkeypatch.setattr("songmirror.engine.targets.subsonic.polite_sleep", lambda *_: None)
+    subsonic = SubsonicTarget(SimpleNamespace(user="listener", call=call))
+    peers = [_ManyPeer(source, [recovered, conflict, cutoff], lambda norm: norm["_raw"]["id"])
+             for source in ("qobuz", "tidal")] + [subsonic]
+    caches = _caches(*(p.source for p in peers))
+    recovered_key = track_key("Older song", "Artist")
+    caches["subsonic"].update(search={recovered_key: "recovered",
+                                      track_key("Another recording", "Artist"): "cutoff"},
+                              manual={recovered_key})
+    playlists = {p.source: {"id": "test", "owner": "listener"} for p in peers}
+    conn = archive.connect(":memory:")
+    try:
+        first = reconcile(peers, "Mix", playlists, caches, conn, execute=execute,
+                          max_adds=200, max_removals=200, authority_sources=authority_sources)
+        assert first["added"] == 1
+        assert first["deferred"] == 1  # Only the conflicting match remains held.
+        assert first["removed"] == first["chronology_replayed"] == 0
+        assert [row["id"] for row in rows] == (["cutoff", "recovered"] if execute else ["cutoff"])
+        if not execute:
+            assert not writes
+            return
+
+        second = reconcile(peers, "Mix", playlists, caches, conn, execute=True,
+                           max_adds=200, max_removals=200, authority_sources=authority_sources)
+        assert second["added"] == second["removed"] == 0
+        assert second["deferred"] == 1
+        assert len(writes) == 1
+    finally:
+        conn.close()
+
+
 @pytest.mark.parametrize("collision", [False, True])
 @pytest.mark.parametrize("can_replay", [False, True])
-def test_older_recoveries_append_without_replay_but_wait_on_unsafe_repairs(collision, can_replay):
+@pytest.mark.parametrize("max_adds", [0, 1, 200])
+def test_older_recoveries_append_when_replay_is_unavailable_or_unsafe(collision, can_replay, max_adds):
     def track(tid, name, date):
         return dict(id=tid, name=name, isrc=tid.upper(), artists=["Artist"],
                     duration_ms=180000, added_at=date)
@@ -1556,13 +1616,15 @@ def test_older_recoveries_append_without_replay_but_wait_on_unsafe_repairs(colli
     peers = [source, *destinations]
     stats = reconcile(peers, "Mix", {p.source: {"id": p.source} for p in peers},
                       _caches(*(p.source for p in peers)), conn, execute=True,
-                      authority_sources={"spotify", "apple"}, max_adds=200, max_removals=200)
+                      authority_sources={"spotify", "apple"}, max_adds=max_adds, max_removals=200)
 
-    expected = ["new"] if can_replay and collision else ["recovered", "new"]
+    expected = ["recovered", "new"][:max_adds]
+    if can_replay and not collision and max_adds < 2:
+        expected = []  # The recovered song plus the existing suffix exceed the cap.
     assert all(peer.added == expected for peer in destinations)
     assert all(peer.removed == [] for peer in peers)
-    assert stats["deferred"] == 6 * (int(collision) + int(can_replay and collision))
-    assert stats["chronology_replayed"] == (6 if can_replay and not collision else 0)
+    assert stats["deferred"] == 6 * (int(collision) + 2 - len(expected))
+    assert stats["chronology_replayed"] == (6 if can_replay and not collision and expected else 0)
     conn.close()
 
 
@@ -2141,7 +2203,14 @@ def test_inferred_isrc_cannot_rebind_a_remembered_hard_identity(tmp_path):
 
 @pytest.mark.parametrize("binding", ["reverse", "remembered"])
 @pytest.mark.parametrize("conflict", ["performer", "duration"])
-def test_conflicting_historical_identity_is_held_without_inventing_a_deletion(tmp_path, binding, conflict):
+@pytest.mark.parametrize("addition_date", ["2010-01-01T00:00:00Z", "2030-01-01T00:00:00Z"])
+def test_conflicting_historical_identity_is_held_without_inventing_a_deletion(
+    tmp_path, binding, conflict, addition_date,
+):
+    class ReplayPeer(_ManyPeer):
+        def replay_chronology(self, playlist, ordered_entries):
+            pytest.fail("A historical identity conflict must not replay existing entries")
+
     conn = archive.connect(str(tmp_path / "historical-conflict.db"))
     source = {"id": "source", "name": "A Song", "artists": ["Original Artist"],
               "artist": "Original Artist", "duration_ms": 180000, "isrc": "ORIGINAL",
@@ -2158,7 +2227,7 @@ def test_conflicting_historical_identity_is_held_without_inventing_a_deletion(tm
         archive.set_identities(conn, "ytmusic", {"cover": "i:ORIGINAL"})
     peers = [_ManyPeer("spotify", [source], lambda _: "source"),
              _ManyPeer("apple", [source], lambda _: "source"),
-             _ManyPeer("ytmusic", [cover], lambda _: "correct")]
+             ReplayPeer("ytmusic", [cover], lambda _: "correct")]
     key = "group:apple,spotify:mix"
     for p in peers:
         archive.set_playlist_state(conn, key, p.source, {"i:ORIGINAL"})
@@ -2171,15 +2240,16 @@ def test_conflicting_historical_identity_is_held_without_inventing_a_deletion(tm
         assert all(not p.added and not p.removed for p in peers)
         assert archive.get_playlist_state(conn, key, "ytmusic") == {"i:ORIGINAL"}
         assert archive.get_pending_removals(conn, key, "ytmusic") == set()
-    # A disputed older match must not disable the provider or replay that row
-    # when the user adds an unrelated newer recording.
-    new = {**source, "id": "new", "name": "New Song", "isrc": "NEW", "added_at": "2030-01-01T00:00:00Z"}
+    # A disputed match must neither replay that row nor block unrelated
+    # additions, including older recoveries that cannot be inserted in order.
+    new = {**source, "id": "new", "name": "New Song", "isrc": "NEW", "added_at": addition_date}
     peers[0]._tracks.append(new)
     stats = reconcile(peers, "Mix", {p.source: {"id": p.source} for p in peers},
                       _caches(*(p.source for p in peers)), conn, execute=True,
                       max_adds=200, max_removals=25, authority_sources={"spotify", "apple"})
     assert peers[-1].added == ["correct"]
     assert not peers[-1].removed
+    assert stats["chronology_replayed"] == 0
     assert "i:NEW" in archive.get_playlist_state(conn, key, "spotify")
     conn.close()
 
