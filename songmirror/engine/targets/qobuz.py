@@ -467,11 +467,10 @@ class QobuzTarget(MirrorTarget):
     def _add(self, playlist, target_ids, *, allow_duplicates):
         """Add tracks one at a time and return the ids Qobuz accepted.
 
-        A 400 for one track (say, one no longer available in the account's
-        region) skips just that track so the caller moves it to Needs review.
-        If nothing has been accepted after several refusals, the problem is the
-        playlist or session rather than the tracks, so the error is raised."""
-        confirmed, refused = [], []
+        A 400 skips a track only when fresh catalog metadata confirms it is
+        unavailable. Playlist and unclassified request failures still raise,
+        including when the requested batch contains only one track."""
+        confirmed = []
         for target_id in target_ids:
             try:
                 self._request(
@@ -486,8 +485,10 @@ class QobuzTarget(MirrorTarget):
             except QobuzRequestRejected as exc:
                 if exc.status != 400:
                     raise
-                refused.append(str(target_id))
-                if not confirmed and len(refused) >= 5:
+                track = self._request("GET", "track/get", params={"track_id": str(target_id)})
+                if (not isinstance(track, dict)
+                        or self.track_id(track) != str(target_id)
+                        or _available(track)):
                     raise
                 log_warn(f"Qobuz refused track {target_id}: {exc}", tag=self.tag)
             else:

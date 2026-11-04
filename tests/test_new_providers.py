@@ -831,6 +831,8 @@ def test_qobuz_add_skips_a_refused_track_and_reports_the_rest(monkeypatch):
     from songmirror.engine.targets.qobuz import QobuzRequestRejected, QobuzTarget
 
     def request(method, endpoint, params=None):
+        if endpoint == "track/get":
+            return {"id": params["track_id"], "streamable": False}
         if params["track_ids"] == "gone":
             raise QobuzRequestRejected(400, "Qobuz returned HTTP 400: track unavailable")
 
@@ -841,19 +843,83 @@ def test_qobuz_add_skips_a_refused_track_and_reports_the_rest(monkeypatch):
     assert target.add({"id": "playlist"}, ["a", "gone", "b"]) == ["a", "b"]
 
 
-def test_qobuz_add_raises_when_every_track_is_refused(monkeypatch):
+@pytest.mark.parametrize("count", [1, 4, 8])
+@pytest.mark.parametrize("prefix", [[], ["accepted"]])
+def test_qobuz_add_raises_for_a_playlist_failure_at_any_batch_size(monkeypatch, count, prefix):
     from songmirror.engine.targets import qobuz as qobuz_module
     from songmirror.engine.targets.qobuz import QobuzRequestRejected, QobuzTarget
 
     def request(method, endpoint, params=None):
+        if endpoint == "track/get":
+            return {"id": params["track_id"], "streamable": True, "displayable": True}
+        if params["track_ids"] == "accepted":
+            return {}
         raise QobuzRequestRejected(400, "Qobuz returned HTTP 400: bad playlist")
 
     target = QobuzTarget.__new__(QobuzTarget)
     target._request = request
     monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
 
-    with pytest.raises(QobuzRequestRejected):
-        target.add({"id": "playlist"}, [str(n) for n in range(8)])
+    with pytest.raises(QobuzRequestRejected, match="bad playlist"):
+        target.add({"id": "playlist"}, [*prefix, *(str(n) for n in range(count))])
+
+
+def test_qobuz_add_continues_after_five_confirmed_unavailable_tracks(monkeypatch):
+    from songmirror.engine.targets import qobuz as qobuz_module
+
+    def request(method, endpoint, params=None):
+        if endpoint == "track/get":
+            return {"id": params["track_id"], "displayable": False}
+        if params["track_ids"] != "available":
+            raise qobuz_module.QobuzRequestRejected(400, "track unavailable")
+
+    target = qobuz_module.QobuzTarget.__new__(qobuz_module.QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    assert target.add({"id": "playlist"}, ["1", "2", "3", "4", "5", "available"]) == ["available"]
+
+
+@pytest.mark.parametrize("metadata", [None, {}, {"id": "gone"},
+                                     {"id": "different", "streamable": False}])
+def test_qobuz_add_preserves_a_refusal_without_availability_proof(monkeypatch, metadata):
+    from songmirror.engine.targets import qobuz as qobuz_module
+
+    def request(method, endpoint, params=None):
+        if endpoint == "track/get":
+            return metadata
+        raise qobuz_module.QobuzRequestRejected(400, "unclassified refusal")
+
+    target = qobuz_module.QobuzTarget.__new__(qobuz_module.QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    with pytest.raises(qobuz_module.QobuzRequestRejected, match="unclassified refusal"):
+        target.add({"id": "playlist"}, ["gone"])
+
+
+@pytest.mark.parametrize("error_type", ["auth", "transient", "rejected"])
+def test_qobuz_add_propagates_a_failed_availability_check(monkeypatch, error_type):
+    from songmirror.engine.targets import qobuz as qobuz_module
+
+    failure = {
+        "auth": qobuz_module.TargetAuthError("expired session"),
+        "transient": qobuz_module.TargetTransientError("catalog temporarily unavailable"),
+        "rejected": qobuz_module.QobuzRequestRejected(404, "track lookup failed"),
+    }[error_type]
+
+    def request(method, endpoint, params=None):
+        if endpoint == "track/get":
+            raise failure
+        raise qobuz_module.QobuzRequestRejected(400, "unclassified refusal")
+
+    target = qobuz_module.QobuzTarget.__new__(qobuz_module.QobuzTarget)
+    target._request = request
+    monkeypatch.setattr(qobuz_module, "polite_sleep", lambda _seconds: None)
+
+    with pytest.raises(type(failure)) as error:
+        target.add({"id": "playlist"}, ["gone"])
+    assert error.value is failure
 
 
 def test_qobuz_search_ignores_tracks_the_account_cannot_play():
