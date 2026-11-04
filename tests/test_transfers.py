@@ -621,17 +621,21 @@ def _qobuz_transfer_destination(monkeypatch, unavailable):
     monkeypatch.setattr(qobuz, "polite_sleep", lambda _seconds: None)
 
     def request(method, endpoint, params=None):
+        if endpoint == "playlist/get":
+            return {"id": params["playlist_id"], "tracks_count": len(rows)}
         if endpoint == "track/get":
             track_id = params["track_id"]
             return {"id": track_id, "streamable": track_id not in unavailable}
         if endpoint == "playlist/addTracks":
             track_id = params["track_ids"]
             if track_id in unavailable:
+                if params["no_duplicate"] == "false":
+                    return {"id": params["playlist_id"], "tracks_count": len(rows)}
                 raise qobuz.QobuzRequestRejected(400, "track unavailable")
             rows.append({"id": track_id, "name": f"T{track_id[1:]}",
                          "artists": ["Artist"], "duration_ms": 1,
                          "relationship_id": f"new-{track_id}"})
-            return {}
+            return {"id": params["playlist_id"], "tracks_count": len(rows)}
         assert endpoint == "playlist/deleteTracks"
         relationship_id = params["playlist_track_ids"]
         removed.append(relationship_id)

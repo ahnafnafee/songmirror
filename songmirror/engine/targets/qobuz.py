@@ -464,16 +464,36 @@ class QobuzTarget(MirrorTarget):
         polite_sleep(0.2)
         return best, "search"
 
+    def _track_unavailable(self, target_id):
+        try:
+            track = self._request("GET", "track/get", params={"track_id": str(target_id)})
+        except QobuzRequestRejected as exc:
+            if exc.status == 404:
+                return True
+            raise
+        return (isinstance(track, dict)
+                and self.track_id(track) == str(target_id)
+                and not _available(track))
+
     def _add(self, playlist, target_ids, *, allow_duplicates):
         """Add tracks one at a time and return the ids Qobuz accepted.
 
-        A 400 skips a track only when fresh catalog metadata confirms it is
-        unavailable. Playlist and unclassified request failures still raise,
-        including when the requested batch contains only one track."""
+        A 400 skips a track only when a fresh catalog lookup reports it missing
+        or explicitly unavailable. Playlist and unclassified request failures
+        still raise, including when the batch contains only one track. Duplicate
+        staging also checks the returned count: Qobuz can acknowledge a missing
+        track without appending it when no_duplicate is false."""
         confirmed = []
+        count = None
+        if allow_duplicates:
+            current = self._request("GET", "playlist/get", params={"playlist_id": playlist["id"]})
+            count = current.get("tracks_count") if isinstance(current, dict) else None
+            if (type(count) is not int or count < 0
+                    or str(current.get("id")) != str(playlist["id"])):
+                raise RuntimeError("Qobuz did not confirm the playlist count before chronology replay")
         for target_id in target_ids:
             try:
-                self._request(
+                response = self._request(
                     "POST",
                     "playlist/addTracks",
                     params={
@@ -483,16 +503,24 @@ class QobuzTarget(MirrorTarget):
                     },
                 )
             except QobuzRequestRejected as exc:
-                if exc.status != 400:
-                    raise
-                track = self._request("GET", "track/get", params={"track_id": str(target_id)})
-                if (not isinstance(track, dict)
-                        or self.track_id(track) != str(target_id)
-                        or _available(track)):
+                if exc.status != 400 or not self._track_unavailable(target_id):
                     raise
                 log_warn(f"Qobuz refused track {target_id}: {exc}", tag=self.tag)
             else:
-                confirmed.append(str(target_id))
+                written = True
+                if allow_duplicates:
+                    next_count = response.get("tracks_count") if isinstance(response, dict) else None
+                    if (type(next_count) is not int
+                            or str(response.get("id")) != str(playlist["id"])):
+                        raise RuntimeError(f"Qobuz did not confirm the chronology copy of track {target_id}")
+                    if next_count != count + 1:
+                        if next_count != count or not self._track_unavailable(target_id):
+                            raise RuntimeError(f"Qobuz did not confirm the chronology copy of track {target_id}")
+                        written = False
+                        log_warn(f"Qobuz skipped unavailable chronology track {target_id}", tag=self.tag)
+                    count = next_count
+                if written:
+                    confirmed.append(str(target_id))
             polite_sleep(0.3)
         return confirmed
 
