@@ -2027,20 +2027,13 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             favorite_check(resource) if favorite_check is not None
             else resource.get("_kind") == "liked_tracks"
         )
-        # Permanently append-only providers must still converge on membership.
-        # Keep this capability separate from the per-pass safety checks below:
-        # a collision on a replay-capable provider still holds older recoveries.
-        preserve_chronology = callable(getattr(p, "replay_chronology", None)) and not is_favorite_resource
+        supports_replay = callable(getattr(p, "replay_chronology", None)) and not is_favorite_resource
+        can_replay = supports_replay and not chronology_collision and not (cur[p.source] & conflicting_cids)
         replay_write_cost = getattr(p, "chronology_replay_write_cost", len)
-        if preserve_chronology and chronology_collision and additions:
-            # Disputed identities prevent suffix replay. Only additions newer
-            # than the current playlist can append without changing chronology.
-            log_warn(
-                f"{p.name}/{name}: holding older recoveries while conflicting matches "
-                "prevent an ordered repair",
-                tag=p.tag,
-            )
-        can_replay = preserve_chronology and not chronology_collision and not (cur[p.source] & conflicting_cids)
+        # A disputed match must not deadlock unrelated, resolved recoveries.
+        # When replay is unsafe, append those additions without touching any
+        # existing occurrence. The conflicting match and removal guards remain
+        # in force; only exact insertion order yields to membership progress.
         additions, chronology_replay, cap_deferred, full_write_cost = _fit_chronology_writes(
             ordered_desired,
             current_by_cid,
@@ -2050,12 +2043,18 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             addition_target_id=lambda item: item[1],
             replay_write_cost=replay_write_cost,
             can_replay=can_replay,
-            preserve_chronology=preserve_chronology,
+            preserve_chronology=can_replay,
             order_evidence=order_evidence,
             position_evidence=position_evidence,
         )
         chronology_replayed = sum(1 for _target_id, original in chronology_replay
                                   if original is not None)
+        if supports_replay and not can_replay and additions:
+            log_warn(
+                f"{p.name}/{name}: conflicting matches prevent an ordered repair; "
+                f"appending {len(additions)} resolved addition(s) without reordering existing tracks",
+                tag=p.tag,
+            )
         if cap_deferred:
             deferred += cap_deferred
             if full_write_cost > max_adds and can_replay:
@@ -2063,12 +2062,6 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                     f"{p.name}/{name}: preserving Recently Added order would require "
                     f"{full_write_cost} ordered writes; --max-adds={max_adds}, "
                     f"deferring {cap_deferred} addition(s)",
-                    tag=p.tag,
-                )
-            elif not can_replay and preserve_chronology:
-                log_warn(
-                    f"{p.name}/{name}: deferring {cap_deferred} addition(s): older playlist gaps "
-                    f"require an ordered repair before they can be filled (write cap {max_adds})",
                     tag=p.tag,
                 )
             else:
