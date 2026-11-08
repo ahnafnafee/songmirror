@@ -397,6 +397,7 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - 增量 - 第一次完整下载后，仅获取新添加的曲目；删除的曲目（及其清空的专辑文件夹）将被修剪。中断的运行将在下一次传递中继续。
 - 最新在先 `.m3u8` — 按添加日期的顺序书写，最新的位于顶部（设置 `LOCAL_MIRROR_ORDER=oldest` 为翻转）。使用`uv run main.py --refresh-local`从现有文件重建封面/标签/mtimes。
 - Jellyfin - Jellyfin 中的播放列表封面会忽略 m3u 旁边的封面文件，因此设置 `JELLYFIN_URL` + `JELLYFIN_API_KEY`，并且每次传递都会通过 Jellyfin API 上传真实的播放列表封面。
+- **Jellyfin 播放列表同步**：从这些 `.m3u8` 文件导入的 Jellyfin 播放列表对同步是只读的，因此以相同名称为目标的同步会跳过该播放列表。如需把其他播放列表直接同步到 Jellyfin，请参阅[Jellyfin](../jellyfin-compatibility.md)。
 - **任意来源，不只是 Spotify**：镜像会读取同步所使用的来源服务。Spotify 歌单仍按目录地址下载；其他来源（包括 Last.fm）按艺人和曲名搜索。
 - **先用你自己的音乐库（真正的 FLAC）**：把 `LOCAL_LIBRARY_DIR` 指向已有的音乐目录树，在那里找到的每首歌都会**按原始格式复制到歌单文件夹**，所以 FLAC 仍是 FLAC。只有本地没有匹配的歌曲才会交给 spotDL。匹配先看 ISRC 标签，再看曲名加艺人，规则与同步引擎完全一致。这里刻意选择复制而非硬链接：镜像会写入修改时间并补全标签，硬链接会改写你的原始文件。留空表示关闭。
 - 音频质量 — 源为 YouTube，因此如果没有 YT Music Premium cookie，上限约为 128–160 kbps。 `LOCAL_MIRROR_FORMAT=opus` 保留 YouTube 的本机流，无需 mp3 重新编码； Premium cookie (`LOCAL_MIRROR_COOKIE_FILE`) 解锁 256 kbps AAC。选择 `flac` 会更改输出容器，但无法将有损源转换为无损音频。 需要真正的无损音频时，请使用 `LOCAL_LIBRARY_DIR`。

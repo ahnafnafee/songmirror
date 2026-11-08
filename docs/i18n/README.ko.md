@@ -397,6 +397,7 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - 증분 — 첫 번째 전체 다운로드 후에는 새로 추가된 트랙만 가져옵니다. 제거된 트랙(및 비어 있는 앨범 폴더)은 정리됩니다. 중단된 실행은 다음 패스에서 계속됩니다.
 - 최신순 `.m3u8` — 날짜가 추가된 순서로 작성되고 최신 항목이 맨 위에 옵니다(뒤집으려면 `LOCAL_MIRROR_ORDER=oldest` 설정). `uv run main.py --refresh-local`를 사용하여 기존 파일에서 표지/태그/시간을 다시 작성하세요.
 - Jellyfin의 재생 목록 커버 — Jellyfin는 m3u 옆의 커버 파일을 무시하므로 `JELLYFIN_URL` + `JELLYFIN_API_KEY`를 설정하고 각 패스는 Jellyfin API를 통해 실제 재생 목록 커버를 업로드합니다.
+- **Jellyfin 재생목록 동기화**: 이 `.m3u8` 파일에서 가져온 Jellyfin 재생목록은 동기화에서 읽기 전용이므로, 같은 이름을 대상으로 하는 동기화는 그 재생목록을 건너뜁니다. 다른 재생목록을 Jellyfin 자체로 동기화하려면 [Jellyfin](../jellyfin-compatibility.md)을 참고하세요.
 - **Spotify만이 아닌 모든 원본**: 미러는 동기화가 원본으로 사용하는 서비스를 읽습니다. Spotify 재생목록은 여전히 카탈로그 주소로 내려받고, 그 밖의 원본(Last.fm 포함)은 아티스트와 곡명으로 검색합니다.
 - **내 라이브러리 우선(진짜 FLAC)**: `LOCAL_LIBRARY_DIR`을 기존 음악 트리로 지정하면 거기서 찾은 트랙이 **원래 형식 그대로 재생목록 폴더로 복사**되므로 FLAC은 FLAC으로 남습니다. 로컬에 일치하는 것이 없는 트랙만 spotDL로 넘어갑니다. 대조는 ISRC 태그를 먼저 보고 그다음 곡명과 아티스트를 보며, 동기화 엔진과 같은 규칙을 씁니다. 하드 링크가 아니라 복사를 택한 것은 의도적입니다. 미러는 수정 시각을 기록하고 태그를 채우는데, 하드 링크라면 원본 파일을 고쳐 버립니다. 비워 두면 꺼집니다.
 - 오디오 품질 — 소스는 YouTube이므로 YT Music Premium 쿠키가 없으면 최대치는 ~128~160kbps입니다. `LOCAL_MIRROR_FORMAT=opus`는 mp3 재인코딩 없이 YouTube의 기본 스트림을 유지합니다. Premium 쿠키(`LOCAL_MIRROR_COOKIE_FILE`)는 256kbps AAC를 잠금 해제합니다. `flac`를 선택하면 출력 컨테이너가 변경되지만 손실이 있는 소스를 무손실 오디오로 바꿀 수는 없습니다. 진짜 무손실 음원이 필요하면 `LOCAL_LIBRARY_DIR`을 사용하세요.
