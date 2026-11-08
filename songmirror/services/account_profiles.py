@@ -72,7 +72,7 @@ PROVIDER_KEYS = {
         "LASTFM_SESSION_KEY", "LASTFM_CACHE_FILE",
         "LASTFM_AUTH_PENDING",
     },
-    "jellyfin": {"JELLYFIN_URL", "JELLYFIN_API_KEY", "JELLYFIN_USER_ID"},
+    "jellyfin": {"JELLYFIN_URL", "JELLYFIN_API_KEY", "JELLYFIN_USER_ID", "JELLYFIN_CACHE_FILE"},
     "listenbrainz": {"LISTENBRAINZ_USER", "LISTENBRAINZ_TOKEN", "LISTENBRAINZ_CACHE_FILE"},
     "subsonic": {"SUBSONIC_URL", "SUBSONIC_USER", "SUBSONIC_PASSWORD", "SUBSONIC_CACHE_FILE"},
 }
@@ -108,6 +108,7 @@ _FILE_DEFAULTS = {
     "lastfm": {"LASTFM_CACHE_FILE": "lastfm_resolve_cache.json"},
     "listenbrainz": {"LISTENBRAINZ_CACHE_FILE": "listenbrainz_resolve_cache.json"},
     "subsonic": {"SUBSONIC_CACHE_FILE": "subsonic_resolve_cache.json"},
+    "jellyfin": {"JELLYFIN_CACHE_FILE": "jellyfin_resolve_cache.json"},
 }
 
 _ACTIVE_SPOTIFY_PROFILE: str | None = None

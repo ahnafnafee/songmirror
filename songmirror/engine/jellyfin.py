@@ -55,17 +55,29 @@ def auth_headers(key):
 
 def get_json(url, key, path, *, params=None, timeout=30):
     """Authenticated JSON read with actionable errors and no token/URL echo."""
+    return _call("get", url, key, path, params=params, timeout=timeout)
+
+
+def send(url, key, method, path, *, params=None, json=None):
+    """Authenticated write. Returns the JSON body, or {} for an empty success."""
+    return _call(method, url, key, path, params=params, json=json)
+
+
+def _call(method, url, key, path, *, params=None, json=None, timeout=30):
+    extra = {"json": json} if json is not None else {}
     try:
-        response = requests.get(url + path, headers=auth_headers(key),
-                                params=params, timeout=timeout)
+        response = getattr(requests, method)(url + path, headers=auth_headers(key),
+                                             params=params, timeout=timeout, **extra)
         response.raise_for_status()
+        if method != "get" and (response.status_code == 204 or not response.content):
+            return {}
         data = response.json()
     except requests.HTTPError as exc:
         code = exc.response.status_code if exc.response is not None else None
         if code in (401, 403):
             detail = "Jellyfin rejected access. Check the API key and user permissions in Accounts."
         elif code == 404:
-            detail = "Jellyfin could not find this endpoint. Check the server URL, base path, and optional User ID in Accounts."
+            detail = "Jellyfin could not find this endpoint or playlist. Check the server URL, base path, and User ID in Accounts."
         else:
             detail = f"Jellyfin returned HTTP {code}. Retry after checking the server."
         raise JellyfinError(detail) from exc
@@ -80,7 +92,7 @@ def get_json(url, key, path, *, params=None, timeout=30):
     return data
 
 
-def _playlist_items(url, key, uid):
+def _playlist_items(url, key, uid, *, fields=None):
     """Read every page using the current /Items endpoint and optional user."""
     start, seen = 0, set()
     while True:
@@ -89,6 +101,8 @@ def _playlist_items(url, key, uid):
                   "EnableTotalRecordCount": "true"}
         if uid:
             params["UserId"] = uid
+        if fields:
+            params["Fields"] = fields
         data = get_json(url, key, "/Items", params=params)
         items = data.get("Items")
         if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
@@ -244,9 +258,9 @@ def push_covers(playlists):
 
 def list_playlists(*, config=None):
     """[{id, name, count, image}] of playlists on the Jellyfin server, for the
-    web Browse view. Read-only — Jellyfin isn't a sync target, so it's not in the
-    targets registry; this lists what's there. Empty list if unconfigured;
-    configured failures raise JellyfinError so Browse can offer a retry."""
+    web Browse view. It works without a User ID, which the sync target needs.
+    Empty list if unconfigured; configured failures raise JellyfinError so
+    Browse can offer a retry."""
     values = os.environ if config is None else config
     url, key = values.get("JELLYFIN_URL"), values.get("JELLYFIN_API_KEY")
     if not (url and key):

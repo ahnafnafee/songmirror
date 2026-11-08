@@ -229,7 +229,7 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
     steps: [<>{t("Enter the server URL and your Subsonic username and password. In Docker, use a server address the container can reach.")}</>],
   },
   jellyfin: {
-    intro: t("Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key."),
+    intro: t("Connect Jellyfin to sync playlists with your music library and push playlist cover art. You need the server URL, an API key, and a User ID."),
     steps: [
       <>
         <Trans i18nKey={"<strong1>Server URL</strong1>: where Jellyfin runs, e.g. <code2/>. If this app runs in Docker, use <code3/> — inside the container <code4/> is the container itself, not your host."} components={{ strong1: <strong />, code2: <Code>http://localhost:8096</Code>, code3: <Code>http://host.docker.internal:8096</Code>, code4: <Code>localhost</Code> }} />
@@ -241,7 +241,7 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
         <Trans i18nKey={"Click <strong1>+</strong1>, name the key “SongMirror”, and copy it."} components={{ strong1: <strong /> }} />
       </>,
       <>
-        <Trans i18nKey={"Paste the URL and key below; <strong1>User ID</strong1> is optional."} components={{ strong1: <strong /> }} />
+        <Trans i18nKey={"Paste the URL and key below. For playlist sync, open <strong1>Dashboard → Users</strong1>, select your user, and copy the <code2/> value from the address bar into <strong3>User ID</strong3>."} components={{ strong1: <strong />, code2: <Code>userId</Code>, strong3: <strong /> }} />
       </>,
     ],
   },

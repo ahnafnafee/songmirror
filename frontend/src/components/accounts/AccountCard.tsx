@@ -26,7 +26,7 @@ const SERVICE_BLURBS: Record<string, string> = {
   get lastfm() { return t("Reads your listening history. Authorize it to read a private profile and love tracks.") },
   get listenbrainz() { return t("Read loved recordings and playlists by username; add a user token to receive them.") },
   get subsonic() { return t("Syncs playlists and starred songs already stored on your music server.") },
-  get jellyfin() { return t("Optional. Pushes real playlist cover art to your Jellyfin server.") },
+  get jellyfin() { return t("Syncs playlists with music already in your Jellyfin library and can push playlist cover art.") },
 }
 
 const AUTH_KIND_LABELS: Record<AuthKind, string> = {

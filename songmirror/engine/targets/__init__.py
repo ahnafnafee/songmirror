@@ -21,6 +21,7 @@ from .base import (
     reconcile,
 )
 from .deezer import DeezerTarget
+from .jellyfin import JellyfinTarget
 from .lastfm import LastfmTarget
 from .listenbrainz import ListenBrainzTarget
 from .subsonic import SubsonicTarget
@@ -29,7 +30,7 @@ from .spotify_target import SpotifyTarget
 from .tidal import TidalTarget
 from . import ytmusic
 
-__all__ = ["AppleMusicTarget", "AmazonMusicTarget", "DeezerTarget", "LastfmTarget",
+__all__ = ["AppleMusicTarget", "AmazonMusicTarget", "DeezerTarget", "JellyfinTarget", "LastfmTarget",
            "ListenBrainzTarget", "SubsonicTarget",
            "QobuzTarget",
            "SpotifyTarget", "TidalTarget", "MirrorTarget", "TargetAuthError",
@@ -99,12 +100,14 @@ _REGISTRY = {
         ListenBrainzTarget, "ListenBrainz"),
     "subsonic": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(
         SubsonicTarget, "Navidrome / Subsonic"),
+    "jellyfin": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(
+        JellyfinTarget, "Jellyfin"),
 }
 # ISRC-rich providers first: they seed cross-provider identity for the rest.
 # History sources come last because their reads may carry no ISRC, so their
 # metadata matching must not pre-empt a provider with catalog identity.
 _SOURCE_ORDER = ["spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
-                 "subsonic", "lastfm", "listenbrainz"]
+                 "subsonic", "jellyfin", "lastfm", "listenbrainz"]
 
 # The same providers as _REGISTRY, by class rather than by builder, for the
 # class-level facts a caller needs WITHOUT credentials (where the resolution
@@ -122,6 +125,7 @@ _CLASSES = {
     "lastfm": LastfmTarget,
     "listenbrainz": ListenBrainzTarget,
     "subsonic": SubsonicTarget,
+    "jellyfin": JellyfinTarget,
 }
 
 
@@ -371,8 +375,8 @@ def build_one(provider_id, opts, sp=None, *, sync_peer=False, songs=None):
 
 def is_peer(provider_id, opts=None):
     """Whether a provider is a sync/transfer peer — i.e. has a MirrorTarget that
-    can read and write tracks. False for browse/output-only services like
-    Jellyfin, which the download mirror feeds instead of track-level writes."""
+    can read and write playlist tracks. False for a service with no playlists
+    (Last.fm) and for an unknown provider id."""
     profiles = _profiles(opts) if opts is not None else None
     provider = profiles.provider_of(provider_id) if profiles is not None else provider_id
     return provider in _REGISTRY and playlists_for(provider_id, opts)

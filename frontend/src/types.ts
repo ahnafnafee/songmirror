@@ -46,17 +46,15 @@ export interface Account {
   state: AccountState
   detail: string | null
   /** Whether this service can be a sync/transfer peer (reads and writes tracks).
-   * False for browse-only services like Jellyfin, which the download mirror
-   * feeds, and for history services like Last.fm, which have no playlists to
-   * write. The transfer pickers filter on this. */
+   * False for history services like Last.fm, which have no playlists to write.
+   * The transfer pickers filter on this, then on the account's capabilities. */
   transferable: boolean
   /** Whether the provider has playlists at all. False for Last.fm, which still
    * contributes read-only collections as a sync source and can receive loves,
    * so the sync wizard offers it while never offering it a playlist. */
   supports_playlists?: boolean
-  /** Whether the provider can supply tracks to a sync. This separates the two
-   * kinds of non-peer: Last.fm is input-only and readable, while Jellyfin is
-   * output-only and is fed by the download mirror rather than read from. */
+  /** Whether the provider can supply tracks to a sync. True for every peer and
+   * for Last.fm, which is input-only but readable. */
   source_capable?: boolean
   /** Where the provider must redirect back to, for `oauth_redirect` connectors.
    * Last.fm asks for this while its API application is being registered, which

@@ -64,6 +64,8 @@ def test_connection_browse_counts_and_cover_support_old_and_new_auth(
             return response(url, {}, 401)
         if url == server + "/System/Info":
             return response(url, {"Id": "server-id", "Version": version})
+        if url == server + f"/Users/{uid}":
+            return response(url, {"Id": uid})
         assert url == server + "/Items"
         assert params.get("UserId", "") == uid
         if params["IncludeItemTypes"] == "Audio":
@@ -93,7 +95,8 @@ def test_connection_browse_counts_and_cover_support_old_and_new_auth(
         assert result.status_code == 200
         assert result.json()["state"] == "connected"
         assert result.json()["capabilities"]["library_read"] is True
-        assert result.json()["capabilities"]["library_write"] is False
+        # Playlist writes need the User ID that Jellyfin assigns playlists to.
+        assert result.json()["capabilities"]["library_write"] is bool(uid)
         result = client.get("/api/playlists", params={"provider": "profile_default_jellyfin"})
         assert result.status_code == 200
         rows = result.json()

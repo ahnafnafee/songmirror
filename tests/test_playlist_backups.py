@@ -408,7 +408,7 @@ def test_playlist_backup_api_configures_runs_and_downloads_latest(
             json={"format": "csv"},
         ).status_code == 422
         assert client.put(
-            "/api/playlist-backups/jellyfin",
+            "/api/playlist-backups/lastfm",
             json={},
         ).status_code == 422
         assert client.delete("/api/playlist-backups/spotify").json() == {"ok": True}
