@@ -528,8 +528,6 @@
   "Loading {{accountName}} playlists…": "Memuat daftar putar {{accountName}}…",
   "Loading…": "Memuat…",
   "Local backup": "Cadangan lokal",
-  "Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.": "Unduhan lokal + sampul Jellyfin saat ini memerlukan Spotify sebagai otoritas pemesanan, jadi unduhan tersebut akan dilewati.",
-  "Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.": "Unduhan lokal + sampul Jellyfin saat ini memerlukan Spotify sebagai sumbernya, jadi unduhan tersebut akan dilewati.",
   "Locations": "Lokasi",
   "Make the new playlist public": "Jadikan playlist baru publik",
   "Make the playlist public": "Jadikan playlist publik",

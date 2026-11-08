@@ -289,7 +289,7 @@ Bir **Kaynakları birleştir** görevi, bir veya daha fazla açık çalma listes
 - **Birlik açısından güvenli kaldırmalar** — bir hedef şarkı yalnızca tam bir geçişin tüm kurucu kaynaklarda bulunmadığını tespit ettiğinde kaldırılabilir. Başarısız, kesilmiş, hatalı biçimlendirilmiş, kullanılamayan veya bilinemeyecek kadar boş bir kaynak, bu geçişe ilişkin tüm kaldırma işlemlerini devre dışı bırakırken, okunabilir kaynaklardan güvenli eklemeler devam edebilir.
 - **Varsayılan olarak yalnızca ekle** — yalnızca hedefteki tüm parçaları korumak için Her kaynakta olmayan parçaları kaldır seçeneğini kapalı bırakın. Açıldığında, tam okuma koruması geçtikten sonra normal geçiş başına çıkarma kapağı devreye girer.
 
-Birleştirme işleri şu anda tek bir sağlayıcı oynatma listesini hedefliyor; ayrı Spotify-led yerel indirme/Jellyfin aynası toplu bir iş için mevcut değildir.
+Birleştirme işleri şu anda tek bir sağlayıcı oynatma listesini hedefliyor; ayrı yerel indirme/Jellyfin aynası toplu bir iş için mevcut değildir.
 
 <a id="authoritative-groups"></a>
 

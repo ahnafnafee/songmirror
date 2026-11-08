@@ -528,8 +528,6 @@
   "Loading {{accountName}} playlists…": "{{accountName}} プレイリストをロード中…",
   "Loading…": "読み込み中…",
   "Local backup": "ローカルバックアップ",
-  "Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.": "ローカル ダウンロード + Jellyfin カバーは現在、注文権限として Spotify を必要とするため、スキップされます。",
-  "Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.": "ローカル ダウンロード + Jellyfin カバーは現在、ソースとして Spotify を必要とするため、スキップされます。",
   "Locations": "の場所",
   "Make the new playlist public": "新しいプレイリストを公開する",
   "Make the playlist public": "プレイリストを公開する",

@@ -289,7 +289,7 @@ Pekerjaan Gabungkan sumber menggabungkan satu atau lebih daftar putar eksplisit 
 - Penghapusan yang aman bagi serikat pekerja — jalur tujuan hanya dapat dihapus jika izin lengkap tidak menemukannya di setiap sumber konstituen. Sumber yang gagal, terpotong, salah format, tidak tersedia, atau kosong tanpa diketahui akan menonaktifkan setiap penghapusan pass tersebut, sementara penambahan aman dari sumber yang dapat dibaca dapat dilanjutkan.
 - Hanya tambahkan secara default — biarkan Hapus trek yang tidak ada dari setiap sumber nonaktif untuk menyimpan semua trek yang hanya tujuan. Mengaktifkannya akan masuk ke dalam batas pelepasan normal per lintasan setelah pelindung baca lengkap lolos.
 
-Penggabungan pekerjaan saat ini menargetkan satu playlist penyedia; unduhan lokal terpisah yang dipimpin Spotify/mirror Jellyfin tidak tersedia untuk pekerjaan agregat.
+Penggabungan pekerjaan saat ini menargetkan satu playlist penyedia; mirror unduhan lokal/Jellyfin yang terpisah tidak tersedia untuk pekerjaan agregat.
 
 <a id="authoritative-groups"></a>
 

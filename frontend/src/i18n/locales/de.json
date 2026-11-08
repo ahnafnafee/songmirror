@@ -528,8 +528,6 @@
   "Loading {{accountName}} playlists…": "{{accountName}}-Wiedergabelisten werden geladen…",
   "Loading…": "Wird geladen…",
   "Local backup": "Lokale Sicherung",
-  "Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.": "Lokale Downloads + Jellyfin-Cover erfordern derzeit Spotify als Bestellautorität, daher werden sie übersprungen.",
-  "Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.": "Lokale Downloads + Jellyfin-Cover erfordern derzeit Spotify als Quelle, daher werden sie übersprungen.",
   "Locations": "Standorte",
   "Make the new playlist public": "Neue Playlist öffentlich machen",
   "Make the playlist public": "Playlist öffentlich machen",

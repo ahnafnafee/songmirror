@@ -548,8 +548,6 @@
   "Loading {{accountName}} playlists…": "جارٍ تحميل قوائم التشغيل {{accountName}}...",
   "Loading…": "جار التحميل...",
   "Local backup": "النسخ الاحتياطي المحلي",
-  "Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.": "تتطلب التنزيلات المحلية + أغلفة Jellyfin حاليًا Spotify كمرجع للطلب، لذلك سيتم تخطيها.",
-  "Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.": "تتطلب التنزيلات المحلية + أغلفة Jellyfin حاليًا Spotify كمصدر، لذلك سيتم تخطيها.",
   "Locations": "المواقع",
   "Make the new playlist public": "اجعل قائمة التشغيل الجديدة عامة",
   "Make the playlist public": "اجعل قائمة التشغيل عامة",

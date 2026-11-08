@@ -412,7 +412,6 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
   }
 
   const syncPeers = syncCandidates(accounts)
-  const jellyfinConnected = accounts.some((a) => a.provider === 'jellyfin' && a.state === 'connected')
 
   // One-way uses this as its source of truth. In group mode it is the order
   // authority: playlist names and sequence follow it, while membership can be
@@ -426,8 +425,6 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     authorities: form.authorities,
   })
   if (form.liked_tracks) lockedProviderIds.add(syncSource)
-  const nonSpotifySourceConflict =
-    form.mode !== 'nway' && sourceAccount?.provider !== 'spotify' && (form.download || jellyfinConnected)
 
   const enabledProviders = enabledProvidersOf({ providers: form.providers }, syncPeers)
   // Which participants can actually write their own liked collection. Last.fm
@@ -817,12 +814,6 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                       />
                     ))}
                   </div>
-                  {nonSpotifySourceConflict && (
-                    <p className="flex items-start gap-1.5 text-xs leading-relaxed text-text-3">
-                      <LuInfo className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                      {t("Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.")}
-                    </p>
-                  )}
                 </div>
               )}
 
@@ -876,13 +867,6 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                       </p>
                     )}
                   </div>
-
-                  {nonSpotifySourceConflict && (
-                    <p className="flex items-start gap-1.5 text-xs leading-relaxed text-text-3">
-                      <LuInfo className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                      {t("Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.")}
-                    </p>
-                  )}
                 </div>
               )}
             </>

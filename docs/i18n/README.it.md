@@ -289,7 +289,7 @@ Un lavoro Unisci origini combina una o più playlist esplicite in una destinazio
 - Rimozioni a tutela dell'Unione: un percorso di destinazione può essere rimosso solo quando un passaggio completo lo trova assente da ogni fonte costituente. Una fonte non riuscita, troncata, non valida, non disponibile o inconoscibilmente vuota disabilita ogni rimozione per quel passaggio, mentre le aggiunte sicure da fonti leggibili possono continuare.
 - Solo aggiunta per impostazione predefinita: lascia disattivata l'opzione Rimuovi tracce da ogni origine per mantenere tutte le tracce solo di destinazione. Accendendolo si attiva il normale limite di rimozione per passaggio dopo che la protezione di lettura completa è passata.
 
-Unisci i lavori attualmente hanno come target la playlist di un fornitore; il mirror separato per il download locale/Jellyfin con Spotify non è disponibile per un processo aggregato.
+Unisci i lavori attualmente hanno come target la playlist di un fornitore; il mirror separato per il download locale/Jellyfin non è disponibile per un processo aggregato.
 
 <a id="authoritative-groups"></a>
 

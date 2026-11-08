@@ -528,8 +528,6 @@
   "Loading {{accountName}} playlists…": "Đang tải danh sách phát {{accountName}}…",
   "Loading…": "Đang tải…",
   "Local backup": "Sao lưu cục bộ",
-  "Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.": "Bản tải xuống cục bộ + bản cover Jellyfin hiện yêu cầu Spotify làm cơ quan quản lý đơn hàng nên chúng sẽ bị bỏ qua.",
-  "Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.": "Các bản tải xuống cục bộ + bìa Jellyfin hiện yêu cầu Spotify làm nguồn nên chúng sẽ bị bỏ qua.",
   "Locations": "Địa điểm",
   "Make the new playlist public": "Đặt danh sách phát mới ở chế độ công khai",
   "Make the playlist public": "Đặt danh sách phát ở chế độ công khai",

@@ -289,7 +289,7 @@ Công việc Hợp nhất nguồn kết hợp một hoặc nhiều danh sách ph
 - Xóa an toàn theo liên minh - một bản nhạc đích chỉ có thể bị xóa khi một đường chuyền hoàn chỉnh không tìm thấy nó trong mọi nguồn cấu thành. Nguồn bị lỗi, bị cắt bớt, không đúng định dạng, không khả dụng hoặc không thể xác định được sẽ vô hiệu hóa mọi thao tác xóa đối với thẻ đó, trong khi các bổ sung an toàn từ các nguồn có thể đọc được có thể tiếp tục.
 - Theo mặc định, chỉ nối thêm — tắt Xóa bản nhạc khỏi mọi nguồn để giữ lại tất cả các bản nhạc chỉ đích. Việc bật nó sẽ chuyển sang giới hạn loại bỏ mỗi lần vượt qua thông thường sau khi bộ bảo vệ đọc hoàn chỉnh đi qua.
 
-Hợp nhất các công việc hiện nhắm mục tiêu vào một danh sách phát của nhà cung cấp; bản sao tải xuống cục bộ/Jellyfin riêng biệt do Spotify dẫn đầu không có sẵn cho công việc tổng hợp.
+Hợp nhất các công việc hiện nhắm mục tiêu vào một danh sách phát của nhà cung cấp; bản sao tải xuống cục bộ/Jellyfin riêng biệt không có sẵn cho công việc tổng hợp.
 
 <a id="authoritative-groups"></a>
 

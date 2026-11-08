@@ -289,7 +289,7 @@ Une tâche Fusionner les sources combine une ou plusieurs listes de lecture expl
 - Suppressions sécurisées pour l'Union : une piste de destination ne peut être supprimée que lorsqu'un passage complet la trouve absente de chaque source constitutive. Une source échouée, tronquée, mal formée, indisponible ou vide de manière inconnaissable désactive chaque suppression pour cette passe, tandis que les ajouts sécurisés à partir de sources lisibles peuvent continuer.
 - Ajout uniquement par défaut : laissez Supprimer les pistes absentes de chaque source désactivée pour conserver toutes les pistes de destination uniquement. L'activer permet d'activer le capuchon de suppression normal par passage après le passage de la garde en lecture complète.
 
-Les tâches de fusion ciblent actuellement une liste de lecture de fournisseur ; le miroir séparé de téléchargement local/Jellyfin dirigé par Spotify n'est pas disponible pour une tâche agrégée.
+Les tâches de fusion ciblent actuellement une liste de lecture de fournisseur ; le miroir séparé de téléchargement local/Jellyfin n'est pas disponible pour une tâche agrégée.
 
 <a id="authoritative-groups"></a>
 

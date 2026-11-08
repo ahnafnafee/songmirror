@@ -289,7 +289,7 @@ Ein Auftrag zum Zusammenführen von Quellen kombiniert eine oder mehrere explizi
 - Unionssichere Entfernungen – eine Zielspur kann nur entfernt werden, wenn bei einem vollständigen Durchgang festgestellt wird, dass sie in allen Bestandteilen fehlt. Eine fehlgeschlagene, abgeschnittene, fehlerhafte, nicht verfügbare oder unerkennbar leere Quelle deaktiviert jede Entfernung für diesen Durchgang, während sichere Hinzufügungen aus lesbaren Quellen weiterhin möglich sind.
 - Standardmäßig nur „Nur anhängen“ – lassen Sie „Von jeder Quelle entfernte Titel entfernen“ deaktiviert, um alle Nur-Ziel-Titel beizubehalten. Durch Einschalten wird die normale Entfernungskappe pro Durchgang aktiviert, nachdem der Vollleseschutz bestanden wurde.
 
-Merge-Jobs zielen derzeit auf eine Playlist eines Anbieters ab; Der separate Spotify-geführte lokale Download/Jellyfin-Spiegel ist für einen Sammelauftrag nicht verfügbar.
+Merge-Jobs zielen derzeit auf eine Playlist eines Anbieters ab; Der separate lokale Download/Jellyfin-Spiegel ist für einen Sammelauftrag nicht verfügbar.
 
 <a id="authoritative-groups"></a>
 

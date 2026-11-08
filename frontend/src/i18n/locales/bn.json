@@ -528,8 +528,6 @@
   "Loading {{accountName}} playlists…": "{{accountName}} প্লেলিস্ট লোড হচ্ছে...",
   "Loading…": "লোড হচ্ছে...",
   "Local backup": "স্থানীয় ব্যাকআপ",
-  "Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.": "স্থানীয় ডাউনলোড + Jellyfin কভারগুলির জন্য বর্তমানে অর্ডার কর্তৃপক্ষ হিসাবে Spotify প্রয়োজন, তাই সেগুলি এড়িয়ে যাবে৷",
-  "Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.": "স্থানীয় ডাউনলোড + Jellyfin কভারগুলির জন্য বর্তমানে উৎস হিসাবে Spotify প্রয়োজন, তাই সেগুলি বাদ দেওয়া হবে৷",
   "Locations": "অবস্থান",
   "Make the new playlist public": "নতুন প্লেলিস্টটি পাবলিক করুন",
   "Make the playlist public": "প্লেলিস্টটি পাবলিক করুন",

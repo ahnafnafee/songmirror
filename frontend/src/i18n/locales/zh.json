@@ -528,8 +528,6 @@
   "Loading {{accountName}} playlists…": "正在加载 {{accountName}} 播放列表...",
   "Loading…": "加载中...",
   "Local backup": "本地备份",
-  "Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.": "本地下载+Jellyfin封面目前需要Spotify作为订购权限，因此将被跳过。",
-  "Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.": "本地下载 + Jellyfin 封面目前需要 Spotify 作为源，因此将被跳过。",
   "Locations": "地点",
   "Make the new playlist public": "将新播放列表设为公开",
   "Make the playlist public": "将播放列表设为公开",

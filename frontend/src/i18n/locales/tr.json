@@ -528,8 +528,6 @@
   "Loading {{accountName}} playlists…": "{{accountName}} çalma listeleri yükleniyor…",
   "Loading…": "Yükleniyor…",
   "Local backup": "Yerel yedekleme",
-  "Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.": "Yerel indirmeler ve Jellyfin kapakları şu anda şarkı sıralamasını belirleyen ana servis olarak Spotify'ı gerektirir, bu nedenle atlanacak.",
-  "Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.": "Yerel indirmeler ve Jellyfin kapakları şu anda kaynak olarak Spotify'ı gerektirir, bu nedenle atlanacak.",
   "Locations": "Konumlar",
   "Make the new playlist public": "Yeni çalma listesini herkese açık yap",
   "Make the playlist public": "Çalma listesini herkese açık yap",

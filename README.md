@@ -289,7 +289,7 @@ A **Merge sources** job combines one or more explicit playlists into one chosen 
 - **Union-safe removals** — a destination track can be removed only when a complete pass finds it absent from every constituent source. A failed, truncated, malformed, unavailable, or unknowably empty source disables every removal for that pass, while safe additions from readable sources may continue.
 - **Append-only by default** — leave **Remove tracks absent from every source** off to keep all destination-only tracks. Turning it on opts into the normal per-pass removal cap after the complete-read guard passes.
 
-Merge jobs currently target one provider playlist; the separate Spotify-led local download/Jellyfin mirror is not available for an aggregate job.
+Merge jobs currently target one provider playlist; the separate local download/Jellyfin mirror is not available for an aggregate job.
 
 <a id="authoritative-groups"></a>
 

@@ -2871,21 +2871,12 @@ async function main() {
       console.log(`${appleSourceSelected === 'true' ? 'ok        ' : 'FAIL      '} Source of truth defaults to the job's saved source (aria-checked="${appleSourceSelected}")`)
       if (appleSourceSelected !== 'true') results.push({ label: 'wizard source default', overflow: true })
 
-      const conflictNoteVisible = await page.getByText(/currently require Spotify as the source/, { exact: false }).isVisible()
-      console.log(`${conflictNoteVisible ? 'ok        ' : 'FAIL      '} Non-Spotify source + Jellyfin connected shows the conflict note`)
-      if (!conflictNoteVisible) results.push({ label: 'wizard source conflict note', overflow: true })
+      // Downloads and Jellyfin covers follow any source, so no Spotify-only note.
+      const noSpotifyOnlyNote = (await page.getByText(/require Spotify as the/, { exact: false }).count()) === 0
+      console.log(`${noSpotifyOnlyNote ? 'ok        ' : 'FAIL      '} Non-Spotify source + Jellyfin connected shows no Spotify-only download note`)
+      if (!noSpotifyOnlyNote) results.push({ label: 'wizard stale Spotify-only note', overflow: true })
       await checkOverflow(page, 'Wizard Direction with source picker @ 1280', results)
       await shot(page, 'wizard-source-of-truth')
-
-      // Switching the source back to Spotify clears the conflict note.
-      const spotifySourceChip = page.getByRole('radio', { name: 'Spotify', exact: true })
-      await spotifySourceChip.click()
-      const noConflictOnSpotify = (await page.getByText(/currently require Spotify as the source/, { exact: false }).count()) === 0
-      console.log(`${noConflictOnSpotify ? 'ok        ' : 'FAIL      '} Switching the source to Spotify clears the conflict note`)
-      if (!noConflictOnSpotify) results.push({ label: 'wizard source conflict cleared', overflow: true })
-
-      // Back to Apple for the rest of this flow (Services lock + summary).
-      await appleSourceChip.click()
 
       await page.getByRole('radio', { name: 'Services', exact: true }).click()
       // Not exact: true - once locked, this chip's accessible name gains

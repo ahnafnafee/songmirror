@@ -528,8 +528,6 @@
   "Loading {{accountName}} playlists…": "{{accountName}} 재생 목록 로드 중…",
   "Loading…": "로드 중…",
   "Local backup": "로컬 백업",
-  "Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.": "로컬 다운로드 + Jellyfin 커버는 현재 주문 권한으로 Spotify가 필요하므로 건너뜁니다.",
-  "Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.": "로컬 다운로드 + Jellyfin 표지에는 현재 소스로 Spotify가 필요하므로 건너뜁니다.",
   "Locations": "위치",
   "Make the new playlist public": "새 재생목록을 공개로 설정",
   "Make the playlist public": "재생목록을 공개로 설정",

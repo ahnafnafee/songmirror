@@ -289,7 +289,7 @@ Um trabalho Mesclar fontes combina uma ou mais playlists explícitas em um desti
 - Remoções seguras para a União – uma trilha de destino só pode ser removida quando uma passagem completa a encontrar ausente de todas as fontes constituintes. Uma fonte com falha, truncada, malformada, indisponível ou inconscientemente vazia desativa todas as remoções dessa passagem, enquanto as adições seguras de fontes legíveis podem continuar.
 - Somente anexar por padrão — deixe a opção Remover trilhas ausentes de todas as fontes desativada para manter todas as trilhas somente de destino. Ativá-lo ativa a tampa de remoção normal por passagem após a passagem da proteção de leitura completa.
 
-As tarefas de mesclagem atualmente têm como alvo uma lista de reprodução de provedor; o espelho de download/Jellyfin local separado liderado por Spotify não está disponível para um trabalho agregado.
+As tarefas de mesclagem atualmente têm como alvo uma lista de reprodução de provedor; o espelho separado de download local/Jellyfin não está disponível para um trabalho agregado.
 
 <a id="authoritative-groups"></a>
 

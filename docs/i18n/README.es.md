@@ -289,7 +289,7 @@ Un trabajo de Combinar fuentes combina una o más listas de reproducción explí
 - Eliminaciones seguras para la unión: una ruta de destino se puede eliminar solo cuando un pase completo la encuentra ausente de todas las fuentes constituyentes. Una fuente fallida, truncada, mal formada, no disponible o incognosciblemente vacía deshabilita todas las eliminaciones para ese pase, mientras que las adiciones seguras de fuentes legibles pueden continuar.
 - Agregar solo de forma predeterminada: deje desactivada la opción Eliminar pistas ausentes de cada origen para mantener todas las pistas de solo destino. Al encenderlo, se accede a la tapa de extracción normal por pasada después de que pasa el protector de lectura completa.
 
-Actualmente, los trabajos de combinación se dirigen a una lista de reproducción de proveedores; la descarga local independiente dirigida por Spotify/espejo Jellyfin no está disponible para un trabajo agregado.
+Actualmente, los trabajos de combinación se dirigen a una lista de reproducción de proveedores; el espejo independiente de descarga local/Jellyfin no está disponible para un trabajo agregado.
 
 <a id="authoritative-groups"></a>
 

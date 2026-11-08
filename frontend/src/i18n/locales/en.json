@@ -499,8 +499,6 @@
   "Loading {{accountName}} playlists…": "Loading {{accountName}} playlists…",
   "Loading…": "Loading…",
   "Local backup": "Local backup",
-  "Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.": "Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.",
-  "Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.": "Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.",
   "Locations": "Locations",
   "Loved Recordings": "Loved Recordings",
   "Loved Tracks": "Loved Tracks",
