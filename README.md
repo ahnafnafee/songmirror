@@ -43,6 +43,10 @@ A free, open-source, **self-hosted alternative to Soundiiz, TuneMyMusic, and Fre
 
 ## 🚀 Quick Start
 
+## 🚀 One-Click Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/SongMirror/)
+
 The fastest way to run it is Docker — Compose pulls the published image, serves the web UI, and runs your syncs on schedule.
 
 For a persistent installation with automatic restarts:
