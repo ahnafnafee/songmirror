@@ -24,12 +24,15 @@ def _playlist_track(row):
         raise RuntimeError("ListenBrainz returned a playlist track without a recording MBID; sync was stopped.")
     extension = (row.get("extension") or {}).get(listenbrainz.TRACK_EXTENSION) or {}
     duration = row.get("duration")
+    name = str(row.get("title") or "").strip()
+    artist = str(row.get("creator") or "").strip()
     return {
         "id": target_id, "recording_mbid": target_id.split(":", 1)[1], "recording_msid": None,
-        "name": str(row.get("title") or "").strip(), "artist": str(row.get("creator") or "").strip(),
+        "name": name, "artist": artist,
         "album": str(row.get("album") or "").strip(),
         "duration_ms": duration if isinstance(duration, int) and not isinstance(duration, bool) else None,
         "added_at": str(extension.get("added_at") or ""),
+        "_metadata_incomplete": not name or not artist,
     }
 
 
