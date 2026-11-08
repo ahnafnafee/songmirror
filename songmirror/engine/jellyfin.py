@@ -23,6 +23,10 @@ PAGE_SIZE = 200
 class JellyfinError(RuntimeError):
     """A connection or response failure safe to show without credentials."""
 
+    def __init__(self, message, *, status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
+
 
 def server_url(value):
     """Accept a server root or a pasted web-client URL, retaining a base path."""
@@ -80,7 +84,7 @@ def _call(method, url, key, path, *, params=None, json=None, timeout=30):
             detail = "Jellyfin could not find this endpoint or playlist. Check the server URL, base path, and User ID in Accounts."
         else:
             detail = f"Jellyfin returned HTTP {code}. Retry after checking the server."
-        raise JellyfinError(detail) from exc
+        raise JellyfinError(detail, status_code=code) from exc
     except ValueError as exc:
         raise JellyfinError("Jellyfin did not return JSON. Check the server URL and reverse proxy.") from exc
     except requests.RequestException as exc:

@@ -53,6 +53,8 @@ export interface Account {
    * contributes read-only collections as a sync source and can receive loves,
    * so the sync wizard offers it while never offering it a playlist. */
   supports_playlists?: boolean
+  /** Whether the provider implements its own liked/favorite collection. */
+  supports_favorites?: boolean
   /** Whether the provider can supply tracks to a sync. True for every peer and
    * for Last.fm, which is input-only but readable. */
   source_capable?: boolean

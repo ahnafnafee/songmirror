@@ -4,7 +4,7 @@ import { LuCheck, LuChevronDown, LuChevronUp, LuHeart, LuInfo, LuSearch, LuX } f
 
 import { useAccounts } from '@/hooks/useAccounts'
 import { useProviderPlaylists } from '@/hooks/useProviderPlaylists'
-import { capabilitiesOf } from '@/lib/accountCapabilities'
+import { canReadLikedTracks, capabilitiesOf } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { formatTrackCount } from '@/lib/format'
 import { providerLikedTracksLabel } from '@/lib/likedTracks'
@@ -43,6 +43,7 @@ interface PickerSource {
   loading: boolean
   error: string | null
   hasConnectedAccounts: boolean
+  supportsFavorites: boolean
 }
 
 /** Pins the picker to whichever provider is actually meaningful for the
@@ -81,11 +82,12 @@ function usePickerSource(preferredProviderId?: string | null): PickerSource {
         loading: !entry || entry.loading,
         error: entry?.error ?? null,
         hasConnectedAccounts,
+        supportsFavorites: canReadLikedTracks(pinned),
       }
     }
 
     if (!hasConnectedAccounts) {
-      return { providerId: null, provider: null, providerLabel: '', playlists: [], loading: false, error: null, hasConnectedAccounts }
+      return { providerId: null, provider: null, providerLabel: '', playlists: [], loading: false, error: null, hasConnectedAccounts, supportsFavorites: false }
     }
 
     const seen = new Map<string, ProviderPlaylist>()
@@ -107,6 +109,7 @@ function usePickerSource(preferredProviderId?: string | null): PickerSource {
       loading: !allSettled && seen.size === 0,
       error: allSettled && seen.size === 0 ? t("Could not load playlists from any connected service.") : null,
       hasConnectedAccounts,
+      supportsFavorites: false,
     }
   }, [connected, entries, pinned, i18n.resolvedLanguage, t])
 }
@@ -259,7 +262,7 @@ export function PlaylistFilterField({
   }
 
   const likedTracksLabel = providerLikedTracksLabel(source.provider, source.providerLabel)
-  const showLikedTracks = includeLikedTracks && Boolean(source.providerId) && Boolean(onLikedTracksChange)
+  const showLikedTracks = includeLikedTracks && source.supportsFavorites && Boolean(source.providerId) && Boolean(onLikedTracksChange)
   const isEmpty = selectedNames.length === 0 && !likedTracksSelected
   const syncingAllWithLiked = likedTracksSelected && syncAllRegularPlaylists && selectedNames.length === 0
   const selectedCount = selectedNames.length + (likedTracksSelected ? 1 : 0)

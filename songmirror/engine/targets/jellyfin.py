@@ -27,7 +27,7 @@ def _track(item):
         "artist": ", ".join(artists), "artists": artists,
         "album": str(item.get("Album") or ""), "isrc": None,
         "duration_ms": ticks // 10_000 if isinstance(ticks, int) and ticks >= 0 else None,
-        "added_at": "",
+        "added_at": "", "playlistItemId": str(item.get("PlaylistItemId") or ""),
     }
 
 
@@ -36,8 +36,9 @@ class JellyfinTarget(MirrorTarget):
     tag = "jellyfin"
     source = "jellyfin"
     catalog_ids_global = False
-    # Jellyfin deletes every copy of an item at once, so the engine appends in
-    # source order instead of staging duplicate copies for a date-order repair.
+    supports_favorites = False
+    # Newer Jellyfin servers identify every copy of an item with the same
+    # entry id, so staging a suffix cannot safely retire its original copies.
     replay_chronology = None
     no_playlists_note = "add a User ID to this Jellyfin account to sync playlists."
 
@@ -73,13 +74,30 @@ class JellyfinTarget(MirrorTarget):
     def _send(self, method, path, **params):
         return api.send(self._url, self._key, method, path, params=params)
 
-    def browse_playlists(self):
-        return [{
+    def _playlist(self, item):
+        path = item.get("Path")
+        file_backed = isinstance(path, str) and path.lower().endswith(_FILE_SUFFIXES)
+        editable = False
+        if path and not file_backed:
+            # /Items does not expose ownership. Unlike DELETE, an empty add
+            # checks the configured user's edit permission. The manager then
+            # returns without touching children, metadata, or playlist files.
+            try:
+                self._send("post", f"/Playlists/{quote(str(item['Id']), safe='')}/Items",
+                           userId=self._user)
+                editable = True
+            except api.JellyfinError as exc:
+                if exc.status_code != 403:
+                    raise
+        return {
             "id": str(item["Id"]), "name": str(item.get("Name") or ""), "description": "",
-            "_owned": True,
-            "_file": str(item.get("Path") or "").lower().endswith(_FILE_SUFFIXES),
-        } for item in api._playlist_items(self._url, self._key, self._user, fields="Path")
-            if item.get("Id")]
+            "_owned": editable, "_editable": editable, "_file": file_backed,
+        }
+
+    def browse_playlists(self):
+        return [self._playlist(item)
+                for item in api._playlist_items(self._url, self._key, self._user, fields="Path")
+                if item.get("Id")]
 
     def list_playlists(self):
         best = {}
@@ -90,13 +108,22 @@ class JellyfinTarget(MirrorTarget):
         return best
 
     def is_editable(self, playlist):
-        return not playlist.get("_file")
+        return playlist.get("_editable") is True and not playlist.get("_file")
 
     def _require_editable(self, playlist):
-        if not self.is_editable(playlist):
+        if playlist.get("_file"):
             raise TargetCapabilityError(
                 "This Jellyfin playlist comes from a playlist file, so SongMirror does not edit it."
             )
+        # Recheck both the backing file and user permission at the write
+        # boundary; a cached editable flag cannot authorize API-key deletes.
+        body = self._get("/Items", ids=str(playlist["id"]), includeItemTypes="Playlist", fields="Path")
+        items = body.get("Items")
+        if not isinstance(items, list) or len(items) != 1 or str(items[0].get("Id")) != str(playlist["id"]):
+            raise RuntimeError("Jellyfin could not verify the destination playlist; refresh and retry.")
+        current = self._playlist(items[0])
+        if not self.is_editable(current):
+            raise TargetCapabilityError("The configured Jellyfin user cannot edit this playlist.")
 
     def playlist_tracks(self, playlist):
         path = f"/Playlists/{quote(str(playlist['id']), safe='')}/Items"
@@ -126,7 +153,7 @@ class JellyfinTarget(MirrorTarget):
         if not created.get("Id"):
             raise RuntimeError("Jellyfin did not return the new playlist's id.")
         return {"id": str(created["Id"]), "name": name, "description": "", "public": public,
-                "_owned": True, "_file": False}
+                "_owned": True, "_editable": True, "_file": False}
 
     def search_candidates(self, query, *, limit=5):
         if not str(query or "").strip():
@@ -163,32 +190,44 @@ class JellyfinTarget(MirrorTarget):
 
     def remove(self, playlist, track):
         rows = self.playlist_tracks(playlist)
-        position = next((i for i, row in enumerate(rows) if self.track_id(row) == self.track_id(track)), None)
+        entry_id = self.occurrence_id(track)
+        position = next((i for i, row in enumerate(rows)
+                         if self.track_id(row) == self.track_id(track)
+                         and (not entry_id or self.occurrence_id(row) == entry_id)), None)
         if position is not None:
             self.remove_occurrences(playlist, [(position, rows[position])])
 
     def remove_occurrences(self, playlist, positioned):
-        """Delete selected entries. Jellyfin removes every copy of an item id,
-        so the copies that stay are inserted again at their read positions."""
+        """Use the server's entry ids, refusing a delete that would take keepers.
+
+        10.8 supplies unique LinkedChild ids. Newer servers return the media
+        item id for every copy, so a partial duplicate removal is unsafe.
+        """
         self._require_editable(playlist)
         path = f"/Playlists/{quote(str(playlist['id']), safe='')}/Items"
         positioned = list(positioned)
         current = self.playlist_tracks(playlist)
         if any(position < 0 or position >= len(current)
-               or self.track_id(current[position]) != self.track_id(row) for position, row in positioned):
+               or self.track_id(current[position]) != self.track_id(row)
+               or (self.occurrence_id(row)
+                   and self.occurrence_id(current[position]) != self.occurrence_id(row))
+               for position, row in positioned):
             raise RuntimeError("Jellyfin playlist changed; refresh it before removing tracks.")
         drop = {position for position, _ in positioned}
-        for index, item_id in enumerate(dict.fromkeys(self.track_id(current[p]) for p in sorted(drop))):
-            copies = [p for p, row in enumerate(current) if self.track_id(row) == item_id]
-            keep = [rank for rank, p in enumerate(copies) if p not in drop]
-            # Earlier items' deletions shifted positions, so read them again.
-            rows = current if index == 0 else self.playlist_tracks(playlist)
-            fresh = [p for p, row in enumerate(rows) if self.track_id(row) == item_id]
-            if len(fresh) != len(copies):
-                raise RuntimeError("Jellyfin playlist changed; refresh it before removing tracks.")
-            self._send("delete", path, entryIds=item_id)
-            for restored, rank in enumerate(keep):
-                # Shift left by the removed copies that preceded this one.
-                self._send("post", path, ids=item_id, userId=self._user,
-                           position=fresh[rank] - (rank - restored))
+        if not drop:
+            return 0
+        if any(not self.occurrence_id(row) for row in current):
+            raise RuntimeError("Jellyfin returned incomplete playlist entry ids; removals were stopped.")
+        entries = {self.occurrence_id(current[position]) for position in drop}
+        if any(self.occurrence_id(row) in entries for position, row in enumerate(current) if position not in drop):
+            raise TargetCapabilityError(
+                "This Jellyfin server removes every copy of a repeated track at once. "
+                "Remove all copies in Jellyfin, or keep them; SongMirror left the playlist unchanged."
+            )
+        self._send("delete", path, entryIds=",".join(sorted(entries)))
+        expected = [(self.track_id(row), self.occurrence_id(row))
+                    for position, row in enumerate(current) if position not in drop]
+        after = [(self.track_id(row), self.occurrence_id(row)) for row in self.playlist_tracks(playlist)]
+        if after != expected:
+            raise RuntimeError("Jellyfin did not confirm the requested removals; refresh the playlist and retry.")
         return len(drop)

@@ -8,7 +8,8 @@ from unittest.mock import Mock
 import pytest
 
 from songmirror import listenbrainz
-from songmirror.engine.targets.base import TargetCapabilityError
+from songmirror.engine import archive
+from songmirror.engine.targets.base import TargetCapabilityError, _normalize, mirror_pair
 from songmirror.engine.targets.listenbrainz import ListenBrainzTarget
 from songmirror.engine.targets.subsonic import SubsonicTarget
 from songmirror.services.transfers import transfer
@@ -189,3 +190,43 @@ def test_a_playlist_track_without_a_recording_mbid_stops_the_read():
                                                    "track": [{"identifier": ["https://example.test/x"]}]}})
     with pytest.raises(RuntimeError, match="recording MBID"):
         target_for(session).playlist_tracks({"id": mbid("p")})
+
+
+@pytest.mark.parametrize("metadata", [{}, {"title": "Beta"}, {"creator": "Artist"},
+                                      {"title": " ", "creator": "Artist"}])
+def test_missing_playlist_metadata_holds_destination_removals(tmp_path, metadata):
+    # The API keeps the MBID even when its recording index has no metadata.
+    recording = {"identifier": [RECORDING + mbid("Beta")], **metadata}
+    session = Mock()
+    session.get.return_value = reply({"playlist": {"track": [
+        {"identifier": [RECORDING + mbid("Alpha")], "title": "Alpha", "creator": "Artist"},
+        recording,
+    ]}})
+    source = target_for(session)
+    api = Mock(user="listener")
+    playlist = {"id": "dest", "name": "Mix", "owner": "listener"}
+    stored = [{"id": name, "title": name, "artist": "Artist"} for name in ("Alpha", "Beta")]
+
+    def call(method, **params):
+        if method == "getPlaylist":
+            return {"playlist": {**playlist, "songCount": len(stored), "entry": stored}}
+        if method == "search3":
+            return {"searchResult3": {"song": []}}
+        pytest.fail(f"Unexpected destination write: {method}")
+
+    api.call.side_effect = call
+    destination = SubsonicTarget(api)
+    raw = source.playlist_tracks({"id": mbid("p")})
+    tracks = [{**_normalize(row, "listenbrainz"), "id": row["id"]} for row in raw]
+    songs = archive.connect(str(tmp_path / "songs.db"))
+    try:
+        result = mirror_pair(destination, tracks, {"id": "src", "name": "Mix"}, playlist,
+                             {"isrc": {}, "search": {}, "dirty": False}, songs, execute=True,
+                             max_removals=5, max_adds=5, source_key="listenbrainz",
+                             source_provider="listenbrainz", source_name="ListenBrainz")
+    finally:
+        songs.close()
+    assert raw[1]["_metadata_incomplete"]
+    assert not raw[0]["_metadata_incomplete"]
+    assert result["removed"] == 0
+    assert [row["id"] for row in stored] == ["Alpha", "Beta"]

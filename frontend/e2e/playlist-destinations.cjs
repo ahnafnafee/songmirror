@@ -23,7 +23,10 @@ const ACCOUNTS = [
     detail: 'Add a User ID to sync playlists.',
     capabilities: { library_read: true, library_write: false, public_playlist_read: false, favorites_write: false } },
 ]
-const PLAYLISTS = { tidal: [{ id: 'road', name: 'Road trip', count: 2, image: '', owned: true }] }
+const PLAYLISTS = {
+  tidal: [{ id: 'road', name: 'Road trip', count: 2, image: '', owned: true }],
+  jf: [{ id: 'mix', name: 'Mix', count: 2, image: '', owned: true }],
+}
 
 async function main() {
   const dist = path.resolve(__dirname, '../dist')
@@ -85,6 +88,86 @@ async function main() {
     assert.ok(providers.includes('loves') && providers.includes('jf') && !providers.includes('jf-browse'), saved[0].providers)
     assert.equal(saved[0].playlists, 'Road trip')
     console.log('PASS: the sync wizard offers ListenBrainz and Jellyfin as playlist destinations and saves them')
+
+    await page.getByRole('button', { name: 'New sync', exact: true }).first().click()
+    await dialog.getByLabel('Name', { exact: false }).fill('Jellyfin playlists only')
+    await dialog.getByRole('radio', { name: 'TIDAL', exact: true }).click()
+    await dialog.getByRole('radio', { name: 'Playlists', exact: true }).click()
+    await dialog.getByRole('checkbox', { name: 'TIDAL Favorite Tracks', exact: false }).locator('..').click()
+    await dialog.getByRole('radio', { name: 'Direction', exact: true }).click()
+    await dialog.getByRole('radio', { name: 'Jellyfin', exact: true }).click()
+    await dialog.getByRole('radio', { name: 'Playlists', exact: true }).click()
+    assert.equal(await dialog.getByRole('checkbox', { name: 'Jellyfin Liked Tracks', exact: false }).count(), 0,
+      'A Jellyfin source has no liked-track reader')
+    await dialog.getByRole('checkbox', { name: 'Mix', exact: false }).locator('..').click()
+    await dialog.getByRole('button', { name: 'Create sync', exact: true }).click()
+    await dialog.waitFor({ state: 'hidden' })
+    assert.equal(saved[1].source, 'jf')
+    assert.equal(saved[1].liked_tracks, false, 'Switching to Jellyfin clears the previous favorites selection')
+    assert.equal(saved[1].sync_playlists, true)
+    assert.deepEqual(saved[1].liked_routes, {})
+    console.log('PASS: Jellyfin sources hide favorites and clear a previous source’s liked-track selection')
+
+    for (const source of ['tidal', 'jf']) {
+      const context = await browser.newContext()
+      const probe = await context.newPage()
+      probe.setDefaultTimeout(10_000)
+      const destination = source === 'jf' ? 'tidal' : 'jf'
+      const existing = {
+        id: 'existing', name: 'Existing favorites', mode: 'oneway', source, providers: `${source},${destination}`,
+        authorities: '', enabled: false, interval: '1h', playlists: '', sync_playlists: false, liked_tracks: true,
+        liked_routes: { [destination]: { kind: 'playlist', name: 'Favorites' } }, max_adds: 500,
+        max_removals: 0, apply_large_removals: false, download: false,
+      }
+      let releaseAccounts, edited
+      const gate = new Promise(resolve => { releaseAccounts = resolve })
+      if (source === 'tidal') releaseAccounts()
+      await probe.route('**/api/**', async route => {
+        const request = route.request(), url = new URL(request.url())
+        const send = body => route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) })
+        if (url.pathname === '/api/accounts') {
+          await gate
+          return send(ACCOUNTS.map(account => ({ ...account,
+            supports_favorites: account.provider !== 'jellyfin',
+            state: account.id === 'tidal' && source === 'tidal' ? 'expired' : account.state,
+          })))
+        }
+        if (url.pathname === '/api/syncs/existing' && request.method() === 'PUT') {
+          edited = request.postDataJSON()
+          return send({ ...existing, ...edited })
+        }
+        if (url.pathname === '/api/syncs') return send([existing])
+        if (url.pathname === '/api/sync/status') return send({ jobs: [], running: false })
+        if (url.pathname.startsWith('/api/playlists')) return send([])
+        if (['/api/links', '/api/playlist-backups', '/api/transfers'].includes(url.pathname)) return send([])
+        return send({})
+      })
+      await probe.route('**/events*', route => route.fulfill({ contentType: 'text/event-stream', body: '' }))
+      try {
+        await probe.goto(base + '/sync')
+        await probe.getByRole('button', { name: 'Edit', exact: true }).first().click()
+        const editor = probe.getByRole('dialog')
+        await editor.getByLabel('Name', { exact: false }).fill('Keep my edited name')
+        await editor.getByRole('radio', { name: 'Schedule', exact: true }).click()
+        if (source === 'jf') {
+          const accountsLoaded = probe.waitForResponse(response => response.url().endsWith('/api/accounts'))
+          releaseAccounts()
+          await accountsLoaded
+          await probe.getByRole('button', { name: 'Edit', exact: true }).first().waitFor()
+        }
+        assert.equal(await editor.getByRole('radio', { name: 'Schedule', exact: true }).getAttribute('aria-checked'), 'true')
+        await editor.getByRole('button', { name: 'Save changes', exact: true }).click()
+        await editor.waitFor({ state: 'hidden' })
+        assert.equal(edited.name, 'Keep my edited name')
+        assert.equal(edited.liked_tracks, source === 'tidal', 'Expired credentials must not change a supported favorites job')
+        assert.equal(edited.sync_playlists, source === 'jf')
+        assert.deepEqual(edited.liked_routes, source === 'jf' ? {} : existing.liked_routes)
+      } finally {
+        releaseAccounts()
+        await context.close()
+      }
+    }
+    console.log('PASS: editing preserves expired favorites jobs and clears unsupported selections after delayed account loading')
 
     await page.goto(base + '/transfers')
     const sourceService = page.getByLabel('Service', { exact: true }).first()

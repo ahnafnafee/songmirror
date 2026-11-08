@@ -312,9 +312,16 @@ class PlaylistService:
                 config = self._jellyfin_config(provider_id)
                 configured_url = config.get("JELLYFIN_URL")
                 server = jellyfin.server_url(configured_url) if configured_url else ""
+                editable = set()
+                if str(config.get("JELLYFIN_USER_ID") or "").strip():
+                    from ..engine.targets.jellyfin import JellyfinTarget
+
+                    target = JellyfinTarget(config)
+                    editable = {str(target.playlist_id(playlist)) for playlist in target.browse_playlists()
+                                if target.is_editable(playlist)}
                 rows = [{
                     **row,
-                    "owned": True,
+                    "owned": str(row["id"]) in editable,
                     "external_url": (
                         f"{server}/web/#/details?id={quote(str(row['id']), safe='')}"
                         if server else ""

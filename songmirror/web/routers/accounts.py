@@ -182,6 +182,7 @@ def _status_payload(request, profile):
         "transferable": transferable,
         "supports_playlists": supports_playlists,
         "source_capable": source_capable,
+        "supports_favorites": bool(target_class(profile.provider) and target_class(profile.provider).supports_favorites),
         "preserves_order": _preserves_order(profile.provider),
         "public_playlists": public_playlists,
         "editable_details": editable_details,

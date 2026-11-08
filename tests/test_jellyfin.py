@@ -116,7 +116,8 @@ def test_connection_browse_counts_and_cover_support_old_and_new_auth(
         assert key not in url
         assert set(headers) == {"Authorization"}
         assert headers["Authorization"].startswith('MediaBrowser Client="SongMirror",')
-        assert not params or not {"api_key", "ApiKey", "Fields"} & params.keys()
+        assert not params or not {"api_key", "ApiKey"} & params.keys()
+        assert not params or params.get("Fields") in (None, "Path")
 
 
 @pytest.mark.parametrize("status,expected", [(401, "API key"), (403, "permissions"),

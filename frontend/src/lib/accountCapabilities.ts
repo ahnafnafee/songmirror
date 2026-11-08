@@ -35,6 +35,15 @@ export function canBeSyncSource(account: Account): boolean {
   return readable && (account.source_capable ?? account.transferable)
 }
 
+/** Library access does not imply a native favorites reader. */
+export function canReadLikedTracks(account: Account): boolean {
+  return capabilitiesOf(account).library_read && hasFavorites(account)
+}
+
+export function hasFavorites(account: Account): boolean {
+  return account.supports_favorites ?? account.provider !== 'jellyfin'
+}
+
 /** Can receive another service's liked tracks into its own liked collection.
  * A full peer writes playlists and therefore favorites; Last.fm writes only
  * favorites, and only once its session is authorized. */
