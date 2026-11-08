@@ -178,6 +178,7 @@
   "Change its visibility in {{accountName}}.": "请在 {{accountName}} 中更改其可见性。",
   "Changes SongMirror did not apply because the evidence or replacement was not safe yet.": "更改 SongMirror 不适用，因为证据或替换尚不安全。",
   "Choose <strong1>Copy request headers</strong1> or <strong2>Copy as cURL</strong2>, then paste it into the renewal field below. Keep the complete <code3/>, <code4/>, and <code5/> headers.": "选择 <strong1>Copy request headers</strong1> 或 <strong2>Copy as cURL</strong2>，然后将其粘贴到下面的续订字段中。保留完整的 <code3/>、<code4/> 和 <code5/> 标头。",
+  "Choose ListenBrainz as a source to read loves and public playlists without a token. To read private playlists or receive favorites and playlists from another service, add your user token from ListenBrainz settings.": "选择 ListenBrainz 作为来源，无需令牌即可读取喜爱的录音和公开播放列表。如需读取私人播放列表，或从其他服务接收收藏和播放列表，请从 ListenBrainz 设置中添加你的用户令牌。",
   "Choose a connected account that can open this playlist link": "选择可以打开此播放列表链接的已连接账户",
   "Choose a destination service first": "首先选择目的地服务",
   "Choose a folder to continue.": "选择一个文件夹以继续。",
@@ -689,6 +690,7 @@
   "Optional, used only for the dashboard's greeting.": "可选，仅用于仪表板的问候语。",
   "Optional. Pushes real playlist cover art to your Jellyfin server.": "可选。将真实的播放列表封面艺术推送到您的 Jellyfin 服务器。",
   "Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key.": "可选：连接Jellyfin推送真实的播放列表封面。您需要服务器 URL 和 API 密钥。",
+  "Optional: copy your user token from https://listenbrainz.org/settings/ to read private playlists and receive loved recordings and playlists.": "可选：从 https://listenbrainz.org/settings/ 复制你的用户令牌，以读取私人播放列表并接收喜爱的录音和播放列表。",
   "Optional: where offline audio copies land for any sync that opts in (\"Download this sync's playlists\", on the Sync tab).": "可选：任何选择加入的同步的脱机音频副本都会存放在其中（“下载此同步的播放列表”，在“同步”选项卡上）。",
   "Optional; only if listing playlists needs it": "可选；仅当列出播放列表需要时",
   "Opus (no re-encode from YouTube)": "Opus（没有从 YouTube 重新编码）",
@@ -763,6 +765,7 @@
   "Protected this pass": "保护此通行证",
   "Provider": "提供商",
   "Public": "公开",
+  "Read loved recordings and playlists by username; add a user token to receive them.": "通过用户名读取喜爱的录音和播放列表；添加用户令牌即可接收它们。",
   "public link": "公共链接",
   "Public playlist link": "公共播放列表链接",
   "Queued": "已排队",
@@ -1284,9 +1287,6 @@
   "Read-only": "只读",
   "Starred Songs": "星标歌曲",
   "Syncs playlists and starred songs already stored on your music server.": "同步已存储在音乐服务器上的播放列表和星标歌曲。",
-  "Read loved recordings by username; add a user token to receive favorites.": "通过用户名读取喜爱的录音；添加用户令牌即可接收收藏。",
-  "Choose ListenBrainz as the source to read loves without a token. To receive favorites from another service, add your user token from ListenBrainz settings.": "选择 ListenBrainz 作为来源，无需令牌即可读取喜爱的录音。若要接收其他服务的收藏，请添加 ListenBrainz 设置中的用户令牌。",
   "User token": "用户令牌",
-  "Optional: copy your user token from https://listenbrainz.org/settings/ to receive loved recordings.": "可选：从 https://listenbrainz.org/settings/ 复制用户令牌以接收喜爱的录音。",
   "ListenBrainz": "ListenBrainz"
 }

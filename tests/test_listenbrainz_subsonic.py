@@ -72,19 +72,15 @@ def test_listenbrainz_never_treats_failed_reads_as_an_empty_library(body, status
         listenbrainz.ListenBrainz(user="listener", session=session).loved_tracks()
 
 
-def test_listenbrainz_can_receive_favorites_but_not_playlists():
+def test_listenbrainz_receives_playlists_and_favorites_only_with_a_token():
     opts = parse_args(["--sync-source", "listenbrainz", "--providers", "listenbrainz,subsonic"])
-    opts.liked_tracks = True
     assert targets.target_class("listenbrainz") is ListenBrainzTarget
-    assert targets._writable("listenbrainz", opts)
-    opts.liked_tracks = False
-    assert not targets._writable("listenbrainz", opts)
+    assert targets._writable("listenbrainz", opts) and targets.is_peer("listenbrainz")
     assert targets._writable("subsonic", opts)
     target = ListenBrainzTarget(client=listenbrainz.ListenBrainz("listener", token=""))
-    assert target.list_playlists() == {}
     with pytest.raises(TargetCapabilityError):
         target.validate_favorite_tracks(write=True)
-    with pytest.raises(TargetCapabilityError):
+    with pytest.raises(TargetCapabilityError, match="user token"):
         target.create({"name": "Playlist"})
 
 
@@ -274,8 +270,10 @@ def test_accounts_api_exposes_source_only_and_full_peer_capabilities(tmp_path, m
     with TestClient(create_app(settings=settings)) as client:
         rows = {row["provider"]: row for row in client.get("/api/accounts").json()}
     loves, local = rows["listenbrainz"], rows["subsonic"]
-    assert loves["source_capable"] and not loves["transferable"] and not loves["supports_playlists"]
+    # Without a token the profile is readable but cannot receive any writes.
+    assert loves["source_capable"] and loves["transferable"] and loves["supports_playlists"]
     assert loves["capabilities"]["library_read"] and not loves["capabilities"]["favorites_write"]
+    assert not loves["capabilities"]["library_write"]
     assert local["source_capable"] and local["transferable"]
     assert all(local["capabilities"].values())
     password = next(field for field in local["fields"] if field["key"] == "SUBSONIC_PASSWORD")

@@ -178,6 +178,7 @@
   "Change its visibility in {{accountName}}.": "इसकी दृश्यता {{accountName}} में बदलें।",
   "Changes SongMirror did not apply because the evidence or replacement was not safe yet.": "परिवर्तन SongMirror लागू नहीं हुए क्योंकि साक्ष्य या प्रतिस्थापन अभी तक सुरक्षित नहीं था।",
   "Choose <strong1>Copy request headers</strong1> or <strong2>Copy as cURL</strong2>, then paste it into the renewal field below. Keep the complete <code3/>, <code4/>, and <code5/> headers.": "<strong1>कॉपी अनुरोध हेडर</strong1> या <strong2>कॉपी को cURL</strong2> के रूप में चुनें, फिर इसे नीचे नवीनीकरण फ़ील्ड में पेस्ट करें। संपूर्ण <code3/>, <code4/>, और <code5/> हेडर रखें।",
+  "Choose ListenBrainz as a source to read loves and public playlists without a token. To read private playlists or receive favorites and playlists from another service, add your user token from ListenBrainz settings.": "टोकन के बिना पसंदीदा रिकॉर्डिंग और सार्वजनिक प्लेलिस्ट पढ़ने के लिए ListenBrainz को स्रोत के रूप में चुनें। निजी प्लेलिस्ट पढ़ने या किसी दूसरी सेवा से पसंदीदा गाने और प्लेलिस्ट प्राप्त करने के लिए ListenBrainz सेटिंग्स से अपना उपयोगकर्ता टोकन जोड़ें।",
   "Choose a connected account that can open this playlist link": "कोई ऐसा कनेक्टेड खाता चुनें जो इस प्लेलिस्ट लिंक को खोल सके",
   "Choose a destination service first": "पहले एक गंतव्य सेवा चुनें",
   "Choose a folder to continue.": "जारी रखने के लिए एक फ़ोल्डर चुनें।",
@@ -689,6 +690,7 @@
   "Optional, used only for the dashboard's greeting.": "वैकल्पिक, केवल डैशबोर्ड के अभिवादन के लिए उपयोग किया जाता है।",
   "Optional. Pushes real playlist cover art to your Jellyfin server.": "वैकल्पिक। वास्तविक प्लेलिस्ट कवर आर्ट को आपके Jellyfin सर्वर पर पुश करता है।",
   "Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key.": "वैकल्पिक: वास्तविक प्लेलिस्ट कवर आर्ट को पुश करने के लिए Jellyfin कनेक्ट करें। आपको सर्वर URL और एक API कुंजी की आवश्यकता है।",
+  "Optional: copy your user token from https://listenbrainz.org/settings/ to read private playlists and receive loved recordings and playlists.": "वैकल्पिक: निजी प्लेलिस्ट पढ़ने और पसंदीदा रिकॉर्डिंग व प्लेलिस्ट प्राप्त करने के लिए https://listenbrainz.org/settings/ से अपना उपयोगकर्ता टोकन कॉपी करें।",
   "Optional: where offline audio copies land for any sync that opts in (\"Download this sync's playlists\", on the Sync tab).": "वैकल्पिक: जहां ऑफ़लाइन ऑडियो प्रतियां किसी भी सिंक के लिए आती हैं जो ऑप्ट इन करता है (\"इस सिंक की प्लेलिस्ट डाउनलोड करें\", सिंक टैब पर)।",
   "Optional; only if listing playlists needs it": "वैकल्पिक; केवल तभी जब प्लेलिस्ट को सूचीबद्ध करने के लिए इसकी आवश्यकता हो",
   "Opus (no re-encode from YouTube)": "Opus (YouTube से कोई पुनः एन्कोड नहीं)",
@@ -763,6 +765,7 @@
   "Protected this pass": "इस दर्रे की रक्षा की",
   "Provider": "प्रदाता",
   "Public": "सार्वजनिक",
+  "Read loved recordings and playlists by username; add a user token to receive them.": "उपयोगकर्ता नाम से पसंदीदा रिकॉर्डिंग और प्लेलिस्ट पढ़ें; उन्हें प्राप्त करने के लिए उपयोगकर्ता टोकन जोड़ें।",
   "public link": "सार्वजनिक लिंक",
   "Public playlist link": "सार्वजनिक प्लेलिस्ट लिंक",
   "Queued": "कतारबद्ध",
@@ -1284,9 +1287,6 @@
   "Read-only": "केवल पढ़ने के लिए",
   "Starred Songs": "तारे से चिह्नित गाने",
   "Syncs playlists and starred songs already stored on your music server.": "आपके संगीत सर्वर पर पहले से संग्रहीत प्लेलिस्ट और तारे से चिह्नित गाने सिंक करता है।",
-  "Read loved recordings by username; add a user token to receive favorites.": "उपयोगकर्ता नाम से पसंदीदा रिकॉर्डिंग पढ़ें; पसंदीदा गाने प्राप्त करने के लिए उपयोगकर्ता टोकन जोड़ें।",
-  "Choose ListenBrainz as the source to read loves without a token. To receive favorites from another service, add your user token from ListenBrainz settings.": "बिना टोकन के पसंदीदा रिकॉर्डिंग पढ़ने के लिए ListenBrainz को स्रोत चुनें। दूसरी सेवा से पसंदीदा गाने प्राप्त करने के लिए ListenBrainz सेटिंग्स से अपना उपयोगकर्ता टोकन जोड़ें।",
   "User token": "उपयोगकर्ता टोकन",
-  "Optional: copy your user token from https://listenbrainz.org/settings/ to receive loved recordings.": "वैकल्पिक: पसंदीदा रिकॉर्डिंग प्राप्त करने के लिए https://listenbrainz.org/settings/ से अपना उपयोगकर्ता टोकन कॉपी करें।",
   "ListenBrainz": "ListenBrainz"
 }

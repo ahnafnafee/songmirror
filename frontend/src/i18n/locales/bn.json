@@ -178,6 +178,7 @@
   "Change its visibility in {{accountName}}.": "এর দৃশ্যমানতা {{accountName}}-এ পরিবর্তন করুন।",
   "Changes SongMirror did not apply because the evidence or replacement was not safe yet.": "SongMirror পরিবর্তনগুলি প্রযোজ্য হয়নি কারণ প্রমাণ বা প্রতিস্থাপন এখনও নিরাপদ ছিল না।",
   "Choose <strong1>Copy request headers</strong1> or <strong2>Copy as cURL</strong2>, then paste it into the renewal field below. Keep the complete <code3/>, <code4/>, and <code5/> headers.": "<strong1>Copy অনুরোধের শিরোনাম </strong1> বা <strong2>Copy cURL</strong2> হিসাবে বেছে নিন, তারপর নিচের পুনর্নবীকরণ ক্ষেত্রে পেস্ট করুন। সম্পূর্ণ <code3/>, <code4/>, এবং <code5/> হেডার রাখুন।",
+  "Choose ListenBrainz as a source to read loves and public playlists without a token. To read private playlists or receive favorites and playlists from another service, add your user token from ListenBrainz settings.": "টোকেন ছাড়াই প্রিয় রেকর্ডিং ও পাবলিক প্লেলিস্ট পড়তে ListenBrainz-কে উৎস হিসেবে বেছে নিন। প্রাইভেট প্লেলিস্ট পড়তে বা অন্য সার্ভিস থেকে পছন্দের গান ও প্লেলিস্ট গ্রহণ করতে ListenBrainz সেটিংস থেকে আপনার ব্যবহারকারী টোকেন যোগ করুন।",
   "Choose a connected account that can open this playlist link": "এই প্লেলিস্ট লিঙ্ক খুলতে পারে এমন একটি সংযুক্ত অ্যাকাউন্ট বেছে নিন",
   "Choose a destination service first": "প্রথমে একটি গন্তব্য পরিষেবা চয়ন করুন",
   "Choose a folder to continue.": "চালিয়ে যেতে একটি ফোল্ডার বেছে নিন।",
@@ -689,6 +690,7 @@
   "Optional, used only for the dashboard's greeting.": "ঐচ্ছিক, শুধুমাত্র ড্যাশবোর্ডের শুভেচ্ছার জন্য ব্যবহার করা হয়।",
   "Optional. Pushes real playlist cover art to your Jellyfin server.": "ঐচ্ছিক। আপনার Jellyfin সার্ভারে বাস্তব প্লেলিস্ট কভার আর্ট পুশ করে।",
   "Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key.": "ঐচ্ছিক: বাস্তব প্লেলিস্ট কভার আর্ট পুশ করতে Jellyfin সংযোগ করুন। আপনার সার্ভার URL এবং একটি API কী প্রয়োজন৷",
+  "Optional: copy your user token from https://listenbrainz.org/settings/ to read private playlists and receive loved recordings and playlists.": "ঐচ্ছিক: প্রাইভেট প্লেলিস্ট পড়তে এবং প্রিয় রেকর্ডিং ও প্লেলিস্ট গ্রহণ করতে https://listenbrainz.org/settings/ থেকে আপনার ব্যবহারকারী টোকেন কপি করুন।",
   "Optional: where offline audio copies land for any sync that opts in (\"Download this sync's playlists\", on the Sync tab).": "ঐচ্ছিক: যেখানে অফলাইন অডিও যেকোন সিঙ্কের জন্য ল্যান্ড করে যা নির্বাচন করে (\"এই সিঙ্কের প্লেলিস্টগুলি ডাউনলোড করুন\", সিঙ্ক ট্যাবে)।",
   "Optional; only if listing playlists needs it": "ঐচ্ছিক; শুধুমাত্র যদি প্লেলিস্ট তালিকার প্রয়োজন হয়",
   "Opus (no re-encode from YouTube)": "Opus (YouTube থেকে পুনরায় এনকোড নেই)",
@@ -763,6 +765,7 @@
   "Protected this pass": "এই পাস সুরক্ষিত",
   "Provider": "প্রদানকারী",
   "Public": "পাবলিক",
+  "Read loved recordings and playlists by username; add a user token to receive them.": "ব্যবহারকারীর নাম দিয়ে প্রিয় রেকর্ডিং ও প্লেলিস্ট পড়ুন; সেগুলো গ্রহণ করতে ব্যবহারকারী টোকেন যোগ করুন।",
   "public link": "পাবলিক লিঙ্ক",
   "Public playlist link": "পাবলিক প্লেলিস্ট লিঙ্ক",
   "Queued": "সারিবদ্ধ",
@@ -1284,9 +1287,6 @@
   "Read-only": "শুধু পড়া যায়",
   "Starred Songs": "তারকাচিহ্নিত গান",
   "Syncs playlists and starred songs already stored on your music server.": "আপনার মিউজিক সার্ভারে আগে থেকে থাকা প্লেলিস্ট ও তারকাচিহ্নিত গান সিঙ্ক করে।",
-  "Read loved recordings by username; add a user token to receive favorites.": "ব্যবহারকারীর নাম দিয়ে প্রিয় রেকর্ডিং পড়ুন; পছন্দের গান গ্রহণ করতে ব্যবহারকারী টোকেন যোগ করুন।",
-  "Choose ListenBrainz as the source to read loves without a token. To receive favorites from another service, add your user token from ListenBrainz settings.": "টোকেন ছাড়া প্রিয় রেকর্ডিং পড়তে ListenBrainz-কে উৎস হিসেবে বেছে নিন। অন্য পরিষেবা থেকে পছন্দের গান গ্রহণ করতে ListenBrainz সেটিংস থেকে আপনার ব্যবহারকারী টোকেন যোগ করুন।",
   "User token": "ব্যবহারকারী টোকেন",
-  "Optional: copy your user token from https://listenbrainz.org/settings/ to receive loved recordings.": "ঐচ্ছিক: প্রিয় রেকর্ডিং গ্রহণ করতে https://listenbrainz.org/settings/ থেকে আপনার ব্যবহারকারী টোকেন কপি করুন।",
   "ListenBrainz": "ListenBrainz"
 }

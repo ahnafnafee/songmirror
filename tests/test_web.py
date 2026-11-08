@@ -129,7 +129,7 @@ def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
         assert by_provider["jellyfin"]["preserves_order"] is False   # browse-only, no target
         # The create flows offer "public" only where create() can honor it.
         assert {p for p, a in by_provider.items() if a["public_playlists"]} == {
-            "spotify", "tidal", "qobuz", "amazon", "ytmusic", "subsonic",
+            "spotify", "tidal", "qobuz", "amazon", "ytmusic", "subsonic", "listenbrainz",
         }
 
 

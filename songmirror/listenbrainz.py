@@ -1,4 +1,4 @@
-"""ListenBrainz loved recordings, metadata lookup, and authorized feedback."""
+"""ListenBrainz loved recordings, playlists, metadata lookup, and authorized writes."""
 
 import math
 import os
@@ -15,6 +15,11 @@ from .engine.config import REQUEST_TIMEOUT, required_env
 API = "https://api.listenbrainz.org"
 WEBSITE = "https://listenbrainz.org"
 PAGE_SIZE = 100
+# JSPF names, as https://listenbrainz.readthedocs.io/en/latest/users/api/playlist.html defines them.
+PLAYLIST_URI = "https://listenbrainz.org/playlist/"
+PLAYLIST_EXTENSION = "https://musicbrainz.org/doc/jspf#playlist"
+TRACK_EXTENSION = "https://musicbrainz.org/doc/jspf#track"
+RECORDING_URI = "https://musicbrainz.org/recording/"
 USER_AGENT = "SongMirror/0.1.0 (https://github.com/ahnafnafee/songmirror/issues)"
 
 
@@ -79,16 +84,21 @@ class ListenBrainz:
         self.token = (os.getenv("LISTENBRAINZ_TOKEN", "") if token is None else token).strip()
         self._validated = False
 
-    def _authorized_json(self, method, path, **kwargs):
+    def _authorized_json(self, method, path, *, token_optional=False, **kwargs):
+        """JSON API call. A token-optional read still sends a configured token,
+        which makes the profile's private playlists visible."""
         from .engine.targets.base import TargetAuthError, TargetCapabilityError, TargetTransientError
 
-        if not self.token:
-            raise TargetCapabilityError("Add a ListenBrainz user token to receive loved recordings.")
+        if not self.token and not token_optional:
+            raise TargetCapabilityError(
+                "Add a ListenBrainz user token to receive loved recordings and playlist changes."
+            )
+        headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Token {self.token}"
         try:
             response = _REQUESTS.request(
-                getattr(self._session, method), f"{API}{path}",
-                headers={"User-Agent": USER_AGENT, "Accept": "application/json",
-                         "Authorization": f"Token {self.token}"},
+                getattr(self._session, method), f"{API}{path}", headers=headers,
                 timeout=REQUEST_TIMEOUT, allow_redirects=False, **kwargs,
             )
         except requests.RequestException as exc:
@@ -156,6 +166,61 @@ class ListenBrainz:
                                      json={f"recording_{kind}": identifier, "score": score})
         if body.get("status") != "ok":
             raise TargetTransientError("ListenBrainz did not confirm the feedback change. Try again later.")
+
+    def _playlist_write(self, path, body):
+        from .engine.targets.base import TargetTransientError
+
+        self.validate_token()
+        result = self._authorized_json("post", path, json=body)
+        if result.get("status") != "ok":
+            raise TargetTransientError("ListenBrainz did not confirm the playlist change. Try again later.")
+        return result
+
+    def playlists(self):
+        """Every JSPF playlist the profile created, private ones included with its token."""
+        offset, rows = 0, []
+        while True:
+            body = self._authorized_json(
+                "get", f"/1/user/{quote(self.user, safe='')}/playlists", token_optional=True,
+                params={"count": PAGE_SIZE, "offset": offset},
+            )
+            page, total = body.get("playlists"), body.get("playlist_count")
+            if (not isinstance(page, list) or not isinstance(total, int) or isinstance(total, bool)
+                    or not all(isinstance(row, dict) and isinstance(row.get("playlist"), dict) for row in page)
+                    or offset + len(page) > total or (not page and offset < total)):
+                raise RuntimeError("ListenBrainz returned an incomplete playlist list; sync was stopped.")
+            rows.extend(row["playlist"] for row in page)
+            offset += len(page)
+            if offset >= total:
+                return rows
+
+    def playlist(self, mbid):
+        body = self._authorized_json("get", f"/1/playlist/{quote(str(mbid), safe='')}", token_optional=True)
+        playlist = body.get("playlist")
+        if not isinstance(playlist, dict) or not isinstance(playlist.get("track", []), list):
+            raise RuntimeError("ListenBrainz returned an incomplete playlist; sync was stopped.")
+        return playlist
+
+    def create_playlist(self, title, annotation="", public=False):
+        from .engine.targets.base import TargetTransientError
+
+        if not str(title or "").strip():
+            raise ValueError("A ListenBrainz playlist needs a title.")
+        playlist = {"title": title, "track": [], "extension": {PLAYLIST_EXTENSION: {"public": bool(public)}}}
+        if annotation:
+            playlist["annotation"] = annotation
+        mbid = self._playlist_write("/1/playlist/create", {"playlist": playlist}).get("playlist_mbid")
+        if not isinstance(mbid, str) or not mbid:
+            raise TargetTransientError("ListenBrainz did not return the new playlist's id. Try again later.")
+        return mbid
+
+    def add_playlist_recording(self, mbid, recording_mbid):
+        self._playlist_write(f"/1/playlist/{quote(str(mbid), safe='')}/item/add",
+                             {"playlist": {"track": [{"identifier": [RECORDING_URI + recording_mbid]}]}})
+
+    def delete_playlist_items(self, mbid, index, count=1):
+        self._playlist_write(f"/1/playlist/{quote(str(mbid), safe='')}/item/delete",
+                             {"index": index, "count": count})
 
     def feedback_page(self, offset=0, count=PAGE_SIZE):
         from .engine.targets.base import TargetTransientError

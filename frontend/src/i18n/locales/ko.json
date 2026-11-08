@@ -178,6 +178,7 @@
   "Change its visibility in {{accountName}}.": "공개 설정은 {{accountName}}에서 변경하세요.",
   "Changes SongMirror did not apply because the evidence or replacement was not safe yet.": "증거 또는 교체가 아직 안전하지 않아 변경 사항 SongMirror가 적용되지 않았습니다.",
   "Choose <strong1>Copy request headers</strong1> or <strong2>Copy as cURL</strong2>, then paste it into the renewal field below. Keep the complete <code3/>, <code4/>, and <code5/> headers.": "<strong1>Copy 요청 헤더</strong1> 또는 <strong2>Copy를 cURL</strong2>로 선택한 다음 아래 갱신 필드에 붙여넣습니다. 전체 <code3/>, <code4/> 및 <code5/> 헤더를 유지합니다.",
+  "Choose ListenBrainz as a source to read loves and public playlists without a token. To read private playlists or receive favorites and playlists from another service, add your user token from ListenBrainz settings.": "토큰 없이 좋아하는 녹음과 공개 재생목록을 읽으려면 ListenBrainz를 소스로 선택하세요. 비공개 재생목록을 읽거나 다른 서비스에서 즐겨찾기와 재생목록을 받으려면 ListenBrainz 설정에서 사용자 토큰을 추가하세요.",
   "Choose a connected account that can open this playlist link": "이 플레이리스트 링크를 열 수 있는 연결된 계정을 선택하세요",
   "Choose a destination service first": "먼저 대상 서비스를 선택하세요",
   "Choose a folder to continue.": "계속하려면 폴더를 선택하세요.",
@@ -689,6 +690,7 @@
   "Optional, used only for the dashboard's greeting.": "선택 사항이며 대시보드 인사말에만 사용됩니다.",
   "Optional. Pushes real playlist cover art to your Jellyfin server.": "선택 사항입니다. 실제 재생목록 커버 아트를 Jellyfin 서버에 푸시합니다.",
   "Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key.": "선택 사항: Jellyfin를 연결하여 실제 재생 목록 커버 아트를 푸시합니다. 서버 URL과 API 키가 필요합니다.",
+  "Optional: copy your user token from https://listenbrainz.org/settings/ to read private playlists and receive loved recordings and playlists.": "선택 사항: 비공개 재생목록을 읽고 좋아하는 녹음과 재생목록을 받으려면 https://listenbrainz.org/settings/ 에서 사용자 토큰을 복사하세요.",
   "Optional: where offline audio copies land for any sync that opts in (\"Download this sync's playlists\", on the Sync tab).": "선택 사항: 선택한 동기화에 대해 오프라인 오디오 사본이 저장되는 곳입니다(동기화 탭의 \"이 동기화의 재생 목록 다운로드\").",
   "Optional; only if listing playlists needs it": "선택사항; 재생목록 나열에 필요한 경우에만",
   "Opus (no re-encode from YouTube)": "Opus(YouTube에서 다시 인코딩하지 않음)",
@@ -763,6 +765,7 @@
   "Protected this pass": "이 패스를 보호했습니다.",
   "Provider": "제공자",
   "Public": "공개",
+  "Read loved recordings and playlists by username; add a user token to receive them.": "사용자 이름으로 좋아하는 녹음과 재생목록을 읽습니다. 받으려면 사용자 토큰을 추가하세요.",
   "public link": "공개 링크",
   "Public playlist link": "공개 재생목록 링크",
   "Queued": "대기 중",
@@ -1284,9 +1287,6 @@
   "Read-only": "읽기 전용",
   "Starred Songs": "별표 표시한 곡",
   "Syncs playlists and starred songs already stored on your music server.": "음악 서버에 이미 저장된 플레이리스트와 별표 표시한 곡을 동기화합니다.",
-  "Read loved recordings by username; add a user token to receive favorites.": "사용자 이름으로 좋아하는 녹음을 읽습니다. 즐겨찾기를 받으려면 사용자 토큰을 추가하세요.",
-  "Choose ListenBrainz as the source to read loves without a token. To receive favorites from another service, add your user token from ListenBrainz settings.": "토큰 없이 좋아하는 녹음을 읽으려면 ListenBrainz를 원본으로 선택하세요. 다른 서비스의 즐겨찾기를 받으려면 ListenBrainz 설정에서 사용자 토큰을 추가하세요.",
   "User token": "사용자 토큰",
-  "Optional: copy your user token from https://listenbrainz.org/settings/ to receive loved recordings.": "선택 사항: 좋아하는 녹음을 받으려면 https://listenbrainz.org/settings/ 에서 사용자 토큰을 복사하세요.",
   "ListenBrainz": "ListenBrainz"
 }

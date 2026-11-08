@@ -178,6 +178,7 @@
   "Change its visibility in {{accountName}}.": "Hãy đổi chế độ hiển thị trong {{accountName}}.",
   "Changes SongMirror did not apply because the evidence or replacement was not safe yet.": "Các thay đổi SongMirror không được áp dụng vì bằng chứng hoặc sự thay thế chưa an toàn.",
   "Choose <strong1>Copy request headers</strong1> or <strong2>Copy as cURL</strong2>, then paste it into the renewal field below. Keep the complete <code3/>, <code4/>, and <code5/> headers.": "Chọn <strong1>Sao chép tiêu đề yêu cầu</strong1> hoặc <strong2>Sao chép dưới dạng cURL</strong2>, sau đó dán vào trường gia hạn bên dưới. Giữ các tiêu đề <code3/>, <code4/> và <code5/> hoàn chỉnh.",
+  "Choose ListenBrainz as a source to read loves and public playlists without a token. To read private playlists or receive favorites and playlists from another service, add your user token from ListenBrainz settings.": "Chọn ListenBrainz làm nguồn để đọc bản thu yêu thích và danh sách phát công khai mà không cần mã thông báo. Để đọc danh sách phát riêng tư hoặc nhận mục yêu thích và danh sách phát từ dịch vụ khác, hãy thêm mã thông báo người dùng từ phần cài đặt ListenBrainz.",
   "Choose a connected account that can open this playlist link": "Chọn tài khoản đã kết nối có thể mở liên kết danh sách phát này",
   "Choose a destination service first": "Trước tiên hãy chọn dịch vụ đích",
   "Choose a folder to continue.": "Chọn một thư mục để tiếp tục.",
@@ -689,6 +690,7 @@
   "Optional, used only for the dashboard's greeting.": "Tùy chọn, chỉ được sử dụng cho lời chào của trang tổng quan.",
   "Optional. Pushes real playlist cover art to your Jellyfin server.": "Tùy chọn. Đẩy ảnh bìa danh sách phát thực sự lên máy chủ Jellyfin của bạn.",
   "Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key.": "Tùy chọn: kết nối Jellyfin để đẩy ảnh bìa danh sách phát thực sự. Bạn cần có URL máy chủ và khóa API.",
+  "Optional: copy your user token from https://listenbrainz.org/settings/ to read private playlists and receive loved recordings and playlists.": "Tùy chọn: sao chép mã thông báo người dùng từ https://listenbrainz.org/settings/ để đọc danh sách phát riêng tư và nhận bản thu yêu thích cùng danh sách phát.",
   "Optional: where offline audio copies land for any sync that opts in (\"Download this sync's playlists\", on the Sync tab).": "Tùy chọn: nơi bản sao âm thanh ngoại tuyến dành cho bất kỳ đồng bộ hóa nào chọn tham gia (\"Tải xuống danh sách phát của đồng bộ hóa này\", trên tab Đồng bộ hóa).",
   "Optional; only if listing playlists needs it": "Tùy chọn; chỉ khi danh sách phát cần nó",
   "Opus (no re-encode from YouTube)": "Opus (không mã hóa lại từ YouTube)",
@@ -763,6 +765,7 @@
   "Protected this pass": "Đã bảo vệ thẻ này",
   "Provider": "Nhà cung cấp",
   "Public": "Công khai",
+  "Read loved recordings and playlists by username; add a user token to receive them.": "Đọc bản thu yêu thích và danh sách phát bằng tên người dùng; thêm mã thông báo người dùng để nhận chúng.",
   "public link": "liên kết công khai",
   "Public playlist link": "Liên kết danh sách phát công khai",
   "Queued": "Đã xếp hàng",
@@ -1284,9 +1287,6 @@
   "Read-only": "Chỉ đọc",
   "Starred Songs": "Bài hát gắn sao",
   "Syncs playlists and starred songs already stored on your music server.": "Đồng bộ danh sách phát và bài hát gắn sao đã có trên máy chủ nhạc của bạn.",
-  "Read loved recordings by username; add a user token to receive favorites.": "Đọc bản thu yêu thích bằng tên người dùng; thêm mã thông báo người dùng để nhận mục yêu thích.",
-  "Choose ListenBrainz as the source to read loves without a token. To receive favorites from another service, add your user token from ListenBrainz settings.": "Chọn ListenBrainz làm nguồn để đọc mục yêu thích mà không cần mã thông báo. Để nhận mục yêu thích từ dịch vụ khác, hãy thêm mã thông báo người dùng từ phần cài đặt ListenBrainz.",
   "User token": "Mã thông báo người dùng",
-  "Optional: copy your user token from https://listenbrainz.org/settings/ to receive loved recordings.": "Không bắt buộc: sao chép mã thông báo người dùng từ https://listenbrainz.org/settings/ để nhận bản thu yêu thích.",
   "ListenBrainz": "ListenBrainz"
 }

@@ -1,4 +1,4 @@
-"""Public reads by username; an optional user token grants favorite writes."""
+"""Public reads by username; an optional user token grants favorite and playlist writes."""
 
 from ...listenbrainz import ListenBrainz
 from .base import ConnStatus, Connector, Field
@@ -11,7 +11,7 @@ class ListenBrainzConnector(Connector):
     config_fields = [
         Field("LISTENBRAINZ_USER", "Username"),
         Field("LISTENBRAINZ_TOKEN", "User token", secret=True, required=False,
-              help="Optional: copy your user token from https://listenbrainz.org/settings/ to receive loved recordings."),
+              help="Optional: copy your user token from https://listenbrainz.org/settings/ to read private playlists and receive loved recordings and playlists."),
     ]
 
     def status(self):
@@ -24,7 +24,7 @@ class ListenBrainzConnector(Connector):
             client = ListenBrainz(user=user, token=token)
             if token:
                 client.validate_token()
-                granted.add("favorites_write")
+                granted |= {"favorites_write", "library_write"}
             client.feedback_page(count=1)
         except RuntimeError as exc:
             return ConnStatus("error", str(exc), capabilities=frozenset())

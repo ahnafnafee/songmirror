@@ -32,7 +32,7 @@ def test_find_playlist_normalizes_numeric_provider_ids():
 def test_is_peer_excludes_browse_only():
     # A sync/transfer peer has a MirrorTarget; browse-only Jellyfin does not.
     assert all(targets.is_peer(provider) for provider in (
-        "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic"
+        "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic", "listenbrainz",
     ))
     assert not targets.is_peer("jellyfin")
     assert not targets.is_peer("bogus")

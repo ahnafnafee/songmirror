@@ -178,6 +178,7 @@
   "Change its visibility in {{accountName}}.": "Görünürlüğünü {{accountName}} üzerinden değiştirin.",
   "Changes SongMirror did not apply because the evidence or replacement was not safe yet.": "Doğrulama kaydı veya şarkı değişimi henüz güvenli görülmediği için SongMirror bu değişiklikleri uygulamadı.",
   "Choose <strong1>Copy request headers</strong1> or <strong2>Copy as cURL</strong2>, then paste it into the renewal field below. Keep the complete <code3/>, <code4/>, and <code5/> headers.": "<strong1>İstek başlıklarını kopyala (Copy request headers)</strong1> veya <strong2>cURL olarak kopyala (Copy as cURL)</strong2> seçeneğini belirleyin, ardından aşağıdaki yenileme alanına yapıştırın. <code3/>, <code4/> ve <code5/> başlıklarının tamamını olduğu gibi bırakın.",
+  "Choose ListenBrainz as a source to read loves and public playlists without a token. To read private playlists or receive favorites and playlists from another service, add your user token from ListenBrainz settings.": "Sevilen kayıtları ve herkese açık çalma listelerini belirteç olmadan okumak için ListenBrainz'i kaynak olarak seçin. Özel çalma listelerini okumak veya başka bir hizmetten favorileri ve çalma listelerini almak için ListenBrainz ayarlarından kullanıcı belirtecinizi ekleyin.",
   "Choose a connected account that can open this playlist link": "Bu çalma listesi bağlantısını açabilecek bağlı bir hesap seçin",
   "Choose a destination service first": "Önce bir hedef servis seçin",
   "Choose a folder to continue.": "Devam etmek için bir klasör seçin.",
@@ -689,6 +690,7 @@
   "Optional, used only for the dashboard's greeting.": "İsteğe bağlı, yalnızca kontrol panelindeki karşılama mesajı için kullanılır.",
   "Optional. Pushes real playlist cover art to your Jellyfin server.": "İsteğe bağlı. Gerçek çalma listesi kapak resmini Jellyfin sunucunuza aktarır.",
   "Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key.": "İsteğe bağlı: Gerçek çalma listesi kapak resmini göndermek için Jellyfin'i bağlayın. Sunucu URL'si ve bir API anahtarı gereklidir.",
+  "Optional: copy your user token from https://listenbrainz.org/settings/ to read private playlists and receive loved recordings and playlists.": "İsteğe bağlı: Özel çalma listelerini okumak ve sevilen kayıtlarla çalma listelerini almak için kullanıcı belirtecinizi https://listenbrainz.org/settings/ adresinden kopyalayın.",
   "Optional: where offline audio copies land for any sync that opts in (\"Download this sync's playlists\", on the Sync tab).": "İsteğe bağlı: Bu özelliği seçen senkronizasyonlar için çevrimdışı ses dosyalarının kaydedileceği konum (Senkronizasyon sekmesindeki \"Bu senkronizasyonun çalma listelerini indir\").",
   "Optional; only if listing playlists needs it": "İsteğe bağlı; yalnızca çalma listelerini listelemek için gerekiyorsa",
   "Opus (no re-encode from YouTube)": "Opus (YouTube'dan yeniden kodlama yapılmaz)",
@@ -763,6 +765,7 @@
   "Protected this pass": "Bu turda korunan",
   "Provider": "Servis",
   "Public": "Herkese açık",
+  "Read loved recordings and playlists by username; add a user token to receive them.": "Sevilen kayıtları ve çalma listelerini kullanıcı adıyla okuyun; bunları almak için kullanıcı belirteci ekleyin.",
   "public link": "herkese açık bağlantı",
   "Public playlist link": "Herkese açık çalma listesi bağlantısı",
   "Queued": "Sıraya alındı",
@@ -1284,9 +1287,6 @@
   "Read-only": "Salt okunur",
   "Starred Songs": "Yıldızlı Şarkılar",
   "Syncs playlists and starred songs already stored on your music server.": "Müzik sunucunuzda zaten bulunan çalma listelerini ve yıldızlı şarkıları senkronize eder.",
-  "Read loved recordings by username; add a user token to receive favorites.": "Sevilen kayıtları kullanıcı adıyla okuyun; favorileri almak için kullanıcı belirteci ekleyin.",
-  "Choose ListenBrainz as the source to read loves without a token. To receive favorites from another service, add your user token from ListenBrainz settings.": "Sevilen kayıtları belirteç olmadan okumak için ListenBrainz’i kaynak olarak seçin. Başka bir hizmetten favorileri almak için ListenBrainz ayarlarından kullanıcı belirtecinizi ekleyin.",
   "User token": "Kullanıcı belirteci",
-  "Optional: copy your user token from https://listenbrainz.org/settings/ to receive loved recordings.": "İsteğe bağlı: Sevilen kayıtları almak için https://listenbrainz.org/settings/ adresinden kullanıcı belirtecinizi kopyalayın.",
   "ListenBrainz": "ListenBrainz"
 }

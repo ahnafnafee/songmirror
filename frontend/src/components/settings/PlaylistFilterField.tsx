@@ -211,7 +211,6 @@ interface PlaylistFilterFieldProps {
   /** The sync wizard can opt into the source provider's built-in liked
    * collection in addition to ordinary playlists. */
   includeLikedTracks?: boolean
-  onlyLikedTracks?: boolean
   likedTracksSelected?: boolean
   syncAllRegularPlaylists?: boolean
   onLikedTracksChange?: (selected: boolean) => void
@@ -228,7 +227,6 @@ export function PlaylistFilterField({
   onChange,
   preferredProviderId,
   includeLikedTracks = false,
-  onlyLikedTracks = false,
   likedTracksSelected = false,
   syncAllRegularPlaylists = false,
   onLikedTracksChange,
@@ -276,17 +274,6 @@ export function PlaylistFilterField({
   // No usable picker source — manual entry is the only option, with a hint
   // about why.
   const noPickerAvailable = !source.hasConnectedAccounts || (Boolean(source.error) && source.playlists.length === 0)
-  if (onlyLikedTracks && showLikedTracks) {
-    return (
-      <div className="rounded-control border border-border bg-inset p-1.5">
-        <LikedTracksOptionRow
-          label={likedTracksLabel}
-          selected={likedTracksSelected}
-          onToggle={() => onLikedTracksChange?.(!likedTracksSelected)}
-        />
-      </div>
-    )
-  }
   if (noPickerAvailable) {
     return (
       <div className="flex flex-col gap-3">

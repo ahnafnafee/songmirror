@@ -481,14 +481,11 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
       providers.add(id)
       if (prev.mode !== 'group') {
         const providerCsv = csvInPeerOrder(providers)
-        const lovedOnly = accounts.find((account) => account.id === id)?.provider === 'listenbrainz'
-        const likedTracks = lovedOnly || prev.liked_tracks
         return {
           ...prev,
           source: id,
           providers: providerCsv,
-          ...(lovedOnly ? { sync_playlists: false, playlists: '', liked_tracks: true } : {}),
-          liked_routes: likedTracks
+          liked_routes: prev.liked_tracks
             ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), id, receivesLikes)
             : prev.liked_routes,
         }
@@ -557,7 +554,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
   function setLikedTracks(selected: boolean) {
     setForm((prev) => {
       if (!selected) {
-        return { ...prev, sync_playlists: sourceAccount?.provider !== 'listenbrainz', liked_tracks: false, liked_routes: {} }
+        return { ...prev, sync_playlists: true, liked_tracks: false, liked_routes: {} }
       }
       const source = playlistPickerProviderId || prev.source
       const providers = new Set(parseCsv(prev.providers))
@@ -938,7 +935,6 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                 onChange={setPlaylistFilter}
                 preferredProviderId={playlistPickerProviderId}
                 includeLikedTracks
-                onlyLikedTracks={sourceAccount?.provider === 'listenbrainz'}
                 likedTracksSelected={form.liked_tracks}
                 syncAllRegularPlaylists={form.sync_playlists}
                 onLikedTracksChange={setLikedTracks}
@@ -946,7 +942,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
 
               {form.liked_tracks && (
                 <section className="flex flex-col gap-3.5 border-t border-border pt-3.5">
-                  {form.playlists.trim().length === 0 && sourceAccount?.provider !== 'listenbrainz' && (
+                  {form.playlists.trim().length === 0 && (
                     <Toggle
                       checked={form.sync_playlists}
                       onChange={(selected) => setField('sync_playlists', selected)}

@@ -186,6 +186,7 @@
   "Change its visibility in {{accountName}}.": "غيّر ظهورها في {{accountName}}.",
   "Changes SongMirror did not apply because the evidence or replacement was not safe yet.": "لم يتم تطبيق التغييرات SongMirror لأن الدليل أو الاستبدال لم يكن آمنًا بعد.",
   "Choose <strong1>Copy request headers</strong1> or <strong2>Copy as cURL</strong2>, then paste it into the renewal field below. Keep the complete <code3/>, <code4/>, and <code5/> headers.": "اختر <strong1>نسخ رؤوس الطلبات</strong1> أو <strong2>نسخ كـ cURL</strong2>، ثم لصقها في حقل التجديد أدناه. احتفظ بالرؤوس <code3/> و<code4/> و<code5/> الكاملة.",
+  "Choose ListenBrainz as a source to read loves and public playlists without a token. To read private playlists or receive favorites and playlists from another service, add your user token from ListenBrainz settings.": "اختر ListenBrainz مصدرًا لقراءة التسجيلات المحبوبة وقوائم التشغيل العامة دون رمز. لقراءة قوائم التشغيل الخاصة أو استقبال المفضلات وقوائم التشغيل من خدمة أخرى، أضف رمز المستخدم من إعدادات ListenBrainz.",
   "Choose a connected account that can open this playlist link": "اختر حسابًا متصلًا يمكنه فتح رابط قائمة التشغيل هذا",
   "Choose a destination service first": "اختر خدمة الوجهة أولاً",
   "Choose a folder to continue.": "اختر مجلدًا للمتابعة.",
@@ -713,6 +714,7 @@
   "Optional, used only for the dashboard's greeting.": "اختياري، يُستخدم فقط لتحية لوحة المعلومات.",
   "Optional. Pushes real playlist cover art to your Jellyfin server.": "اختياري. يدفع غلاف قائمة التشغيل الحقيقي إلى خادم Jellyfin الخاص بك.",
   "Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key.": "اختياري: قم بتوصيل Jellyfin لدفع صورة غلاف قائمة التشغيل الحقيقية. أنت بحاجة إلى عنوان URL للخادم ومفتاح API.",
+  "Optional: copy your user token from https://listenbrainz.org/settings/ to read private playlists and receive loved recordings and playlists.": "اختياري: انسخ رمز المستخدم من https://listenbrainz.org/settings/ لقراءة قوائم التشغيل الخاصة واستقبال التسجيلات المحبوبة وقوائم التشغيل.",
   "Optional: where offline audio copies land for any sync that opts in (\"Download this sync's playlists\", on the Sync tab).": "اختياري: حيث تصل النسخ الصوتية دون اتصال لأي مزامنة يتم الاشتراك فيها (\"تنزيل قوائم التشغيل الخاصة بهذه المزامنة\"، في علامة التبويب \"مزامنة\").",
   "Optional; only if listing playlists needs it": "اختياري؛ فقط إذا كانت قوائم التشغيل تحتاج إلى ذلك",
   "Opus (no re-encode from YouTube)": "Opus (لا توجد إعادة تشفير من YouTube)",
@@ -792,6 +794,7 @@
   "Queued": "في قائمة الانتظار",
   "queued": "في قائمة الانتظار",
   "Raw request headers": "رؤوس الطلبات الأولية",
+  "Read loved recordings and playlists by username; add a user token to receive them.": "اقرأ التسجيلات المحبوبة وقوائم التشغيل باسم المستخدم؛ أضف رمز المستخدم لاستقبالها.",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "قراءة قائمة التشغيل {{current, number}} من {{total, number}}: {{playlist}}",
   "Reading source playlist…": "قراءة قائمة التشغيل المصدر...",
   "Reading the playlist list…": "جارٍ قراءة قائمة قوائم التشغيل…",
@@ -1412,9 +1415,6 @@
   "Read-only": "للقراءة فقط",
   "Starred Songs": "الأغاني المميزة بنجمة",
   "Syncs playlists and starred songs already stored on your music server.": "يزامن قوائم التشغيل والأغاني المميزة بنجمة المخزنة بالفعل على خادم الموسيقى.",
-  "Read loved recordings by username; add a user token to receive favorites.": "اقرأ التسجيلات المحبوبة باسم المستخدم؛ أضف رمز المستخدم لاستقبال المفضلات.",
-  "Choose ListenBrainz as the source to read loves without a token. To receive favorites from another service, add your user token from ListenBrainz settings.": "اختر ListenBrainz كمصدر لقراءة التسجيلات المحبوبة دون رمز. لاستقبال المفضلات من خدمة أخرى، أضف رمز المستخدم من إعدادات ListenBrainz.",
   "User token": "رمز المستخدم",
-  "Optional: copy your user token from https://listenbrainz.org/settings/ to receive loved recordings.": "اختياري: انسخ رمز المستخدم من https://listenbrainz.org/settings/ لاستقبال التسجيلات المحبوبة.",
   "ListenBrainz": "ListenBrainz"
 }

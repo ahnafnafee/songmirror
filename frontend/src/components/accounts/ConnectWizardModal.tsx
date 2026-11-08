@@ -220,8 +220,8 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
     link: { href: 'https://www.last.fm/api/account/create', label: t("Create a Last.fm API account") },
   },
   listenbrainz: {
-    intro: t("Read loved recordings by username; add a user token to receive favorites."),
-    steps: [<>{t("Choose ListenBrainz as the source to read loves without a token. To receive favorites from another service, add your user token from ListenBrainz settings.")}</>],
+    intro: t("Read loved recordings and playlists by username; add a user token to receive them."),
+    steps: [<>{t("Choose ListenBrainz as a source to read loves and public playlists without a token. To read private playlists or receive favorites and playlists from another service, add your user token from ListenBrainz settings.")}</>],
     link: { href: 'https://listenbrainz.org/settings/', label: t("ListenBrainz") },
   },
   subsonic: {
@@ -488,7 +488,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
       onClose={onClose}
       title={t("Connect {{accountName}}", { accountName: account.name })}
       description={isLastfm ? t("Choose what to connect") : account.provider === 'listenbrainz'
-        ? t("Read loved recordings by username; add a user token to receive favorites.") : AUTH_KIND_TITLES[account.auth_kind]}
+        ? t("Read loved recordings and playlists by username; add a user token to receive them.") : AUTH_KIND_TITLES[account.auth_kind]}
     >
       <div className="flex flex-col gap-5">
         {showSuccess ? (

@@ -178,6 +178,7 @@
   "Change its visibility in {{accountName}}.": "Ändern Sie die Sichtbarkeit in {{accountName}}.",
   "Changes SongMirror did not apply because the evidence or replacement was not safe yet.": "Änderungen SongMirror wurden nicht angewendet, da der Nachweis oder Ersatz noch nicht sicher war.",
   "Choose <strong1>Copy request headers</strong1> or <strong2>Copy as cURL</strong2>, then paste it into the renewal field below. Keep the complete <code3/>, <code4/>, and <code5/> headers.": "Wählen Sie <strong1>Kopieren Sie die Anforderungsheader</strong1> oder <strong2>Kopieren Sie als cURL</strong2> und fügen Sie es dann in das Erneuerungsfeld unten ein. Behalten Sie die vollständigen <code3/>-, <code4/>- und <code5/>-Header.",
+  "Choose ListenBrainz as a source to read loves and public playlists without a token. To read private playlists or receive favorites and playlists from another service, add your user token from ListenBrainz settings.": "Wähle ListenBrainz als Quelle, um Lieblingsaufnahmen und öffentliche Playlists ohne Token zu lesen. Um private Playlists zu lesen oder Favoriten und Playlists von einem anderen Dienst zu empfangen, füge dein Benutzertoken aus den ListenBrainz-Einstellungen hinzu.",
   "Choose a connected account that can open this playlist link": "Wähle ein verbundenes Konto, das diesen Playlist-Link öffnen kann",
   "Choose a destination service first": "Wählen Sie zuerst einen Zieldienst",
   "Choose a folder to continue.": "Wählen Sie einen Ordner, um fortzufahren.",
@@ -689,6 +690,7 @@
   "Optional, used only for the dashboard's greeting.": "Optional, wird nur für die Begrüßung des Dashboards verwendet.",
   "Optional. Pushes real playlist cover art to your Jellyfin server.": "Optional. Schiebt echte Playlist-Coverbilder auf Ihren Jellyfin-Server.",
   "Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key.": "Optional: Jellyfin verbinden, um echtes Playlist-Cover zu pushen. Sie benötigen die Server-URL und einen API-Schlüssel.",
+  "Optional: copy your user token from https://listenbrainz.org/settings/ to read private playlists and receive loved recordings and playlists.": "Optional: Kopiere dein Benutzertoken von https://listenbrainz.org/settings/, um private Playlists zu lesen und Lieblingsaufnahmen sowie Playlists zu empfangen.",
   "Optional: where offline audio copies land for any sync that opts in (\"Download this sync's playlists\", on the Sync tab).": "Optional: Wo Offline-Audiokopien für jede Synchronisierung landen, die sich dafür entscheidet („Laden Sie die Wiedergabelisten dieser Synchronisierung herunter“ auf der Registerkarte „Synchronisierung“).",
   "Optional; only if listing playlists needs it": "Optional; Nur wenn das Auflisten von Wiedergabelisten dies erfordert",
   "Opus (no re-encode from YouTube)": "Opus (keine Neucodierung von YouTube)",
@@ -763,6 +765,7 @@
   "Protected this pass": "Dieser Pass wurde geschützt",
   "Provider": "Anbieter",
   "Public": "Öffentlich",
+  "Read loved recordings and playlists by username; add a user token to receive them.": "Lies Lieblingsaufnahmen und Playlists per Benutzername; füge ein Benutzertoken hinzu, um sie zu empfangen.",
   "public link": "öffentlicher Link",
   "Public playlist link": "Link zur öffentlichen Playlist",
   "Queued": "In der Warteschlange",
@@ -1284,9 +1287,6 @@
   "Read-only": "Schreibgeschützt",
   "Starred Songs": "Mit Stern markierte Songs",
   "Syncs playlists and starred songs already stored on your music server.": "Synchronisiert Playlists und mit Stern markierte Songs, die bereits auf deinem Musikserver gespeichert sind.",
-  "Read loved recordings by username; add a user token to receive favorites.": "Lies geliebte Aufnahmen per Benutzername; füge ein Benutzertoken hinzu, um Favoriten zu empfangen.",
-  "Choose ListenBrainz as the source to read loves without a token. To receive favorites from another service, add your user token from ListenBrainz settings.": "Wähle ListenBrainz als Quelle, um geliebte Aufnahmen ohne Token zu lesen. Um Favoriten von einem anderen Dienst zu empfangen, füge dein Benutzertoken aus den ListenBrainz-Einstellungen hinzu.",
   "User token": "Benutzertoken",
-  "Optional: copy your user token from https://listenbrainz.org/settings/ to receive loved recordings.": "Optional: Kopiere dein Benutzertoken von https://listenbrainz.org/settings/, um geliebte Aufnahmen zu empfangen.",
   "ListenBrainz": "ListenBrainz"
 }
