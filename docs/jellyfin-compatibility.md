@@ -14,7 +14,7 @@ Playlist discovery reads all result pages. A failed track-count request leaves t
 
 ## Playlist sync and transfers
 
-Jellyfin can be the source or a destination of one-way syncs and transfers. First enter a **User ID** in **Accounts → Jellyfin**: Jellyfin assigns every playlist to a user, an API key has no user of its own, and the playlist API rejects reads without one. To find the ID, open **Dashboard → Users**, select the user, and copy `userId` from the address bar. Without a User ID the account still browses playlists, but the sync and transfer pickers do not offer it.
+Jellyfin can be the source or a destination of one-way syncs and transfers. First enter a **User ID** in **Accounts → Jellyfin**: Jellyfin assigns every playlist to a user, an API key has no user of its own, and the playlist API rejects reads without one. Enter the user name that **Dashboard → Users** lists, ignoring case, or that user's `userId` from the address bar. SongMirror looks the name up and saves the ID; an unknown name is rejected and the previous value is kept. Without a User ID the account still browses playlists, but the sync and transfer pickers do not offer it.
 
 SongMirror matches incoming tracks against audio already in the server's library, using title, artist, duration, and recording version. Jellyfin does not expose ISRCs. SongMirror does not download or upload missing audio; unmatched songs stay in the missing results, where a Jellyfin item id can be saved as a manual match. New playlists are private unless the create flow asks for a public one, which Jellyfin shows to every user on the server. Jellyfin's playlist API has no description field, so descriptions are not copied.
 

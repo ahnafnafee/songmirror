@@ -241,7 +241,7 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
         <Trans i18nKey={"Click <strong1>+</strong1>, name the key “SongMirror”, and copy it."} components={{ strong1: <strong /> }} />
       </>,
       <>
-        <Trans i18nKey={"Paste the URL and key below. For playlist sync, open <strong1>Dashboard → Users</strong1>, select your user, and copy the <code2/> value from the address bar into <strong3>User ID</strong3>."} components={{ strong1: <strong />, code2: <Code>userId</Code>, strong3: <strong /> }} />
+        <Trans i18nKey={"Paste the URL and key below. For playlist sync, enter your Jellyfin user name in <strong1>User ID</strong1>, as <strong2>Dashboard → Users</strong2> lists it. SongMirror saves the matching ID."} components={{ strong1: <strong />, strong2: <strong /> }} />
       </>,
     ],
   },

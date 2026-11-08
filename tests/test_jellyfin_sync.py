@@ -117,6 +117,39 @@ def test_sync_needs_a_user_id_and_only_then_registers_as_a_peer(monkeypatch):
     assert isinstance(targets.build_one("jellyfin", parse_args([])), JellyfinTarget)
 
 
+@pytest.mark.parametrize("entered", ["listener@example.com", " LISTENER@example.com ", USER,
+                                     "-".join((USER[:8], USER[8:12], USER[12:16], USER[16:20], USER[20:]))])
+def test_connector_accepts_a_user_name_or_id_and_stores_the_id(tmp_path, monkeypatch, entered):
+    from songmirror.services.accounts.jellyfin import JellyfinConnector
+    from songmirror.services.settings import SettingsStore
+
+    users = [{"Id": "other", "Name": "habib"}, {"Id": USER, "Name": "listener@example.com"}]
+    paths = []
+
+    def get(url, **kwargs):
+        paths.append(url.removeprefix(SERVER))
+        return response(url, {"Id": "server", "Version": "12.2.0"} if url.endswith("/System/Info") else users)
+
+    monkeypatch.setattr("songmirror.engine.jellyfin.requests.get", get)
+    store = SettingsStore(dir=tmp_path, project_env=False)
+    status = JellyfinConnector(store).submit({**CONFIG, "JELLYFIN_USER_ID": entered})
+    assert status.state == "connected" and status.capabilities == {"library_read", "library_write"}
+    assert store.get("JELLYFIN_USER_ID") == USER
+    # A user name in the path makes Jellyfin answer HTTP 400, so only the list is read.
+    assert paths == ["/System/Info", "/Users"]
+
+
+def test_connector_names_an_unknown_user_instead_of_an_http_status(tmp_path, monkeypatch):
+    from songmirror.services.accounts.jellyfin import JellyfinConnector
+    from songmirror.services.settings import SettingsStore
+
+    monkeypatch.setattr("songmirror.engine.jellyfin.requests.get", lambda url, **kwargs: response(
+        url, {"Id": "server", "Version": "12.2.0"} if url.endswith("/System/Info") else [{"Id": USER, "Name": "a"}]))
+    status = JellyfinConnector(SettingsStore(dir=tmp_path, project_env=False)).submit(
+        {**CONFIG, "JELLYFIN_USER_ID": "someone@example.com"})
+    assert status.state == "error" and "Dashboard → Users" in status.detail and "400" not in status.detail
+
+
 def test_accounts_api_offers_jellyfin_for_sync_only_with_a_user_id(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
