@@ -90,14 +90,16 @@ def _supports_playlists(provider):
 
 
 def _source_capable(provider):
-    """Whether the provider can supply tracks to a sync.
+    """Whether the provider can supply tracks to a sync. Ask it under the
+    account's activated profile.
 
-    True when it has a MirrorTarget to read through. This is what separates the
-    two kinds of non-peer: Last.fm is input-only and has a target, while
-    Jellyfin is output-only, has no target, and is fed by the download mirror
-    rather than read from.
+    True for a target with playlists, and for Last.fm, which declares that it
+    never has playlists but still supplies read-only collections. A target
+    whose playlist support depends on the account (Jellyfin without a User
+    ID) cannot read tracks until that account is completed.
     """
-    return target_class(provider) is not None
+    cls = target_class(provider)
+    return cls is not None and (targets_supports_playlists(provider) or cls.supports_playlists is False)
 
 
 def _status_values(provider, status):
@@ -154,6 +156,7 @@ def _status_payload(request, profile):
         status = connector.status()
         status_values = _status_values(profile.provider, status)
         supports_playlists = _supports_playlists(profile.provider)
+        source_capable = _source_capable(profile.provider)
         transferable = is_peer(profile.provider)
         public_playlists = _public_playlists(profile.provider)
         editable_details = _editable_details(profile.provider)
@@ -178,7 +181,8 @@ def _status_payload(request, profile):
         **status_values,
         "transferable": transferable,
         "supports_playlists": supports_playlists,
-        "source_capable": _source_capable(profile.provider),
+        "source_capable": source_capable,
+        "supports_favorites": bool(target_class(profile.provider) and target_class(profile.provider).supports_favorites),
         "preserves_order": _preserves_order(profile.provider),
         "public_playlists": public_playlists,
         "editable_details": editable_details,

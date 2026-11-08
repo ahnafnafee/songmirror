@@ -68,8 +68,7 @@ export function TransferSetupForm({ accounts, entries, onRefreshPlaylists, onSta
   const [error, setError] = useState<string | null>(null)
   const defaultsForSource = useRef<string | null>(null)
 
-  // Only sync/transfer peers can be an endpoint — browse-only services like
-  // Jellyfin (a local mirror the download step feeds) are filtered out.
+  // Only sync/transfer peers can be an endpoint; Last.fm has no playlists.
   const transferable = useMemo(() => accounts.filter((a) => a.transferable), [accounts])
   const librarySources = useMemo(
     () => transferable.filter((account) => capabilitiesOf(account).library_read),

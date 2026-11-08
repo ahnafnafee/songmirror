@@ -220,8 +220,8 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
     link: { href: 'https://www.last.fm/api/account/create', label: t("Create a Last.fm API account") },
   },
   listenbrainz: {
-    intro: t("Read loved recordings by username; add a user token to receive favorites."),
-    steps: [<>{t("Choose ListenBrainz as the source to read loves without a token. To receive favorites from another service, add your user token from ListenBrainz settings.")}</>],
+    intro: t("Read loved recordings and playlists by username; add a user token to receive them."),
+    steps: [<>{t("Choose ListenBrainz as a source to read loves and public playlists without a token. To read private playlists or receive favorites and playlists from another service, add your user token from ListenBrainz settings.")}</>],
     link: { href: 'https://listenbrainz.org/settings/', label: t("ListenBrainz") },
   },
   subsonic: {
@@ -229,7 +229,7 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
     steps: [<>{t("Enter the server URL and your Subsonic username and password. In Docker, use a server address the container can reach.")}</>],
   },
   jellyfin: {
-    intro: t("Optional: connect Jellyfin to push real playlist cover art. You need the server URL and an API key."),
+    intro: t("Connect Jellyfin to sync playlists with your music library and push playlist cover art. You need the server URL, an API key, and a User ID."),
     steps: [
       <>
         <Trans i18nKey={"<strong1>Server URL</strong1>: where Jellyfin runs, e.g. <code2/>. If this app runs in Docker, use <code3/> — inside the container <code4/> is the container itself, not your host."} components={{ strong1: <strong />, code2: <Code>http://localhost:8096</Code>, code3: <Code>http://host.docker.internal:8096</Code>, code4: <Code>localhost</Code> }} />
@@ -241,7 +241,7 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
         <Trans i18nKey={"Click <strong1>+</strong1>, name the key “SongMirror”, and copy it."} components={{ strong1: <strong /> }} />
       </>,
       <>
-        <Trans i18nKey={"Paste the URL and key below; <strong1>User ID</strong1> is optional."} components={{ strong1: <strong /> }} />
+        <Trans i18nKey={"Paste the URL and key below. For playlist sync, open <strong1>Dashboard → Users</strong1>, select your user, and copy the <code2/> value from the address bar into <strong3>User ID</strong3>."} components={{ strong1: <strong />, code2: <Code>userId</Code>, strong3: <strong /> }} />
       </>,
     ],
   },
@@ -488,7 +488,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
       onClose={onClose}
       title={t("Connect {{accountName}}", { accountName: account.name })}
       description={isLastfm ? t("Choose what to connect") : account.provider === 'listenbrainz'
-        ? t("Read loved recordings by username; add a user token to receive favorites.") : AUTH_KIND_TITLES[account.auth_kind]}
+        ? t("Read loved recordings and playlists by username; add a user token to receive them.") : AUTH_KIND_TITLES[account.auth_kind]}
     >
       <div className="flex flex-col gap-5">
         {showSuccess ? (

@@ -304,16 +304,24 @@ class PlaylistService:
         MirrorTarget.browse_playlists() + accessors, so adding a provider needs no
         change here. `owned` is False only for a followed (non-owned) playlist — a
         provider surfaces those by overriding browse_playlists (Spotify does today).
-        Jellyfin is browse-only and lists via its own API."""
+        Jellyfin lists via its own API, which works without the User ID that
+        its sync target needs."""
         if self._provider(provider_id) == "jellyfin":
             from ..engine import jellyfin
             try:
                 config = self._jellyfin_config(provider_id)
                 configured_url = config.get("JELLYFIN_URL")
                 server = jellyfin.server_url(configured_url) if configured_url else ""
+                editable = set()
+                if str(config.get("JELLYFIN_USER_ID") or "").strip():
+                    from ..engine.targets.jellyfin import JellyfinTarget
+
+                    target = JellyfinTarget(config)
+                    editable = {str(target.playlist_id(playlist)) for playlist in target.browse_playlists()
+                                if target.is_editable(playlist)}
                 rows = [{
                     **row,
-                    "owned": True,
+                    "owned": str(row["id"]) in editable,
                     "external_url": (
                         f"{server}/web/#/details?id={quote(str(row['id']), safe='')}"
                         if server else ""

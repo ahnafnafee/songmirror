@@ -29,12 +29,14 @@ def test_find_playlist_normalizes_numeric_provider_ids():
     assert Target().find_playlist("68684835")["name"] == "Argonaut"
 
 
-def test_is_peer_excludes_browse_only():
-    # A sync/transfer peer has a MirrorTarget; browse-only Jellyfin does not.
+def test_is_peer_excludes_services_without_playlists(monkeypatch):
+    # A sync/transfer peer has a MirrorTarget with playlists; Last.fm has none.
+    monkeypatch.setenv("JELLYFIN_USER_ID", "user")
     assert all(targets.is_peer(provider) for provider in (
-        "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic"
+        "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
+        "subsonic", "jellyfin", "listenbrainz",
     ))
-    assert not targets.is_peer("jellyfin")
+    assert not targets.is_peer("lastfm")
     assert not targets.is_peer("bogus")
 
 

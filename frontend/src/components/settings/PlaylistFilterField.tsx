@@ -4,7 +4,7 @@ import { LuCheck, LuChevronDown, LuChevronUp, LuHeart, LuInfo, LuSearch, LuX } f
 
 import { useAccounts } from '@/hooks/useAccounts'
 import { useProviderPlaylists } from '@/hooks/useProviderPlaylists'
-import { capabilitiesOf } from '@/lib/accountCapabilities'
+import { canReadLikedTracks, capabilitiesOf } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { formatTrackCount } from '@/lib/format'
 import { providerLikedTracksLabel } from '@/lib/likedTracks'
@@ -43,6 +43,7 @@ interface PickerSource {
   loading: boolean
   error: string | null
   hasConnectedAccounts: boolean
+  supportsFavorites: boolean
 }
 
 /** Pins the picker to whichever provider is actually meaningful for the
@@ -81,11 +82,12 @@ function usePickerSource(preferredProviderId?: string | null): PickerSource {
         loading: !entry || entry.loading,
         error: entry?.error ?? null,
         hasConnectedAccounts,
+        supportsFavorites: canReadLikedTracks(pinned),
       }
     }
 
     if (!hasConnectedAccounts) {
-      return { providerId: null, provider: null, providerLabel: '', playlists: [], loading: false, error: null, hasConnectedAccounts }
+      return { providerId: null, provider: null, providerLabel: '', playlists: [], loading: false, error: null, hasConnectedAccounts, supportsFavorites: false }
     }
 
     const seen = new Map<string, ProviderPlaylist>()
@@ -107,6 +109,7 @@ function usePickerSource(preferredProviderId?: string | null): PickerSource {
       loading: !allSettled && seen.size === 0,
       error: allSettled && seen.size === 0 ? t("Could not load playlists from any connected service.") : null,
       hasConnectedAccounts,
+      supportsFavorites: false,
     }
   }, [connected, entries, pinned, i18n.resolvedLanguage, t])
 }
@@ -211,7 +214,6 @@ interface PlaylistFilterFieldProps {
   /** The sync wizard can opt into the source provider's built-in liked
    * collection in addition to ordinary playlists. */
   includeLikedTracks?: boolean
-  onlyLikedTracks?: boolean
   likedTracksSelected?: boolean
   syncAllRegularPlaylists?: boolean
   onLikedTracksChange?: (selected: boolean) => void
@@ -228,7 +230,6 @@ export function PlaylistFilterField({
   onChange,
   preferredProviderId,
   includeLikedTracks = false,
-  onlyLikedTracks = false,
   likedTracksSelected = false,
   syncAllRegularPlaylists = false,
   onLikedTracksChange,
@@ -261,7 +262,7 @@ export function PlaylistFilterField({
   }
 
   const likedTracksLabel = providerLikedTracksLabel(source.provider, source.providerLabel)
-  const showLikedTracks = includeLikedTracks && Boolean(source.providerId) && Boolean(onLikedTracksChange)
+  const showLikedTracks = includeLikedTracks && source.supportsFavorites && Boolean(source.providerId) && Boolean(onLikedTracksChange)
   const isEmpty = selectedNames.length === 0 && !likedTracksSelected
   const syncingAllWithLiked = likedTracksSelected && syncAllRegularPlaylists && selectedNames.length === 0
   const selectedCount = selectedNames.length + (likedTracksSelected ? 1 : 0)
@@ -276,17 +277,6 @@ export function PlaylistFilterField({
   // No usable picker source — manual entry is the only option, with a hint
   // about why.
   const noPickerAvailable = !source.hasConnectedAccounts || (Boolean(source.error) && source.playlists.length === 0)
-  if (onlyLikedTracks && showLikedTracks) {
-    return (
-      <div className="rounded-control border border-border bg-inset p-1.5">
-        <LikedTracksOptionRow
-          label={likedTracksLabel}
-          selected={likedTracksSelected}
-          onToggle={() => onLikedTracksChange?.(!likedTracksSelected)}
-        />
-      </div>
-    )
-  }
   if (noPickerAvailable) {
     return (
       <div className="flex flex-col gap-3">

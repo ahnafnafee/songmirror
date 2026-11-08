@@ -21,7 +21,7 @@ from ..engine.config import (
     DEFAULT_INTERVAL, DEFAULT_MAX_ADDS, DEFAULT_MAX_REMOVALS, DEFAULT_PROVIDERS,
     DEFAULT_SYNC_MODE, DEFAULT_SYNC_SOURCE,
 )
-from ..engine.targets import provider_ids
+from ..engine.targets import provider_ids, target_class
 from .playlist_links import PLAYLIST_LINK_HINT, PlaylistLinkError, parse_playlist_link
 from .settings import _open_private
 
@@ -244,6 +244,10 @@ def validate_sync_job(job, profiles=None):
     if not job.sync_playlists and not job.liked_tracks:
         raise ValueError("select regular playlists, liked tracks, or both")
     if job.liked_tracks:
+        source_provider = profiles.provider_of(job.source) if profiles is not None else job.source
+        source_class = target_class(source_provider)
+        if source_class is not None and not source_class.supports_favorites:
+            raise ValueError(f"{source_class.name} does not support liked-track sync sources")
         providers = _provider_ids(job.providers)
         if not providers:
             raise ValueError("liked-track sync needs an explicit provider selection")
@@ -262,6 +266,10 @@ def validate_sync_job(job, profiles=None):
                 raise ValueError(
                     f"liked-track destination for {provider_id} must be native or playlist"
                 )
+            destination_provider = profiles.provider_of(provider_id) if profiles is not None else provider_id
+            destination_class = target_class(destination_provider)
+            if route["kind"] == "native" and destination_class is not None and not destination_class.supports_favorites:
+                raise ValueError(f"{destination_class.name} does not support native liked-track destinations")
             if route["kind"] == "playlist" and not str(route.get("name") or "").strip():
                 raise ValueError(
                     f"liked-track playlist destination for {provider_id} needs a name"

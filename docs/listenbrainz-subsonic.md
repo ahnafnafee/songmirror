@@ -2,9 +2,9 @@
 
 ## ListenBrainz loved recordings
 
-Connect a public ListenBrainz profile from **Accounts** using its MusicBrainz username. SongMirror reads the profile's loved recordings without a user token. To receive favorites from TIDAL or another connected service, also enter your **User token** from [ListenBrainz settings](https://listenbrainz.org/settings/). SongMirror checks that the token belongs to the configured username before enabling writes. ListenBrainz playlist sync is not supported.
+Connect a public ListenBrainz profile from **Accounts** using its MusicBrainz username. SongMirror reads the profile's loved recordings without a user token. To receive favorites from TIDAL or another connected service, also enter your **User token** from [ListenBrainz settings](https://listenbrainz.org/settings/). SongMirror checks that the token belongs to the configured username before enabling writes. The same token enables [playlist writes](#listenbrainz-playlists).
 
-Create a one-way sync and choose ListenBrainz as the source. This selects its **Loved Recordings** collection automatically. Include the destination accounts, then choose each destination's native favorites or a named playlist under **Playlists**. Preview the sync before enabling writes. Subsequent runs reconcile the same collection, so unloving a recording can remove its mirror when removal mirroring is enabled.
+Create a one-way sync and choose ListenBrainz as the source. Select its **Loved Recordings** collection under **Playlists**, include the destination accounts, then choose each destination's native favorites or a named playlist. Preview the sync before enabling writes. Subsequent runs reconcile the same collection, so unloving a recording can remove its mirror when removal mirroring is enabled.
 
 The reader requests every page of positive feedback with metadata. A MusicBrainz recording MBID identifies a recording when available; otherwise its ListenBrainz recording MSID is retained. Titles and artist credits supply the metadata matching fallback because the feedback response does not guarantee an ISRC or duration. Missing metadata remains in the source and produces a warning containing its recording identifier; unsuccessful matches appear in the sync's missing results. Destination removals are held while any source recording lacks its title or artist, so a metadata failure cannot delete a previously matched copy. A failed or incomplete page stops the source read instead of returning an empty collection.
 
@@ -15,6 +15,14 @@ Incoming songs with recording MBIDs or MSIDs retain those identifiers. Otherwise
 For environment-managed connections, set `LISTENBRAINZ_USER` and optionally `LISTENBRAINZ_TOKEN`. Additional accounts created in the UI keep their usernames, tokens and cache paths in separate profiles. Reconnecting with a blank saved token keeps it; changing the username clears the previous token unless a replacement is supplied. Disconnecting clears both fields.
 
 Requests identify SongMirror with its version and project contact URL. Connection checks and pagination share a one-request-per-second budget across profiles and honor the API's rate-limit reset headers. If the API returns an HTML verification page, SongMirror tries the website's public Taste-page JSON route. That route returns at most 25 feedback entries, so its reported count must prove the entire collection was returned before SongMirror uses it. Larger collections still require the API; a truncated website response or failure on both routes stops the read with a retryable error. Rate limits do not trigger the website fallback.
+
+## ListenBrainz playlists
+
+ListenBrainz playlists can be the source or a destination of one-way syncs and transfers. Without a user token, SongMirror reads the profile's public playlists. With the token, it also reads private playlists and can create playlists, add recordings, and remove entries. The sync and transfer pickers offer a profile without a token only as a source.
+
+ListenBrainz playlists contain MusicBrainz recordings. SongMirror keeps a source's recording MBID when one is present; otherwise it uses the metadata lookup described above. A recording known only by its ListenBrainz MSID cannot be added to a playlist, so it stays in the missing results for a manual match with a recording link or MBID. New playlists are private unless the create flow requests a public one, and a source description becomes the playlist annotation.
+
+SongMirror lists the playlists that the profile created. Playlists created for you, such as weekly recommendations, and playlists where you are only a collaborator are not listed. Additions are appended in source order, one request per recording. A removal deletes the selected positions after a fresh read, so removing one copy of a repeated recording keeps the others. Every request uses the shared one-request-per-second budget, so a large first sync takes about one second per recording. Date-added order repair is not available.
 
 ## Navidrome and Subsonic-compatible servers
 
@@ -33,6 +41,7 @@ Environment-managed connections use `SUBSONIC_URL`, `SUBSONIC_USER`, and `SUBSON
 ## API references
 
 - [ListenBrainz feedback API](https://listenbrainz.readthedocs.io/en/latest/users/api/recordings.html)
+- [ListenBrainz playlist API](https://listenbrainz.readthedocs.io/en/latest/users/api/playlist.html)
 - [ListenBrainz feedback identifiers and pagination](https://listenbrainz.readthedocs.io/en/latest/users/feedback-json.html)
 - [ListenBrainz token validation](https://listenbrainz.readthedocs.io/en/latest/users/api/core.html#id19)
 - [ListenBrainz recording metadata lookup](https://listenbrainz.readthedocs.io/en/latest/users/api/metadata.html)

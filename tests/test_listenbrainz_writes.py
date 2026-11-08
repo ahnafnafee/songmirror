@@ -243,8 +243,9 @@ def test_profile_token_is_optional_private_isolated_and_cleared_on_username_chan
     store = profiles.settings_for(first.id)
     conn = ListenBrainzConnector(store)
     assert conn.submit({"LISTENBRAINZ_USER": "listener"}).capabilities == {"library_read"}
-    assert conn.submit({"LISTENBRAINZ_TOKEN": TOKEN}).capabilities == {"library_read", "favorites_write"}
-    assert conn.submit({"LISTENBRAINZ_USER": "LISTENER"}).capabilities == {"library_read", "favorites_write"}
+    writer = {"library_read", "library_write", "favorites_write"}
+    assert conn.submit({"LISTENBRAINZ_TOKEN": TOKEN}).capabilities == writer
+    assert conn.submit({"LISTENBRAINZ_USER": "LISTENER"}).capabilities == writer
     assert checked == [("listener", TOKEN), ("LISTENER", TOKEN)]
     assert settings.get("LISTENBRAINZ_TOKEN") is None
     with profiles.activate(second.id):
@@ -253,8 +254,8 @@ def test_profile_token_is_optional_private_isolated_and_cleared_on_username_chan
         row = next(row for row in client.get("/api/accounts").json() if row["id"] == first.id)
         field = next(f for f in row["fields"] if f["key"] == "LISTENBRAINZ_TOKEN")
         assert field["secret"] and field["configured"] and field["value"] == ""
-        assert row["capabilities"]["favorites_write"] and not row["capabilities"]["library_write"]
-        assert not row["supports_playlists"] and not row["transferable"]
+        assert row["capabilities"]["favorites_write"] and row["capabilities"]["library_write"]
+        assert row["supports_playlists"] and row["transferable"]
         assert TOKEN not in str(row)
     assert conn.submit({"LISTENBRAINZ_USER": "another"}).capabilities == {"library_read"}
     assert store.get("LISTENBRAINZ_TOKEN") is None

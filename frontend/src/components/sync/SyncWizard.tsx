@@ -18,6 +18,7 @@ import {
   canParticipateInSync,
   canReceiveLikedTracks,
   canSyncAccount,
+  hasFavorites,
   hasPlaylists,
 } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
@@ -335,6 +336,12 @@ interface Props {
 
 const FORM_ID = 'sync-wizard-form'
 
+function normalizeSourceFavorites(form: JobFormState, accounts: Account[]): JobFormState {
+  const source = accounts.find((account) => account.id === form.source)
+  if (!form.liked_tracks || !source || hasFavorites(source)) return form
+  return { ...form, sync_playlists: true, liked_tracks: false, liked_routes: {} }
+}
+
 /** Create/edit a single named sync job — Direction (mode + one-way source),
  * Services (participating providers), Playlists, Schedule (this job's own
  * interval + active toggle), and Limits & downloads (safety caps + opting
@@ -370,11 +377,13 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
       // Seed its defaults once without replacing the draft or current step.
       if (!job && !session.current.accountsLoaded && accounts.length > 0) {
         session.current.accountsLoaded = true
-        setForm((previous) => ({
+        setForm((previous) => normalizeSourceFavorites({
           ...previous,
           providers: providerIds,
           source: defaultSource ?? previous.source,
-        }))
+        }, accounts))
+      } else {
+        setForm((previous) => normalizeSourceFavorites(previous, accounts))
       }
       return
     }
@@ -386,7 +395,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
       initial.providers = providerIds
       initial.source = defaultSource ?? initial.source
     }
-    setForm(initial)
+    setForm(normalizeSourceFavorites(initial, accounts))
     setStep(0)
     setVisited(new Set([0]))
     setSaving(false)
@@ -469,7 +478,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
       if (next.liked_tracks) {
         next.liked_routes = normalizedLikedRoutes(next.liked_routes, parseCsv(next.providers), next.source, receivesLikes)
       }
-      return next
+      return normalizeSourceFavorites(next, accounts)
     })
   }
 
@@ -481,22 +490,19 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
       providers.add(id)
       if (prev.mode !== 'group') {
         const providerCsv = csvInPeerOrder(providers)
-        const lovedOnly = accounts.find((account) => account.id === id)?.provider === 'listenbrainz'
-        const likedTracks = lovedOnly || prev.liked_tracks
-        return {
+        return normalizeSourceFavorites({
           ...prev,
           source: id,
           providers: providerCsv,
-          ...(lovedOnly ? { sync_playlists: false, playlists: '', liked_tracks: true } : {}),
-          liked_routes: likedTracks
+          liked_routes: prev.liked_tracks
             ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), id, receivesLikes)
             : prev.liked_routes,
-        }
+        }, accounts)
       }
       const authorities = new Set(parseCsv(prev.authorities))
       authorities.add(id)
       const providerCsv = csvInPeerOrder(providers)
-      return {
+      return normalizeSourceFavorites({
         ...prev,
         source: id,
         authorities: csvInPeerOrder(authorities),
@@ -504,7 +510,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
         liked_routes: prev.liked_tracks
           ? normalizedLikedRoutes(prev.liked_routes, parseCsv(providerCsv), id, receivesLikes)
           : prev.liked_routes,
-      }
+      }, accounts)
     })
   }
 
@@ -557,7 +563,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
   function setLikedTracks(selected: boolean) {
     setForm((prev) => {
       if (!selected) {
-        return { ...prev, sync_playlists: sourceAccount?.provider !== 'listenbrainz', liked_tracks: false, liked_routes: {} }
+        return { ...prev, sync_playlists: true, liked_tracks: false, liked_routes: {} }
       }
       const source = playlistPickerProviderId || prev.source
       const providers = new Set(parseCsv(prev.providers))
@@ -938,7 +944,6 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                 onChange={setPlaylistFilter}
                 preferredProviderId={playlistPickerProviderId}
                 includeLikedTracks
-                onlyLikedTracks={sourceAccount?.provider === 'listenbrainz'}
                 likedTracksSelected={form.liked_tracks}
                 syncAllRegularPlaylists={form.sync_playlists}
                 onLikedTracksChange={setLikedTracks}
@@ -946,7 +951,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
 
               {form.liked_tracks && (
                 <section className="flex flex-col gap-3.5 border-t border-border pt-3.5">
-                  {form.playlists.trim().length === 0 && sourceAccount?.provider !== 'listenbrainz' && (
+                  {form.playlists.trim().length === 0 && (
                     <Toggle
                       checked={form.sync_playlists}
                       onChange={(selected) => setField('sync_playlists', selected)}

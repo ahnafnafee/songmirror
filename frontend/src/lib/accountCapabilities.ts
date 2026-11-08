@@ -28,12 +28,20 @@ export function canSyncAccount(account: Account): boolean {
 
 /** Can supply tracks to a one-way sync. True for a history service with no
  * playlists of its own (Last.fm), whose read-only collections are still a
- * legitimate source, and false for an output-only service (Jellyfin), which the
- * download mirror feeds and which has nothing to read from. Falls back to the
- * peer flag for account data cached before `source_capable` existed. */
+ * legitimate source. Falls back to the peer flag for account data cached
+ * before `source_capable` existed. */
 export function canBeSyncSource(account: Account): boolean {
   const readable = capabilitiesOf(account).library_read
   return readable && (account.source_capable ?? account.transferable)
+}
+
+/** Library access does not imply a native favorites reader. */
+export function canReadLikedTracks(account: Account): boolean {
+  return capabilitiesOf(account).library_read && hasFavorites(account)
+}
+
+export function hasFavorites(account: Account): boolean {
+  return account.supports_favorites ?? account.provider !== 'jellyfin'
 }
 
 /** Can receive another service's liked tracks into its own liked collection.

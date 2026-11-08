@@ -19,7 +19,7 @@ async function main() {
   const errors = [], connections = [], saved = [], profiles = []
   const accounts = [
     { id: 'loves', provider: 'listenbrainz', name: 'ListenBrainz', provider_name: 'ListenBrainz',
-      transferable: false, source_capable: true, supports_playlists: false,
+      transferable: true, source_capable: true, supports_playlists: true,
       fields: [{ key: 'LISTENBRAINZ_USER', label: 'Username', required: true, secret: false },
         { key: 'LISTENBRAINZ_TOKEN', label: 'User token', required: false, secret: true }],
       capabilities: { library_read: true, library_write: false, favorites_write: false, public_playlist_read: false } },
@@ -59,7 +59,10 @@ async function main() {
           field.value = field.secret ? '' : values[field.key]
         }
       }
-      if (values.LISTENBRAINZ_TOKEN) account.capabilities.favorites_write = true
+      if (values.LISTENBRAINZ_TOKEN) {
+        account.capabilities.favorites_write = true
+        account.capabilities.library_write = true
+      }
       account.state = 'connected'
       return send({ kind: 'api_key', state: 'connected', detail: account.name })
     }
@@ -165,9 +168,11 @@ async function main() {
     await dialog.getByLabel('Name', { exact: false }).fill('Independent favorites')
     await dialog.getByRole('radio', { name: 'ListenBrainz', exact: true }).click()
     await dialog.getByRole('radio', { name: 'Playlists', exact: true }).click()
-    assert.equal(await dialog.getByRole('checkbox', { name: 'ListenBrainz Loved Recordings', exact: true }).isChecked(), true)
-    assert.equal(await dialog.getByText('No playlists found on ListenBrainz.', { exact: true }).count(), 0)
-    assert.equal(await dialog.getByRole('switch', { name: 'Also sync every regular playlist', exact: false }).count(), 0)
+    const loved = dialog.getByRole('checkbox', { name: 'ListenBrainz Loved Recordings', exact: true })
+    assert.equal(await loved.isChecked(), false, 'A ListenBrainz source no longer forces a loves-only job')
+    await loved.locator('..').click()
+    assert.equal(await loved.isChecked(), true)
+    assert.equal(await dialog.getByRole('switch', { name: 'Also sync every regular playlist', exact: false }).isChecked(), false)
     assert.equal(await dialog.getByRole('radio', { name: 'Use Navidrome / Subsonic Starred Songs', exact: true }).isChecked(), true)
     for (const width of [1280, 375]) {
       await page.setViewportSize({ width, height: 1000 })
@@ -235,6 +240,7 @@ async function main() {
         await draft.getByRole('radio', { name: 'Direction', exact: true }).click()
         await draft.getByRole('radio', { name: 'ListenBrainz', exact: true }).click()
         await draft.getByRole('radio', { name: 'Playlists', exact: true }).click()
+        await draft.getByRole('checkbox', { name: 'ListenBrainz Loved Recordings', exact: true }).locator('..').click()
         await draft.getByRole('button', { name: 'Create sync', exact: true }).click()
         await draft.waitFor({ state: 'hidden' })
         assert.equal(submitted.name, 'Keep this draft')
@@ -279,14 +285,15 @@ async function main() {
     await dialog.getByLabel('Name', { exact: false }).fill('TIDAL favorites to ListenBrainz')
     await dialog.getByRole('radio', { name: 'TIDAL', exact: true }).click()
     await dialog.getByRole('radio', { name: 'Services', exact: true }).click()
-    await dialog.getByRole('button', { name: /^ListenBrainz/ }).click()
+    // With a token, ListenBrainz is a full playlist peer and joins by default.
+    assert.equal(await dialog.getByRole('button', { name: /^ListenBrainz/ }).getAttribute('aria-pressed'), 'true')
     await dialog.getByRole('radio', { name: 'Playlists', exact: true }).click()
     await dialog.getByRole('checkbox', { name: 'TIDAL Favorite Tracks', exact: true }).locator('..').click()
     const lovesRoute = dialog.getByRole('radio', { name: 'Use ListenBrainz Loved Recordings', exact: true })
     assert.equal(await lovesRoute.isChecked(), true)
     assert.equal(await lovesRoute.isEnabled(), true)
-    assert.equal(await dialog.getByText('ListenBrainz has no playlists, so its own collection is the only destination.', { exact: true }).count(), 1)
-    assert.equal(await dialog.getByRole('radio', { name: 'Create a named playlist on ListenBrainz', exact: true }).count(), 0)
+    assert.equal(await dialog.getByText('ListenBrainz has no playlists, so its own collection is the only destination.', { exact: true }).count(), 0)
+    assert.equal(await dialog.getByRole('radio', { name: 'Create a new playlist on ListenBrainz', exact: true }).count(), 1)
     for (const width of [1280, 375]) {
       await page.setViewportSize({ width, height: 1000 })
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
@@ -298,7 +305,7 @@ async function main() {
     assert.equal(saved.at(-1).sync_playlists, false)
     assert.equal(saved.at(-1).liked_tracks, true)
     assert.deepEqual(saved.at(-1).liked_routes.loves, { kind: 'native' })
-    console.log('PASS: TIDAL favorites route to ListenBrainz saves with no playlist capability')
+    console.log('PASS: TIDAL favorites route to ListenBrainz loves, with a named playlist also offered')
     assert.deepEqual(errors, [])
   } finally {
     await page.close()

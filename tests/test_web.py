@@ -126,10 +126,10 @@ def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
         by_provider = {a["provider"]: a for a in accounts}
         assert by_provider["apple"]["preserves_order"] is True
         assert by_provider["deezer"]["preserves_order"] is False
-        assert by_provider["jellyfin"]["preserves_order"] is False   # browse-only, no target
+        assert by_provider["jellyfin"]["preserves_order"] is False   # deletes every copy of an item
         # The create flows offer "public" only where create() can honor it.
         assert {p for p, a in by_provider.items() if a["public_playlists"]} == {
-            "spotify", "tidal", "qobuz", "amazon", "ytmusic", "subsonic",
+            "spotify", "tidal", "qobuz", "amazon", "ytmusic", "subsonic", "jellyfin", "listenbrainz",
         }
 
 

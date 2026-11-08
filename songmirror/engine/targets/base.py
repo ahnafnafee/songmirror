@@ -78,6 +78,7 @@ class MirrorTarget:
     # a target is excluded from playlist mirroring and from N-way, but its
     # native favorites collection stays usable.
     supports_playlists = True
+    supports_favorites = True
     favorite_tracks_name = "Liked Tracks"
     favorite_tracks_id = "liked-tracks"
 
@@ -151,14 +152,19 @@ class MirrorTarget:
 
     def validate_favorite_tracks(self, *, write=False, remove=False):
         """Fail fast when auth cannot read or mutate the native collection."""
+        if not self.supports_favorites:
+            raise TargetCapabilityError(f"{self.name} does not support liked-track syncs.")
 
     def favorite_tracks(self):
+        self.validate_favorite_tracks()
         raise NotImplementedError
 
     def add_favorite_tracks(self, target_ids):
+        self.validate_favorite_tracks(write=True)
         raise NotImplementedError
 
     def remove_favorite_track(self, track):
+        self.validate_favorite_tracks(write=True, remove=True)
         raise NotImplementedError
 
     def resource_tracks(self, resource):
