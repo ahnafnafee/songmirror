@@ -64,9 +64,32 @@ async function main() {
     await page.goto(base + '/sync')
     await page.getByRole('button', { name: 'New sync', exact: true }).first().click()
     const dialog = page.getByRole('dialog')
+    const shots = process.env.SONGMIRROR_E2E_SCREENSHOTS
+    const nameHint = page.getByText('Enter a name at the top to save this sync.', { exact: true })
+    const create = page.getByRole('button', { name: 'Create sync', exact: true })
+    assert.equal(await nameHint.isVisible(), true, 'A missing name explains why Create sync is disabled')
+    assert.equal(await create.isEnabled(), false)
+    // Every service stays listed, sectioned by kind.
+    const groups = await dialog.getByRole('radiogroup', { name: 'Source of truth' }).evaluate(picker =>
+      [...picker.children].map(group => [
+        group.firstElementChild.textContent.trim(),
+        [...group.querySelectorAll('[role=radio]')].map(chip => chip.textContent.trim()),
+      ]))
+    assert.deepEqual(groups.map(([label]) => label), ['Streaming services', 'Self-hosted servers', 'Listening history'])
+    assert.deepEqual(groups.map(([, chips]) => chips.length), [1, 1, 1])
+    assert.ok(groups[1][1].some(chip => chip.startsWith('Jellyfin')) && groups[2][1][0].startsWith('ListenBrainz'))
+    if (shots) await page.screenshot({ path: path.join(shots, 'source-groups-1280.png') })
     await dialog.getByLabel('Name', { exact: false }).fill('TIDAL to my servers')
+    assert.equal(await nameHint.count(), 0)
     await dialog.getByRole('radio', { name: 'TIDAL', exact: true }).click()
     await dialog.getByRole('radio', { name: 'Services', exact: true }).click()
+    if (shots) {
+      for (const width of [1280, 375]) {
+        await page.setViewportSize({ width, height: 1000 })
+        await page.screenshot({ path: path.join(shots, `service-groups-${width}.png`) })
+      }
+      await page.setViewportSize({ width: 1280, height: 1000 })
+    }
     for (const name of [/^ListenBrainz/, /^Jellyfin/]) {
       assert.equal(await dialog.getByRole('button', { name }).getAttribute('aria-pressed'), 'true',
         `${name} joins as a playlist destination`)

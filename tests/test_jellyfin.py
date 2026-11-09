@@ -64,8 +64,8 @@ def test_connection_browse_counts_and_cover_support_old_and_new_auth(
             return response(url, {}, 401)
         if url == server + "/System/Info":
             return response(url, {"Id": "server-id", "Version": version})
-        if url == server + f"/Users/{uid}":
-            return response(url, {"Id": uid})
+        if url == server + "/Users":
+            return response(url, [{"Id": uid, "Name": "listener"}])
         assert url == server + "/Items"
         assert params.get("UserId", "") == uid
         if params["IncludeItemTypes"] == "Audio":

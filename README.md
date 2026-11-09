@@ -289,7 +289,7 @@ A **Merge sources** job combines one or more explicit playlists into one chosen 
 - **Union-safe removals** — a destination track can be removed only when a complete pass finds it absent from every constituent source. A failed, truncated, malformed, unavailable, or unknowably empty source disables every removal for that pass, while safe additions from readable sources may continue.
 - **Append-only by default** — leave **Remove tracks absent from every source** off to keep all destination-only tracks. Turning it on opts into the normal per-pass removal cap after the complete-read guard passes.
 
-Merge jobs currently target one provider playlist; the separate Spotify-led local download/Jellyfin mirror is not available for an aggregate job.
+Merge jobs currently target one provider playlist; the separate local download/Jellyfin mirror is not available for an aggregate job.
 
 <a id="authoritative-groups"></a>
 
@@ -397,6 +397,7 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - **Incremental** — after the first full download, only newly-added tracks are fetched; removed tracks (and their emptied album folders) are pruned. An interrupted run continues next pass.
 - **Newest-first `.m3u8`** — written in date-added order, newest at the top (set `LOCAL_MIRROR_ORDER=oldest` to flip). Rebuild covers / tags / mtimes from existing files with `uv run main.py --refresh-local`.
 - **Playlist covers in Jellyfin** — Jellyfin ignores a cover file next to an m3u, so set `JELLYFIN_URL` + `JELLYFIN_API_KEY` and each pass uploads the real playlist cover via the Jellyfin API.
+- **Jellyfin playlist sync**: Jellyfin playlists imported from these `.m3u8` files stay read-only to sync, so a sync that targets the same name skips that playlist. To sync other playlists into Jellyfin itself, see [Jellyfin](docs/jellyfin-compatibility.md).
 - **Any source, not just Spotify**: the mirror reads whichever service the sync uses as its source. Spotify playlists are still downloaded by catalog URL; every other source (including Last.fm) is searched by artist and title.
 - **Your own library first (real FLAC)**: point `LOCAL_LIBRARY_DIR` at an existing music tree and each track found there is **copied into the playlist folder in its original format**, so a library FLAC stays a FLAC. Only the tracks with no local match fall through to spotDL. Matching is ISRC tag first, then title plus artist, using the same rules as the sync engine. Files are copied rather than hard-linked on purpose: the mirror stamps mtimes and backfills tags on what it finds, and a hard link would let it rewrite your library originals. Empty means off.
 - **Audio quality of the spotDL fallback**: that path sources from YouTube, so without a YT Music **Premium** cookie the ceiling is roughly 128 to 160 kbps. `LOCAL_MIRROR_FORMAT=opus` keeps YouTube's native stream without an mp3 re-encode, and a Premium cookie (`LOCAL_MIRROR_COOKIE_FILE`) unlocks 256 kbps AAC. Selecting `flac` changes the output container but cannot turn a lossy source into lossless audio. For genuine lossless, use `LOCAL_LIBRARY_DIR`.

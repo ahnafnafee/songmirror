@@ -67,7 +67,24 @@ def send(url, key, method, path, *, params=None, json=None):
     return _call(method, url, key, path, params=params, json=json)
 
 
-def _call(method, url, key, path, *, params=None, json=None, timeout=30):
+def user_id(url, key, value):
+    """The id of the user that `value` names or identifies.
+
+    People know their user name rather than the 32-digit id, and Jellyfin
+    answers HTTP 400 when a name is used where an id is expected.
+    """
+    wanted = {str(value).strip().casefold(), str(value).strip().replace("-", "").casefold()}
+    for user in _call("get", url, key, "/Users", timeout=10, shape=list):
+        if isinstance(user, dict) and user.get("Id") and wanted & {
+            str(user["Id"]).replace("-", "").casefold(), str(user.get("Name") or "").casefold(),
+        }:
+            return str(user["Id"])
+    raise JellyfinError(
+        "Jellyfin has no user with this name or ID. Enter a user name shown in Dashboard → Users."
+    )
+
+
+def _call(method, url, key, path, *, params=None, json=None, timeout=30, shape=dict):
     extra = {"json": json} if json is not None else {}
     try:
         response = getattr(requests, method)(url + path, headers=auth_headers(key),
@@ -91,7 +108,7 @@ def _call(method, url, key, path, *, params=None, json=None, timeout=30):
         raise JellyfinError(
             "Could not reach Jellyfin. Check the server URL and network; in Docker, localhost refers to the SongMirror container."
         ) from exc
-    if not isinstance(data, dict):
+    if not isinstance(data, shape):
         raise JellyfinError("Jellyfin returned an invalid response. Check the server URL and reverse proxy.")
     return data
 

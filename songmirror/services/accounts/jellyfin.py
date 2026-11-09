@@ -1,8 +1,6 @@
 """Jellyfin connector (api_key): playlist sync and playlist cover uploads."""
 
-from urllib.parse import quote
-
-from ...engine.jellyfin import JellyfinError, get_json, server_url
+from ...engine.jellyfin import JellyfinError, get_json, server_url, user_id
 
 from .base import ConnStatus, Connector, Field
 
@@ -15,7 +13,7 @@ class JellyfinConnector(Connector):
         Field("JELLYFIN_URL", "Server URL", help="e.g. http://localhost:8096 (in Docker: http://host.docker.internal:8096)"),
         Field("JELLYFIN_API_KEY", "API key", secret=True, help="Jellyfin Dashboard → API Keys → New"),
         Field("JELLYFIN_USER_ID", "User ID", required=False,
-              help="Needed for playlist sync: open Dashboard → Users, select the user, and copy userId from the address bar"),
+              help="Needed for playlist sync: the user name shown in Dashboard → Users, or that user's ID"),
     ]
 
     def status(self) -> ConnStatus:
@@ -33,9 +31,14 @@ class JellyfinConnector(Connector):
             values = self.normalize_config(values)
         except ValueError as exc:
             return ConnStatus("error", str(exc))
+        previous_user = self._store.get("JELLYFIN_USER_ID")
         self._store.save({k: values.get(k) for k in ("JELLYFIN_URL", "JELLYFIN_API_KEY", "JELLYFIN_USER_ID")})
         ok, detail = self._ping()
-        return self.status() if ok else ConnStatus("error", detail)
+        if not ok:
+            # A rejected user would turn every later sync read into an error.
+            self._store.save({"JELLYFIN_USER_ID": previous_user or ""})
+            return ConnStatus("error", detail)
+        return self.status()
 
     def normalize_config(self, values: dict) -> dict:
         cleaned = {key: str(value).strip() for key, value in values.items() if value is not None}
@@ -56,8 +59,9 @@ class JellyfinConnector(Connector):
             info = get_json(server_url(url), key, "/System/Info", timeout=10)
             if not (info.get("Id") and info.get("Version")):
                 raise JellyfinError("Jellyfin did not return server information. Check the server URL and reverse proxy.")
-            if user and not get_json(server_url(url), key, f"/Users/{quote(user, safe='')}", timeout=10).get("Id"):
-                raise JellyfinError("Jellyfin did not find this User ID. Copy it again from Dashboard → Users.")
+            if user:
+                # Store the id: the playlist API accepts only ids, not names.
+                self._store.save({"JELLYFIN_USER_ID": user_id(server_url(url), key, user)})
             return True, ""
         except JellyfinError as exc:
             return False, str(exc)

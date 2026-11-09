@@ -107,6 +107,21 @@ export function serviceLogoId(idOrTag: string): 'spotify' | 'tidal' | 'qobuz' | 
   return null
 }
 
+/** Sections of the sync wizard's service pickers, in display order. A provider
+ * missing from SERVICE_GROUP_OF is a streaming catalog. */
+export const SERVICE_GROUPS = ['streaming', 'self_hosted', 'history'] as const
+export type ServiceGroup = (typeof SERVICE_GROUPS)[number]
+const SERVICE_GROUP_OF: Record<string, ServiceGroup> = {
+  jellyfin: 'self_hosted',
+  subsonic: 'self_hosted',
+  lastfm: 'history',
+  listenbrainz: 'history',
+}
+
+export function serviceGroupOf(provider: string): ServiceGroup {
+  return SERVICE_GROUP_OF[provider] ?? 'streaming'
+}
+
 const SERVICE_HOME_URLS: Record<string, string> = {
   spotify: 'https://open.spotify.com/',
   tidal: 'https://listen.tidal.com/',

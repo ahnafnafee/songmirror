@@ -1,5 +1,5 @@
 import { t, Trans, useTranslation } from '@/i18n'
-import { Fragment, useLayoutEffect, useRef, useState } from 'react'
+import { Fragment, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
 import { LuArrowLeft, LuArrowRight, LuCheck, LuInfo } from 'react-icons/lu'
 
 import { api, errorMessage } from '@/api'
@@ -22,7 +22,7 @@ import {
   hasPlaylists,
 } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
-import { serviceLogoId, tagDot, tagText } from '@/lib/constants'
+import { SERVICE_GROUPS, serviceGroupOf, serviceLogoId, tagDot, tagText, type ServiceGroup } from '@/lib/constants'
 import { intervalSeconds, isValidIntervalText, isValidPositiveInt } from '@/lib/format'
 import { nativeLikedTracksName, providerLikedTracksLabel } from '@/lib/likedTracks'
 import {
@@ -277,6 +277,36 @@ function SourceChip({ account, selected, onSelect }: { account: Account; selecte
   )
 }
 
+const SERVICE_GROUP_LABELS: Record<ServiceGroup, string> = {
+  get streaming() { return t("Streaming services") },
+  get self_hosted() { return t("Self-hosted servers") },
+  get history() { return t("Listening history") },
+}
+
+/** Every service, sectioned by kind so the list still scans as it grows. */
+function ServiceGroups({
+  accounts,
+  children,
+  ...props
+}: { accounts: Account[]; children: (account: Account) => ReactNode } & Omit<HTMLAttributes<HTMLDivElement>, 'children'>) {
+  useTranslation()
+  return (
+    <div {...props} className="flex flex-col gap-3">
+      {SERVICE_GROUPS.map((group) => {
+        const members = accounts.filter((account) => serviceGroupOf(account.provider) === group)
+        return members.length > 0 && (
+          <div key={group} className="flex flex-col gap-1.5">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-text-3">
+              {SERVICE_GROUP_LABELS[group]}
+            </span>
+            <div className="flex flex-wrap gap-2">{members.map((account) => children(account))}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /** Compact numbered stepper — always fits the modal at any width (no
  * horizontal scroll): small circular markers connected by lines that
  * flex-grow to fill the row, with the label shown only for the current step
@@ -412,7 +442,6 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
   }
 
   const syncPeers = syncCandidates(accounts)
-  const jellyfinConnected = accounts.some((a) => a.provider === 'jellyfin' && a.state === 'connected')
 
   // One-way uses this as its source of truth. In group mode it is the order
   // authority: playlist names and sequence follow it, while membership can be
@@ -426,8 +455,6 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
     authorities: form.authorities,
   })
   if (form.liked_tracks) lockedProviderIds.add(syncSource)
-  const nonSpotifySourceConflict =
-    form.mode !== 'nway' && sourceAccount?.provider !== 'spotify' && (form.download || jellyfinConnected)
 
   const enabledProviders = enabledProvidersOf({ providers: form.providers }, syncPeers)
   // Which participants can actually write their own liked collection. Last.fm
@@ -729,6 +756,11 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
       description={t("A self-contained sync configuration: direction, services, playlists, schedule, and limits.")}
       footer={
         <>
+          {!nameValid && (
+            <p className="text-xs leading-relaxed text-text-3 sm:me-auto sm:self-center">
+              {t("Enter a name at the top to save this sync.")}
+            </p>
+          )}
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             {t("Cancel")}
           </Button>
@@ -807,22 +839,16 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                       {t("This provider's playlists are the source of truth. Every other service follows it, and it's never modified.")}
                     </p>
                   </div>
-                  <div role="radiogroup" aria-label={t("Source of truth")} className="flex flex-wrap gap-2">
-                    {syncPeers.map((account) => (
+                  <ServiceGroups role="radiogroup" aria-label={t("Source of truth")} accounts={syncPeers}>
+                    {(account) => (
                       <SourceChip
                         key={account.id}
                         account={account}
                         selected={syncSource === account.id}
                         onSelect={() => selectOrderAuthority(account.id)}
                       />
-                    ))}
-                  </div>
-                  {nonSpotifySourceConflict && (
-                    <p className="flex items-start gap-1.5 text-xs leading-relaxed text-text-3">
-                      <LuInfo className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                      {t("Local downloads + Jellyfin covers currently require Spotify as the source, so they'll be skipped.")}
-                    </p>
-                  )}
+                    )}
+                  </ServiceGroups>
                 </div>
               )}
 
@@ -835,16 +861,16 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                         {t("Playlist names and track sequence follow this service. New membership can still come from any authority below.")}
                       </p>
                     </div>
-                    <div role="radiogroup" aria-label={t("Order authority")} className="flex flex-wrap gap-2">
-                      {syncPeers.filter(canSyncAccount).map((account) => (
+                    <ServiceGroups role="radiogroup" aria-label={t("Order authority")} accounts={syncPeers.filter(canSyncAccount)}>
+                      {(account) => (
                         <SourceChip
                           key={account.id}
                           account={account}
                           selected={syncSource === account.id}
                           onSelect={() => selectOrderAuthority(account.id)}
                         />
-                      ))}
-                    </div>
+                      )}
+                    </ServiceGroups>
                   </div>
 
                   <div className="flex flex-col gap-2.5">
@@ -854,8 +880,8 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                         {t("Additions and confirmed removals on any selected authority flow to the full group. Choose at least two; the order authority is always included.")}
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {syncPeers.map((account) => {
+                    <ServiceGroups accounts={syncPeers}>
+                      {(account) => {
                         const selected = authorityIds.has(account.id)
                         const isOrder = account.id === syncSource
                         return (
@@ -868,21 +894,14 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                             onToggle={() => toggleAuthority(account.id)}
                           />
                         )
-                      })}
-                    </div>
+                      }}
+                    </ServiceGroups>
                     {!groupValid && (
                       <p className="text-xs leading-relaxed text-danger">
                         {t("Select at least two connected authorities, including the order authority.")}
                       </p>
                     )}
                   </div>
-
-                  {nonSpotifySourceConflict && (
-                    <p className="flex items-start gap-1.5 text-xs leading-relaxed text-text-3">
-                      <LuInfo className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                      {t("Local downloads + Jellyfin covers currently require Spotify as the order authority, so they'll be skipped.")}
-                    </p>
-                  )}
                 </div>
               )}
             </>
@@ -896,8 +915,8 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                 onChange={(destination) => setField('destination', destination)}
               />
             ) : (
-              <div className="flex flex-wrap gap-2">
-                {syncPeers.map((account) => {
+              <ServiceGroups accounts={syncPeers}>
+                {(account) => {
                   const locked = lockedProviderIds.has(account.id)
                   const checked = locked || enabledProviders.has(account.id)
                   const role =
@@ -924,8 +943,8 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                       onToggle={() => toggleProvider(account.id)}
                     />
                   )
-                })}
-              </div>
+                }}
+              </ServiceGroups>
             )
           )}
 

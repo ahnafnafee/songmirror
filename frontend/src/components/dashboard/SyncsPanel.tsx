@@ -14,9 +14,11 @@ import { EmptyState } from '../ui/EmptyState'
 /** A job only shows a real clock time when it can actually fire on its own:
  * the master switch is on AND the job itself is enabled. Otherwise "Manual"
  * is the honest answer, regardless of whatever `next_run_at` the backend
- * last computed for it. */
+ * last computed for it. Before the status loads, the switch is unknown. */
 function nextRunText(job: SyncJob, status: SyncStatus | null): string {
-  if (!job.enabled || !status?.master) return t("Manual")
+  if (!job.enabled) return t("Manual")
+  if (!status) return '…'
+  if (!status.master) return t("Manual")
   const jobStatus = status.jobs.find((j) => j.id === job.id)
   return jobStatus?.next_run_at ? formatClockTime(jobStatus.next_run_at) : t("Not scheduled")
 }

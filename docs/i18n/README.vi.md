@@ -289,7 +289,7 @@ Công việc Hợp nhất nguồn kết hợp một hoặc nhiều danh sách ph
 - Xóa an toàn theo liên minh - một bản nhạc đích chỉ có thể bị xóa khi một đường chuyền hoàn chỉnh không tìm thấy nó trong mọi nguồn cấu thành. Nguồn bị lỗi, bị cắt bớt, không đúng định dạng, không khả dụng hoặc không thể xác định được sẽ vô hiệu hóa mọi thao tác xóa đối với thẻ đó, trong khi các bổ sung an toàn từ các nguồn có thể đọc được có thể tiếp tục.
 - Theo mặc định, chỉ nối thêm — tắt Xóa bản nhạc khỏi mọi nguồn để giữ lại tất cả các bản nhạc chỉ đích. Việc bật nó sẽ chuyển sang giới hạn loại bỏ mỗi lần vượt qua thông thường sau khi bộ bảo vệ đọc hoàn chỉnh đi qua.
 
-Hợp nhất các công việc hiện nhắm mục tiêu vào một danh sách phát của nhà cung cấp; bản sao tải xuống cục bộ/Jellyfin riêng biệt do Spotify dẫn đầu không có sẵn cho công việc tổng hợp.
+Hợp nhất các công việc hiện nhắm mục tiêu vào một danh sách phát của nhà cung cấp; bản sao tải xuống cục bộ/Jellyfin riêng biệt không có sẵn cho công việc tổng hợp.
 
 <a id="authoritative-groups"></a>
 
@@ -397,6 +397,7 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - Tăng dần - sau lần tải xuống đầy đủ đầu tiên, chỉ các bản nhạc mới được thêm vào mới được tìm nạp; các bản nhạc đã xóa (và các thư mục album trống của chúng) sẽ được cắt bớt. Một lượt chạy bị gián đoạn sẽ tiếp tục lượt tiếp theo.
 - Mới nhất trước `.m3u8` — được viết theo thứ tự ngày thêm, mới nhất ở trên cùng (đặt `LOCAL_MIRROR_ORDER=oldest` để lật). Xây dựng lại bìa / thẻ / mtimes từ các tệp hiện có với `uv run main.py --refresh-local`.
 - Danh sách phát bao gồm Jellyfin — Jellyfin bỏ qua tệp bìa bên cạnh m3u, vì vậy hãy đặt `JELLYFIN_URL` + `JELLYFIN_API_KEY` và mỗi lượt tải lên bìa danh sách phát thực thông qua Jellyfin API.
+- **Đồng bộ danh sách phát Jellyfin**: các danh sách phát Jellyfin được nhập từ các tệp `.m3u8` này là chỉ đọc đối với việc đồng bộ, nên một lần đồng bộ nhắm tới cùng tên sẽ bỏ qua danh sách phát đó. Để đồng bộ các danh sách phát khác trực tiếp vào Jellyfin, xem [Jellyfin](../jellyfin-compatibility.md).
 - **Mọi nguồn, không chỉ Spotify**: bản sao đọc đúng dịch vụ mà lần đồng bộ dùng làm nguồn. Danh sách phát Spotify vẫn được tải qua địa chỉ danh mục; mọi nguồn khác (kể cả Last.fm) được tìm theo nghệ sĩ và tên bài.
 - **Thư viện của bạn trước (FLAC thật)**: trỏ `LOCAL_LIBRARY_DIR` tới một cây nhạc có sẵn, mỗi bài tìm thấy ở đó sẽ được **sao chép vào thư mục danh sách phát ở định dạng gốc**, nên FLAC vẫn là FLAC. Chỉ những bài không có bản khớp cục bộ mới chuyển sang spotDL. Việc đối khớp dùng thẻ ISRC trước, rồi tới tên bài và nghệ sĩ, theo đúng quy tắc của bộ máy đồng bộ. Sao chép thay cho liên kết cứng là lựa chọn có chủ đích: bản sao ghi lại thời điểm sửa và bổ sung thẻ, còn liên kết cứng sẽ sửa chính tệp gốc của bạn. Để trống nghĩa là tắt.
 - Chất lượng âm thanh - nguồn là YouTube, vì vậy nếu không có cookie YT Music Premium thì mức trần là ~128–160 kbps. `LOCAL_MIRROR_FORMAT=opus` giữ luồng gốc của YouTube mà không cần mã hóa lại mp3; cookie Premium (`LOCAL_MIRROR_COOKIE_FILE`) mở khóa 256 kbps AAC. Chọn `flac` chỉ thay đổi vùng chứa đầu ra; nguồn âm thanh nén mất dữ liệu không thể trở thành âm thanh không mất dữ liệu. Muốn âm thanh không mất dữ liệu thật sự, hãy dùng `LOCAL_LIBRARY_DIR`.
