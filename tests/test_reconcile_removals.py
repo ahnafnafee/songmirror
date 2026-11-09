@@ -338,3 +338,38 @@ def test_one_way_keeps_a_mirror_copy_whose_length_disagrees_instead_of_flapping(
     assert mirror.removed == [] and mirror.added.count("B") == 1
     assert all(stats["uncertain_matches"] == 1 for stats in passes)
     conn.close()
+
+
+class NoIsrcPeer(Peer):
+    """A provider whose reads carry no ISRC, like Spotify cookie reads and local Jellyfin files."""
+
+    def playlist_tracks(self, _playlist):
+        return [{"id": f"{self.source}-{song}", "name": self.titles.get(song, f"Song {song}"),
+                 "artists": ["A"], "artist": "A", "duration_ms": 1000, "added_at": "2020"}
+                for song in self.songs]
+
+    def resolve(self, norm, _cache):
+        song = next((s for s, title in self.titles.items() if title == norm["name"]), None)
+        self.searched.append(song)
+        return (f"{self.source}-{song}", "search") if song in self.catalog else (None, None)
+
+    def remove(self, _playlist, raw):
+        song = raw["id"].split("-", 1)[1]
+        self.removed.append(song)
+        self.songs.remove(song)
+
+
+def test_a_deletion_beside_an_isrc_less_spotify_read_is_not_re_added(tmp_path):
+    # Spotify's own entries reach a hard identity only by folding into the
+    # linked copy on the other provider. Deleting that copy must not turn the
+    # Spotify entry into a "new" song that is added straight back.
+    conn = archive.connect(str(tmp_path / "s.db"))
+    spotify, jellyfin = NoIsrcPeer("spotify", "ABC"), NoIsrcPeer("jellyfin", "")
+    _sync(conn, [spotify, jellyfin], passes=2)
+    assert sorted(jellyfin.songs) == ["A", "B", "C"]
+    jellyfin.songs.remove("B")  # the user deletes B on Jellyfin
+    _sync(conn, [spotify, jellyfin])
+    assert jellyfin.added.count("B") == 1, "the first read only marks the deletion pending"
+    _sync(conn, [spotify, jellyfin])
+    assert sorted(spotify.songs) == ["A", "C"] and sorted(jellyfin.songs) == ["A", "C"]
+    conn.close()

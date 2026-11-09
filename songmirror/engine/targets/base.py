@@ -1720,6 +1720,17 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                             for src, entries in per_entry.items()})
     conflicting_cids = {alias.get(cid, cid) for entries in per_entry.values()
                         for cid, norm in entries if norm.get("_identity_conflict")}
+    # An entry with only a soft key (an ISRC-less Spotify read, say) reaches a
+    # hard id only through the copy it folds into. Remember that id, as an
+    # inferred ISRC is remembered, so deleting the other copy reads as an
+    # absence there instead of turning this entry into a "new" song. It only
+    # seeds an entry with no identity; proven ids still replace it.
+    for p in peers:
+        for raw_cid, norm in per_entry[p.source]:
+            hard = alias.get(raw_cid, raw_cid)
+            tid = p.track_id(norm["_raw"])
+            if tid and raw_cid.startswith("k:") and not hard.startswith("k:"):
+                learned_identities.setdefault(p.source, {}).setdefault(tid, hard)
     if alias:
         for src, by_cid in canon.items():
             merged = {}
