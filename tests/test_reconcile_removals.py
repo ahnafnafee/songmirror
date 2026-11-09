@@ -22,6 +22,7 @@ class Peer:
         self.catalog = set("ABCDEFGHU") if catalog is None else set(catalog)
         self.search_fails = set()
         self.catalog_duration = 1000
+        self.durations = {}  # per-song length this provider reports in playlists
         self.added, self.removed, self.searched, self.queries = [], [], [], []
 
     def search_candidates(self, query, *, limit=5):
@@ -41,7 +42,8 @@ class Peer:
     def playlist_tracks(self, _playlist):
         return [{"id": f"{self.source}-{song}", "name": self.titles.get(song, f"Song {song}"),
                  "artists": ["A"], "artist": "A",
-                 "duration_ms": 1000, "isrc": f"ISRC{song}", "added_at": "2020"} for song in self.songs]
+                 "duration_ms": self.durations.get(song, 1000), "isrc": f"ISRC{song}", "added_at": "2020"}
+                for song in self.songs]
 
     def track_id(self, track):
         return track.get("id")
@@ -321,4 +323,18 @@ def test_one_way_with_removals_off_never_searches_the_source(tmp_path):
     source.songs.remove("C")
     _mirror(conn, source, mirror, passes=2, max_removals=0)
     assert "C" not in source.searched and sorted(mirror.songs) == ["A", "B", "C"]
+    conn.close()
+
+
+def test_one_way_keeps_a_mirror_copy_whose_length_disagrees_instead_of_flapping(tmp_path):
+    # The mirror matched B without length evidence, then reports a length over
+    # the tolerance. Removing it and adding it back on alternate passes is churn.
+    conn = archive.connect(str(tmp_path / "s.db"))
+    source, mirror = Peer("jellyfin", "ABC"), Peer("listenbrainz", "")
+    mirror.durations["B"] = 1000 + 5200
+    _mirror(conn, source, mirror)
+    passes = _mirror(conn, source, mirror, passes=4)
+    assert sorted(mirror.songs) == ["A", "B", "C"]
+    assert mirror.removed == [] and mirror.added.count("B") == 1
+    assert all(stats["uncertain_matches"] == 1 for stats in passes)
     conn.close()

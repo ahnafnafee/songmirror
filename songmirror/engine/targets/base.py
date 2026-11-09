@@ -844,12 +844,12 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
         log_note(f"resolving {len(to_add)} new track(s) on {target.name}...", tag=tag)
 
     # Resolve additions to target ids, preserving the oldest-first order.
-    present = {
-        str(target_id)
-        for track in tgt_tracks
-        if (target_id := target.track_id(track)) is not None
-    }
-    additions, not_found, new_links, methods = [], [], {}, {}
+    entries_by_id = {}
+    for entry in tgt_tracks:
+        if (target_id := target.track_id(entry)) is not None:
+            entries_by_id.setdefault(str(target_id), []).append(entry)
+    present = set(entries_by_id)
+    additions, not_found, new_links, methods, disputed = [], [], {}, {}, []
     rejected_link_ids = set()
     stopped_early = False
     deferred = 0
@@ -896,6 +896,15 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
             log_note(f"  ...resolved {i}/{len(to_add)}", tag=tag)
         if not tid:
             not_found.append(track)
+            continue
+        existing = entries_by_id.get(str(tid), [])
+        if existing and not any(recording_metadata_compatible(track, entry) for entry in existing):
+            # The matched entry's own metadata (a length over the tolerance, say)
+            # rules out this source track, so the diff below would remove it while
+            # "already present" skipped the add: a remove-and-re-add loop. The
+            # source track stays unresolved and the entry is kept as uncertain.
+            not_found.append(track)
+            disputed.extend((entry, track) for entry in existing)
             continue
         if track.get("id"):
             new_links[track["id"]] = tid
@@ -973,6 +982,9 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
         methods[method] = methods.get(method, 0) + 1
 
     removals, uncertain_matches = match_unresolved_removals(to_remove, not_found)
+    disputed_ids = {id(entry) for entry, _track in disputed}
+    uncertain_matches += [pair for pair in disputed if any(pair[0] is track for track in removals)]
+    removals = [track for track in removals if id(track) not in disputed_ids]
     held = [existing for existing, _unresolved in uncertain_matches]
     removals_skipped, held_back = 0, []
     incomplete_metadata = any(
