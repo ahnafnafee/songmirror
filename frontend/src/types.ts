@@ -207,6 +207,7 @@ export type ChangeDiagnosticCategory =
   | 'confirmed_removal_disabled'
   | 'removal_cap'
   | 'uncertain_match'
+  | 'unavailable_on_provider'
 
 export interface ChangeDiagnostic {
   category: ChangeDiagnosticCategory

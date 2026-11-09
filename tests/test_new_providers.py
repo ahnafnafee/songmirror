@@ -436,6 +436,8 @@ def test_tidal_connector_still_accepts_legacy_openapi_headers(tmp_path, monkeypa
     from songmirror.services.accounts.tidal import TidalConnector
 
     monkeypatch.setenv("TIDAL_WEB_HEADERS", "")
+    # Saving the session otherwise writes data/tidal_oauth.json in the working directory.
+    monkeypatch.setenv("TIDAL_TOKEN_FILE", str(tmp_path / "tidal_oauth.json"))
 
     class Response:
         ok = True

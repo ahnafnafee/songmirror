@@ -93,6 +93,24 @@ CREATE TABLE IF NOT EXISTS playlist_pending_removal (
     PRIMARY KEY (playlist, source, canonical_id)
 )
 """,
+    # The answer a catalog gave about a song that left a playlist. offered = 0
+    # means the catalog no longer has it, such as a delisted song: that is not
+    # a user deletion, the song stays elsewhere, and this provider is never
+    # asked to add it back. offered = 1 means a user deleted an available song.
+    # A row lasts only while that absence does, so a held removal is checked
+    # once instead of on every pass. One-way and merge rows use
+    # MIRROR_CHECK_PREFIX plus their pair key, and destination track ids in
+    # place of canonical ids.
+    """
+CREATE TABLE IF NOT EXISTS playlist_catalog_check (
+    playlist     TEXT NOT NULL,
+    source       TEXT NOT NULL,
+    canonical_id TEXT NOT NULL,
+    offered      INTEGER NOT NULL,
+    checked_at   TEXT NOT NULL,
+    PRIMARY KEY (playlist, source, canonical_id)
+)
+""",
     # The last HARD canonical id (ISRC / Spotify-linked) a provider's track
     # resolved to. Provider metadata is mutable: YouTube's youtubei read
     # alternates between a track's artist and its auto-generated channel for the
@@ -266,6 +284,7 @@ _PROFILE_ID_COLUMNS = (
     ("playlist_state", "source"),
     ("playlist_state_meta", "source"),
     ("playlist_pending_removal", "source"),
+    ("playlist_catalog_check", "source"),
     ("track_identity", "source"),
     ("track_identity_history", "source"),
     ("playlist_order", "source"),
@@ -276,6 +295,7 @@ _GROUP_KEY_COLUMNS = (
     ("playlist_state", "playlist"),
     ("playlist_state_meta", "playlist"),
     ("playlist_pending_removal", "playlist"),
+    ("playlist_catalog_check", "playlist"),
     ("playlist_order", "playlist"),
 )
 
@@ -867,8 +887,42 @@ def get_pending_removals(conn, playlist, source):
     return {row[0] for row in rows.fetchall()}
 
 
+MIRROR_CHECK_PREFIX = "mirror:"
+
+
+def get_catalog_checks(conn, playlist, source):
+    """{id: offered} for songs that left this playlist on this provider."""
+    rows = conn.execute(
+        "SELECT canonical_id, offered FROM playlist_catalog_check WHERE playlist = ? AND source = ?",
+        (playlist, source),
+    )
+    return {row[0]: bool(row[1]) for row in rows.fetchall()}
+
+
+def _replace_catalog_checks(conn, playlist, source, checks, now):
+    """Keep exactly ``checks`` for this playlist and source. Caller commits."""
+    conn.execute(
+        "DELETE FROM playlist_catalog_check WHERE playlist = ? AND source = ?",
+        (playlist, source),
+    )
+    conn.executemany(
+        "INSERT INTO playlist_catalog_check VALUES (?, ?, ?, ?, ?)",
+        [(playlist, source, cid, int(offered), now) for cid, offered in checks.items()],
+    )
+
+
+def set_catalog_checks(conn, playlist, source, checks):
+    """Replace one playlist's catalog answers for one provider."""
+    try:
+        _replace_catalog_checks(conn, playlist, source, checks, _now())
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
 def commit_reconcile_membership(conn, playlist, state_updates, pending_updates,
-                                physical_playlist_ids=None):
+                                physical_playlist_ids=None, catalog_checks=None):
     """Atomically replace selected baselines and pending removal observations.
 
     A source absent from either mapping is untouched. An empty set explicitly
@@ -909,6 +963,8 @@ def commit_reconcile_membership(conn, playlist, state_updates, pending_updates,
                 "INSERT OR IGNORE INTO playlist_pending_removal VALUES (?, ?, ?, ?)",
                 [(playlist, source, cid, now) for cid in canonical_ids],
             )
+        for source, checks in (catalog_checks or {}).items():
+            _replace_catalog_checks(conn, playlist, source, checks, now)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -975,6 +1031,7 @@ def clear_playlist_state(conn, playlist):
     conn.execute("DELETE FROM playlist_state WHERE playlist = ?", (playlist,))
     conn.execute("DELETE FROM playlist_state_meta WHERE playlist = ?", (playlist,))
     conn.execute("DELETE FROM playlist_pending_removal WHERE playlist = ?", (playlist,))
+    conn.execute("DELETE FROM playlist_catalog_check WHERE playlist = ?", (playlist,))
     conn.commit()
 
 
@@ -1163,6 +1220,10 @@ def reset_playlist_peer_state(conn, playlist, source):
     conn.execute(
         "DELETE FROM playlist_pending_removal WHERE playlist = ? AND source = ?",
         (playlist, source),
+    )
+    conn.execute(
+        "DELETE FROM playlist_catalog_check WHERE playlist IN (?, ?) AND source = ?",
+        (playlist, MIRROR_CHECK_PREFIX + playlist, source),
     )
     conn.execute(
         "DELETE FROM sync_state WHERE pair = ? AND target = ?",

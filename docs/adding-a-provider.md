@@ -171,6 +171,9 @@ to make a *new* provider a second canonical hub, which isn't needed.
   one of the 15 locale catalogs must carry each new string. Any `SERVICE_BLURBS` entry
   counts too.
 - `pnpm -C frontend build` (typecheck + bundle) and `pnpm -C frontend test:e2e`.
+- Once the account is connected, run the [live confidence run](live-confidence.md) with
+  `--providers <svc>`. Add a branch for the new provider to its test-only
+  `delete_playlist` helper first, or the run cannot clean up its temporary playlists.
 - Anything you add to `README.md` must be mirrored into all 14 files under `docs/i18n/`.
   `check-readmes.mjs` compares code blocks, the inline-code multiset, anchors, heading and
   table structure, brand-name counts and link targets against English, and rejects any

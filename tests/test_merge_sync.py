@@ -496,3 +496,88 @@ def test_scheduled_and_manual_service_options_and_status_keep_aggregate_shape(mo
         assert store.get(job.id).destination.playlist_id == "dest"
 
     asyncio.run(scenario())
+
+
+class _Catalog(_Provider):
+    """A merge source whose catalog search finds only `offered` titles."""
+
+    def __init__(self, source, tmp_path, offered):
+        super().__init__(source, tmp_path)
+        self.offered, self.queries = set(offered), []
+
+    def search_candidates(self, query, *, limit=5):
+        self.queries.append(query)
+        return [{"id": f"{self.source}:{name}", "name": name, "artists": ["Artist"]}
+                for name in sorted(self.offered) if name.casefold() in query.casefold()][:limit]
+
+    def resolve(self, track, cache):
+        return super().resolve(track, cache) if track["name"] in self.offered else (None, None)
+
+
+def _two_source_merge(monkeypatch, tmp_path, spotify_rows, apple_rows, *, spotify_offers, apple_offers):
+    spotify = _Catalog("spotify", tmp_path, spotify_offers)
+    apple = _Catalog("apple", tmp_path, apple_offers)
+    destination = _Provider("deezer", tmp_path)
+    spotify.add_playlist("first", spotify_rows)
+    apple.add_playlist("second", apple_rows)
+    destination.add_playlist("dest", [], name="Union")
+    _install_providers(monkeypatch, {p.source: p for p in (spotify, apple, destination)})
+    opts = _opts(tmp_path, [
+        {"provider": "spotify", "playlist_id": "first", "name": "First"},
+        {"provider": "apple", "playlist_id": "second", "name": "Second"},
+    ], {"provider": "deezer", "playlist_id": "dest", "name": "Union"})
+    _run_merge(opts, None)
+    return spotify, apple, destination, opts
+
+
+def _drop(provider, playlist_id, name):
+    provider.rows[playlist_id] = [row for row in provider.rows[playlist_id] if row["name"] != name]
+    provider.library[playlist_id]["count"] = len(provider.rows[playlist_id])
+
+
+def test_merge_keeps_a_track_its_only_source_delisted(monkeypatch, tmp_path):
+    spotify, apple, destination, opts = _two_source_merge(
+        monkeypatch, tmp_path, [_track("One"), _track("Two")], [_track("Three")],
+        spotify_offers={"One"}, apple_offers={"Three"})
+    _drop(spotify, "first", "Two")  # Spotify no longer offers Two
+    result, _, _, _ = _run_merge(opts, None)
+    assert [row["name"] for row in destination.rows["dest"]] == ["One", "Two", "Three"]
+    assert result[0]["removed"] == 0
+    assert [(row["category"], row["provider"]) for row in result[0]["change_diagnostics"]] == [
+        ("unavailable_on_provider", "Spotify")]
+    assert apple.queries == [], "only the source the track came from is asked"
+    queries = len(spotify.queries)
+    _run_merge(opts, None)
+    assert len(spotify.queries) == queries, "the saved answer is reused"
+
+
+def test_merge_removes_a_track_its_source_still_offers_even_if_another_never_had_it(monkeypatch, tmp_path):
+    spotify, apple, destination, opts = _two_source_merge(
+        monkeypatch, tmp_path, [_track("One"), _track("Two")], [_track("Three")],
+        spotify_offers={"One", "Two"}, apple_offers={"Three"})
+    _drop(spotify, "first", "Two")  # a user removal: Spotify still offers Two
+    result, _, _, _ = _run_merge(opts, None)
+    assert [row["name"] for row in destination.rows["dest"]] == ["One", "Three"]
+    assert result[0]["removed"] == 1 and apple.queries == []
+
+
+def test_merge_keeps_a_shared_track_while_any_source_it_came_from_delisted_it(monkeypatch, tmp_path):
+    spotify, apple, destination, opts = _two_source_merge(
+        monkeypatch, tmp_path, [_track("Shared", isrc="S1")], [_track("Shared", isrc="S1")],
+        spotify_offers={"Shared"}, apple_offers=set())
+    _drop(spotify, "first", "Shared")  # removed by the user on Spotify
+    _drop(apple, "second", "Shared")   # dropped by Apple's catalog
+    result, _, _, _ = _run_merge(opts, None)
+    assert [row["name"] for row in destination.rows["dest"]] == ["Shared"]
+    assert [row["provider"] for row in result[0]["change_diagnostics"]] == ["Apple"]
+
+
+def test_merge_asks_every_source_when_the_archive_does_not_know_where_a_track_came_from(monkeypatch, tmp_path):
+    spotify, apple, destination, opts = _two_source_merge(
+        monkeypatch, tmp_path, [_track("One")], [_track("Three")],
+        spotify_offers={"One", "Stray"}, apple_offers={"Three", "Stray"})
+    destination.rows["dest"].append(_track("Stray", provider_id="deezer:stray"))  # never in the union
+    result, _, _, _ = _run_merge(opts, None)
+    assert [row["name"] for row in destination.rows["dest"]] == ["One", "Three"]
+    assert any("Stray" in query for query in spotify.queries)
+    assert any("Stray" in query for query in apple.queries)

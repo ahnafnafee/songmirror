@@ -1098,13 +1098,16 @@ def test_unresolved_match_does_not_forget_observed_additions_or_user_removals(tm
                          execute=True, max_removals=25, max_adds=200,
                          authority_sources={"spotify", "apple"})
 
-    # X cannot be matched on Apple, but D was actually observed on both sides.
-    # Freezing all history here makes Apple's D look newly added forever.
-    assert run()["clean"] is False
+    # X predates the baseline and Apple never matched it: a standing gap, not a
+    # replacement in flight, so the pass stays clean. D was actually observed on
+    # both sides and is recorded.
+    assert run()["clean"] is True
     sp._isrcs.remove("D")
     for _ in range(3):
         run()
         assert sp.added == []
+    # "Song D" resembles the unmatched "Song X", so the uncertain-match guard holds
+    # D on Apple. The held deletion keeps its evidence instead of being forgotten.
     assert "i:D" in archive.get_playlist_state(conn, key, "spotify")
     assert archive.get_pending_removals(conn, key, "spotify") == {"i:D"}
     conn.close()
