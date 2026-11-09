@@ -511,24 +511,31 @@ def cleanup(rec, created):
             rec.check(f"cleanup deleted {target.source}:{target.playlist_name(playlist)}", False, repr(exc))
     time.sleep(2)
     for target in {id(t): t for t, _ in created}.values():
+        # Other workers' playlists carry the same prefix while they run, so only
+        # this worker's own playlists are checked here; the final sweep checks all.
+        mine = {str(target.playlist_id(p)) for t, p in created if t is target}
         try:
-            left = [target.playlist_name(p) for p in list_playlists(target) if is_temporary(target.playlist_name(p))]
-            rec.check(f"no temporary playlist is left on {target.source}", not left, left)
+            left = [target.playlist_name(p) for p in list_playlists(target) if str(target.playlist_id(p)) in mine]
+            rec.check(f"its temporary playlists are gone from {target.source}", not left, left)
         except Exception as exc:
             rec.check(f"listed {target.source} to verify cleanup", False, repr(exc))
 
 
 def sweep_worker(args, rec):
-    """Delete every temporary playlist left on the selected providers."""
+    """Delete temporary playlists on the selected providers: this run's, or with --sweep every run's."""
+    prefix = f"{TEMP_PREFIX} {args.stamp} " if args.this_run else TEMP_PREFIX + " "
     for provider in args.providers.split(","):
         target = build(provider)
         if target is None:
             continue
+        def ours(playlist):
+            return str(target.playlist_name(playlist) or "").startswith(prefix)
+
         try:
-            for playlist in [p for p in list_playlists(target) if is_temporary(target.playlist_name(p))]:
+            for playlist in [p for p in list_playlists(target) if ours(p)]:
                 delete_playlist(target, playlist)
                 print(f"deleted {provider}: {target.playlist_name(playlist)}", flush=True)
-            left = [target.playlist_name(p) for p in list_playlists(target) if is_temporary(target.playlist_name(p))]
+            left = [target.playlist_name(p) for p in list_playlists(target) if ours(p)]
             rec.check(f"no temporary playlist is left on {provider}", not left, left)
         except Exception as exc:
             rec.check(f"swept {provider}", False, repr(exc))
@@ -607,6 +614,7 @@ def collect(processes):
             process.wait(timeout=WORKER_TIMEOUT)
         except subprocess.TimeoutExpired:
             process.kill()
+            process.wait()
             results.append({"worker": worker, "check": "finished within the time limit", "ok": False,
                             "detail": f"killed after {WORKER_TIMEOUT}s; run --sweep"})
         handle.close()
@@ -615,6 +623,19 @@ def collect(processes):
         if not lines:
             lines = [{"worker": worker, "check": "reported results", "ok": False, "detail": f"see {log}"}]
         results.extend(lines)
+    return results
+
+
+def run_pool(args, scratch, workers):
+    """Run workers with at most --jobs at a time, so the shared seed server is not flooded."""
+    pending, running, results = list(workers), {}, []
+    while pending or running:
+        while pending and len(running) < max(1, args.jobs):
+            worker = pending.pop(0)
+            running[worker] = spawn(args, worker, scratch)
+        time.sleep(1)
+        for worker in [w for w, (process, _log, _handle) in running.items() if process.poll() is not None]:
+            results += collect({worker: running.pop(worker)})
     return results
 
 
@@ -635,11 +656,14 @@ def orchestrate(args):
     else:
         print(f"run {args.stamp}: {', '.join(providers)} against seed {args.seed_provider} "
               f"({args.sessions} sessions); logs in {scratch}", flush=True)
-        results = collect({p: spawn(args, p, scratch) for p in providers})
+        results = run_pool(args, scratch, providers)
         merge_sources = [p for p in args.merge_sources.split(",") if p] if args.merge_sources else providers[:2]
         if len(merge_sources) >= 2:
             args.merge_sources = ",".join(merge_sources[:2])
             results += collect({"merge": spawn(args, "merge", scratch)})
+        # Each worker verified its own playlists; this verifies the whole run, and deletes what it left.
+        results += collect({"final sweep": spawn(args, "sweep", scratch, (
+            "--providers", ",".join(providers + [args.seed_provider]), "--this-run"))})
     failures = [r for r in results if not r["ok"]]
     for worker in dict.fromkeys(r["worker"] for r in results):
         mine = [r for r in results if r["worker"] == worker]
@@ -675,6 +699,9 @@ def parse(argv=None):
     parser.add_argument("--session-budget", type=int, default=25,
                         help="minutes a run may take; in copy mode, sessions expiring sooner are skipped")
     parser.add_argument("--sweep", action="store_true", help="only delete temporary playlists left by earlier runs")
+    parser.add_argument("--jobs", type=int, default=4,
+                        help="providers tested at once; each one also loads the shared seed server")
+    parser.add_argument("--this-run", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--scratch", default="")
     parser.add_argument("--stamp", default=time.strftime("%Y%m%d-%H%M%S"))
     parser.add_argument("--worker", default="", help=argparse.SUPPRESS)

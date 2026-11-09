@@ -17,10 +17,11 @@ uv run python scripts/live_confidence.py --seed-playlist "Drive" --sessions shar
 - `--data-dir` points at the data directory that holds `settings.json` (default: the repository's `data/`, or `SONGMIRROR_CONFIDENCE_DATA_DIR`).
 - `--providers spotify,tidal` limits the run. By default every provider the live app reports as connected for playlist writes is tested.
 - `--merge-sources spotify,tidal` picks the two merge sources (default: the first two providers tested).
+- `--jobs` sets how many providers are tested at once (default 4). Every provider also reads and writes the seed provider, so a local server like Jellyfin can drop connections under more load.
 
 ## What it checks
 
-Each provider runs in its own process, in parallel, with its own scratch directory, caches and song database:
+Each provider runs in its own process, up to `--jobs` at a time, with its own scratch directory, caches and song database:
 
 | Stage | Checks |
 |---|---|
@@ -28,7 +29,7 @@ Each provider runs in its own process, in parallel, with its own scratch directo
 | Catalog | The provider's own catalog check finds every song on its playlist, both with its own metadata and with the seed provider's. A miss here means a user deletion on that provider would be kept as a delisting. |
 | N-way | The provider and the seed provider pair up. A deletion on either side waits for its second read, then propagates and never comes back. The final pass is stable. |
 | Merge | Two providers feed a seed-provider destination. A song removed from every source leaves it. A song one source delisted stays and names that source. The saved answer is reused. |
-| Cleanup | Every temporary playlist is deleted, and each provider is listed again to verify it. |
+| Cleanup | Each worker deletes its temporary playlists and lists the provider again to verify them. A final sweep then lists every provider for this run's playlists, deletes any it finds, and verifies none remain. |
 
 A delisting is simulated by hiding a song from every catalog lookup path of the source (search and resolve), since a real provider cannot be made to drop a song on demand.
 
