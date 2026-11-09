@@ -54,6 +54,8 @@
   "Add source": "উৎস যোগ করুন",
   "Add tracks in {{accountName}}, then refresh this view.": "{{accountName}}-এ ট্র্যাক যোগ করুন, তারপর এই ভিউ রিফ্রেশ করুন।",
   "Added": "যোগ করা হয়েছে",
+  "Auto-sync: checking…": "অটো-সিঙ্ক: যাচাই করা হচ্ছে…",
+  "Auto-sync: unavailable": "অটো-সিঙ্ক: অবস্থা পাওয়া যাচ্ছে না",
   "Choose New sync, decide which accounts supply and receive changes, then select playlists or liked tracks and a schedule.": "নতুন সিঙ্ক বেছে নিন, কোন অ্যাকাউন্ট পরিবর্তন দেবে ও গ্রহণ করবে ঠিক করুন, তারপর প্লেলিস্ট বা পছন্দের গান এবং সময়সূচি বেছে নিন।",
   "Choose a connected account and a new or existing playlist, then find matching tracks.": "সংযুক্ত অ্যাকাউন্ট এবং নতুন বা বিদ্যমান প্লেলিস্ট বেছে নিয়ে মিলে যাওয়া গান খুঁজুন।",
   "Choose a folder and audio format below, then save your changes.": "নিচে ফোল্ডার ও অডিও ফরম্যাট বেছে নিয়ে পরিবর্তন সংরক্ষণ করুন।",

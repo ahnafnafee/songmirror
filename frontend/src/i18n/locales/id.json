@@ -54,6 +54,8 @@
   "Add source": "Tambahkan sumber",
   "Add tracks in {{accountName}}, then refresh this view.": "Tambahkan trek di {{accountName}}, lalu segarkan tampilan ini.",
   "Added": "Ditambahkan",
+  "Auto-sync: checking…": "Sinkronisasi otomatis: memeriksa…",
+  "Auto-sync: unavailable": "Sinkronisasi otomatis: status tidak tersedia",
   "Choose New sync, decide which accounts supply and receive changes, then select playlists or liked tracks and a schedule.": "Pilih Sinkronisasi baru, tentukan akun yang memberi dan menerima perubahan, lalu pilih playlist atau lagu favorit beserta jadwalnya.",
   "Choose a connected account and a new or existing playlist, then find matching tracks.": "Pilih akun terhubung dan playlist baru atau yang sudah ada, lalu cari lagu yang cocok.",
   "Choose a folder and audio format below, then save your changes.": "Pilih folder dan format audio di bawah, lalu simpan perubahan.",

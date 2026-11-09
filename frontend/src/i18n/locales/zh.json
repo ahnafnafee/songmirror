@@ -54,6 +54,8 @@
   "Add source": "添加来源",
   "Add tracks in {{accountName}}, then refresh this view.": "在 {{accountName}} 中添加曲目，然后刷新此视图。",
   "Added": "已添加",
+  "Auto-sync: checking…": "自动同步：正在检查…",
+  "Auto-sync: unavailable": "自动同步：状态不可用",
   "Choose New sync, decide which accounts supply and receive changes, then select playlists or liked tracks and a schedule.": "选择新建同步，确定哪些账号提供和接收更改，再选择播放列表或喜欢的歌曲以及同步计划。",
   "Choose a connected account and a new or existing playlist, then find matching tracks.": "选择已连接的账号和新建或现有播放列表，然后查找匹配的歌曲。",
   "Choose a folder and audio format below, then save your changes.": "在下方选择文件夹和音频格式，然后保存更改。",

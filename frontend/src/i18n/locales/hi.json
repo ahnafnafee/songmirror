@@ -54,6 +54,8 @@
   "Add source": "स्रोत जोड़ें",
   "Add tracks in {{accountName}}, then refresh this view.": "{{accountName}} में ट्रैक जोड़ें, फिर इस दृश्य को ताज़ा करें।",
   "Added": "जोड़े गए",
+  "Auto-sync: checking…": "ऑटो-सिंक: जाँच हो रही है…",
+  "Auto-sync: unavailable": "ऑटो-सिंक: स्थिति उपलब्ध नहीं",
   "Choose New sync, decide which accounts supply and receive changes, then select playlists or liked tracks and a schedule.": "नई सिंक चुनें, तय करें कि कौन से खाते बदलाव देंगे और पाएँगे, फिर प्लेलिस्ट या पसंदीदा गाने और शेड्यूल चुनें।",
   "Choose a connected account and a new or existing playlist, then find matching tracks.": "जुड़ा हुआ खाता और नई या मौजूदा प्लेलिस्ट चुनें, फिर मेल खाते गाने ढूँढें।",
   "Choose a folder and audio format below, then save your changes.": "नीचे फ़ोल्डर और ऑडियो फ़ॉर्मैट चुनें, फिर बदलाव सहेजें।",

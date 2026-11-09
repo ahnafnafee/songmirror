@@ -54,6 +54,8 @@
   "Add source": "Thêm nguồn",
   "Add tracks in {{accountName}}, then refresh this view.": "Thêm bản nhạc trong {{accountName}}, sau đó làm mới chế độ xem này.",
   "Added": "Đã thêm",
+  "Auto-sync: checking…": "Tự động đồng bộ hóa: đang kiểm tra…",
+  "Auto-sync: unavailable": "Tự động đồng bộ hóa: không có trạng thái",
   "Choose New sync, decide which accounts supply and receive changes, then select playlists or liked tracks and a schedule.": "Chọn Đồng bộ mới, xác định tài khoản cung cấp và nhận thay đổi, rồi chọn danh sách phát hoặc bài hát yêu thích cùng lịch chạy.",
   "Choose a connected account and a new or existing playlist, then find matching tracks.": "Chọn tài khoản đã kết nối và danh sách phát mới hoặc hiện có, rồi tìm các bài hát khớp.",
   "Choose a folder and audio format below, then save your changes.": "Chọn thư mục và định dạng âm thanh bên dưới, rồi lưu thay đổi.",

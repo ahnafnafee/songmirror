@@ -54,6 +54,8 @@
   "Add source": "소스 추가",
   "Add tracks in {{accountName}}, then refresh this view.": "{{accountName}}에 트랙을 추가한 다음 이 보기를 새로 고치세요.",
   "Added": "추가됨",
+  "Auto-sync: checking…": "자동 동기화: 확인 중…",
+  "Auto-sync: unavailable": "자동 동기화: 상태를 확인할 수 없음",
   "Choose New sync, decide which accounts supply and receive changes, then select playlists or liked tracks and a schedule.": "새 동기화를 선택하고 변경 사항을 제공할 계정과 받을 계정을 정한 뒤 재생목록 또는 좋아요 표시한 곡과 일정을 선택하세요.",
   "Choose a connected account and a new or existing playlist, then find matching tracks.": "연결된 계정과 새 재생목록 또는 기존 재생목록을 선택한 다음 일치하는 곡을 찾으세요.",
   "Choose a folder and audio format below, then save your changes.": "아래에서 폴더와 오디오 형식을 선택하고 변경 사항을 저장하세요.",

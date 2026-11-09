@@ -34,7 +34,7 @@ export default function Dashboard() {
 
       <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch lg:gap-6">
         <Hero accounts={accounts} status={status} displayName={settings?.DISPLAY_NAME} />
-        <SyncControlCard status={status} onQueued={refreshAll} />
+        <SyncControlCard status={status} statusError={Boolean(error)} onQueued={refreshAll} />
       </div>
 
       <NeedsALook accounts={accounts} status={status} />

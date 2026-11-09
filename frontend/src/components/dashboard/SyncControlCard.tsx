@@ -14,6 +14,8 @@ import { Toggle } from '../ui/Toggle'
 
 interface Props {
   status: SyncStatus | null
+  /** The status request failed before any status loaded. */
+  statusError?: boolean
   onQueued: () => void
 }
 
@@ -22,13 +24,17 @@ interface Props {
  * each sync's own row (the Syncs panel and the Sync page's SyncJobCard) —
  * this card only keeps a small, secondary "Run all enabled" for a
  * one-click catch-all. */
-export function SyncControlCard({ status, onQueued }: Props) {
+export function SyncControlCard({ status, statusError = false, onQueued }: Props) {
   useTranslation()
   const [confirmingRunAll, setConfirmingRunAll] = useState(false)
   const [runningAll, setRunningAll] = useState(false)
   const [scheduleBusy, setScheduleBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const now = useNow()
+  // An unloaded status says nothing about the switch, so never show it as paused.
+  const masterLabel = !status
+    ? statusError ? t("Auto-sync: unavailable") : t("Auto-sync: checking…")
+    : status.master ? t("Auto-sync: on") : t("Auto-sync: paused")
 
   async function runAll() {
     setError(null)
@@ -65,7 +71,9 @@ export function SyncControlCard({ status, onQueued }: Props) {
           <LuClock className="size-[15px] shrink-0" aria-hidden="true" />
           {t("Next check")}
         </span>
-        {status?.scheduled && status.next_run_at ? (
+        {!status ? (
+          <span className="text-[13px] font-medium text-text-3">…</span>
+        ) : status.scheduled && status.next_run_at ? (
           <span className="text-[13.5px] font-bold text-text">
             {formatClockTime(status.next_run_at)}{' '}
             <span className="font-mono text-[11px] font-normal text-text-3">· {formatCountdown(status.next_run_at, now)}</span>
@@ -76,13 +84,11 @@ export function SyncControlCard({ status, onQueued }: Props) {
       </div>
 
       <div className="flex items-center gap-2.5 border-t border-border pt-3">
-        <span className="flex-1 text-[13px] font-medium text-text">
-          {status?.master ? t("Auto-sync: on") : t("Auto-sync: paused")}
-        </span>
+        <span className="flex-1 text-[13px] font-medium text-text">{masterLabel}</span>
         <Toggle
           checked={Boolean(status?.master)}
           onChange={() => void toggleMaster()}
-          label={status?.master ? t("Pause automatic sync") : t("Resume automatic sync")}
+          label={!status ? masterLabel : status.master ? t("Pause automatic sync") : t("Resume automatic sync")}
           hideLabel
           disabled={scheduleBusy || !status}
         />

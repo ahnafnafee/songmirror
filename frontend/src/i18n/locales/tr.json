@@ -54,6 +54,8 @@
   "Add source": "Kaynak ekle",
   "Add tracks in {{accountName}}, then refresh this view.": "{{accountName}} servisine şarkı ekleyin, ardından bu ekranı yenileyin.",
   "Added": "Eklendi",
+  "Auto-sync: checking…": "Otomatik senkronizasyon: kontrol ediliyor…",
+  "Auto-sync: unavailable": "Otomatik senkronizasyon: durum alınamıyor",
   "Choose New sync, decide which accounts supply and receive changes, then select playlists or liked tracks and a schedule.": "Yeni eşitleme’yi seçin, değişiklikleri hangi hesapların sağlayıp alacağını belirleyin, ardından çalma listelerini veya beğenilen parçaları ve zamanlamayı seçin.",
   "Choose a connected account and a new or existing playlist, then find matching tracks.": "Bağlı bir hesap ve yeni ya da mevcut bir çalma listesi seçin, ardından eşleşen parçaları bulun.",
   "Choose a folder and audio format below, then save your changes.": "Aşağıdan bir klasör ve ses biçimi seçip değişikliklerinizi kaydedin.",

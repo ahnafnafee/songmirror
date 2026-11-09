@@ -54,6 +54,8 @@
   "Add source": "Aggiungi fonte",
   "Add tracks in {{accountName}}, then refresh this view.": "Aggiungi tracce in {{accountName}}, quindi aggiorna questa visualizzazione.",
   "Added": "Aggiunte",
+  "Auto-sync: checking…": "Sincronizzazione automatica: verifica in corso…",
+  "Auto-sync: unavailable": "Sincronizzazione automatica: stato non disponibile",
   "Choose New sync, decide which accounts supply and receive changes, then select playlists or liked tracks and a schedule.": "Scegli Nuova sincronizzazione, decidi quali account forniscono e ricevono modifiche, quindi seleziona playlist o brani preferiti e una frequenza.",
   "Choose a connected account and a new or existing playlist, then find matching tracks.": "Scegli un account collegato e una playlist nuova o esistente, quindi cerca i brani corrispondenti.",
   "Choose a folder and audio format below, then save your changes.": "Scegli una cartella e un formato audio qui sotto, quindi salva le modifiche.",

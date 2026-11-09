@@ -54,6 +54,8 @@
   "Add source": "أضف المصدر",
   "Add tracks in {{accountName}}, then refresh this view.": "أضف مسارات في {{accountName}}، ثم قم بتحديث هذا العرض.",
   "Added": "مضافة",
+  "Auto-sync: checking…": "المزامنة التلقائية: جارٍ التحقق…",
+  "Auto-sync: unavailable": "المزامنة التلقائية: الحالة غير متاحة",
   "Choose New sync, decide which accounts supply and receive changes, then select playlists or liked tracks and a schedule.": "اختر مزامنة جديدة، وحدد الحسابات التي توفر التغييرات والتي تستقبلها، ثم اختر قوائم التشغيل أو المقاطع المفضلة والجدول الزمني.",
   "Choose a connected account and a new or existing playlist, then find matching tracks.": "اختر حسابًا متصلًا وقائمة تشغيل جديدة أو حالية، ثم ابحث عن المقاطع المطابقة.",
   "Choose a folder and audio format below, then save your changes.": "اختر مجلدًا وتنسيقًا للصوت أدناه، ثم احفظ التغييرات.",

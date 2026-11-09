@@ -54,6 +54,8 @@
   "Add source": "ソースを追加",
   "Add tracks in {{accountName}}, then refresh this view.": "{{accountName}} にトラックを追加し、このビューを更新します。",
   "Added": "追加済み",
+  "Auto-sync: checking…": "自動同期: 確認中…",
+  "Auto-sync: unavailable": "自動同期: 状態を取得できません",
   "Choose New sync, decide which accounts supply and receive changes, then select playlists or liked tracks and a schedule.": "新しい同期を選び、変更を提供・受信するアカウントを決めてから、プレイリストや高評価の曲とスケジュールを選択します。",
   "Choose a connected account and a new or existing playlist, then find matching tracks.": "接続済みアカウントと新規または既存のプレイリストを選び、一致する曲を検索します。",
   "Choose a folder and audio format below, then save your changes.": "下でフォルダーと音声形式を選び、変更を保存します。",

@@ -54,6 +54,8 @@
   "Add source": "Agregar fuente",
   "Add tracks in {{accountName}}, then refresh this view.": "Agregue pistas en {{accountName}}, luego actualice esta vista.",
   "Added": "Añadidas",
+  "Auto-sync: checking…": "Sincronización automática: comprobando…",
+  "Auto-sync: unavailable": "Sincronización automática: estado no disponible",
   "Choose New sync, decide which accounts supply and receive changes, then select playlists or liked tracks and a schedule.": "Elige Nueva sincronización, decide qué cuentas aportan y reciben cambios, y selecciona las listas o canciones favoritas y la frecuencia.",
   "Choose a connected account and a new or existing playlist, then find matching tracks.": "Elige una cuenta conectada y una lista nueva o existente, y busca las canciones correspondientes.",
   "Choose a folder and audio format below, then save your changes.": "Elige una carpeta y un formato de audio abajo y guarda los cambios.",
