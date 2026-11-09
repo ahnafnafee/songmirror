@@ -790,12 +790,13 @@ def _enrich_hard_isrcs(songs, source_key, source_tracks):
 def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, execute, max_removals,
                 max_adds, drain_removals=False, should_continue=None, source_key="spotify",
                 source_provider=None, source_name="Spotify", name=None,
-                allow_empty_source=False, source_peer=None, source_cache=None, check_key=None):
+                allow_empty_source=False, catalog_peers=None, check_key=None):
     """Reconcile one source→target playlist pair. Returns a stats dict; `clean`
     is True when everything applied with no guard tripped.
 
-    With `source_peer` and `check_key`, a removal applies only while the source
-    catalog still offers the track; see `_catalog_offers`.
+    With `catalog_peers` ({provider key: (peer, cache)}) and `check_key`, a
+    removal applies only while every source the track came from still offers
+    it; see `_sources_offer`.
 
     `source_key`/`source_name` identify the source of truth. The archive `links`
     table is anchored on Spotify ids (and load-bearing for N-way's identity), so
@@ -992,22 +993,25 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
         for track in sp_tracks
     )
     empty_source = not sp_tracks and tgt_tracks and not allow_empty_source
-    catalog_checks, delisted = None, []
-    if source_peer is not None and check_key and max_removals > 0 and not (
+    catalog_checks, delisted, delisted_from = None, [], set()
+    if catalog_peers and check_key and max_removals > 0 and not (
             incomplete_metadata or empty_source):
         # A mirror track loses its source match when the user deletes it there,
         # or when the source catalog drops it. Only the first is a removal. A
         # saved answer is reused while the track stays a removal candidate.
         saved = archive.get_catalog_checks(songs, check_key, target.source)
+        contributors = (_contributors_by_key(songs, source_key)
+                        if len(catalog_peers) > 1 and removals else {})
         catalog_checks, offered_removals, unverified = {}, [], []
         for track in removals:
             raw_ref = target.track_id(track)
             ref = None if raw_ref is None else str(raw_ref)
             offered = saved.get(ref)
             if offered is None:
-                offered = _catalog_offers(source_peer, track, source_cache)
+                offered, refused_by = _sources_offer(track, catalog_peers, contributors)
                 if offered is False:
                     delisted.append(track)
+                    delisted_from.update(refused_by)
             if offered is None:
                 unverified.append(track)
                 continue
@@ -1017,12 +1021,12 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
                 offered_removals.append(track)
         removals = offered_removals
         if unverified:
-            log_warn(f"could not check {len(unverified)} track(s) against {source_name}'s catalog; "
+            log_warn(f"could not check {len(unverified)} track(s) against the {source_name} catalog; "
                      "holding their removal this pass", tag=tag)
             removals_skipped, guard = removals_skipped + len(unverified), True
         if delisted:
-            log_note(f"{name}: {len(delisted)} track(s) left {source_name} because its catalog no "
-                     f"longer offers them; keeping them on {target.name}", tag=tag)
+            log_note(f"{name}: {len(delisted)} track(s) left {', '.join(sorted(delisted_from))} because "
+                     f"the catalog no longer offers them; keeping them on {target.name}", tag=tag)
     if incomplete_metadata and removals:
         log_warn(
             "source recordings have incomplete metadata; holding destination removals this pass",
@@ -1145,7 +1149,7 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
     if delisted:
         change_diagnostics.append({
             "category": "unavailable_on_provider", "playlist": name,
-            "provider": source_name, "count": len(delisted),
+            "provider": ", ".join(sorted(delisted_from)), "count": len(delisted),
             "evidence": f"left this provider, whose catalog no longer offers it; kept on {target.name}",
         })
     for existing, unresolved in uncertain_matches:
@@ -1461,6 +1465,43 @@ def _addition_order_by_cid(peers, per_entry, prev, cur, collapsed, alias,
         cid: min(origin_evidence.get(cid) or evidence)
         for cid, evidence in all_evidence.items()
     }
+
+
+def _contributors_by_key(songs, source_key):
+    """{title|artist key: provider keys} from the archived source snapshots.
+
+    A merged row records the providers it came from in ``_provider_ids``, and
+    its last archived copy survives after it leaves the union.
+    """
+    index = {}
+    for track in archive.get_song_history(songs, source_key):
+        providers = set(track.get("_provider_ids") or ())
+        artists = track.get("artists") or [track.get("artist") or ""]
+        for key in spotify_track_keys({"name": track.get("name") or "", "artists": artists}):
+            index.setdefault(key, set()).update(providers)
+    return index
+
+
+def _sources_offer(track, catalog_peers, contributors):
+    """(offered, refusing peer names) across the sources a track came from.
+
+    A track is a removal only when every source it came from still offers it.
+    A source that no longer offers it did not delete it, so the track stays
+    (False). Otherwise an unanswered check holds the removal (None). When the
+    archive does not know the sources, every source is asked.
+    """
+    artists = track.get("artists") or [track.get("artist") or ""]
+    keys = spotify_track_keys({"name": track.get("name") or "", "artists": artists})
+    known = set().union(*(contributors.get(key, set()) for key in keys)) & set(catalog_peers)
+    answers = [(peer, _catalog_offers(peer, track, cache))
+               for provider, (peer, cache) in sorted(catalog_peers.items())
+               if not known or provider in known]
+    refused = {peer.name for peer, offered in answers if offered is False}
+    if refused:
+        return False, refused
+    if any(offered is None for _peer, offered in answers):
+        return None, set()
+    return True, set()
 
 
 def _catalog_offers(peer, norm, cache):

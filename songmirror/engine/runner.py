@@ -184,6 +184,9 @@ def _run_merge(opts, sp, should_continue=None):
         return providers[provider_id]
 
     snapshots = []
+    # Keyed like the merged rows' _provider_ids, so a destination track can ask
+    # the catalogs of the sources it came from before it is removed.
+    catalog_peers = {}
     incomplete = False
     for descriptor in descriptors:
         if ctrl() != "run":
@@ -282,9 +285,13 @@ def _run_merge(opts, sp, should_continue=None):
             )
         else:
             aggregate["sources_read"] += 1
+        snapshot_provider = (target_provider(source, source.source)
+                             if getattr(source, "catalog_ids_global", True) else source.source)
+        if snapshot_provider not in catalog_peers:
+            catalog_peers[snapshot_provider] = (
+                source, load_target_cache(source) if getattr(source, "cache_file", None) else None)
         snapshots.append(AggregateSourceSnapshot(
-            provider=(target_provider(source, source.source)
-                      if getattr(source, "catalog_ids_global", True) else source.source),
+            provider=snapshot_provider,
             playlist_id=str(descriptor.get("playlist_id") or ""),
             tracks=valid_rows,
             track_id_of=source.track_id,
@@ -367,6 +374,7 @@ def _run_merge(opts, sp, should_continue=None):
     source_label = f"{len(descriptors)}-source union"
     cache = load_target_cache(destination)
     songs = archive.connect(opts.song_cache_file)
+    merge_key = f"merge:{getattr(opts, 'sync_job_id', '') or destination_id}"
     try:
         result = mirror_pair(
             destination,
@@ -380,12 +388,14 @@ def _run_merge(opts, sp, should_continue=None):
             max_adds=opts.max_adds,
             drain_removals=opts.apply_large_removals,
             should_continue=ctrl,
-            source_key=f"merge:{getattr(opts, 'sync_job_id', '') or destination_id}",
+            source_key=merge_key,
             source_name=source_label,
             name=destination_label,
             # A known-empty union is meaningful only after every source was
             # read completely; legacy one-way keeps its empty-read guard.
             allow_empty_source=not incomplete,
+            catalog_peers=catalog_peers,
+            check_key=archive.MIRROR_CHECK_PREFIX + merge_key,
         )
     except Exception as exc:
         _merge_failure(agg, {"name": destination_label, **destination_spec}, str(exc) or repr(exc))
@@ -549,9 +559,8 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
                     "source_key": src_key,
                     "source_name": source.name,
                     "name": name,
-                    "source_peer": source,
-                    "source_cache": source_cache,
-                    "check_key": archive.ONEWAY_CHECK_PREFIX + state_key,
+                    "catalog_peers": {src_key: (source, source_cache)},
+                    "check_key": archive.MIRROR_CHECK_PREFIX + state_key,
                 }
                 source_type = target_provider(source)
                 if source_type != src_key:
@@ -643,9 +652,8 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
                             "source_key": src_key,
                             "source_name": source.name,
                             "name": source_name,
-                            "source_peer": source,
-                            "source_cache": source_cache,
-                            "check_key": f"{archive.ONEWAY_CHECK_PREFIX}liked:{src_key}",
+                            "catalog_peers": {src_key: (source, source_cache)},
+                            "check_key": f"{archive.MIRROR_CHECK_PREFIX}liked:{src_key}",
                         }
                         source_type = target_provider(source)
                         if source_type != src_key:

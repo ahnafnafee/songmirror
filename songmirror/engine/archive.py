@@ -98,8 +98,9 @@ CREATE TABLE IF NOT EXISTS playlist_pending_removal (
     # a user deletion, the song stays elsewhere, and this provider is never
     # asked to add it back. offered = 1 means a user deleted an available song.
     # A row lasts only while that absence does, so a held removal is checked
-    # once instead of on every pass. One-way rows use ONEWAY_CHECK_PREFIX plus
-    # the pair key, and track ids in place of canonical ids.
+    # once instead of on every pass. One-way and merge rows use
+    # MIRROR_CHECK_PREFIX plus their pair key, and destination track ids in
+    # place of canonical ids.
     """
 CREATE TABLE IF NOT EXISTS playlist_catalog_check (
     playlist     TEXT NOT NULL,
@@ -886,7 +887,7 @@ def get_pending_removals(conn, playlist, source):
     return {row[0] for row in rows.fetchall()}
 
 
-ONEWAY_CHECK_PREFIX = "oneway:"
+MIRROR_CHECK_PREFIX = "mirror:"
 
 
 def get_catalog_checks(conn, playlist, source):
@@ -1222,7 +1223,7 @@ def reset_playlist_peer_state(conn, playlist, source):
     )
     conn.execute(
         "DELETE FROM playlist_catalog_check WHERE playlist IN (?, ?) AND source = ?",
-        (playlist, ONEWAY_CHECK_PREFIX + playlist, source),
+        (playlist, MIRROR_CHECK_PREFIX + playlist, source),
     )
     conn.execute(
         "DELETE FROM sync_state WHERE pair = ? AND target = ?",

@@ -1156,12 +1156,12 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
                     label={form.mode === 'merge' ? t("Remove tracks absent from every source") : form.mode === 'nway' ? t("Sync removals") : t("Mirror removals")}
                     description={
                       form.mode === 'merge'
-                        ? t("Off: append-only; destination-only tracks are always kept. On: remove a track only after a complete pass confirms it is absent from every source.")
+                        ? t("Off: append-only; destination-only tracks are always kept. On: remove a track only after a complete pass confirms it is absent from every source, and only while the sources it came from still offer it.")
                         : form.mode === 'group'
-                        ? t("Off (default): removals and mirror-only tracks are kept. On: confirmed removals from either authority—and tracks found only on mirrors—are pruned everywhere, capped per pass.")
+                        ? t("Off (default): removals and mirror-only tracks are kept. On: confirmed removals from either authority, and tracks found only on mirrors, are pruned everywhere, capped per pass. A song an authority no longer offers never counts as a removal.")
                         : form.mode === 'nway'
                           ? t("Off (default): a track removed on one service is kept on the others. On: a removal syncs after two passes confirm it, capped per pass. A song a service no longer offers never counts as a removal.")
-                          : t("Off (default): tracks missing from the source are kept on mirrors. On: source removals sync too, capped per pass.")
+                          : t("Off (default): tracks missing from the source are kept on mirrors. On: source removals sync too, capped per pass. A song the source no longer offers is never removed.")
                     }
                   />
                   <Tooltip
@@ -1180,7 +1180,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
                             <Trans i18nKey={"A track removed on <span1>any</span1> service is deleted from all the others after confirmation."} components={{ span1: <span className="font-semibold text-text" /> }} />
                           </>
                         ) : (
-                          <>{t("A track absent from the source is removed from every selected mirror.")}</>
+                          <>{t("A track absent from the source is removed from every selected mirror while the source still offers it.")}</>
                         )}{' '}
                         {t('Removals under the cap apply without review.')}
                       </>

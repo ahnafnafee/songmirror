@@ -286,7 +286,7 @@ A **Merge sources** job combines one or more explicit playlists into one chosen 
 
 - **One membership union** — all constituents are read before the destination is reconciled. Shared ISRCs are one recording; without an ISRC, exact/conservative title, artist, version, and duration evidence deduplicates overlaps.
 - **Deterministic order** — source descriptor priority first, then the order returned by each source playlist. The first occurrence owns the destination position and display metadata; later copies only enrich missing identity metadata.
-- **Union-safe removals** — a destination track can be removed only when a complete pass finds it absent from every constituent source. A failed, truncated, malformed, unavailable, or unknowably empty source disables every removal for that pass, while safe additions from readable sources may continue.
+- **Union-safe removals**: a destination track can be removed only when a complete pass finds it absent from every constituent source. A failed, truncated, malformed, unavailable, or unknowably empty source disables every removal for that pass, while safe additions from readable sources may continue. Even then, a track stays while any source it came from no longer offers it, because a delisting is not a deletion.
 - **Append-only by default** — leave **Remove tracks absent from every source** off to keep all destination-only tracks. Turning it on opts into the normal per-pass removal cap after the complete-read guard passes.
 
 Merge jobs currently target one provider playlist; the separate local download/Jellyfin mirror is not available for an aggregate job.

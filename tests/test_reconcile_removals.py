@@ -243,7 +243,7 @@ def test_re_adding_a_delisted_song_clears_its_marker(tmp_path):
     conn.close()
 
 
-ONE_WAY_KEY = archive.ONEWAY_CHECK_PREFIX + "mix"
+ONE_WAY_KEY = archive.MIRROR_CHECK_PREFIX + "mix"
 
 
 def _mirror(conn, source, mirror, passes=1, max_removals=25):
@@ -253,7 +253,7 @@ def _mirror(conn, source, mirror, passes=1, max_removals=25):
             mirror, source.playlist_tracks(None), {"name": "Mix"}, {"id": "mix"},
             {"isrc": {}, "search": {}, "dirty": False}, conn, execute=True,
             max_removals=max_removals, max_adds=200, source_key=source.source,
-            source_name=source.name, source_peer=source, check_key=ONE_WAY_KEY))
+            source_name=source.name, catalog_peers={source.source: (source, None)}, check_key=ONE_WAY_KEY))
     return stats
 
 
