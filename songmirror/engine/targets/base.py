@@ -1528,18 +1528,21 @@ def _catalog_offers(peer, norm, cache):
     wanted = spotify_track_keys({"name": title, "artists": artists})
     isrc = normalize_isrc(norm.get("isrc"))
     try:
+        searched = True
         try:
             for query in dict.fromkeys([f"{title} {artists[0]}".strip(), title]):
-                for candidate in peer.search_candidates(query, limit=10):
-                    artists = candidate.get("artists") or [candidate.get("artist") or ""]
-                    keys = spotify_track_keys({"name": candidate.get("name") or "", "artists": artists})
+                for candidate in peer.search_candidates(query, limit=20):
+                    candidate_artists = candidate.get("artists") or [candidate.get("artist") or ""]
+                    keys = spotify_track_keys({"name": candidate.get("name") or "", "artists": candidate_artists})
                     if keys & wanted or (isrc and normalize_isrc(candidate.get("isrc")) == isrc):
                         return True
-            return False
         except (AttributeError, NotImplementedError):
-            pass  # no catalog search: fall back to a fresh match
+            searched = False
+        # A search miss is weak evidence: a catalog can rank an offered song
+        # past its first page. The provider's own resolver, with its own query
+        # strategy, gets a fresh chance before the song is called delisted.
         if not callable(getattr(peer, "resolve", None)):
-            return True
+            return not searched
         fresh = {"isrc": {}, "search": {}, "manual": set(), "dirty": False}
         prefetch = getattr(peer, "prefetch", None)
         if callable(prefetch):
@@ -1547,7 +1550,7 @@ def _catalog_offers(peer, norm, cache):
         try:
             target_id, _method = peer.resolve(norm, fresh)
         except NotImplementedError:
-            return True
+            return not searched
         return bool(target_id)
     except TargetAuthError:
         raise

@@ -510,6 +510,9 @@ class _Catalog(_Provider):
         return [{"id": f"{self.source}:{name}", "name": name, "artists": ["Artist"]}
                 for name in sorted(self.offered) if name.casefold() in query.casefold()][:limit]
 
+    def resolve(self, track, cache):
+        return super().resolve(track, cache) if track["name"] in self.offered else (None, None)
+
 
 def _two_source_merge(monkeypatch, tmp_path, spotify_rows, apple_rows, *, spotify_offers, apple_offers):
     spotify = _Catalog("spotify", tmp_path, spotify_offers)

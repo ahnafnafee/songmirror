@@ -373,3 +373,20 @@ def test_a_deletion_beside_an_isrc_less_spotify_read_is_not_re_added(tmp_path):
     _sync(conn, [spotify, jellyfin])
     assert sorted(spotify.songs) == ["A", "C"] and sorted(jellyfin.songs) == ["A", "C"]
     conn.close()
+
+
+def test_a_search_miss_asks_the_provider_resolver_before_calling_a_song_delisted(tmp_path):
+    # A catalog search can rank an offered song past its first page; the
+    # provider's own resolver, with its own query strategy, still finds it.
+    class ShallowSearch(Peer):
+        def search_candidates(self, query, *, limit=5):
+            return [] if "Cold Harbor" in query else super().search_candidates(query, limit=limit)
+
+    conn = archive.connect(str(tmp_path / "s.db"))
+    spotify, tidal = ShallowSearch("spotify", "ABC"), Peer("tidal", "ABC")
+    _sync(conn, [spotify, tidal], passes=2)
+    spotify.songs.remove("C")  # a user deletion: Spotify still offers C
+    _sync(conn, [spotify, tidal], passes=2)
+    assert sorted(tidal.songs) == ["A", "B"], "the resolver proves C is still offered"
+    assert archive.get_catalog_checks(conn, "mix", "spotify") == {}
+    conn.close()
