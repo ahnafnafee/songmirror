@@ -230,6 +230,19 @@ function buildItems(accounts: Account[] | null, status: SyncStatus | null): Need
     })
   }
 
+  const unavailableRows = diagnosticsByCategory(diagnostics, 'unavailable_on_provider')
+  const unavailableTotal = diagnosticCount(unavailableRows)
+  if (unavailableTotal > 0) {
+    items.push({
+      key: 'unavailable-on-provider',
+      icon: LuTriangleAlert,
+      title: t("Songs a service no longer offers: {{total, number}}", { total: unavailableTotal }),
+      description:
+        t("These songs left a playlist on a service whose catalog no longer has them. SongMirror did not count that as a deletion: it kept them on the other services and will not try to add them back to that service."),
+      details: diagnosticDetails(unavailableRows),
+    })
+  }
+
   const uncertainRows = diagnosticsByCategory(diagnostics, 'uncertain_match')
   const structuredHeldTotal = diagnosticCount(uncertainRows)
   const heldTotal = targets.reduce((sum, target) => sum + target.held, 0)

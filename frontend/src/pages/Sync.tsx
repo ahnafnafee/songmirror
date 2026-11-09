@@ -107,6 +107,7 @@ export default function Sync() {
         open={wizardOpen}
         onClose={() => setWizardOpen(false)}
         job={editingJob}
+        otherSyncs={syncs ?? []}
         accounts={accounts ?? []}
         onSaved={() => {
           setWizardOpen(false)

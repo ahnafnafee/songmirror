@@ -318,7 +318,9 @@ Bidirectional sync is impossible statelessly, so each logical playlist's canonic
 - **Add-wins** on conflict — losing a song is worse than keeping an extra one.
 - **Read-collapse guard** — if a provider suddenly reads far fewer tracks than the baseline (a transient API hiccup), it's skipped that pass so one bad read can't cascade a mass-delete.
 - **Same rails as one-way** — per-pass `MAX_ADDS` / `MAX_REMOVALS` caps and net-loss protection hold on every write side.
-- **Removals are opt-in** — `MAX_REMOVALS` defaults to 0, so a track that disappears from one provider (deleted there, or silently pulled by licensing) is kept on the others and only logged. Set a cap (or the UI's "Mirror removals" toggle) to propagate deletions.
+- **Removals are opt-in**: `MAX_REMOVALS` defaults to 0, so a track deleted on one provider is kept on the others and only logged. Set a cap (or turn on **Sync removals** in the UI) to propagate deletions. A deletion propagates only after two consecutive complete reads confirm it.
+- **Delisting is not deletion**: before a deletion propagates, SongMirror checks that the provider still offers the track. A track that left because the provider's catalog dropped it (a licensing takedown, for example) stays on the others, and SongMirror never tries to add it back to that provider.
+- **One sync, not two opposite ones**: two one-way syncs that copy into each other bring back every deletion. The sync wizard warns about such a pair and suggests one Bidirectional sync instead.
 
 > **Always dry-run first.** Run without `--execute` (or use **Preview** in the UI) and read the plan — it prints every proposed add/remove on every provider before anything is written.
 

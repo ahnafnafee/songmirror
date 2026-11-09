@@ -318,7 +318,9 @@ Sinkronisasi dua arah tidak mungkin dilakukan tanpa negara, sehingga keanggotaan
 - Kemenangan tambahan dalam konflik — kehilangan sebuah lagu lebih buruk daripada menyimpan lagu tambahan.
 - Penjaga baca-ciutkan — jika penyedia tiba-tiba membaca trek yang jauh lebih sedikit daripada garis dasar (cegukan sementara API), maka jalur tersebut dilewati sehingga satu pembacaan buruk tidak dapat melakukan penghapusan massal.
 - Perlindungan yang sama seperti satu arah — batas per-pass `MAX_ADDS` / `MAX_REMOVALS` dan perlindungan kerugian bersih berlaku di setiap sisi tulis.
-- **Penghapusan harus diaktifkan terlebih dahulu** — nilai bawaan `MAX_REMOVALS` adalah 0. Lagu yang hilang dari satu layanan, baik karena dihapus di sana maupun ditarik karena lisensi, tetap disimpan di layanan lain dan perubahannya hanya dicatat. Tetapkan batas atau aktifkan **Sinkronkan penghapusan lagu** di antarmuka untuk menerapkan penghapusan ke layanan lain.
+- **Penghapusan harus diaktifkan terlebih dahulu**: nilai bawaan `MAX_REMOVALS` adalah 0. Lagu yang dihapus di satu layanan tetap disimpan di layanan lain dan perubahannya hanya dicatat. Tetapkan batas atau aktifkan **Sinkronkan penghapusan** di antarmuka untuk menerapkan penghapusan ke layanan lain. Penghapusan baru diterapkan setelah dua pembacaan lengkap berturut-turut mengonfirmasinya.
+- **Ditarik dari katalog bukan berarti dihapus**: sebelum menerapkan penghapusan, SongMirror memeriksa apakah layanan masih menyediakan lagu tersebut. Lagu yang hilang karena katalog layanan menariknya (misalnya karena lisensi) tetap ada di layanan lain, dan SongMirror tidak pernah mencoba menambahkannya kembali ke layanan itu.
+- **Satu sinkronisasi, bukan dua yang berlawanan**: dua sinkronisasi satu arah yang saling menyalin akan mengembalikan setiap penghapusan. Wizard sinkronisasi memperingatkan pasangan seperti itu dan menyarankan satu sinkronisasi dua arah sebagai gantinya.
 
 > Selalu simulasi dulu. Jalankan tanpa `--execute` (atau gunakan Pratinjau di UI) dan baca rencananya — rencana tersebut akan mencetak setiap usulan penambahan/penghapusan pada setiap penyedia sebelum ada yang ditulis.
 

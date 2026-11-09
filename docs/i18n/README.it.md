@@ -318,7 +318,9 @@ La sincronizzazione bidirezionale è impossibile senza stato, quindi l'appartene
 - Vantaggi aggiuntivi in caso di conflitto: perdere una canzone è peggio che mantenerne una in più.
 - Protezione dal collasso delle letture: se un provider legge improvvisamente molte meno tracce rispetto alla linea di base (un singhiozzo transitorio API), viene saltato quel passaggio in modo che una lettura errata non possa provocare un'eliminazione di massa.
 - Stesse garanzie del metodo unidirezionale: limiti per passaggio `MAX_ADDS` / `MAX_REMOVALS` e protezione contro le perdite nette su ogni lato di scrittura.
-- **Le eliminazioni sono facoltative**: `MAX_REMOVALS` vale 0 per impostazione predefinita. Un brano che scompare da un servizio, perché eliminato lì o ritirato per motivi di licenza, resta negli altri e la modifica viene solo registrata. Imposta un limite o abilita **Sincronizza le eliminazioni** nell’interfaccia per propagare le eliminazioni.
+- **Le eliminazioni sono facoltative**: `MAX_REMOVALS` vale 0 per impostazione predefinita. Un brano eliminato su un servizio resta negli altri e la modifica viene solo registrata. Imposta un limite o abilita **Sincronizza le eliminazioni** nell’interfaccia per propagare le eliminazioni. Un'eliminazione si propaga solo dopo che due letture complete consecutive l'hanno confermata.
+- **Il ritiro dal catalogo non è un'eliminazione**: prima di propagare un'eliminazione, SongMirror verifica che il servizio offra ancora il brano. Un brano uscito perché il catalogo del servizio lo ha ritirato (ad esempio per motivi di licenza) resta negli altri, e SongMirror non prova mai ad aggiungerlo di nuovo a quel servizio.
+- **Una sincronizzazione, non due opposte**: due sincronizzazioni unidirezionali che si copiano a vicenda riportano indietro ogni eliminazione. La procedura guidata di sincronizzazione segnala una coppia simile e suggerisce invece un'unica sincronizzazione bidirezionale.
 
 > Prima sempre la simulazione. Esegui senza `--execute` (o usa Anteprima nell'interfaccia utente) e leggi il piano: stampa ogni aggiunta/rimozione proposta su ogni provider prima che venga scritto qualsiasi cosa.
 

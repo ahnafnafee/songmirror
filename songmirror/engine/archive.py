@@ -93,6 +93,19 @@ CREATE TABLE IF NOT EXISTS playlist_pending_removal (
     PRIMARY KEY (playlist, source, canonical_id)
 )
 """,
+    # A member that left this provider while the provider's own catalog no
+    # longer offers it, such as a delisted song. That is not a user deletion:
+    # the other providers keep it, and this provider is never asked to add it
+    # back until the song reappears there.
+    """
+CREATE TABLE IF NOT EXISTS playlist_unavailable (
+    playlist      TEXT NOT NULL,
+    source        TEXT NOT NULL,
+    canonical_id  TEXT NOT NULL,
+    first_seen_at TEXT NOT NULL,
+    PRIMARY KEY (playlist, source, canonical_id)
+)
+""",
     # The last HARD canonical id (ISRC / Spotify-linked) a provider's track
     # resolved to. Provider metadata is mutable: YouTube's youtubei read
     # alternates between a track's artist and its auto-generated channel for the
@@ -266,6 +279,7 @@ _PROFILE_ID_COLUMNS = (
     ("playlist_state", "source"),
     ("playlist_state_meta", "source"),
     ("playlist_pending_removal", "source"),
+    ("playlist_unavailable", "source"),
     ("track_identity", "source"),
     ("track_identity_history", "source"),
     ("playlist_order", "source"),
@@ -276,6 +290,7 @@ _GROUP_KEY_COLUMNS = (
     ("playlist_state", "playlist"),
     ("playlist_state_meta", "playlist"),
     ("playlist_pending_removal", "playlist"),
+    ("playlist_unavailable", "playlist"),
     ("playlist_order", "playlist"),
 )
 
@@ -867,8 +882,17 @@ def get_pending_removals(conn, playlist, source):
     return {row[0] for row in rows.fetchall()}
 
 
+def get_playlist_unavailable(conn, playlist, source):
+    """Canonical ids this provider dropped because its catalog no longer offers them."""
+    rows = conn.execute(
+        "SELECT canonical_id FROM playlist_unavailable WHERE playlist = ? AND source = ?",
+        (playlist, source),
+    )
+    return {row[0] for row in rows.fetchall()}
+
+
 def commit_reconcile_membership(conn, playlist, state_updates, pending_updates,
-                                physical_playlist_ids=None):
+                                physical_playlist_ids=None, unavailable_updates=None):
     """Atomically replace selected baselines and pending removal observations.
 
     A source absent from either mapping is untouched. An empty set explicitly
@@ -907,6 +931,18 @@ def commit_reconcile_membership(conn, playlist, state_updates, pending_updates,
             )
             conn.executemany(
                 "INSERT OR IGNORE INTO playlist_pending_removal VALUES (?, ?, ?, ?)",
+                [(playlist, source, cid, now) for cid in canonical_ids],
+            )
+        for source, canonical_ids in (unavailable_updates or {}).items():
+            canonical_ids = set(canonical_ids)
+            existing = get_playlist_unavailable(conn, playlist, source)
+            conn.executemany(
+                "DELETE FROM playlist_unavailable "
+                "WHERE playlist = ? AND source = ? AND canonical_id = ?",
+                [(playlist, source, cid) for cid in existing - canonical_ids],
+            )
+            conn.executemany(
+                "INSERT OR IGNORE INTO playlist_unavailable VALUES (?, ?, ?, ?)",
                 [(playlist, source, cid, now) for cid in canonical_ids],
             )
         conn.commit()
@@ -975,6 +1011,7 @@ def clear_playlist_state(conn, playlist):
     conn.execute("DELETE FROM playlist_state WHERE playlist = ?", (playlist,))
     conn.execute("DELETE FROM playlist_state_meta WHERE playlist = ?", (playlist,))
     conn.execute("DELETE FROM playlist_pending_removal WHERE playlist = ?", (playlist,))
+    conn.execute("DELETE FROM playlist_unavailable WHERE playlist = ?", (playlist,))
     conn.commit()
 
 
@@ -1162,6 +1199,10 @@ def reset_playlist_peer_state(conn, playlist, source):
     )
     conn.execute(
         "DELETE FROM playlist_pending_removal WHERE playlist = ? AND source = ?",
+        (playlist, source),
+    )
+    conn.execute(
+        "DELETE FROM playlist_unavailable WHERE playlist = ? AND source = ?",
         (playlist, source),
     )
     conn.execute(

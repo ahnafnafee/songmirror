@@ -318,7 +318,9 @@ A sincronização bidirecional é impossível sem estado, portanto, a associaç�
 - Vitórias adicionais em conflitos - perder uma música é pior do que manter uma música extra.
 - Proteção contra colapso de leitura - se um provedor de repente lê muito menos faixas do que a linha de base (um soluço transitório API), essa passagem é ignorada para que uma leitura incorreta não possa causar uma exclusão em massa.
 - As mesmas proteções dos limites unidirecionais — por passagem `MAX_ADDS` / `MAX_REMOVALS` e proteção contra perda líquida são mantidas em todos os lados de gravação.
-- **As exclusões são opcionais**: `MAX_REMOVALS` vale 0 por padrão. Uma faixa que desaparece de um serviço, seja por exclusão nesse serviço ou por retirada devido a licenciamento, é mantida nos demais e apenas registrada. Defina um limite ou ative **Sincronizar exclusões** na interface para propagar as exclusões.
+- **As exclusões são opcionais**: `MAX_REMOVALS` vale 0 por padrão. Uma faixa excluída em um serviço é mantida nos demais e apenas registrada. Defina um limite ou ative **Sincronizar exclusões** na interface para propagar as exclusões. Uma exclusão só se propaga depois que duas leituras completas consecutivas a confirmam.
+- **Sair do catálogo não é exclusão**: antes de propagar uma exclusão, o SongMirror verifica se o serviço ainda oferece a faixa. Uma faixa que saiu porque o catálogo do serviço a retirou (por licenciamento, por exemplo) permanece nos demais, e o SongMirror nunca tenta adicioná-la de novo a esse serviço.
+- **Uma sincronização, não duas opostas**: duas sincronizações unidirecionais que copiam uma para a outra trazem de volta cada exclusão. O assistente de sincronização avisa sobre esse par e sugere uma única sincronização bidirecional.
 
 > Sempre simulação primeiro. Execute sem `--execute` (ou use Visualização na UI) e leia o plano - ele imprime todas as adições/remoções propostas em cada provedor antes que qualquer coisa seja escrita.
 

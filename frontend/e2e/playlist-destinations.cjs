@@ -53,6 +53,7 @@ async function main() {
       saved.push(job)
       return send(job)
     }
+    if (url.pathname === '/api/syncs') return send(saved)
     if (url.pathname === '/api/sync/status') return send({ jobs: [], running: false })
     if (url.pathname === '/api/playlists') return send(PLAYLISTS[url.searchParams.get('provider')] ?? [])
     if (url.pathname.startsWith('/api/playlists') || ['/api/syncs', '/api/links', '/api/playlist-backups', '/api/transfers'].includes(url.pathname)) return send([])
@@ -119,10 +120,17 @@ async function main() {
     await dialog.getByRole('checkbox', { name: 'TIDAL Favorite Tracks', exact: false }).locator('..').click()
     await dialog.getByRole('radio', { name: 'Direction', exact: true }).click()
     await dialog.getByRole('radio', { name: 'Jellyfin', exact: true }).click()
+    // The saved TIDAL sync already copies TIDAL into Jellyfin, so its deletions would come back.
+    const reverse = dialog.getByRole('status').filter({ hasText: 'The sync TIDAL to my servers already copies TIDAL back to Jellyfin' })
+    assert.equal(await reverse.isVisible(), true, 'Opposite one-way syncs are flagged on the Direction step')
+    await dialog.getByRole('radio', { name: 'Services', exact: true }).click()
+    assert.equal(await reverse.isVisible(), true, 'and on the Services step')
     await dialog.getByRole('radio', { name: 'Playlists', exact: true }).click()
     assert.equal(await dialog.getByRole('checkbox', { name: 'Jellyfin Liked Tracks', exact: false }).count(), 0,
       'A Jellyfin source has no liked-track reader')
     await dialog.getByRole('checkbox', { name: 'Mix', exact: false }).locator('..').click()
+    await dialog.getByRole('radio', { name: 'Services', exact: true }).click()
+    assert.equal(await reverse.count(), 0, 'Disjoint playlist filters do not copy into each other')
     await dialog.getByRole('button', { name: 'Create sync', exact: true }).click()
     await dialog.waitFor({ state: 'hidden' })
     assert.equal(saved[1].source, 'jf')
@@ -130,6 +138,17 @@ async function main() {
     assert.equal(saved[1].sync_playlists, true)
     assert.deepEqual(saved[1].liked_routes, {})
     console.log('PASS: Jellyfin sources hide favorites and clear a previous source’s liked-track selection')
+
+    await page.getByRole('button', { name: 'New sync', exact: true }).first().click()
+    await dialog.getByRole('radio', { name: /^Bidirectional/ }).locator('..').click()
+    await dialog.getByRole('radio', { name: 'Limits & downloads', exact: true }).click()
+    assert.equal(await dialog.getByText('Sync removals', { exact: true }).isVisible(), true)
+    assert.equal(await dialog.getByText('Mirror removals', { exact: true }).count(), 0)
+    assert.equal(await dialog.getByRole('status').filter({ hasText: 'already copies' }).count(), 0,
+      'A Bidirectional sync is the fix, not a conflict')
+    await page.keyboard.press('Escape')
+    await dialog.waitFor({ state: 'hidden' })
+    console.log('PASS: opposite one-way syncs are flagged and Bidirectional mode names its removal switch')
 
     for (const source of ['tidal', 'jf']) {
       const context = await browser.newContext()

@@ -360,11 +360,20 @@ interface Props {
   onClose: () => void
   /** null = creating a new sync job. */
   job: SyncJob | null
+  /** Saved syncs, to warn when two one-way syncs copy into each other. */
+  otherSyncs?: SyncJob[]
   accounts: Account[]
   onSaved: () => void
 }
 
 const FORM_ID = 'sync-wizard-form'
+
+/** Playlist filters overlap when either is empty ("every playlist") or they share a name. */
+function playlistFiltersOverlap(left: string, right: string): boolean {
+  const a = parseCsv(left).map((name) => name.toLocaleLowerCase())
+  const b = new Set(parseCsv(right).map((name) => name.toLocaleLowerCase()))
+  return a.length === 0 || b.size === 0 || a.some((name) => b.has(name))
+}
 
 function normalizeSourceFavorites(form: JobFormState, accounts: Account[]): JobFormState {
   const source = accounts.find((account) => account.id === form.source)
@@ -379,7 +388,7 @@ function normalizeSourceFavorites(form: JobFormState, accounts: Account[]): JobF
  * Saves via POST/PUT /api/syncs; the only /api/settings traffic is a
  * read-only fetch of the global download folder, purely to show it in the
  * review's Downloads row. */
-export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
+export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSaved }: Props) {
   useTranslation()
   const { settings } = useSettings()
   const [form, setForm] = useState<JobFormState>(NEW_JOB_DEFAULTS)
@@ -457,6 +466,26 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
   if (form.liked_tracks) lockedProviderIds.add(syncSource)
 
   const enabledProviders = enabledProvidersOf({ providers: form.providers }, syncPeers)
+  // Two one-way syncs that copy into each other bring every deletion back: the
+  // reverse sync restores what this sync's source lost. Empty lists mean "all".
+  const reverseSync = form.mode === 'oneway' && form.sync_playlists
+    ? otherSyncs.find((other) => {
+        const otherTargets = parseCsv(other.providers)
+        return other.id !== job?.id && other.enabled && other.mode === 'oneway' && other.sync_playlists
+          && other.source !== syncSource && enabledProviders.has(other.source)
+          && (otherTargets.length === 0 || otherTargets.includes(syncSource))
+          && playlistFiltersOverlap(form.playlists, other.playlists)
+      })
+    : undefined
+  const reverseSyncWarning = reverseSync ? (
+    <p role="status" className="rounded-control bg-warning-soft px-3.5 py-2.5 text-xs leading-relaxed text-text-2">
+      {t("The sync {{syncName}} already copies {{destination}} back to {{source}}, so songs you delete come back. Use one Bidirectional sync instead to keep deletions.", {
+        syncName: reverseSync.name,
+        destination: accounts.find((account) => account.id === reverseSync.source)?.name ?? reverseSync.source,
+        source: sourceAccount?.name ?? syncSource,
+      })}
+    </p>
+  ) : null
   // Which participants can actually write their own liked collection. Last.fm
   // only can once its session is authorized, so this is state, not a constant.
   const likeReceivers = new Set(accounts.filter(canReceiveLikedTracks).map((account) => account.id))
@@ -811,7 +840,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                   checked={form.mode === 'nway'}
                   onChange={() => selectMode('nway')}
                   title={t("Bidirectional (N-way) ⇄")}
-                  description={t("A track added or removed on any connected service propagates to all the others.")}
+                  description={t("A track added on any connected service reaches all the others. Removals sync too when Sync removals is on.")}
                 />
                 <RadioCard
                   name="sync-mode"
@@ -849,6 +878,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                       />
                     )}
                   </ServiceGroups>
+                  {reverseSyncWarning}
                 </div>
               )}
 
@@ -915,6 +945,7 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                 onChange={(destination) => setField('destination', destination)}
               />
             ) : (
+              <>
               <ServiceGroups accounts={syncPeers}>
                 {(account) => {
                   const locked = lockedProviderIds.has(account.id)
@@ -945,6 +976,8 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                   )
                 }}
               </ServiceGroups>
+              {reverseSyncWarning}
+              </>
             )
           )}
 
@@ -1120,14 +1153,14 @@ export function SyncWizard({ open, onClose, job, accounts, onSaved }: Props) {
                     className="flex-1"
                     checked={form.mirror_removals}
                     onChange={(v) => setField('mirror_removals', v)}
-                    label={form.mode === 'merge' ? t("Remove tracks absent from every source") : t("Mirror removals")}
+                    label={form.mode === 'merge' ? t("Remove tracks absent from every source") : form.mode === 'nway' ? t("Sync removals") : t("Mirror removals")}
                     description={
                       form.mode === 'merge'
                         ? t("Off: append-only; destination-only tracks are always kept. On: remove a track only after a complete pass confirms it is absent from every source.")
                         : form.mode === 'group'
                         ? t("Off (default): removals and mirror-only tracks are kept. On: confirmed removals from either authority—and tracks found only on mirrors—are pruned everywhere, capped per pass.")
                         : form.mode === 'nway'
-                          ? t("Off (default): a track removed on one service is kept on the others. On: confirmed removals from any service sync too, capped per pass.")
+                          ? t("Off (default): a track removed on one service is kept on the others. On: a removal syncs after two passes confirm it, capped per pass. A song a service no longer offers never counts as a removal.")
                           : t("Off (default): tracks missing from the source are kept on mirrors. On: source removals sync too, capped per pass.")
                     }
                   />

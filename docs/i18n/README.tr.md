@@ -318,7 +318,9 @@ Varsayılan olarak tek bir sağlayıcı gerçeğin kaynağıdır ve düzenlemele
 - Çatışma durumunda **ek kazançlar** — bir şarkıyı kaybetmek, fazladan bir şarkıyı tutmaktan daha kötüdür.
 - **Okuma-çökme koruması** — eğer bir sağlayıcı aniden taban çizgisinden çok daha az parça okursa (geçici bir API hıçkırık), bu geçiş atlanır, böylece hatalı bir okuma toplu silmeyi basamaklandıramaz.
 - **Tek yönlü güvenlik önlemlerinin aynısı** — geçiş başına `MAX_ADDS` / `MAX_REMOVALS` sınırlar ve net kayıp koruması her yazma tarafında geçerlidir.
-- **Silme işlemleri isteğe bağlıdır** — `MAX_REMOVALS` varsayılan olarak 0 olduğundan bir sağlayıcıdan kaybolan parça, orada silinmiş veya lisans nedeniyle kaldırılmış olsa bile, diğerlerinde tutulur ve yalnızca günlüğe kaydedilir. Silmeleri diğer hizmetlere yansıtmak için bir üst sınır belirleyin veya arayüzdeki **Silinen şarkıları aynala** seçeneğini açın.
+- **Silme işlemleri isteğe bağlıdır**: `MAX_REMOVALS` varsayılan olarak 0 olduğundan bir sağlayıcıda silinen parça diğerlerinde tutulur ve yalnızca günlüğe kaydedilir. Silmeleri diğer hizmetlere yansıtmak için bir üst sınır belirleyin veya arayüzdeki **Silinenleri senkronize et** seçeneğini açın. Bir silme, ancak art arda iki tam okuma onayladıktan sonra yansıtılır.
+- **Katalogdan kalkmak silmek değildir**: SongMirror bir silmeyi yansıtmadan önce sağlayıcının parçayı hâlâ sunup sunmadığını denetler. Sağlayıcının kataloğu onu çıkardığı için (örneğin lisans nedeniyle) ayrılan parça diğerlerinde kalır ve SongMirror onu o sağlayıcıya yeniden eklemeyi asla denemez.
+- **İki zıt senkronizasyon yerine tek senkronizasyon**: Birbirine kopyalayan iki tek yönlü senkronizasyon, silinen her şarkıyı geri getirir. Senkronizasyon sihirbazı böyle bir çift için uyarır ve bunun yerine tek bir çift yönlü senkronizasyon önerir.
 
 > **Her zaman önce simülasyon.** `--execute` olmadan çalıştırın (veya kullanıcı arayüzünde **Önizleme**'yi kullanın) ve planı okuyun — herhangi bir şey yazılmadan önce her sağlayıcıda önerilen her ekleme/kaldırma işlemini yazdırır.
 

@@ -1406,6 +1406,47 @@ def _addition_order_by_cid(peers, per_entry, prev, cur, collapsed, alias,
     }
 
 
+def _catalog_offers(peer, norm, cache):
+    """Whether this provider's catalog still offers a song that left its playlist.
+
+    True means a user removed an available song, so the absence is a deletion.
+    False means the catalog no longer finds it, as with a delisted song, so the
+    absence is not a deletion. None means the check failed and proves nothing.
+    This asks only whether the catalog has the same title and artist (or ISRC):
+    ``norm`` may come from another provider whose duration differs from this
+    provider's copy, which a resolve match would reject. The search bypasses the
+    resolve cache, whose old match may name a delisted id, while a manual
+    mapping stays authoritative.
+    """
+    if norm is None:
+        return True  # no provider still has it, so there is nothing to protect
+    manual = getattr(peer, "manual_resolution", None)
+    if manual is not None and manual(norm, cache):
+        return True
+    wanted, isrc = spotify_track_keys(norm), normalize_isrc(norm.get("isrc"))
+    primary = (norm.get("artists") or [norm.get("artist") or ""])[0]
+    try:
+        try:
+            for query in dict.fromkeys([f"{norm['name']} {primary}".strip(), norm["name"]]):
+                for candidate in peer.search_candidates(query, limit=10):
+                    artists = candidate.get("artists") or [candidate.get("artist") or ""]
+                    keys = spotify_track_keys({"name": candidate.get("name") or "", "artists": artists})
+                    if keys & wanted or (isrc and normalize_isrc(candidate.get("isrc")) == isrc):
+                        return True
+            return False
+        except (AttributeError, NotImplementedError):
+            fresh = {"isrc": {}, "search": {}, "manual": set(), "dirty": False}
+            peer.prefetch([norm], fresh)
+            target_id, _method = peer.resolve(norm, fresh)
+            return bool(target_id)
+    except TargetAuthError:
+        raise
+    except Exception as exc:
+        log_warn(f"{peer.name}: could not check whether {norm.get('name', '')} is still offered: {exc!r}",
+                 tag=peer.tag)
+        return None
+
+
 def reconcile_state_key(name, *, link_key=None, authority_sources=None):
     """Stable baseline namespace for one logical reconciliation policy."""
     logical_key = link_key or name.casefold()
@@ -1576,6 +1617,12 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 merged.setdefault(alias.get(cid, cid), norm)
             canon[src] = merged
         prev = {src: {alias.get(cid, cid) for cid in ids} for src, ids in prev.items()}
+    unavailable = {
+        p.source: {alias.get(cid, cid) for cid in
+                   map(normalize_canonical_id, archive.get_playlist_unavailable(songs, key, p.source))}
+        for p in peers
+    }
+    newly_unavailable = {}
     # Destination membership indexes retain the current canonical id, not just
     # a yes/no match. If an existing entry satisfies a planned add, that exact
     # entry must be protected from removal later in the same provider pass.
@@ -1715,6 +1762,35 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
         missing = prev.get(src, set()) - cur[src] - conflicting_cids
         first_seen = missing - pending
         confirmed = missing & pending
+        # A confirmed absence is a deletion only if this provider still offers
+        # the song. A delisted song leaves this provider's baseline instead, so
+        # the other providers keep it. An unanswered check stays pending. With
+        # removals off nothing is deleted anyway, and the frozen baseline would
+        # repeat these catalog searches on every pass.
+        peer = next(p for p in peers if p.source == src)
+        delisted, unverified = set(), set()
+        for cid in sorted(confirmed) if max_removals > 0 else ():
+            offered = _catalog_offers(peer, repr_.get(cid), caches[src])
+            if offered is False:
+                delisted.add(cid)
+            elif offered is None:
+                unverified.add(cid)
+        confirmed -= delisted | unverified
+        first_seen |= unverified
+        if delisted:
+            missing -= delisted
+            prev[src] = prev[src] - delisted
+            newly_unavailable[src] = delisted
+            diagnostics.append({
+                "category": "unavailable_on_provider", "playlist": name,
+                "provider": peer_names.get(src, src), "count": len(delisted),
+                "evidence": "left this provider, whose catalog no longer offers it; kept on the other providers",
+            })
+            log_note(
+                f"{name}: {len(delisted)} song(s) left {peer_names.get(src, src)} because its catalog "
+                "no longer offers them; keeping them on the other providers",
+                tag=peer.tag,
+            )
         missing_by_source[src] = missing
         first_seen_removals[src] = first_seen
         confirmed_removals[src] = confirmed
@@ -1742,6 +1818,16 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             for src, (adds, removes) in plan.items()}
     unconfirmed_plan = {src: (adds - conflicting_cids, removes - conflicting_cids)
                        for src, (adds, removes) in unconfirmed_plan.items()}
+    for src, ids in newly_unavailable.items():
+        unavailable[src] = unavailable[src] | ids
+    # Never ask a provider to add back a song its own catalog dropped.
+    plan = {src: (adds - unavailable[src], removes) for src, (adds, removes) in plan.items()}
+    unconfirmed_plan = {src: (adds - unavailable[src], removes)
+                        for src, (adds, removes) in unconfirmed_plan.items()}
+    # Songs already in the logical playlist at the last trusted baseline. One a
+    # provider has never matched is a standing gap, not a replacement in flight.
+    contributors = peer_sources if authorities is None else authorities
+    previous_members = set().union(*(ids for src, ids in prev.items() if src in contributors))
     addition_order = _addition_order_by_cid(
         peers, per_entry, prev, cur, collapsed, alias, authorities)
     # Keep shared authority positions even when a track's preferred ordering
@@ -1948,7 +2034,14 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 tid, method = None, None
             if not tid:
                 not_found.append(norm)
-                add_blockers.add("one or more additions could not be matched")
+                # Holding removals protects a replacement whose new version is
+                # unmatched. A song this provider never had and that predates
+                # the baseline is no replacement, and blocking on it would hold
+                # every deletion toward this provider forever.
+                standing_gap = (p.source in prev and cid not in prev[p.source]
+                                and cid in previous_members)
+                if not standing_gap:
+                    add_blockers.add("one or more additions could not be matched")
                 continue
             if tid in originally_present:
                 current_cids = present_cids_by_tid[p.source].get(tid, set())
@@ -2222,6 +2315,11 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                           "playlist": name, "provider": p.source},
                 )
                 safe = []
+        if held:
+            # A held removal keeps its deletion evidence for the next pass. A
+            # baseline that advanced here would let union_prev restore the
+            # deleted song to the provider where the user removed it.
+            baseline_blocked, stats["clean"] = True, False
         safe_ids = {id(n) for n in safe}
         removed_cids = {cid for cid, n in remove_pairs if id(n) in safe_ids}
 
@@ -2317,8 +2415,11 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 for src in pending_updates:
                     pending_updates[src] |= (
                         archive.get_pending_removals(songs, key, src) & conflicting_cids)
+            # A marker ends when the song is back on its provider or gone everywhere.
+            unavailable_updates = {src: {cid for cid in ids if cid not in cur[src] and cid in desired}
+                                   for src, ids in unavailable.items()}
             archive.commit_reconcile_membership(
-                songs, key, persist, pending_updates, physical_playlist_ids)
+                songs, key, persist, pending_updates, physical_playlist_ids, unavailable_updates)
             if baseline_blocked:
                 for src in persist.keys() - initialized:
                     label = next((p.name for p in peers if p.source == src), src)

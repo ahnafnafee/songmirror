@@ -318,7 +318,9 @@ La sincronización bidireccional es imposible sin estado, por lo que se toma una
 - Los complementos ganan en los conflictos: perder una canción es peor que conservar una extra.
 - Protección contra colapso de lectura: si un proveedor de repente lee muchas menos pistas que la línea de base (un contratiempo transitorio API), se omite ese paso para que una mala lectura no pueda generar una eliminación masiva en cascada.
 - Mismas salvaguardias que unidireccional: límites por paso `MAX_ADDS` / `MAX_REMOVALS` y protección contra pérdida neta en cada lado de escritura.
-- **Las eliminaciones son opcionales**: `MAX_REMOVALS` vale 0 de forma predeterminada. Una pista que desaparezca de un proveedor, ya sea porque se elimine allí o se retire por motivos de licencia, se conserva en los demás y solo se registra. Establezca un límite o active **Sincronizar eliminaciones** en la interfaz para propagar las eliminaciones.
+- **Las eliminaciones son opcionales**: `MAX_REMOVALS` vale 0 de forma predeterminada. Una pista eliminada en un proveedor se conserva en los demás y solo se registra. Establezca un límite o active **Sincronizar eliminaciones** en la interfaz para propagar las eliminaciones. Una eliminación solo se propaga después de que dos lecturas completas consecutivas la confirmen.
+- **Retirar del catálogo no es eliminar**: antes de propagar una eliminación, SongMirror comprueba que el proveedor todavía ofrece la pista. Una pista que salió porque el catálogo del proveedor la retiró (por motivos de licencia, por ejemplo) se conserva en los demás, y SongMirror nunca intenta volver a añadirla a ese proveedor.
+- **Una sincronización, no dos opuestas**: dos sincronizaciones unidireccionales que se copian entre sí devuelven cada eliminación. El asistente de sincronización avisa de esa pareja y sugiere en su lugar una sola sincronización bidireccional.
 
 > Siempre la simulación primero. Ejecute sin `--execute` (o use Vista previa en la interfaz de usuario) y lea el plan: imprime cada propuesta de agregar/eliminar en cada proveedor antes de que se escriba algo.
 

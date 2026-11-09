@@ -83,7 +83,15 @@ function verify(files) {
   const englishInline = sorted(inlineCode(english))
   const englishLayout = layout(english)
   const englishPhrases = new Set(phraseSignatures(english))
-  const englishRemovalLabels = english.split('Mirror removals').length - 1
+  // Several locales translate both removal toggles alike, or one inside the other:
+  // count distinct labels without overlap, longest first.
+  const REMOVAL_LABELS = ['Mirror removals', 'Sync removals']
+  const removalLabelCount = (text, labels) => {
+    const distinct = [...new Set(labels)].sort((a, b) => b.length - a.length)
+    const pattern = new RegExp(distinct.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g')
+    return text.match(pattern)?.length ?? 0
+  }
+  const englishRemovalLabels = removalLabelCount(english, REMOVAL_LABELS)
   const longEnglishLines = new Set(withoutCode(english).split('\n')
     .filter((line) => line.length > 120 && !/^<|^\[|^<!--/.test(line)))
   let checkedLinks = 0
@@ -145,7 +153,7 @@ function verify(files) {
     const settingsPath = [catalog.Settings, catalog.General, catalog.Language].join(' → ')
     assert(languageGuide.includes(settingsPath), `${file}: Language setting path differs from the app`)
     assert(languageGuide.includes(catalog['Automatic (browser)']), `${file}: automatic language option differs from the app`)
-    assert.equal(text.split(catalog['Mirror removals']).length - 1, englishRemovalLabels, `${file}: deletion setting references must match the app`)
+    assert.equal(removalLabelCount(text, REMOVAL_LABELS.map((label) => catalog[label])), englishRemovalLabels, `${file}: deletion setting references must match the app`)
     if (code !== 'en') {
       for (const line of withoutCode(text).split('\n')) {
         assert(!longEnglishLines.has(line), `${file}: untranslated English paragraph: ${line.slice(0, 90)}`)

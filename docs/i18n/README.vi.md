@@ -318,7 +318,9 @@ Không thể đồng bộ hóa hai chiều một cách không trạng thái, vì
 - Lợi ích bổ sung khi xung đột - mất một bài hát còn tệ hơn việc giữ thêm một bài hát.
 - Trình bảo vệ thu gọn dữ liệu đọc — nếu nhà cung cấp đột nhiên đọc ít bản nhạc hơn nhiều so với đường cơ sở (một trục trặc nhất thời API), nó sẽ bị bỏ qua đường chuyền đó nên một lần đọc sai không thể xếp tầng xóa hàng loạt.
 - Các biện pháp bảo vệ tương tự như một chiều — giới hạn mỗi lượt `MAX_ADDS` / `MAX_REMOVALS` và bảo vệ chống mất mát ròng được giữ ở mọi mặt ghi.
-- **Phải chủ động bật tính năng xóa** — `MAX_REMOVALS` mặc định là 0. Khi một bài hát biến mất khỏi một dịch vụ, do bị xóa tại đó hoặc bị gỡ vì bản quyền, bài hát vẫn được giữ ở các dịch vụ khác và thay đổi chỉ được ghi vào nhật ký. Đặt giới hạn hoặc bật **Đồng bộ việc xóa bài hát** trong giao diện để áp dụng việc xóa sang dịch vụ khác.
+- **Phải chủ động bật tính năng xóa**: `MAX_REMOVALS` mặc định là 0. Bài hát bị xóa trên một dịch vụ vẫn được giữ ở các dịch vụ khác và thay đổi chỉ được ghi vào nhật ký. Đặt giới hạn hoặc bật **Đồng bộ việc xóa** trong giao diện để áp dụng việc xóa sang dịch vụ khác. Việc xóa chỉ được áp dụng sau khi hai lần đọc đầy đủ liên tiếp xác nhận.
+- **Bị gỡ khỏi danh mục không phải là bị xóa**: trước khi áp dụng việc xóa, SongMirror kiểm tra xem dịch vụ còn cung cấp bài hát không. Bài hát biến mất vì danh mục của dịch vụ đã gỡ nó (ví dụ do bản quyền) vẫn được giữ ở các dịch vụ khác, và SongMirror không bao giờ cố thêm lại nó vào dịch vụ đó.
+- **Một đồng bộ, không phải hai đồng bộ ngược chiều**: hai đồng bộ một chiều sao chép vào nhau sẽ đưa mọi bài hát đã xóa trở lại. Trình hướng dẫn đồng bộ cảnh báo về cặp như vậy và đề xuất dùng một đồng bộ hai chiều thay thế.
 
 > Luôn luôn mô phỏng đầu tiên. Chạy mà không cần `--execute` (hoặc sử dụng Xem trước trong giao diện người dùng) và đọc kế hoạch - nó in mọi nội dung thêm/xóa được đề xuất trên mọi nhà cung cấp trước khi mọi nội dung được viết.
 
