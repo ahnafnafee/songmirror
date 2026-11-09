@@ -970,7 +970,8 @@ def test_run_target_honors_explicit_pairing_and_collects_diagnostics(monkeypatch
 
     def fake_mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs_, *,
                          execute, max_removals, max_adds, drain_removals=False, should_continue=None,
-                         source_key="spotify", source_name="Spotify", name=None):
+                         source_key="spotify", source_name="Spotify", name=None,
+                         source_peer=None, source_cache=None, check_key=None):
         captured["tgt_id"] = tgt_playlist["id"]
         return {"clean": True, "added": 1, "removed": 0, "missing": 0, "held": 1,
                 "deferred": 2, "removals_skipped": 0, "target_count": 1,

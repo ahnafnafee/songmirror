@@ -457,6 +457,8 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
            "chronology_replayed": 0, "skipped": 0, "created": 0, "failed": 0,
            "held_removals": [], "change_diagnostics": [], "failures": []}
     cache = load_target_cache(target)
+    # Read-only: a source's manual mappings prove its catalog offers a track.
+    source_cache = load_target_cache(source) if getattr(source, "cache_file", None) else None
     # A provider with no playlists (Last.fm) is kept as a target only for its
     # native favorites collection. Drop the playlist phase in one note rather
     # than failing once per selected playlist. The flag can be evaluated (a
@@ -547,6 +549,9 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
                     "source_key": src_key,
                     "source_name": source.name,
                     "name": name,
+                    "source_peer": source,
+                    "source_cache": source_cache,
+                    "check_key": archive.ONEWAY_CHECK_PREFIX + state_key,
                 }
                 source_type = target_provider(source)
                 if source_type != src_key:
@@ -638,6 +643,9 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
                             "source_key": src_key,
                             "source_name": source.name,
                             "name": source_name,
+                            "source_peer": source,
+                            "source_cache": source_cache,
+                            "check_key": f"{archive.ONEWAY_CHECK_PREFIX}liked:{src_key}",
                         }
                         source_type = target_provider(source)
                         if source_type != src_key:

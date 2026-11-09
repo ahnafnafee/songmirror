@@ -278,6 +278,8 @@ def test_tidal_favorites_preview_love_repeat_and_optional_unlove(tmp_path):
     source_rows.append({"type": "tracks", "id": "124", "meta": {"addedAt": "2026-10-02T00:00:00Z"}})
     source._pages = lambda path, params: iter([{"data": list(source_rows), "included": included}])
     source.cache_file = str(tmp_path / "tidal.json")
+    # An unliked track TIDAL still offers is a user removal, not a delisting.
+    source.search_candidates = lambda query, *, limit=5: [{"id": "123", "name": "Song", "artists": ["Artist"]}]
     stored, writes = [], []
     session = Mock()
     def get(url, **kwargs):
