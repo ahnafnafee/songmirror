@@ -1424,5 +1424,11 @@
   "Starred Songs": "الأغاني المميزة بنجمة",
   "Syncs playlists and starred songs already stored on your music server.": "يزامن قوائم التشغيل والأغاني المميزة بنجمة المخزنة بالفعل على خادم الموسيقى.",
   "User token": "رمز المستخدم",
-  "ListenBrainz": "ListenBrainz"
+  "ListenBrainz": "ListenBrainz",
+  "All saved albums": "كل الألبومات المحفوظة",
+  "All saved albums are included. Preview first, then run once or keep the schedule active.": "تشمل جميع الألبومات المحفوظة. عاين التغييرات أولاً، ثم شغّلها مرة واحدة أو أبقِ الجدولة نشطة.",
+  "Saved albums": "الألبومات المحفوظة",
+  "One-way across all services. Uses native saved albums, album playlists, or liked tracks. Never removes albums.": "مزامنة أحادية الاتجاه بين جميع الخدمات. تستخدم الألبومات المحفوظة الأصلية أو قوائم تشغيل الألبومات أو المقاطع المفضلة. لا تزيل الألبومات أبداً.",
+  "Select one-way sync with a source and at least one destination to sync saved albums.": "اختر مزامنة أحادية الاتجاه بمصدر ووجهة واحدة على الأقل لمزامنة الألبومات المحفوظة.",
+  "Connections without album-library access use album groups previously imported by SongMirror.": "تستخدم الاتصالات التي لا تتيح مكتبة الألبومات مجموعات الألبومات التي استوردها SongMirror سابقاً."
 }

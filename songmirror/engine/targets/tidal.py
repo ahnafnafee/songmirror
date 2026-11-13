@@ -52,6 +52,7 @@ class TidalTarget(MirrorTarget):
     source = "tidal"
     stable_occurrence_ids = True
     favorite_tracks_name = "Favorite Tracks"
+    supports_saved_albums = True
 
     @classmethod
     def resolve_cache_path(cls, opts=None):
@@ -443,6 +444,80 @@ class TidalTarget(MirrorTarget):
     def playlist_tracks(self, playlist):
         """Strict sync read: incomplete metadata must abort reconciliation."""
         return self._all_playlist_tracks(playlist)
+
+    @classmethod
+    def _albums_from_body(cls, body):
+        if not isinstance(body.get("data"), list):
+            raise RuntimeError("TIDAL saved-album response is incomplete")
+        resources = cls._resource_map(body)
+        albums = []
+        for identifier in body["data"]:
+            resource = resources.get(("albums", str(identifier.get("id"))), identifier)
+            attrs = resource.get("attributes") or {}
+            artists = [
+                (resources.get(("artists", str(item.get("id"))), {}).get("attributes") or {}).get("name")
+                for item in ((resource.get("relationships") or {}).get("artists") or {}).get("data") or []
+            ]
+            if identifier.get("type") != "albums" or not resource.get("id") or not attrs.get("title") or not any(artists):
+                raise RuntimeError("TIDAL saved-album metadata is incomplete")
+            albums.append({"id": str(resource["id"]),
+                           "name": title_with_version(attrs["title"], attrs.get("version")),
+                           "artists": [artist for artist in artists if artist],
+                           "upc": attrs.get("barcodeId"), "release_date": attrs.get("releaseDate") or "",
+                           "total_tracks": attrs.get("numberOfItems")})
+        return albums
+
+    def validate_saved_albums(self, *, write=False):
+        scopes = getattr(self, "_token_scopes", None)
+        required = {"r_usr", "w_usr"} if write else {"r_usr"}
+        if scopes is not None and not required.issubset(scopes):
+            raise TargetAuthError("TIDAL token lacks Saved Albums access; capture a fresh web-player token in Accounts")
+
+    def saved_albums(self):
+        albums, seen = [], set()
+        for body in self._pages("userCollectionAlbums/me/relationships/items", {
+            "countryCode": self.country, "sort": "-addedAt", "include": ["items", "items.artists"],
+        }):
+            albums.extend(self._albums_from_body(body))
+            link = (body.get("links") or {}).get("next")
+            link = link.get("href") if isinstance(link, dict) else link
+            if link and (str(link) in seen or not body["data"]):
+                raise RuntimeError("TIDAL saved-album pagination did not advance")
+            if link:
+                seen.add(str(link))
+        return albums
+
+    def find_albums(self, album):
+        from ..albums import barcode
+
+        params = {"countryCode": self.country, "include": ["artists"]}
+        if barcode(album.get("upc")):
+            upc = str(album["upc"]).strip()
+            body = self._request("GET", "albums", params={**params, "filter[barcodeId]": upc}).json()
+            candidates = self._albums_from_body(body)
+            if candidates:
+                return candidates
+        body = self._request("GET", "searchResults", params={
+            "countryCode": self.country, "include": ["albums", "albums.artists"],
+            "filter[query]": f"{album['name']} {(album.get('artists') or [''])[0]}".strip(),
+        }).json()
+        results = next((item for item in body.get("data") or [] if item.get("type") == "searchResults"), None)
+        if results is None:
+            raise RuntimeError("TIDAL album search response is incomplete")
+        identifiers = ((results.get("relationships") or {}).get("albums") or {}).get("data")
+        return self._albums_from_body({"data": identifiers, "included": body.get("included") or []})
+
+    def add_saved_albums(self, album_ids):
+        self.validate_saved_albums(write=True)
+        identifiers = {str(album_id) for album_id in album_ids}
+        body = self._request("POST", "userCollectionAlbums/me/relationships/items",
+                             json_body={"data": [{"type": "albums", "id": album_id}
+                                                 for album_id in sorted(identifiers)]}).json()
+        confirmed = {str(item.get("id")) for item in body.get("data") or []
+                     if item.get("type") == "albums"}
+        if not identifiers.issubset(confirmed):
+            raise RuntimeError("TIDAL did not confirm saving every album; retry after checking the album library")
+        polite_sleep(0.3)
 
     def favorite_tracks(self):
         tracks = []

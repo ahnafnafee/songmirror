@@ -1296,5 +1296,11 @@
   "Starred Songs": "तारे से चिह्नित गाने",
   "Syncs playlists and starred songs already stored on your music server.": "आपके संगीत सर्वर पर पहले से संग्रहीत प्लेलिस्ट और तारे से चिह्नित गाने सिंक करता है।",
   "User token": "उपयोगकर्ता टोकन",
-  "ListenBrainz": "ListenBrainz"
+  "ListenBrainz": "ListenBrainz",
+  "All saved albums": "सभी सहेजे गए एल्बम",
+  "All saved albums are included. Preview first, then run once or keep the schedule active.": "सभी सहेजे गए एल्बम शामिल हैं। पहले पूर्वावलोकन देखें, फिर एक बार चलाएँ या शेड्यूल सक्रिय रखें।",
+  "Saved albums": "सहेजे गए एल्बम",
+  "One-way across all services. Uses native saved albums, album playlists, or liked tracks. Never removes albums.": "सभी सेवाओं में एकतरफ़ा सिंक। सेवा के सहेजे गए एल्बम, एल्बम प्लेलिस्ट या पसंदीदा ट्रैक इस्तेमाल करता है। कभी एल्बम नहीं हटाता।",
+  "Select one-way sync with a source and at least one destination to sync saved albums.": "सहेजे गए एल्बम सिंक करने के लिए एक स्रोत और कम से कम एक गंतव्य के साथ एकतरफ़ा सिंक चुनें।",
+  "Connections without album-library access use album groups previously imported by SongMirror.": "एल्बम लाइब्रेरी तक पहुँच न रखने वाले कनेक्शन SongMirror से पहले आयात किए गए एल्बम समूह इस्तेमाल करते हैं।"
 }

@@ -1296,5 +1296,11 @@
   "Starred Songs": "별표 표시한 곡",
   "Syncs playlists and starred songs already stored on your music server.": "음악 서버에 이미 저장된 플레이리스트와 별표 표시한 곡을 동기화합니다.",
   "User token": "사용자 토큰",
-  "ListenBrainz": "ListenBrainz"
+  "ListenBrainz": "ListenBrainz",
+  "All saved albums": "저장한 모든 앨범",
+  "All saved albums are included. Preview first, then run once or keep the schedule active.": "저장한 모든 앨범이 포함됩니다. 먼저 미리 본 다음 한 번 실행하거나 일정을 활성 상태로 유지하세요.",
+  "Saved albums": "저장한 앨범",
+  "One-way across all services. Uses native saved albums, album playlists, or liked tracks. Never removes albums.": "모든 서비스 간의 단방향 동기화입니다. 서비스의 저장 앨범, 앨범별 재생목록 또는 좋아요한 곡을 사용하며 앨범을 삭제하지 않습니다.",
+  "Select one-way sync with a source and at least one destination to sync saved albums.": "저장한 앨범을 동기화하려면 원본과 하나 이상의 대상을 지정한 단방향 동기화를 선택하세요.",
+  "Connections without album-library access use album groups previously imported by SongMirror.": "앨범 라이브러리에 접근할 수 없는 연결은 SongMirror로 이전에 가져온 앨범 그룹을 사용합니다."
 }

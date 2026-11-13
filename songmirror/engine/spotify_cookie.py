@@ -740,6 +740,56 @@ def playlist_tracks(playlist, require_isrc=False, known_isrc=None):
     )
 
 
+def _web_album(album_id):
+    album = _catalog_client().get_album(album_id)
+    return {"id": album.id, "name": album.name,
+            "artists": [{"name": artist.name} for artist in album.artists],
+            "release_date": album.release_date.isoformat() if album.release_date else "",
+            "total_tracks": album.total_tracks}
+
+
+def saved_albums():
+    albums, offset, limit = [], 0, 100
+    while True:
+        data = _pf("libraryV3", {
+            "filters": ["Albums"], "order": "Alphabetical", "textFilter": None,
+            "features": [], "limit": limit, "offset": offset, "flatten": True,
+            "expandedFolders": None, "folderUri": None, "includeFoldersWhenFlattening": False,
+        })
+        page = ((data.get("me") or {}).get("libraryV3") or {})
+        rows, total = page.get("items"), page.get("totalCount")
+        if not isinstance(rows, list) or total is None:
+            raise RuntimeError("Spotify saved-album page is incomplete")
+        if not rows and offset < int(total):
+            raise RuntimeError("Spotify saved-album pagination stopped before the library was complete")
+        for row in rows:
+            item = row.get("item") or {}
+            data = item.get("data") or {}
+            if data.get("__typename") == "NotFound":
+                continue
+            uri = str(data.get("uri") or item.get("_uri") or "")
+            if data.get("__typename") != "Album" or not re.fullmatch(r"spotify:album:[A-Za-z0-9]+", uri):
+                raise RuntimeError("Spotify returned an unreadable saved-album entry")
+            albums.append(_web_album(uri.rsplit(":", 1)[1]))
+        offset += len(rows)
+        if offset >= int(total):
+            return albums
+
+
+def search_albums(album):
+    query = f"{album['name']} {(album.get('artists') or [''])[0]}".strip()
+    result = _catalog_client().search(query, types=("album",), limit=10)
+    return [_web_album(item.id) for item in result.albums]
+
+
+def add_saved_albums(album_ids):
+    for album_id in album_ids:
+        if not re.fullmatch(r"[A-Za-z0-9]+", str(album_id)):
+            raise ValueError("Invalid Spotify album id")
+        _pf("addToLibrary", {"libraryItemUris": [f"spotify:album:{album_id}"]})
+        polite_sleep(0.3)
+
+
 def favorite_tracks():
     """Read Liked Songs through the web player's library query.
 

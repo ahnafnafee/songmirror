@@ -1296,5 +1296,11 @@
   "Starred Songs": "スター付きの曲",
   "Syncs playlists and starred songs already stored on your music server.": "音楽サーバーに保存済みのプレイリストとスター付きの曲を同期します。",
   "User token": "ユーザートークン",
-  "ListenBrainz": "ListenBrainz"
+  "ListenBrainz": "ListenBrainz",
+  "All saved albums": "すべての保存済みアルバム",
+  "All saved albums are included. Preview first, then run once or keep the schedule active.": "すべての保存済みアルバムが対象です。まずプレビューし、その後一度だけ実行するか、スケジュールを有効にしてください。",
+  "Saved albums": "保存済みアルバム",
+  "One-way across all services. Uses native saved albums, album playlists, or liked tracks. Never removes albums.": "すべてのサービス間で一方向に同期します。各サービスの保存済みアルバム、アルバム別プレイリスト、またはお気に入り曲を使用し、アルバムを削除することはありません。",
+  "Select one-way sync with a source and at least one destination to sync saved albums.": "保存済みアルバムを同期するには、同期元と少なくとも1つの同期先を指定して一方向同期を選択してください。",
+  "Connections without album-library access use album groups previously imported by SongMirror.": "アルバムライブラリにアクセスできない接続では、SongMirror で以前にインポートしたアルバムグループを使用します。"
 }

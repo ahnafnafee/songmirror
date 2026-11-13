@@ -35,6 +35,7 @@ class SpotifyTarget(MirrorTarget):
     tag = "spotify"
     source = "spotify"
     favorite_tracks_name = "Liked Songs"
+    supports_saved_albums = True
 
     @property
     def stable_occurrence_ids(self):
@@ -169,6 +170,65 @@ class SpotifyTarget(MirrorTarget):
             return spotify_cookie.playlist_tracks(
                 playlist["id"], require_isrc=False, known_isrc=known)
         return spotify.playlist_tracks(self._sp, playlist["id"])
+
+    @staticmethod
+    def _album(data):
+        if not data.get("id") or not data.get("name") or not data.get("artists"):
+            raise RuntimeError("Spotify saved-album metadata is incomplete")
+        return {"id": str(data["id"]), "name": data["name"],
+                "artists": [artist["name"] for artist in data["artists"] if artist.get("name")],
+                "upc": (data.get("external_ids") or {}).get("upc"),
+                "release_date": data.get("release_date") or "",
+                "total_tracks": data.get("total_tracks")}
+
+    def validate_saved_albums(self, *, write=False):
+        # OAuth's user-library-read/modify scopes are already requested for
+        # Liked Songs. Cookie mode uses the web player's native library surface.
+        pass
+
+    def saved_albums(self):
+        if spotify_write_backend() == "cookie" or self._sp is None:
+            return [self._album(album) for album in spotify_cookie.saved_albums()]
+        albums, offset = [], 0
+        while True:
+            page = spotify._retry(lambda: self._sp.current_user_saved_albums(limit=50, offset=offset),
+                                  "saved albums")
+            if not isinstance(page.get("items"), list) or page.get("total") is None:
+                raise RuntimeError("Spotify saved-album response is incomplete")
+            items = page["items"]
+            albums.extend(self._album(item.get("album") or {}) for item in items)
+            offset += len(items)
+            if offset >= int(page["total"]):
+                return albums
+            if not items:
+                raise RuntimeError("Spotify saved-album pagination stopped before the library was complete")
+
+    def find_albums(self, album):
+        if spotify_write_backend() == "cookie" or self._sp is None:
+            return [self._album(item) for item in spotify_cookie.search_albums(album)]
+        from ..albums import barcode
+
+        queries = [f"{album['name']} {(album.get('artists') or [''])[0]}"]
+        if barcode(album.get("upc")):
+            upc = str(album["upc"]).strip()
+            queries.insert(0, f"upc:{upc}")
+        for query in queries:
+            page = spotify._retry(lambda: self._sp.search(q=query, type="album", limit=10), "album search")
+            items = (page.get("albums") or {}).get("items")
+            if not isinstance(items, list):
+                raise RuntimeError("Spotify album search response is incomplete")
+            if items:
+                # Search returns simplified albums without UPC. Hydrate before
+                # comparing editions and known release identifiers.
+                return [self._album(spotify._retry(lambda item=item: self._sp.album(item["id"]),
+                                                  "album metadata")) for item in items]
+        return []
+
+    def add_saved_albums(self, album_ids):
+        if spotify_write_backend() == "cookie" or self._sp is None:
+            return spotify_cookie.add_saved_albums(album_ids)
+        self._write(lambda: self._sp.current_user_saved_albums_add(list(album_ids)), "save albums")
+        polite_sleep(0.3)
 
     def favorite_tracks(self):
         if spotify_write_backend() == "cookie" or self._sp is None:

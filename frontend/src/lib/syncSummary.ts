@@ -40,7 +40,7 @@ export function enabledProvidersOf(job: Pick<SyncJob, 'providers'>, peers: Accou
 }
 
 export interface SyncSummaryRow {
-  id: 'schedule' | 'direction' | 'sources' | 'limits' | 'downloads' | 'playlists' | 'liked-tracks'
+  id: 'schedule' | 'direction' | 'sources' | 'limits' | 'downloads' | 'playlists' | 'liked-tracks' | 'saved-albums'
   label: string
   value: string
 }
@@ -115,6 +115,12 @@ export function buildSyncSummaryRows(job: SyncJob, peers: Account[], downloadDir
     const others = enabledNames.filter((n) => n !== sourceName)
     const who = others.length > 0 ? `${sourceName} → ${others.join(', ')}` : t("{{sourceName}} only", { sourceName: sourceName })
     rows.push({ id: 'direction', label: t("Direction"), value: t('One-way · {{services}}', { services: who }) })
+  }
+
+  if (job.saved_albums) {
+    rows.push({ id: 'saved-albums', label: t("Saved albums"), value: t("All saved albums") })
+    rows.push({ id: 'limits', label: t("Limits"), value: t("≤{{jobMax}} adds / pass · append-only", { jobMax: job.max_adds }) })
+    return rows
   }
 
   const playlistNames = parseCsv(job.playlists)

@@ -1296,5 +1296,11 @@
   "Starred Songs": "তারকাচিহ্নিত গান",
   "Syncs playlists and starred songs already stored on your music server.": "আপনার মিউজিক সার্ভারে আগে থেকে থাকা প্লেলিস্ট ও তারকাচিহ্নিত গান সিঙ্ক করে।",
   "User token": "ব্যবহারকারী টোকেন",
-  "ListenBrainz": "ListenBrainz"
+  "ListenBrainz": "ListenBrainz",
+  "All saved albums": "সব সংরক্ষিত অ্যালবাম",
+  "All saved albums are included. Preview first, then run once or keep the schedule active.": "সব সংরক্ষিত অ্যালবাম অন্তর্ভুক্ত। আগে প্রিভিউ দেখুন, তারপর একবার চালান বা সময়সূচি সক্রিয় রাখুন।",
+  "Saved albums": "সংরক্ষিত অ্যালবাম",
+  "One-way across all services. Uses native saved albums, album playlists, or liked tracks. Never removes albums.": "সব পরিষেবার মধ্যে একমুখী সিঙ্ক। পরিষেবার সংরক্ষিত অ্যালবাম, অ্যালবামের প্লেলিস্ট বা পছন্দের গান ব্যবহার করে। কখনও অ্যালবাম সরায় না।",
+  "Select one-way sync with a source and at least one destination to sync saved albums.": "সংরক্ষিত অ্যালবাম সিঙ্ক করতে একটি উৎস ও অন্তত একটি গন্তব্য দিয়ে একমুখী সিঙ্ক বেছে নিন।",
+  "Connections without album-library access use album groups previously imported by SongMirror.": "অ্যালবাম লাইব্রেরিতে প্রবেশাধিকার না থাকা সংযোগগুলো SongMirror দিয়ে আগে আমদানি করা অ্যালবাম গ্রুপ ব্যবহার করে।"
 }

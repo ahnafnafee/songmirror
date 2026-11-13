@@ -59,6 +59,7 @@ interface JobFormState {
   playlists: string
   sync_playlists: boolean
   liked_tracks: boolean
+  saved_albums: boolean
   liked_routes: LikedTrackRoutes
   interval: string
   max_adds: string
@@ -82,6 +83,7 @@ const NEW_JOB_DEFAULTS: JobFormState = {
   playlists: '',
   sync_playlists: true,
   liked_tracks: false,
+  saved_albums: false,
   liked_routes: {},
   interval: '15m',
   max_adds: '200',
@@ -106,6 +108,7 @@ function formFromJob(job: SyncJob | null): JobFormState {
     playlists: job.playlists,
     sync_playlists: job.sync_playlists ?? true,
     liked_tracks: job.liked_tracks ?? false,
+    saved_albums: job.saved_albums ?? false,
     liked_routes: { ...(job.liked_routes ?? {}) },
     interval: job.interval,
     max_adds: String(job.max_adds),
@@ -466,6 +469,9 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
   if (form.liked_tracks) lockedProviderIds.add(syncSource)
 
   const enabledProviders = enabledProvidersOf({ providers: form.providers }, syncPeers)
+  const albumAccountsValid = form.mode === 'oneway' && enabledProviders.has(syncSource) &&
+    enabledProviders.size >= 2 && [...enabledProviders].every((id) =>
+      syncPeers.some((account) => account.id === id && canParticipateInSync(account)))
   // Two one-way syncs that copy into each other bring every deletion back: the
   // reverse sync restores what this sync's source lost. Empty lists mean "all".
   const reverseSync = form.mode === 'oneway' && form.sync_playlists
@@ -530,6 +536,10 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
         next.liked_routes = {}
         next.download = false
         next.mirror_removals = next.removal_strategy === 'mirror'
+      }
+      if (mode !== 'oneway' && next.saved_albums) {
+        next.saved_albums = false
+        next.sync_playlists = true
       }
       if (next.liked_tracks) {
         next.liked_routes = normalizedLikedRoutes(next.liked_routes, parseCsv(next.providers), next.source, receivesLikes)
@@ -684,7 +694,8 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
           const route = form.liked_routes[providerId]
           return route?.kind === 'native' || (route?.kind === 'playlist' && route.name.trim().length > 0)
         }))
-  const resourceSelectionValid = form.sync_playlists || form.liked_tracks
+  const resourceSelectionValid = (form.sync_playlists || form.liked_tracks || form.saved_albums) &&
+    (!form.saved_albums || albumAccountsValid)
   const mergeDestinationValid =
     form.mode !== 'merge' ||
     Boolean(form.destination?.provider && (form.destination.playlist_id || form.destination.name.trim()))
@@ -721,6 +732,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
     playlists: form.playlists,
     sync_playlists: form.sync_playlists,
     liked_tracks: form.liked_tracks,
+    saved_albums: form.saved_albums,
     liked_routes: form.liked_routes,
     interval: form.interval,
     max_adds: Number(form.max_adds) || 0,
@@ -755,6 +767,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
         playlists: form.playlists,
         sync_playlists: form.mode === 'merge' ? true : form.sync_playlists,
         liked_tracks: form.mode === 'merge' ? false : form.liked_tracks,
+        saved_albums: form.saved_albums,
         liked_routes: form.mode === 'merge' ? {} : form.liked_routes,
         interval: form.interval,
         max_adds: Number(form.max_adds),
@@ -991,6 +1004,27 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
               />
             ) : (
             <div className="flex flex-col gap-4">
+              <Toggle
+                checked={form.saved_albums}
+                disabled={!albumAccountsValid && !form.saved_albums}
+                label={t("Saved albums")}
+                description={t("One-way across all services. Uses native saved albums, album playlists, or liked tracks. Never removes albums.")}
+                onChange={(selected) => setForm((previous) => ({
+                  ...previous, saved_albums: selected, sync_playlists: !selected,
+                  liked_tracks: false, liked_routes: {}, download: false,
+                  mirror_removals: false, apply_large_removals: false,
+                }))}
+              />
+              {!albumAccountsValid && (
+                <p className="text-xs text-text-3">{t("Select one-way sync with a source and at least one destination to sync saved albums.")}</p>
+              )}
+              {form.saved_albums ? (
+                <div className="flex flex-col gap-2 text-xs leading-relaxed text-text-3">
+                  <p>{t("All saved albums are included. Preview first, then run once or keep the schedule active.")}</p>
+                  <p>{t("Connections without album-library access use album groups previously imported by SongMirror.")}</p>
+                </div>
+              ) : (
+              <>
               <PlaylistFilterField
                 value={form.playlists}
                 onChange={setPlaylistFilter}
@@ -1090,6 +1124,8 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
                   )}
                 </section>
               )}
+              </>
+              )}
             </div>
             )
           )}
@@ -1148,7 +1184,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
                     <Trans i18nKey={"A pass that would exceed a cap <span1>holds</span1> the excess instead of writing it. You'll see held rows in the feed and can review before anything is lost."} components={{ span1: <span className="font-semibold text-text" /> }} />
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
+                {!form.saved_albums && <div className="flex items-center gap-3">
                   <Toggle
                     className="flex-1"
                     checked={form.mirror_removals}
@@ -1194,7 +1230,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
                       <LuInfo size={15} />
                     </button>
                   </Tooltip>
-                </div>
+                </div>}
                 {form.mirror_removals && (
                   <Toggle
                     checked={form.apply_large_removals}
@@ -1205,7 +1241,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
                 )}
               </div>
 
-              <div className="border-t border-border pt-3.5">
+              {!form.saved_albums && <div className="border-t border-border pt-3.5">
                 {form.mode === 'merge' ? (
                   <p className="text-xs leading-relaxed text-text-3">
                     {t("Aggregate jobs write one provider playlist. The separate download mirror currently follows ordinary Spotify-led playlist jobs and is unavailable here.")}
@@ -1218,7 +1254,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
                     description={t("Uses the folder and format configured in Settings → Download mirror.")}
                   />
                 )}
-              </div>
+              </div>}
 
               <div className="flex flex-col gap-2.5 rounded-control border border-border bg-surface-2/40 p-3.5">
                 <span className="font-mono text-[10px] font-semibold tracking-[0.1em] text-text-3">{t("REVIEW")}</span>

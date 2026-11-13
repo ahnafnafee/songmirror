@@ -1296,5 +1296,11 @@
   "Starred Songs": "Lagu berbintang",
   "Syncs playlists and starred songs already stored on your music server.": "Menyinkronkan playlist dan lagu berbintang yang sudah tersimpan di server musik Anda.",
   "User token": "Token pengguna",
-  "ListenBrainz": "ListenBrainz"
+  "ListenBrainz": "ListenBrainz",
+  "All saved albums": "Semua album tersimpan",
+  "All saved albums are included. Preview first, then run once or keep the schedule active.": "Semua album tersimpan disertakan. Lihat pratinjau terlebih dahulu, lalu jalankan sekali atau biarkan jadwal tetap aktif.",
+  "Saved albums": "Album tersimpan",
+  "One-way across all services. Uses native saved albums, album playlists, or liked tracks. Never removes albums.": "Satu arah di semua layanan. Menggunakan album tersimpan bawaan, daftar putar per album, atau lagu yang disukai. Tidak pernah menghapus album.",
+  "Select one-way sync with a source and at least one destination to sync saved albums.": "Pilih sinkronisasi satu arah dengan sumber dan setidaknya satu tujuan untuk menyinkronkan album tersimpan.",
+  "Connections without album-library access use album groups previously imported by SongMirror.": "Koneksi tanpa akses ke pustaka album menggunakan grup album yang sebelumnya diimpor oleh SongMirror."
 }

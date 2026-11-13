@@ -1296,5 +1296,11 @@
   "Starred Songs": "Yıldızlı Şarkılar",
   "Syncs playlists and starred songs already stored on your music server.": "Müzik sunucunuzda zaten bulunan çalma listelerini ve yıldızlı şarkıları senkronize eder.",
   "User token": "Kullanıcı belirteci",
-  "ListenBrainz": "ListenBrainz"
+  "ListenBrainz": "ListenBrainz",
+  "All saved albums": "Kaydedilen tüm albümler",
+  "All saved albums are included. Preview first, then run once or keep the schedule active.": "Kaydedilen tüm albümler dahildir. Önce önizlemeyi inceleyin, ardından bir kez çalıştırın veya zamanlamayı etkin tutun.",
+  "Saved albums": "Kaydedilen albümler",
+  "One-way across all services. Uses native saved albums, album playlists, or liked tracks. Never removes albums.": "Tüm hizmetler arasında tek yönlüdür. Hizmetin kaydedilen albümlerini, albüm çalma listelerini veya beğenilen parçaları kullanır. Albümleri asla kaldırmaz.",
+  "Select one-way sync with a source and at least one destination to sync saved albums.": "Kaydedilen albümleri eşitlemek için bir kaynak ve en az bir hedef içeren tek yönlü eşitlemeyi seçin.",
+  "Connections without album-library access use album groups previously imported by SongMirror.": "Albüm kitaplığına erişemeyen bağlantılar, daha önce SongMirror tarafından içe aktarılan albüm gruplarını kullanır."
 }

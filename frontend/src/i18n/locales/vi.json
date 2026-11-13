@@ -1296,5 +1296,11 @@
   "Starred Songs": "Bài hát gắn sao",
   "Syncs playlists and starred songs already stored on your music server.": "Đồng bộ danh sách phát và bài hát gắn sao đã có trên máy chủ nhạc của bạn.",
   "User token": "Mã thông báo người dùng",
-  "ListenBrainz": "ListenBrainz"
+  "ListenBrainz": "ListenBrainz",
+  "All saved albums": "Tất cả album đã lưu",
+  "All saved albums are included. Preview first, then run once or keep the schedule active.": "Bao gồm tất cả album đã lưu. Xem trước, sau đó chạy một lần hoặc giữ lịch hoạt động.",
+  "Saved albums": "Album đã lưu",
+  "One-way across all services. Uses native saved albums, album playlists, or liked tracks. Never removes albums.": "Một chiều giữa tất cả dịch vụ. Dùng album đã lưu gốc, danh sách phát theo album hoặc bài hát yêu thích. Không bao giờ xóa album.",
+  "Select one-way sync with a source and at least one destination to sync saved albums.": "Chọn đồng bộ một chiều với một nguồn và ít nhất một đích để đồng bộ album đã lưu.",
+  "Connections without album-library access use album groups previously imported by SongMirror.": "Các kết nối không có quyền truy cập thư viện album sử dụng nhóm album đã được SongMirror nhập trước đó."
 }
