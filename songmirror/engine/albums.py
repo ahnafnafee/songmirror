@@ -91,7 +91,9 @@ def run_album_pass(opts, should_continue):
         for album in libraries[source_id]:
             if should_continue() != "run":
                 return [item[1] for item in plans] + [row]
-            same_catalog = source.same_catalog(target)
+            # Uploaded Apple library albums have account-local ids even though
+            # ordinary Apple catalog ids are shared across accounts.
+            same_catalog = source.same_catalog(target) and not album.get("_library_album")
             if (same_catalog and album["id"] in existing_ids) or compatible_albums(album, existing):
                 row["skipped"] += 1
                 continue
