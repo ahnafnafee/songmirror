@@ -1,5 +1,7 @@
 """Native album-library protocols, using each target's existing transport."""
 
+from urllib.parse import parse_qsl, urlsplit
+
 from .config import AMP, spotify_write_backend
 from .targets import target_provider
 from .targets.base import TargetCapabilityError
@@ -73,7 +75,12 @@ class NativeAlbums:
         count = item.get("RecursiveItemCount") or item.get("ChildCount")
         if count is None:
             count = len(self._jellyfin_items(includeItemTypes="Audio", parentId=str(item.get("Id"))))
-        return album_row(item.get("Id"), item.get("Name"), item.get("AlbumArtists") or item.get("Artists") or [],
+        artists = []
+        for artist in item.get("AlbumArtists") or []:
+            name = artist.get("Name") if isinstance(artist, dict) else artist
+            if isinstance(name, str) and name.strip():
+                artists.append(name.strip())
+        return album_row(item.get("Id"), item.get("Name"), artists or item.get("Artists") or [],
                          release_date=item.get("PremiereDate") or item.get("ProductionYear"),
                          total_tracks=count)
 
@@ -85,6 +92,7 @@ class NativeAlbums:
 
     def _apple_pages(self, path, params=None):
         seen = set()
+        options = {key: value for key, value in (params or {}).items() if key != "offset"}
         while path:
             body = self.target._request("GET", path, params=params).json()
             rows = body.get("data")
@@ -97,10 +105,14 @@ class NativeAlbums:
             if following:
                 seen.add(following)
             # Apple next links are relative to /v1, not a user-supplied URL.
-            if following and (not following.startswith("/v1/") or "://" in following):
+            if following and (not isinstance(following, str)
+                              or not following.startswith("/v1/") or "://" in following):
                 raise RuntimeError("Apple returned an invalid album continuation")
             path = AMP.removesuffix("/v1") + following if following else None
-            params = None
+            # Continuations can contain only an offset. Keep relationship and
+            # locale options without overriding a cursor or limit in the link.
+            query_keys = {key for key, _ in parse_qsl(urlsplit(following).query)} if following else set()
+            params = {key: value for key, value in options.items() if key not in query_keys} or None
 
     def _jellyfin_items(self, **params):
         rows, offset = [], 0
@@ -126,7 +138,28 @@ class NativeAlbums:
                 "GET", "favorite/getUserFavorites", params={"type": "albums", "limit": limit, "offset": offset}), "albums")]
         if p == "deezer":
             if t._web is None:
-                rows = [item for page in t._pages("user/me/albums", {"limit": 100}) for item in page.get("data") or []]
+                rows, seen, total = [], set(), None
+                for page in t._pages("user/me/albums", {"limit": 100}):
+                    if not isinstance(page, dict) or not isinstance(page.get("data"), list):
+                        raise RuntimeError("Deezer returned an incomplete album collection")
+                    page_total = page.get("total")
+                    if (type(page_total) is not int or page_total < 0
+                            or (total is not None and page_total != total)):
+                        raise RuntimeError("Deezer returned an invalid album collection count")
+                    total = page_total
+                    items = page["data"]
+                    if any(not isinstance(item, dict) or not item.get("id") for item in items):
+                        raise RuntimeError("Deezer returned an unidentified album")
+                    identifiers = [str(item["id"]) for item in items]
+                    if len(set(identifiers)) != len(identifiers) or seen.intersection(identifiers):
+                        raise RuntimeError("Deezer album pagination did not advance")
+                    seen.update(identifiers)
+                    rows.extend(items)
+                    if (len(rows) > total or (not items and len(rows) < total)
+                            or bool(page.get("next")) != (len(rows) < total)):
+                        raise RuntimeError("Deezer album pagination is incomplete or inconsistent")
+                if total is None or len(rows) != total:
+                    raise RuntimeError("Deezer returned an incomplete album collection")
             else:
                 rows, cursor = [], None
                 while True:
