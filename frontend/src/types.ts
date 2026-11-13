@@ -341,6 +341,8 @@ export interface SyncJob {
   sync_playlists: boolean
   /** Include one provider's built-in liked/favorite track collection. */
   liked_tracks: boolean
+  /** One-way additive native saved-album collection, separate from tracks. */
+  saved_albums?: boolean
   /** Destination provider -> built-in liked collection or a named playlist. */
   liked_routes: LikedTrackRoutes
   interval: string

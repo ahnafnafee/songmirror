@@ -714,6 +714,14 @@ def run_pass(opts, should_continue=None):
     with _ENV_LOCK:
         load_dotenv(os.getenv("SONGMIRROR_ENV_FILE") or ".env", override=True)
     profiles = getattr(opts, "account_profiles", None)
+    if getattr(opts, "saved_albums", False):
+        from .albums import run_album_pass
+
+        per_target = run_album_pass(opts, ctrl)
+        state = ctrl()
+        return _summary(opts, per_target, pass_started,
+                        ok=not any(row.get("failed") for row in per_target),
+                        interrupted=None if state == "run" else state)
     merge_mode = opts.sync_mode == "merge"
     wanted_providers = _wanted_providers(opts)
     if profiles is not None:

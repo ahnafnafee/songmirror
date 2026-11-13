@@ -79,6 +79,7 @@ class MirrorTarget:
     # native favorites collection stays usable.
     supports_playlists = True
     supports_favorites = True
+    supports_saved_albums = True
     favorite_tracks_name = "Liked Tracks"
     favorite_tracks_id = "liked-tracks"
 

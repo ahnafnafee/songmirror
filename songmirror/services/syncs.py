@@ -73,6 +73,7 @@ class SyncJob:
     playlists: str = ""                       # comma-separated names (empty = every same-named pair)
     sync_playlists: bool = True                # false = liked/favorite collection only
     liked_tracks: bool = False                # include the source provider's native liked/favorite tracks
+    saved_albums: bool = False                # album-only, one-way, additive native library sync
     liked_routes: dict = field(default_factory=dict)  # provider -> {kind: native|playlist, name?: str}
     interval: str = DEFAULT_INTERVAL          # this job's own auto-sync cadence
     max_adds: int = DEFAULT_MAX_ADDS
@@ -201,6 +202,15 @@ def validate_sync_job(job, profiles=None):
         raise ValueError("max_adds must be at least 1")
     if job.max_removals < 0:
         raise ValueError("max_removals must be at least 0")
+    if job.saved_albums:
+        from ..engine.albums import album_participants
+
+        if job.mode != "oneway":
+            raise ValueError("saved albums currently support one-way sync only")
+        if job.sync_playlists or job.liked_tracks or job.download or job.max_removals:
+            raise ValueError("saved-album jobs must be album-only, with downloads and removals off")
+        album_participants(job.source, job.providers, profiles)
+        return job
     if job.mode == "merge":
         if not job.sources:
             raise ValueError("a merge sync needs at least one source playlist")

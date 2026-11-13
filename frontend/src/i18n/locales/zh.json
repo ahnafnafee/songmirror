@@ -1296,5 +1296,11 @@
   "Starred Songs": "星标歌曲",
   "Syncs playlists and starred songs already stored on your music server.": "同步已存储在音乐服务器上的播放列表和星标歌曲。",
   "User token": "用户令牌",
-  "ListenBrainz": "ListenBrainz"
+  "ListenBrainz": "ListenBrainz",
+  "All saved albums": "所有已保存的专辑",
+  "All saved albums are included. Preview first, then run once or keep the schedule active.": "包含所有已保存的专辑。请先预览，然后运行一次或保持定时同步开启。",
+  "Saved albums": "已保存的专辑",
+  "One-way across all services. Uses native saved albums, album playlists, or liked tracks. Never removes albums.": "在所有服务之间单向同步。使用原生已保存专辑、专辑播放列表或喜欢的曲目。绝不移除专辑。",
+  "Select one-way sync with a source and at least one destination to sync saved albums.": "请选择一个来源和至少一个目标的单向同步，以同步已保存的专辑。",
+  "Connections without album-library access use album groups previously imported by SongMirror.": "无法访问专辑库的连接使用之前由 SongMirror 导入的专辑分组。"
 }

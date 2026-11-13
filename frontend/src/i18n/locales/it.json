@@ -1328,5 +1328,11 @@
   "Starred Songs": "Brani con stella",
   "Syncs playlists and starred songs already stored on your music server.": "Sincronizza playlist e brani con stella già memorizzati sul tuo server musicale.",
   "User token": "Token utente",
-  "ListenBrainz": "ListenBrainz"
+  "ListenBrainz": "ListenBrainz",
+  "All saved albums": "Tutti gli album salvati",
+  "All saved albums are included. Preview first, then run once or keep the schedule active.": "Sono inclusi tutti gli album salvati. Controlla prima l’anteprima, poi esegui una sola volta o mantieni attiva la pianificazione.",
+  "Saved albums": "Album salvati",
+  "One-way across all services. Uses native saved albums, album playlists, or liked tracks. Never removes albums.": "In una sola direzione tra tutti i servizi. Usa gli album salvati nativi, playlist per album o brani preferiti. Non rimuove mai album.",
+  "Select one-way sync with a source and at least one destination to sync saved albums.": "Seleziona una sincronizzazione unidirezionale con una sorgente e almeno una destinazione per sincronizzare gli album salvati.",
+  "Connections without album-library access use album groups previously imported by SongMirror.": "Le connessioni senza accesso alla libreria degli album usano gruppi di album già importati da SongMirror."
 }

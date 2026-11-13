@@ -70,6 +70,8 @@ class SyncService:
         opts.playlists = job.playlists
         opts.sync_playlists = job.sync_playlists
         opts.liked_tracks = job.liked_tracks
+        opts.saved_albums = job.saved_albums
+        opts.saved_album_file = str(self._settings.data_dir / "saved_albums.json")
         opts.liked_routes = job.liked_routes
         opts.sources = [asdict(source) for source in job.sources]
         opts.destination = asdict(job.destination) if job.destination is not None else None

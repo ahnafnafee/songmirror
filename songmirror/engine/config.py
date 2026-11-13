@@ -88,6 +88,7 @@ class Options:
     apply_large_removals: bool = False
     sync_playlists: bool = True
     liked_tracks: bool = False
+    saved_albums: bool = False
     liked_routes: dict = field(default_factory=dict)
     # Web-created merge jobs resolve public URLs once and pass durable provider
     # playlist descriptors into the engine. These defaults keep CLI and every
