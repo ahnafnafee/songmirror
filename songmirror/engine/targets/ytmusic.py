@@ -29,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
-from ...ytmusic_auth import oauth_token_path
+from ...ytmusic_auth import browser_session_alive, oauth_token_path
 from ..config import REQUEST_TIMEOUT, polite_sleep
 from ..logs import log, log_note, log_warn
 from ..matching import (
@@ -1129,12 +1129,12 @@ class YTMusicBrowserTarget(YTMusicTarget):
         from ..youtube_browser import YouTubeBrowser
         self._youtube = YouTubeBrowser(self._api)
 
-    def _session_alive(self):
+    def _session_alive(self, *, playlists=None):
         """Whether the cookies still authenticate. Needed because the logged-out
         stub reaches ytmusicapi's library parser as an empty list, indistinguishable
         from an account that genuinely owns no playlists."""
         try:
-            return bool((self._api.get_account_info() or {}).get("accountName"))
+            return browser_session_alive(self._api, playlists=playlists)
         except Exception:
             return False
 
@@ -1148,7 +1148,7 @@ class YTMusicBrowserTarget(YTMusicTarget):
         # An empty read must fail the pass, not report "no playlists" — the caller
         # creates whatever it can't find, so a degraded read would duplicate every
         # playlist. Only a live session is allowed to answer "genuinely empty".
-        if not out and not self._session_alive():
+        if not out and not self._session_alive(playlists=[]):
             raise TargetAuthError("YouTube Music returned an empty library on a logged-out session; "
                                   "re-export the browser cookies (Settings -> YouTube Music).")
         return out

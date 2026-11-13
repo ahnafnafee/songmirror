@@ -9,7 +9,7 @@ import json
 import os
 import tempfile
 
-from ...ytmusic_auth import oauth_token_path
+from ...ytmusic_auth import browser_session_alive, oauth_token_path
 from .base import ConnStatus, Connector, DeviceCode, Field
 
 
@@ -51,7 +51,7 @@ class YTMusicConnector(Connector):
         try:
             from ytmusicapi import YTMusic
 
-            return bool((YTMusic(self._browser_path()).get_account_info() or {}).get("accountName"))
+            return browser_session_alive(YTMusic(self._browser_path()))
         except Exception:
             return False
 
@@ -82,11 +82,11 @@ class YTMusicConnector(Connector):
             return ConnStatus("error", f"couldn't parse those headers ({e!r})")
         try:
             api = YTMusic(auth)
-            # A signed-out library can return [] with HTTP 200. Confirm the
-            # account too, while still allowing a genuinely empty library.
-            if not (api.get_account_info() or {}).get("accountName"):
-                return ConnStatus("error", "YouTube Music returned a signed-out account; paste fresh request headers")
-            api.get_library_playlists(limit=1)
+            if not browser_session_alive(api):
+                return ConnStatus("error", "YouTube Music did not confirm access to the library or account. "
+                                  "Paste fresh request headers from a signed-in music.youtube.com /browse request. "
+                                  "For Docker or a remote server, make sure the browser and SongMirror use the "
+                                  "same public IP (check VPN/proxy routing), then copy the headers again.")
         except Exception as e:
             # Parser exceptions may include an entire account response. Keep
             # those details out of the browser-facing connection error.

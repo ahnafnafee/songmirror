@@ -33,3 +33,11 @@ YouTube may explicitly hide private or deleted videos. These appear in the trans
 Reading and matching finish before the copy writes videos. During **Copying tracks…**, the progress bar and added count advance only after YouTube confirms each video. Long copies can take several minutes. **Pause** and **Stop** take effect between videos, and resuming skips entries already copied.
 
 The OAuth connection uses the YouTube Data API and can exhaust its daily write quota during a long copy. For large migrations, connect the destination using the **No-quota mode** browser-header option in the YouTube Music connection dialog. If a copy fails after writing some videos, start another copy into that existing destination playlist to continue with the missing videos. Browser sessions can expire and may need fresh headers.
+
+## No-quota connection fails in Docker
+
+Copy request headers from a signed-in `POST` request to `music.youtube.com/youtubei/v1/browse`. In Firefox, select **Copy → Copy Request Headers** in the Network tab. Include the full `Cookie`, `Authorization`, and `X-Goog-AuthUser` headers for the Google account you want to connect.
+
+Google can reject browser cookies when SongMirror's server and the browser use different public IPs, even with freshly copied headers. Check whether Docker, the server, or the browser uses a VPN or proxy. Use the same public egress IP for both, or capture the headers from a browser running on the server, then paste a fresh copy. Reinstalling Firefox does not fix a routing mismatch. See the [upstream headless-auth report](https://github.com/sigma67/ytmusicapi/issues/962#issuecomment-5073561939).
+
+SongMirror checks library access first because the account-menu endpoint can return a guest menu even for a working library session. An empty library still requires account confirmation; a signed-out empty response is never accepted as a successful connection. If both endpoints fail, no-quota mode cannot be enabled and the previous saved session is kept.
