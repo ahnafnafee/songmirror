@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, urlsplit, urlunsplit
 
 import requests
+from .media import fetch_image
 
 from .logs import log_download, log_note, log_warn
 
@@ -254,9 +255,7 @@ def push_covers(playlists):
             if not img_url:
                 continue
             if img_url not in img_cache:
-                ir = requests.get(img_url, timeout=30)
-                ir.raise_for_status()
-                img_cache[img_url] = ir.content
+                img_cache[img_url] = fetch_image(img_url)
             # Jellyfin wants the image base64-encoded in the body, with the
             # actual image type as Content-Type (Spotify covers are JPEG).
             pr = requests.post(f"{url}/Items/{item_id}/Images/Primary",

@@ -9,8 +9,7 @@ from pydantic import BaseModel, Field
 # REVIEW_THRESHOLD = 0.85 is the single source of truth for "needs review".
 # Frontend mirrors this as AUTO_MATCH_THRESHOLD — keep in sync.
 REVIEW_THRESHOLD = 0.85
-MAX_TRACKS_PER_IMPORT = 10_000
-MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+from .import_limits import MAX_TRACKS_PER_IMPORT, MAX_UPLOAD_SIZE
 
 
 class ImportSourceKind(str, Enum):

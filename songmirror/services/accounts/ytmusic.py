@@ -79,7 +79,7 @@ class YTMusicConnector(Connector):
         try:
             auth = json.loads(ytmusicapi.setup(headers_raw=headers_raw))
         except Exception as e:
-            return ConnStatus("error", f"couldn't parse those headers ({e!r})")
+            return ConnStatus("error", f"couldn't parse those headers ({type(e).__name__})")
         try:
             api = YTMusic(auth)
             if not browser_session_alive(api):
@@ -129,7 +129,7 @@ class YTMusicConnector(Connector):
         try:
             raw = creds.token_from_code(dc.device_code)
         except Exception as e:
-            return ConnStatus("unconfigured", f"waiting for authorization ({e!r})")
+            return ConnStatus("unconfigured", f"waiting for authorization ({type(e).__name__})")
         # Before the user authorizes, token_from_code returns an error dict
         # (e.g. {"error": "authorization_pending"}) instead of raising. Building a
         # RefreshingToken from that 500s the poll — which stops the UI's poll loop

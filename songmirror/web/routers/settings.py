@@ -5,6 +5,7 @@ import os
 from fastapi import APIRouter, Body, HTTPException, Request
 
 from ...services.accounts import CONNECTORS
+from ...services.account_profiles import PROVIDER_KEYS
 from ...services.folders import download_directory, writable_directory
 from ...services.folders import FolderBrowser
 from ...services.settings import VALID_CREATE_PLAYLIST_DEFAULT_SOURCES
@@ -20,6 +21,8 @@ SECRET_KEYS |= {
     "AMAZON_MUSIC_API_KEY",
     "AMAZON_MUSIC_CLIENT_SECRET",
     "DEEZER_APP_SECRET",
+    "DEEZER_ARL",
+    "LASTFM_SESSION_KEY",
     "QOBUZ_USER_AUTH_TOKEN",
     "SPOTIFY_CLIENT_SECRET",
     "SPOTIFY_ISRC_CLIENTS",
@@ -37,11 +40,13 @@ SECRET_KEYS |= {
 CONFIG_KEYS = ("DISPLAY_NAME", "SYNC_MODE", "SYNC_SOURCE", "SYNC_INTERVAL", "PROVIDERS", "MAX_ADDS",
                "MAX_REMOVALS", "PLAYLISTS", "DOWNLOAD_DIR", "LOCAL_MIRROR_FORMAT",
                "create_playlist_default_source")
+PUBLIC_KEYS = frozenset(CONFIG_KEYS) | {"AUTO_SYNC", "LOCAL_MIRROR_ORDER",
+    "LOCAL_MIRROR_AUDIO_PROVIDERS", "LOCAL_MIRROR_BITRATE", "LOCAL_LIBRARY_DIR"}
 
 
 @router.get("/api/settings")
 def get_settings(request: Request):
-    out = {k: v for k, v in request.app.state.settings.load().items() if k not in SECRET_KEYS}
+    out = {k: v for k, v in request.app.state.settings.load().items() if k in PUBLIC_KEYS}
     for key in CONFIG_KEYS:
         if key not in out and os.getenv(key):
             out[key] = os.getenv(key)
@@ -69,5 +74,8 @@ def put_settings(request: Request, values: dict = Body(...)):
             values["DOWNLOAD_DIR_CONFIRMED"] = "1"
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+    credential_keys = set().union(*PROVIDER_KEYS.values()) | {"SONGMIRROR_PUBLIC_URL"}
+    if credential_keys.intersection(values):
+        request.app.state.connection_attempts.clear()
     request.app.state.settings.save(values)
     return {"ok": True}

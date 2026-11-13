@@ -25,6 +25,7 @@ from ..engine.config import DEFAULT_INTERVAL, parse_args, parse_interval
 from ..engine.runner import run_pass
 from .syncs import SyncStore
 from .folders import download_directory
+from ..diagnostics import redact_data, redact_text
 
 
 async def _run_pass_async(opts, should_continue=None):
@@ -116,6 +117,7 @@ class SyncService:
                         self._emit("section", f"{job.name}: pass started ({'execute' if execute else 'dry run'})", "sync")
                     summary = await _run_pass_async(self._opts_for(job, execute),
                                                     should_continue=lambda: self._control)
+                    summary = redact_data(summary)
                     summary.update(job_id=job_id, job_name=job.name)
                     aggregate = summary.get("aggregate") or {}
                     created_destination_id = aggregate.get("destination_playlist_id")
@@ -138,7 +140,7 @@ class SyncService:
                 except asyncio.CancelledError:
                     raise
                 except BaseException as e:  # a bad pass must never kill the scheduler
-                    summary = {"ok": False, "error": repr(e), "per_target": [], "job_id": job_id, "job_name": job.name}
+                    summary = {"ok": False, "error": redact_text(repr(e)), "per_target": [], "job_id": job_id, "job_name": job.name}
                     self._last[job_id] = self._last_any = summary
                     self._emit("warn", f"{job.name}: pass failed: {e!r}", "sync")
                 finally:

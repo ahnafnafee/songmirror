@@ -83,7 +83,7 @@ class QobuzConnector(Connector):
                 return True, "signed-in web API session"
             return False, f"Qobuz returned HTTP {response.status_code}; copy a fresh signed-in API request"
         except requests.RequestException as exc:
-            return False, f"could not reach Qobuz ({exc!r})"
+            return False, f"could not reach Qobuz ({type(exc).__name__})"
 
     def disconnect(self):
         self._store.save({"QOBUZ_WEB_REQUEST": ""})

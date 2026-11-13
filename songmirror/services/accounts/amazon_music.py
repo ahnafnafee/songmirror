@@ -2,6 +2,8 @@
 
 import os
 
+import requests
+
 from ...amazon_music_web import (
     DEFAULT_WEB_SESSION_FILE,
     AmazonMusicWebAuthError,
@@ -95,10 +97,12 @@ class AmazonMusicConnector(Connector):
             return True, "auto-renewing web-player session"
         except AmazonMusicWebAuthError as exc:
             return False, str(exc)
+        except requests.RequestException as exc:
+            return False, f"Amazon Music web-session check failed ({type(exc).__name__})"
         except ValueError as exc:
             return False, str(exc)
         except Exception as exc:
-            return False, f"Amazon Music web-session check failed ({exc!r})"
+            return False, f"Amazon Music web-session check failed ({type(exc).__name__})"
 
     def status(self):
         if self._renewal_raw():

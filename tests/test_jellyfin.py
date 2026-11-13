@@ -85,6 +85,7 @@ def test_connection_browse_counts_and_cover_support_old_and_new_auth(
 
     monkeypatch.setattr(jellyfin.requests, "get", get)
     monkeypatch.setattr(jellyfin.requests, "post", post)
+    monkeypatch.setattr(jellyfin, "fetch_image", lambda url: b"COVER")
     settings = SettingsStore(dir=tmp_path, project_env=False)
     app = create_app(settings=settings)
     with TestClient(app) as client:

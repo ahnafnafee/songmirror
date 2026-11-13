@@ -30,7 +30,7 @@ def test_progress_never_counts_a_youtube_video_before_its_write(youtube_copy):
         return {"status": "STATUS_SUCCEEDED"}
 
     destination._api = SimpleNamespace(add_playlist_items=add)
-    result = transfer(source, destination, {}, {"playlistId": "copy"}, {}, execute=True, max_adds=100,
+    result = transfer(source, destination, {}, {"playlistId": "copy", "_owned": True}, {}, execute=True, max_adds=100,
                       on_progress=lambda *values: progress.append(values))
     assert result["added"] == 3
     assert [added for _, _, added in progress if added] == [1, 2, 3]
@@ -46,7 +46,7 @@ def test_youtube_transfer_polls_control_between_confirmed_writes(youtube_copy, c
         return {"status": "STATUS_SUCCEEDED"}
 
     destination._api = SimpleNamespace(add_playlist_items=add)
-    result = transfer(source, destination, {}, {"playlistId": "copy"}, {}, execute=True, max_adds=100,
+    result = transfer(source, destination, {}, {"playlistId": "copy", "_owned": True}, {}, execute=True, max_adds=100,
                       should_continue=lambda: control if written else "run")
     assert written == ["0"]
     assert result["added"] == 1

@@ -26,6 +26,8 @@ from ..services.sync_service import SyncService
 from ..services.syncs import SyncStore
 from ..services.transfers import TransferService
 from .access_log import install_oauth_access_log_filter
+from .connection_attempts import ConnectionAttempts
+from .security import RequestSecurity
 from .routers import (
     accounts, events, folders, imports as imports_router,
     playlist_backups as playlist_backups_router, playlists,
@@ -93,6 +95,8 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
             await sync_service.shutdown()
 
     app = FastAPI(title="SongMirror", lifespan=lifespan)
+    app.add_middleware(RequestSecurity, settings=settings)
+    app.state.connection_attempts = ConnectionAttempts()
     app.state.settings = settings
     app.state.account_profiles = account_profiles
     app.state.bus = bus

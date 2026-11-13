@@ -137,7 +137,7 @@ def test_youtube_web_session_update_and_clearing_a_description():
 
     target = YTMusicBrowserTarget.__new__(YTMusicBrowserTarget)
     target._api = Api()
-    target.update_details({"playlistId": "PL1"}, {"name": "New", "description": "", "public": False})
+    target.update_details({"playlistId": "PL1", "_owned": True}, {"name": "New", "description": "", "public": False})
 
     assert calls == [("PL1", {"title": "New", "description": " ", "privacyStatus": "PRIVATE"})]
 

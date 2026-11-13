@@ -10,6 +10,7 @@ file's mtime to its Spotify added-at date so Date-Modified sort = date-added.
 """
 
 import importlib.util
+import hashlib
 import json
 import os
 import queue
@@ -26,7 +27,7 @@ from pathlib import Path
 import requests
 import spotipy
 
-from . import local_library, spotify, spotify_cookie, spotify_web
+from . import local_library, media, spotify, spotify_cookie, spotify_web
 from .logs import fmt_secs, log_download, log_miss, log_note, log_section, log_summary, log_warn
 from .matching import track_artist
 from .matching import normalize_text as _norm
@@ -50,6 +51,8 @@ def _save_json(path, data):
 
 def sanitize_folder(name):
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name or "").strip().rstrip(" .")
+    if re.match(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", cleaned, re.I):
+        cleaned = "_" + cleaned
     return cleaned or "playlist"
 
 
@@ -230,9 +233,7 @@ def _fill_missing(audio, track):
 def _fetch_image(url, cache):
     if url not in cache:
         try:
-            r = requests.get(url, timeout=30)
-            r.raise_for_status()
-            cache[url] = r.content
+            cache[url] = media.fetch_image(url)
         except Exception:
             cache[url] = None
     return cache[url]
@@ -396,12 +397,11 @@ def save_cover(playlist, folder):
     if (folder / "cover.jpg").exists() and marker.exists() and marker.read_text(encoding="utf-8").strip() == url:
         return
     try:
-        r = requests.get(url, timeout=30)
-        r.raise_for_status()
+        content = media.fetch_image(url)
         for fname in ("cover.jpg", "folder.jpg"):
-            (folder / fname).write_bytes(r.content)
+            (folder / fname).write_bytes(content)
         marker.write_text(url, encoding="utf-8")
-        log_download(f"cover art saved ({len(r.content) // 1024} KB)", tag="local")
+        log_download(f"cover art saved ({len(content) // 1024} KB)", tag="local")
     except Exception as e:
         log_warn(f"cover art failed: {e!r}", tag="local")
 
@@ -613,6 +613,13 @@ class TargetSource:
     def playlist_query(self, playlist):
         return None
 
+    def media_origins(self):
+        profile_value = getattr(self._target, "profile_value", None)
+        if profile_value:
+            return [profile_value(key) for key in ("SUBSONIC_URL", "JELLYFIN_URL") if profile_value(key)]
+        url = getattr(getattr(self._target, "_api", None), "url", None)
+        return [url] if url else []
+
     def track_queries(self, ids, tracks):
         by_id = {str(t["id"]): t for t in tracks if t.get("id")}
         queries = []
@@ -686,9 +693,22 @@ def _folder_for(base, playlist, used):
     name = playlist.get("name") or playlist.get("id", "playlist")
     folder_name = sanitize_folder(name)
     if folder_name.casefold() in used:  # same-named playlists must not collide
-        folder_name = f"{folder_name} [{str(playlist.get('id', ''))[:8]}]"
+        identity = str(playlist.get("id", ""))
+        suffix = identity[:8]
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,8}", suffix):
+            suffix = hashlib.sha256(identity.encode()).hexdigest()[:12]
+        folder_name = f"{folder_name} [{suffix}]"
+        counter = 2
+        original = folder_name
+        while folder_name.casefold() in used:
+            folder_name = f"{original} ({counter})"
+            counter += 1
     used.add(folder_name.casefold())
-    return base / folder_name
+    candidate = base / folder_name
+    root, resolved = base.resolve(), candidate.resolve()
+    if root not in resolved.parents:
+        raise ValueError("Playlist folder must stay inside the download directory")
+    return candidate
 
 
 def refresh(source, spotify_playlists, download_dir):
@@ -716,8 +736,9 @@ def refresh(source, spotify_playlists, download_dir):
                 log_note(f"'{name}': no download folder yet - skipped", tag="local")
                 continue
             try:
-                save_cover(playlist, folder)
-                stamped, _, tagged, _, _ = finalize_folder(folder, source.read(playlist), newest_first)
+                with media.trusted_origins(getattr(source, "media_origins", lambda: ())()):
+                    save_cover(playlist, folder)
+                    stamped, _, tagged, _, _ = finalize_folder(folder, source.read(playlist), newest_first)
                 order = "newest-first" if newest_first else "oldest-first"
                 extra = f", {tagged} tagged" if tagged else ""
                 log_summary(f"{name}: m3u {order}, {stamped} date-stamped{extra}", tag="local")
@@ -774,8 +795,9 @@ def run(source, spotify_playlists, download_dir, should_continue=None):
                 new_ids, removed_ids = _diff_ids(current_ids, prev_files, prev.get("unavailable", []))
                 if not new_ids and not removed_ids and prev:
                     log_note(f"'{name}': no new or removed tracks - refreshing m3u only", tag="local")
-                clean, id_to_file, unavailable = _download_one(
-                    source, playlist, folder, timeout_s, tracks, new_ids, removed_ids, prev_files)
+                with media.trusted_origins(getattr(source, "media_origins", lambda: ())()):
+                    clean, id_to_file, unavailable = _download_one(
+                        source, playlist, folder, timeout_s, tracks, new_ids, removed_ids, prev_files)
                 if clean:
                     state[pid] = {"snapshot": snapshot, "files": id_to_file, "unavailable": sorted(unavailable)}
                     dirty = True
