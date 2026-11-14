@@ -50,6 +50,7 @@ Soundiiz, TuneMyMusic, এবং FreeYourMusic এর একটি বিনা�
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -215,8 +216,9 @@ SongMirror ম্যানুয়াল পুনঃসংযোজন, এক
 Docker কন্টেইনার হল প্রস্তাবিত স্থাপনা: এটি ওয়েব UI পরিবেশন করে, তাদের সময়সূচীতে আপনার সিঙ্ক চালায় এবং হোস্টের সাথে পুনরায় আরম্ভ করে। Compose `ghcr.io/ahnafnafee/songmirror:latest` টানে, এটিকে `songmirror` হিসাবে চালায় এবং `./data`-এ সমস্ত auth + ক্যাশে বজায় রাখে।
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ docker compose logs -f           # watch it work
 
 শুরু করার জন্য কোন `.env` প্রয়োজন নেই — সবকিছু ব্রাউজারে কনফিগার করা হয়েছে এবং `./data` এর অধীনে সংরক্ষিত আছে। OAuth, অংশীদার-টোকেন, এবং API-কী সেটআপ সবই অ্যাকাউন্ট পৃষ্ঠায় লাইভ; প্রতিটি উইজার্ড পরিষেবা-নির্দিষ্ট পূর্বশর্ত এবং সঠিক কলব্যাক URI ব্যাখ্যা করে। তারপর সিঙ্ক পৃষ্ঠায় আপনার সিঙ্ক তৈরি করুন।
 
-অন্য কম্পিউটার থেকে SongMirror খোলা `http://<server>:8888` এ কাজ করে। ডিফল্ট Spotify সংযোগ একটি পেস্ট করা `sp_dc` ওয়েব সেশন ব্যবহার করে, তাই এটির কোন বিকাশকারী অ্যাপ বা কলব্যাক URL এর প্রয়োজন নেই৷ আপনি যদি ইচ্ছাকৃতভাবে লিগ্যাসি ডেভেলপার-অ্যাপ OAuth ফলব্যাক Docker বা একটি বিপরীত প্রক্সি ব্যবহার করেন, তাহলে ব্রাউজার-দৃশ্যমান বেস URL `.env`-এ সেট করুন:
+অন্য কম্পিউটার থেকে SongMirror খোলা `http://<server>:8888` এ কাজ করে। ডিফল্ট Spotify সংযোগ একটি পেস্ট করা `sp_dc` ওয়েব সেশন ব্যবহার করে, তাই এটির কোন বিকাশকারী অ্যাপ বা কলব্যাক URL এর প্রয়োজন নেই৷ আপনি যদি ইচ্ছাকৃতভাবে লিগ্যাসি ডেভেলপার-অ্যাপ OAuth ফলব্যাক Docker বা একটি বিপরীত প্রক্সি ব্যবহার করেন, তাহলে ব্রাউজার-দৃশ্যমান বেস URL `.env`-এ সেট করুন: Compose এখন ডিফল্টভাবে শুধু localhost-এ চালু থাকে; বিশ্বস্ত স্থানীয় নেটওয়ার্কে প্রবেশের জন্য `.env`-এ `SONGMIRROR_BIND_ADDRESS=0.0.0.0` সেট করুন।
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth

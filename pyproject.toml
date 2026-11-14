@@ -6,15 +6,18 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "anyascii>=0.3,<1",
+    "anyio>=4.14.2,<5",
+    "certifi>=2026.10.19",
     "fastapi>=0.115",
     "mutagen>=1.47",
     "python-dotenv>=1.2.2",
     "python-multipart>=0.0.9",
     "rapidfuzz>=3.9,<4",
-    "requests>=2.32.5",
+    "requests>=2.33.0,<3",
     "spotifyscraper>=3.9,<4",
     "spotipy>=2.26.0",
     "uvicorn>=0.32",
+    "urllib3>=2.8.0,<3",
     "ytmusicapi>=1.12,<2",
 ]
 

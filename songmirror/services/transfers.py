@@ -10,6 +10,7 @@ import asyncio
 import time
 import uuid
 from types import SimpleNamespace
+from ..diagnostics import redact_text
 
 from ..engine import logs, spotify, spotify_cookie
 from ..engine.config import parse_args, spotify_write_backend
@@ -312,7 +313,7 @@ def _friendly_error(e):
     to repr() for anything unrecognized."""
     status = getattr(e, "http_status", None)
     if isinstance(e, (TargetAuthError, TargetCapabilityError, TargetTransientError)):
-        return str(e)
+        return redact_text(e)
     if status == 403:
         return ("The source service blocked reading this playlist (HTTP 403) — it's most "
                 "likely owned by another account, or an editorial/auto-generated playlist the "
@@ -321,7 +322,7 @@ def _friendly_error(e):
         return "The provider is rate-limiting (HTTP 429). Wait a moment and try again."
     if status == 404:
         return "That playlist no longer exists on the source (HTTP 404)."
-    return repr(e)
+    return redact_text(repr(e))
 
 
 class TransferPreviewError(ValueError):
@@ -774,6 +775,8 @@ class TransferService:
             pl = self._find(dst, spec["dest_playlist_id"])
             if pl is None:
                 raise RuntimeError("destination playlist not found")
+            if not dst.is_editable(pl):
+                raise TargetCapabilityError("The destination playlist is read-only.")
             return pl
         name = spec.get("dest_name") or src.playlist_name(src_pl)
         description = spec.get("dest_description")

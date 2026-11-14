@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import csv
 import io
+from itertools import chain
 import re
 from typing import Optional
 
 from .base import ParsedTrack, ParseResult
 from .text import parse_line
+from ..import_limits import append_track
 
 _HEADER_ALIASES = {
     "title": {
@@ -149,8 +151,8 @@ def parse_csv(content: str) -> ParseResult:
         has_header = False
 
     reader = csv.reader(io.StringIO(text), dialect)
-    rows = list(reader)
-    if not rows:
+    first = next(reader, None)
+    if first is None:
         raise ValueError("no rows found in csv")
 
     tracks: list[ParsedTrack] = []
@@ -158,14 +160,14 @@ def parse_csv(content: str) -> ParseResult:
 
     if has_header or any(_normalize_header(cell) in {
         alias for aliases in _HEADER_ALIASES.values() for alias in aliases
-    } for cell in rows[0]):
-        headers = [str(cell or "").strip() for cell in rows[0]]
+    } for cell in first):
+        headers = [str(cell or "").strip() for cell in first]
         mapping = _map_headers(headers)
         if not mapping:
             # Fall through to positional parsing of the whole file.
             has_header = False
         else:
-            for index, row in enumerate(rows[1:]):
+            for index, row in enumerate(reader):
                 if not any(str(cell or "").strip() for cell in row):
                     continue
                 values = {
@@ -212,7 +214,7 @@ def parse_csv(content: str) -> ParseResult:
                     track_warnings.append("missing title")
                 if not artist:
                     track_warnings.append("missing artist")
-                tracks.append(
+                append_track(tracks,
                     ParsedTrack(
                         position=len(tracks),
                         title=title,
@@ -234,9 +236,10 @@ def parse_csv(content: str) -> ParseResult:
                     for warning in track.warnings
                 )
                 return ParseResult(tracks=tracks, warnings=warnings)
+            raise ValueError("no tracks found in csv")
 
     # Positional fallback: artist,title[,album[,duration]] or a single free-text column.
-    for index, row in enumerate(rows):
+    for index, row in enumerate(chain([first], reader)):
         cells = [_clean(cell) for cell in row]
         cells = [cell for cell in cells if cell is not None]
         if not cells:
@@ -245,7 +248,7 @@ def parse_csv(content: str) -> ParseResult:
             parsed = parse_line(cells[0], len(tracks))
             if parsed is None:
                 continue
-            tracks.append(parsed)
+            append_track(tracks, parsed)
             continue
         artist = cells[0]
         title = cells[1]
@@ -256,7 +259,7 @@ def parse_csv(content: str) -> ParseResult:
             track_warnings.append("missing title")
         if not artist:
             track_warnings.append("missing artist")
-        tracks.append(
+        append_track(tracks,
             ParsedTrack(
                 position=len(tracks),
                 title=title,

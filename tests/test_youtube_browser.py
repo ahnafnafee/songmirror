@@ -168,7 +168,7 @@ def test_transfer_reads_all_795_entries_and_skips_existing_videos(monkeypatch, t
     cache = {"search": {}, "isrc": {}, "dirty": False}
 
     def copy():
-        return transfer(*targets, {"playlistId": "old"}, {"playlistId": "new"}, cache,
+        return transfer(*targets, {"playlistId": "old"}, {"playlistId": "new", "_owned": True}, cache,
                         execute=True, max_adds=3,
                         on_progress=lambda *values: progress.append(values))
 
@@ -226,6 +226,8 @@ def test_browser_picker_includes_video_only_playlists_without_changing_sync_libr
     ]
     assert list(target.list_playlists()) == ["mix"]
     assert target.list_playlists()["mix"]["count"] == 3
+    assert target.list_playlists()["mix"]["_owned"] is False
+    assert target.is_editable(target.list_playlists()["mix"]) is False
 
 
 def test_playlist_api_preserves_music_priority_and_category(monkeypatch, tmp_path):
@@ -295,5 +297,5 @@ def test_unconfirmed_video_add_stops_before_later_writes(result):
 
     target._api = SimpleNamespace(add_playlist_items=add)
     with pytest.raises(TargetTransientError, match="did not confirm adding a video"):
-        target.add({"playlistId": "destination"}, ["first", "second"])
+        target.add({"playlistId": "destination", "_owned": True}, ["first", "second"])
     assert calls == ["first"]

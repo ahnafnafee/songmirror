@@ -50,6 +50,7 @@ Für eine dauerhafte Installation mit automatischen Neustarts:
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -215,8 +216,9 @@ SongMirror sorgt dafür, dass Ihre Wiedergabelisten überall identisch sind, ohn
 Der Docker-Container ist die empfohlene Bereitstellung: Er stellt die Web-Benutzeroberfläche bereit, führt Ihre Synchronisierungen nach ihren Zeitplänen aus und startet mit dem Host neu. Compose ruft `ghcr.io/ahnafnafee/songmirror:latest` ab, führt es als `songmirror` aus und behält alle Authentifizierungs- und Caches in `./data` bei.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ Führen Sie zum Aktualisieren `docker compose up -d --pull always` aus. Um statt
 
 Zum Starten ist kein `.env` erforderlich – alles wird im Browser konfiguriert und unter `./data` gespeichert. OAuth, Partner-Token und API-Schlüssel-Setup sind alle live auf der Seite „Konten“ verfügbar. Jeder Assistent erläutert die dienstspezifischen Voraussetzungen und den genauen Rückruf-URI. Erstellen Sie dann Ihre Synchronisierungen auf der Seite „Synchronisierung“.
 
-Das Öffnen von SongMirror von einem anderen Computer aus funktioniert bei `http://<server>:8888`. Die Standardverbindung Spotify verwendet eine eingefügte Websitzung `sp_dc` und benötigt daher keine Entwickler-App oder Rückruf-URL. Wenn Sie absichtlich die Legacy-Entwickler-App OAuth Fallback hinter Docker oder einen Reverse-Proxy verwenden, legen Sie die im Browser sichtbare Basis-URL in `.env` fest:
+Das Öffnen von SongMirror von einem anderen Computer aus funktioniert bei `http://<server>:8888`. Die Standardverbindung Spotify verwendet eine eingefügte Websitzung `sp_dc` und benötigt daher keine Entwickler-App oder Rückruf-URL. Wenn Sie absichtlich die Legacy-Entwickler-App OAuth Fallback hinter Docker oder einen Reverse-Proxy verwenden, legen Sie die im Browser sichtbare Basis-URL in `.env` fest: Compose bindet jetzt standardmäßig nur an localhost; für den Zugriff im vertrauenswürdigen LAN setzen Sie `SONGMIRROR_BIND_ADDRESS=0.0.0.0` in `.env`.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth

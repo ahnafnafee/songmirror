@@ -50,6 +50,7 @@ For a persistent installation with automatic restarts:
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -215,8 +216,9 @@ SongMirror keeps your playlists identical everywhere without manual re-adding, o
 The Docker container is the recommended deployment: it serves the web UI, runs your syncs on their schedules, and restarts with the host. Compose pulls **`ghcr.io/ahnafnafee/songmirror:latest`**, runs it as **`songmirror`**, and persists all auth + caches in `./data`.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ To update, run `docker compose up -d --pull always`. To build the current checko
 
 **No `.env` is needed to start** — everything is configured in the browser and saved under `./data`. OAuth, partner-token, and API-key setup all live on the Accounts page; each wizard explains the service-specific prerequisites and exact callback URI. Then build your syncs on the Sync page.
 
-Opening SongMirror from another computer works at `http://<server>:8888`. The default Spotify connection uses a pasted `sp_dc` web session, so it needs no developer app or callback URL. If you intentionally use the legacy developer-app OAuth fallback behind Docker or a reverse proxy, set the browser-visible base URL in `.env`:
+Opening SongMirror from another computer works at `http://<server>:8888`. The default Spotify connection uses a pasted `sp_dc` web session, so it needs no developer app or callback URL. If you intentionally use the legacy developer-app OAuth fallback behind Docker or a reverse proxy, set the browser-visible base URL in `.env`: Compose now binds to localhost by default; enable trusted-LAN access with `SONGMIRROR_BIND_ADDRESS=0.0.0.0` in `.env`.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth

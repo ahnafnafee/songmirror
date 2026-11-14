@@ -129,7 +129,7 @@ class SpotifyConnector(Connector):
                 "https://api.spotify.com/v1/tracks", params={"ids": "6pHtgTMzsmP6ccN2ocv7XN"},
                 headers={"Authorization": f"Bearer {tok.json()['access_token']}"}, timeout=20)
         except Exception as e:
-            return ConnStatus("error", f"could not validate the ISRC app ({e!r})")
+            return ConnStatus("error", f"could not validate the ISRC app ({type(e).__name__})")
         problem = spotify.tracks_probe_problem(probe.status_code, probe.text)
         if problem:
             return ConnStatus("error", f"that app can't do the batch /tracks lookup because {problem}")
@@ -160,7 +160,7 @@ class SpotifyConnector(Connector):
             if not CookieTokenProvider(HttpxTransport(), sp_dc).token():
                 raise RuntimeError("no token returned")
         except Exception as e:
-            return ConnStatus("error", f"Spotify rejected that sp_dc cookie ({e!r})")
+            return ConnStatus("error", f"Spotify rejected that sp_dc cookie ({type(e).__name__})")
         path = sp_dc_path()
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with _open_private(path) as f:  # 0600 — it's a ~1-year account credential

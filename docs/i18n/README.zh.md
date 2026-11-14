@@ -50,6 +50,7 @@
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -215,8 +216,9 @@ SongMirror 使您的播放列表在任何地方都保持相同，无需手动重
 Docker 容器是建议的部署：它提供 Web UI，按计划运行同步，并与主机一起重新启动。 Compose拉取`ghcr.io/ahnafnafee/songmirror:latest`，将其作为`songmirror`运行，并将所有身份验证+缓存保留在`./data`中。
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ docker compose logs -f           # watch it work
 
 无需 `.env` 即可启动 — 所有内容均在浏览器中配置并保存在 `./data` 下。 OAuth、合作伙伴令牌和API密钥设置均位于帐户页面上；每个向导都会解释特定于服务的先决条件和确切的回调 URI。然后在“同步”页面上构建同步。
 
-从另一台计算机打开 SongMirror 的效果为 `http://<server>:8888`。默认 Spotify 连接使用粘贴的 `sp_dc` Web 会话，因此不需要开发人员应用程序或回调 URL。如果您有意使用旧版开发者应用程序 OAuth 后备Docker 或反向代理，请在 `.env` 中设置浏览器可见的基本 URL：
+从另一台计算机打开 SongMirror 的效果为 `http://<server>:8888`。默认 Spotify 连接使用粘贴的 `sp_dc` Web 会话，因此不需要开发人员应用程序或回调 URL。如果您有意使用旧版开发者应用程序 OAuth 后备Docker 或反向代理，请在 `.env` 中设置浏览器可见的基本 URL： Compose 现在默认仅监听 localhost；如需从可信局域网访问，请在 `.env` 中设置 `SONGMIRROR_BIND_ADDRESS=0.0.0.0`。
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth

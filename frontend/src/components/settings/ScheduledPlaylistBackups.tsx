@@ -458,6 +458,7 @@ function BackupScheduleCard({
           ) : (
             <p className="mt-1 text-text-3">{t("No successful snapshot yet.")}</p>
           )}
+          {job.storage_error ? <p role="alert" className="text-danger">{job.storage_error}</p> : null}
           {job.last_failure ? (
             <div className={`mt-1 break-words ${latestFailed ? 'text-danger' : 'text-text-3'}`}>
               <p>{t("Last failure {{dateTime}} · {{jobLast}}", { dateTime: dateTime(job.last_failure.at), jobLast: job.last_failure.error })}</p>

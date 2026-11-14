@@ -8,7 +8,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from ...engine.targets import is_peer
 from ...services.accounts import CONNECTORS
 from ...services.folders import writable_directory
-from ...services.folders import FolderBrowser
 from ...services.playlist_backups import PlaylistBackupJob, validate_backup_job
 
 
@@ -96,7 +95,9 @@ async def put_playlist_backup(
     existing = service.store.get(account_id)
     if "storage_dir" in values:
         try:
-            values["storage_dir"] = FolderBrowser(request.app.state.settings).server_path(values["storage_dir"])
+            value = values["storage_dir"]
+            if value:
+                values["storage_dir"] = str(request.app.state.folders.directory(value, writable=True))
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     job = _job_from(
@@ -105,7 +106,7 @@ async def put_playlist_backup(
         existing=existing,
         profiles=profiles,
     )
-    if existing and job.storage_dir != existing.storage_dir and service.job_status(existing)["running"]:
+    if existing and job.storage_dir != existing.storage_dir and service.is_running(account_id):
         raise HTTPException(status_code=409, detail="Wait for the current backup to finish before changing its folder.")
     if job.storage_dir:
         try:

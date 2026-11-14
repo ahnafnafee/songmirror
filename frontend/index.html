@@ -12,17 +12,7 @@
     />
     <meta name="color-scheme" content="dark light" />
     <title>SongMirror</title>
-    <script>
-      // Dark by default (a stored 'light' choice wins). Runs before React so
-      // there's no flash of the light theme on first paint.
-      try {
-        if (localStorage.getItem('songmirror-theme') !== 'light') {
-          document.documentElement.classList.add('dark')
-        }
-      } catch (e) {
-        document.documentElement.classList.add('dark')
-      }
-    </script>
+    <script src="/theme.js"></script>
   </head>
   <body>
     <div id="root"></div>

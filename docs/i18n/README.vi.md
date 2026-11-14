@@ -50,6 +50,7 @@ Cách nhanh nhất để chạy nó là Docker — Compose kéo hình ảnh đã
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -215,8 +216,9 @@ SongMirror giữ cho danh sách phát của bạn giống hệt nhau ở mọi n
 Vùng chứa Docker là cách triển khai được đề xuất: nó phục vụ giao diện người dùng web, chạy đồng bộ hóa của bạn theo lịch trình của chúng và khởi động lại với máy chủ. Compose kéo `ghcr.io/ahnafnafee/songmirror:latest`, chạy dưới dạng `songmirror` và duy trì tất cả xác thực + bộ đệm trong `./data`.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ docker compose logs -f           # watch it work
 
 Không cần `.env` để bắt đầu - mọi thứ đều được định cấu hình trong trình duyệt và được lưu trong `./data`. OAuth, mã thông báo đối tác và thiết lập khóa API đều có trên trang Tài khoản; mỗi trình hướng dẫn giải thích các điều kiện tiên quyết dành riêng cho từng dịch vụ và URI gọi lại chính xác. Sau đó xây dựng đồng bộ hóa của bạn trên trang Đồng bộ hóa.
 
-Việc mở SongMirror từ một máy tính khác hoạt động ở `http://<server>:8888`. Kết nối Spotify mặc định sử dụng phiên web `sp_dc` đã dán, do đó, kết nối này không cần ứng dụng dành cho nhà phát triển hoặc URL gọi lại. Nếu bạn cố tình sử dụng ứng dụng cũ dành cho nhà phát triển OAuth dự phòng phía sau Docker hoặc proxy ngược, hãy đặt URL cơ sở hiển thị trên trình duyệt trong `.env`:
+Việc mở SongMirror từ một máy tính khác hoạt động ở `http://<server>:8888`. Kết nối Spotify mặc định sử dụng phiên web `sp_dc` đã dán, do đó, kết nối này không cần ứng dụng dành cho nhà phát triển hoặc URL gọi lại. Nếu bạn cố tình sử dụng ứng dụng cũ dành cho nhà phát triển OAuth dự phòng phía sau Docker hoặc proxy ngược, hãy đặt URL cơ sở hiển thị trên trình duyệt trong `.env`: Compose hiện mặc định chỉ lắng nghe trên localhost; để truy cập từ mạng LAN đáng tin cậy, đặt `SONGMIRROR_BIND_ADDRESS=0.0.0.0` trong `.env`.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth

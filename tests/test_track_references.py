@@ -99,7 +99,7 @@ def test_youtube_manual_link_reaches_both_writers_as_video_id_and_sync_is_idempo
     archive.set_links(songs, "ytmusic", {"source-id": "oldVideo123"})
     try:
         for expected_added in (1, 0):
-            result = mirror_pair(target, source, {"name": "Bangla Jatra"}, {"playlistId": "destination"},
+            result = mirror_pair(target, source, {"name": "Bangla Jatra"}, {"playlistId": "destination", "_owned": True},
                                  cache, songs, execute=True, max_removals=200, max_adds=200)
             assert result["added"] == expected_added
             assert result["removed"] == 0

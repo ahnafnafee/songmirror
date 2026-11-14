@@ -115,7 +115,7 @@ class QobuzTarget(MirrorTarget):
     def _request(self, method, endpoint, *, params=None):
         query = dict(params or {})
         url = endpoint if str(endpoint).startswith("http") else f"{API}/{str(endpoint).lstrip('/')}"
-        short = url.removeprefix(API + "/")
+        short = url.split("?", 1)[0].removeprefix(API + "/")
         if self._browser_mode:
             headers = {"X-App-Id": self._app_id, "X-User-Auth-Token": self._user_token}
             request_args = {"params": query} if method == "GET" else {"data": query}
@@ -138,8 +138,8 @@ class QobuzTarget(MirrorTarget):
                     time.sleep(min(2**attempt, 12) + random.uniform(0, 1))
                     continue
                 raise TargetTransientError(
-                    f"Qobuz transport failure for {method} {short}: {exc}"
-                ) from exc
+                    f"Qobuz transport failure for {method} {short}."
+                ) from None
             if response.status_code == 429:
                 if attempt < attempts - 1:
                     time.sleep(float(response.headers.get("Retry-After") or 2**attempt) + random.uniform(0.5, 1.5))

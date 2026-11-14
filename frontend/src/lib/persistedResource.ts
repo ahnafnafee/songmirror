@@ -33,6 +33,14 @@ export function readPersistedResource<T>(resource: string, validate: ResourceVal
   if (typeof window === 'undefined') return undefined
 
   try {
+    if (resource === 'settings') {
+      // Delete credential-bearing settings snapshots from earlier releases.
+      for (const key of Object.keys(window.localStorage)) {
+        if (/^songmirror-cache-v\d+:settings$/.test(key) && key !== storageKey(resource)) {
+          window.localStorage.removeItem(key)
+        }
+      }
+    }
     const raw = window.localStorage.getItem(storageKey(resource))
     if (!raw) return undefined
     const parsed: unknown = JSON.parse(raw)

@@ -4,7 +4,7 @@ import asyncio
 import json
 from dataclasses import asdict
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 router = APIRouter()
@@ -17,7 +17,10 @@ def _fmt(event) -> str:
 @router.get("/events")
 async def events(request: Request):
     bus = request.app.state.bus
-    q = bus.subscribe()
+    try:
+        q = bus.subscribe()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     async def gen():
         try:

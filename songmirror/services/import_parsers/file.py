@@ -8,6 +8,7 @@ from .base import ParseResult
 from .csv_parser import parse_csv
 from .m3u import parse_m3u
 from .text import parse_text
+from ..import_limits import MAX_UPLOAD_SIZE, ParseLimitError
 
 
 def _decode_bytes(content: bytes) -> str:
@@ -37,6 +38,8 @@ def _decode_bytes(content: bytes) -> str:
 
 def parse_file(content: str | bytes, filename: str | None = None) -> ParseResult:
     """Parse an uploaded playlist file by extension / content sniffing."""
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise ParseLimitError("File too large. Maximum is 10MB")
     text = _decode_bytes(content) if isinstance(content, (bytes, bytearray)) else str(content)
     if not text.strip():
         raise ValueError("file content is empty")
@@ -64,6 +67,8 @@ def parse_file(content: str | bytes, filename: str | None = None) -> ParseResult
         if looks_columnar:
             try:
                 result = parse_csv(text)
+            except ParseLimitError:
+                raise
             except ValueError:
                 result = parse_text(text)
         else:

@@ -17,7 +17,7 @@ def test_browser_lists_sorted_directories_breadcrumbs_and_locations(tmp_path):
     result = client.get('/api/folders', params={'path': str(tmp_path)}).json()
     assert [item['name'] for item in result['directories']] == ['alpha', 'data', 'Zulu']
     assert result['path'] == str(tmp_path)
-    assert result['parent'] == str(tmp_path.parent)
+    assert result['parent'] is None  # The declared root bounds parent navigation.
     assert result['breadcrumbs'][-1]['path'] == str(tmp_path)
     assert result['writable'] is True
     assert client.get('/api/folders/config').json()['locations']

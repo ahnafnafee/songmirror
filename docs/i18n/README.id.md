@@ -50,6 +50,7 @@ Untuk instalasi persisten dengan restart otomatis:
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -215,8 +216,9 @@ SongMirror menjaga daftar putar Anda tetap sama di mana saja tanpa menambahkan u
 Kontainer Docker adalah penerapan yang direkomendasikan: kontainer ini melayani UI web, menjalankan sinkronisasi Anda sesuai jadwalnya, dan memulai ulang dengan host. Compose menarik `ghcr.io/ahnafnafee/songmirror:latest`, menjalankannya sebagai `songmirror`, dan menyimpan semua cache autentikasi + di `./data`.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ Untuk memperbarui, jalankan `docker compose up -d --pull always`. Untuk membuat 
 
 Tidak diperlukan `.env` untuk memulai — semuanya sudah dikonfigurasi di browser dan disimpan di bawah `./data`. OAuth, token mitra, dan API-penyiapan kunci semuanya aktif di halaman Akun; setiap wizard menjelaskan prasyarat khusus layanan dan URI panggilan balik yang tepat. Kemudian buat sinkronisasi Anda di halaman Sinkronisasi.
 
-Membuka SongMirror dari komputer lain berfungsi pada `http://<server>:8888`. Koneksi Spotify default menggunakan sesi web `sp_dc` yang ditempelkan, sehingga tidak memerlukan aplikasi pengembang atau URL panggilan balik. Jika Anda sengaja menggunakan aplikasi pengembang lama OAuth sebagai pengganti Docker atau proksi terbalik, setel URL dasar yang terlihat di browser di `.env`:
+Membuka SongMirror dari komputer lain berfungsi pada `http://<server>:8888`. Koneksi Spotify default menggunakan sesi web `sp_dc` yang ditempelkan, sehingga tidak memerlukan aplikasi pengembang atau URL panggilan balik. Jika Anda sengaja menggunakan aplikasi pengembang lama OAuth sebagai pengganti Docker atau proksi terbalik, setel URL dasar yang terlihat di browser di `.env`: Compose kini secara bawaan hanya mendengarkan di localhost; untuk akses LAN tepercaya, atur `SONGMIRROR_BIND_ADDRESS=0.0.0.0` di `.env`.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth

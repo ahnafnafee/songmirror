@@ -712,7 +712,8 @@ def run_pass(opts, should_continue=None):
     # saves win; the headless CLI falls back to a plain .env. Either way this
     # picks up re-captured tokens without a restart.
     with _ENV_LOCK:
-        load_dotenv(os.getenv("SONGMIRROR_ENV_FILE") or ".env", override=True)
+        managed = os.getenv("SONGMIRROR_ENV_FILE")
+        load_dotenv(managed or ".env", override=True, interpolate=not bool(managed))
     profiles = getattr(opts, "account_profiles", None)
     if getattr(opts, "saved_albums", False):
         from .albums import run_album_pass

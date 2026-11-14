@@ -974,6 +974,9 @@ def test_transfer_waits_for_another_transfer_before_starting(monkeypatch, tmp_pa
 
 
 class _Prov:
+    def is_editable(self, playlist):
+        return True
+
     def __init__(self, cache_file, tracks, source="apple"):
         self.name, self.source, self.cache_file = "Prov", source, cache_file
         self._tracks = tracks

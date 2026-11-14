@@ -19,8 +19,16 @@ services:
     ports:
       # Web GUI at http://<host>:8888 (host 8888 -> container 8080).
       # LAN-only — do NOT port-forward this to the internet (the UI has no login).
-      - "8888:8080"
+      - "${SONGMIRROR_BIND_ADDRESS:-127.0.0.1}:8888:8080"
+    user: "${SONGMIRROR_UID:-1000}:${SONGMIRROR_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:size=256m,mode=1777
     environment:
+      SONGMIRROR_UID: "${SONGMIRROR_UID:-1000}"
+      SONGMIRROR_GID: "${SONGMIRROR_GID:-1000}"
       SONGMIRROR_DATA_DIR: /data           # persistent volume for settings, tokens, caches, syncs, links
       SONGMIRROR_ENV_FILE: /data/app.env   # SettingsStore's managed env; wizard saves win over any .env
       SPOTIFY_TOKEN_CACHE: /data/spotify_token_cache
@@ -58,6 +66,7 @@ services:
       SONGMIRROR_DOWNLOAD_DIR: /music
       # Display the host music path in the built-in folder picker.
       SONGMIRROR_HOST_DOWNLOAD_DIR: "${DOWNLOAD_DIR:-}"
+      SONGMIRROR_FOLDER_ROOTS: '${SONGMIRROR_FOLDER_ROOTS:-["/data","/music"]}'
     volumes:
       - ./data:/data
       - "${DOWNLOAD_DIR:-./downloads}:/music"

@@ -19,11 +19,11 @@ export default defineConfig({
   server: {
     proxy: {
       // REST endpoints.
-      '/api': { target: BACKEND, changeOrigin: true },
+      '/api': { target: BACKEND, changeOrigin: false },
       // Server-Sent Events live feed — keep the connection open/streamed.
-      '/events': { target: BACKEND, changeOrigin: true },
+      '/events': { target: BACKEND, changeOrigin: false },
       // OAuth redirect callbacks (Spotify) land on the FastAPI app, not the SPA.
-      '/oauth': { target: BACKEND, changeOrigin: true },
+      '/oauth': { target: BACKEND, changeOrigin: false },
     },
   },
 })

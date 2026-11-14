@@ -7,6 +7,7 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from ..diagnostics import redact_data
 
 
 def utc_now():
@@ -62,7 +63,7 @@ class TransferHistory:
             snapshot[side] = {k: v for k, v in job.get(side, {}).items() if k in ENDPOINT_FIELDS}
         # Make an independent JSON snapshot; runtime callables, credentials and
         # the private original-track cache never enter this store.
-        snapshot = json.loads(json.dumps(snapshot))
+        snapshot = redact_data(json.loads(json.dumps(snapshot)))
         now = utc_now()
         snapshot.setdefault("created_at", now)
         snapshot["updated_at"] = now
@@ -100,7 +101,7 @@ class TransferHistory:
             snapshot = json.loads(row[0])
             snapshot["events"] = [json.loads(e[0]) for e in db.execute(
                 "SELECT event FROM transfer_events WHERE transfer_id=? ORDER BY sequence", (job_id,))]
-            return snapshot
+            return redact_data(snapshot)
 
     def list(self, *, status=None, account=None, provider=None, search="", after=None,
              before=None, limit=25, offset=0):
@@ -125,7 +126,7 @@ class TransferHistory:
             providers = db.execute("""SELECT source_provider FROM transfers
                 UNION SELECT dest_provider FROM transfers ORDER BY 1""").fetchall()
         # A renamed account remains filterable once, using its most recent transfer's label.
-        return {"items": [json.loads(row[0]) for row in rows], "total": total,
+        return {"items": [redact_data(json.loads(row[0])) for row in rows], "total": total,
                 "accounts": sorted({id: {"id": id, "name": name or id}
                                     for row in accounts for id, name in (tuple(row[:2]), tuple(row[2:]))
                                     if id}.values(), key=lambda a: a["name"]),

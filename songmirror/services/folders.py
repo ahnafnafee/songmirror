@@ -1,9 +1,9 @@
 """Directory selection for files written by the SongMirror server."""
 
 import os
+import json
 import re
 from pathlib import Path, PurePosixPath, PureWindowsPath
-import string
 
 
 def writable_directory(value):
@@ -36,6 +36,53 @@ class FolderBrowser:
 
     def __init__(self, settings):
         self.settings = settings
+        configured = os.getenv("SONGMIRROR_FOLDER_ROOTS", "")
+        if configured:
+            try:
+                roots = json.loads(configured)
+            except ValueError as exc:
+                raise ValueError("SONGMIRROR_FOLDER_ROOTS must be a JSON array of absolute paths.") from exc
+            if not isinstance(roots, list) or not roots or any(not isinstance(root, str) for root in roots):
+                raise ValueError("SONGMIRROR_FOLDER_ROOTS must be a nonempty JSON array of absolute paths.")
+        else:
+            roots = [str(Path.home() / "Music"), str(Path(settings.data_dir).resolve().parent / "downloads")]
+            roots += [value for value in (os.getenv("SONGMIRROR_DOWNLOAD_DIR"),
+                os.getenv("DOWNLOAD_DIR"), os.getenv("LOCAL_LIBRARY_DIR")) if value]
+        self.roots = tuple(dict.fromkeys([Path(settings.data_dir).resolve(), *[
+            self._absolute(root) for root in roots
+        ]]))
+
+    @staticmethod
+    def _absolute(value):
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            raise ValueError("Folder roots must be absolute server paths.")
+        return path.resolve()
+
+    def _root(self, path):
+        roots = [root for root in self.roots if path.is_relative_to(root)]
+        if not roots:
+            raise ValueError("Folder is outside the server's allowed locations. Configure SONGMIRROR_FOLDER_ROOTS on the server.")
+        return max(roots, key=lambda root: len(root.parts))
+
+    def directory(self, value, *, writable=False):
+        value = self.server_path(value)
+        if not isinstance(value, str) or "\0" in value or len(value) > 4096:
+            raise ValueError("Enter a valid folder path.")
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            raise ValueError("Enter a full folder path.")
+        # Admit the lexical path before filesystem resolution, so an outside
+        # UNC path cannot initiate a network lookup just to be rejected later.
+        path = Path(os.path.abspath(path))
+        self._root(path)
+        path = path.resolve()
+        self._root(path)
+        if writable:
+            return writable_directory(str(path))
+        if not path.is_dir():
+            raise ValueError("Folder not found. Choose a listed location.")
+        return path
 
     def config(self):
         container = Path('/.dockerenv').is_file()
@@ -48,11 +95,10 @@ class FolderBrowser:
         music = download_directory(self.settings)
         if music and Path(music).is_dir():
             locations.insert(0, {"name": "Music downloads", "path": str(Path(music).resolve())})
-        if os.name == "nt":
-            locations.extend({"name": f"{drive}: drive", "path": f"{drive}:\\"}
-                             for drive in string.ascii_uppercase if Path(f"{drive}:\\").is_dir())
-        else:
-            locations.append({"name": "Container filesystem" if container else "Server filesystem", "path": "/"})
+        locations.extend({"name": root.name or str(root), "path": str(root)}
+                         for root in self.roots if root.is_dir())
+        locations = list({item["path"]: item for item in locations
+                          if any(Path(item["path"]).resolve().is_relative_to(root) for root in self.roots)}.values())
         return {"mounts": mounts, "locations": locations,
                 "scope": "container" if container else "computer"}
 
@@ -73,28 +119,22 @@ class FolderBrowser:
         return value
 
     def browse(self, value=""):
-        value = self.server_path(value or str(self.settings.data_dir))
-        if not isinstance(value, str) or "\0" in value or len(value) > 4096:
-            raise ValueError("Enter a valid folder path.")
-        path = Path(value).expanduser()
-        if not path.is_absolute():
-            raise ValueError("Enter a full folder path.")
-        path = path.resolve()
-        if not path.is_dir():
-            raise ValueError("Folder not found. Choose a location or enter another path.")
+        path = self.directory(value or str(self.settings.data_dir))
+        root = self._root(path)
         directories = []
         try:
             for child in path.iterdir():
                 try:
                     if child.is_dir() and not child.name.startswith('.'):
+                        self._root(child.resolve())
                         directories.append({"name": child.name, "path": str(child)})
-                except OSError:
+                except (OSError, ValueError):
                     continue
         except PermissionError as exc:
             raise ValueError("SongMirror cannot open this folder. Choose another location or update its permissions.") from exc
         directories.sort(key=lambda child: (child["name"].casefold(), child["name"]))
-        ancestors = list(reversed(path.parents)) + [path]
-        return {"path": str(path), "parent": str(path.parent) if path.parent != path else None,
+        ancestors = [item for item in reversed(path.parents) if item.is_relative_to(root)] + [path]
+        return {"path": str(path), "parent": str(path.parent) if path != root else None,
                 "breadcrumbs": [{"name": item.name or str(item), "path": str(item)} for item in ancestors],
                 "directories": directories, "writable": os.access(path, os.W_OK | os.X_OK)}
 
@@ -105,7 +145,7 @@ class FolderBrowser:
                 or any(ord(char) < 32 or char in '<>:"/\\|?*' for char in name)
                 or re.match(r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)', name, re.I)):
             raise ValueError('Enter a folder name without path separators, reserved characters, or trailing dots or spaces.')
-        directory = writable_directory(self.server_path(parent))
+        directory = self.directory(parent, writable=True)
         child = directory / name
         try:
             child.mkdir()

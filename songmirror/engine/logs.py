@@ -12,6 +12,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from ..diagnostics import redact_data, redact_text
 
 # Track titles are arbitrary Unicode; Windows consoles default to cp1252 and
 # would crash on the first Cyrillic/CJK title without this.
@@ -40,6 +41,10 @@ class Event:
     tag: str
     message: str
     data: dict | None = None
+
+    def __post_init__(self):
+        object.__setattr__(self, "message", redact_text(self.message))
+        object.__setattr__(self, "data", redact_data(self.data))
 
 
 _sink = None
@@ -74,7 +79,7 @@ def log(message="", *, tag=None, tag_styles=("grey",)):
     if tag:
         prefix += paint(f"{tag:<6}", *tag_styles) + " "
     with _lock:
-        print(f"{prefix}{message}", flush=True)
+        print(f"{prefix}{redact_text(message)}", flush=True)
 
 
 def log_section(title, detail="", *, tag=None):

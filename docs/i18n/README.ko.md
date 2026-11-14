@@ -50,6 +50,7 @@ Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music 및 YouTube Music에 �
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -215,8 +216,9 @@ SongMirror 수동으로 다시 추가하거나 하나씩 복사하거나 라이�
 Docker 컨테이너는 권장되는 배포입니다. 웹 UI를 제공하고 일정에 따라 동기화를 실행하며 호스트에서 다시 시작됩니다. Compose는 `ghcr.io/ahnafnafee/songmirror:latest`를 가져와 `songmirror`로 실행하고 `./data`에 모든 인증 + 캐시를 유지합니다.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ docker compose logs -f           # watch it work
 
 시작하려면 `.env`이 필요하지 않습니다. 모든 것이 브라우저에서 구성되고 `./data`에 저장됩니다. OAuth, 파트너 토큰 및 API-키 설정은 모두 계정 페이지에 있습니다. 각 마법사는 서비스별 전제 조건과 정확한 콜백 URI를 설명합니다. 그런 다음 동기화 페이지에서 동기화를 구축하세요.
 
-다른 컴퓨터에서 SongMirror을 열면 `http://<server>:8888`에서 작동합니다. 기본 Spotify 연결은 붙여넣은 `sp_dc` 웹 세션을 사용하므로 개발자 앱이나 콜백 URL이 필요하지 않습니다. 의도적으로 Docker 뒤의 기존 개발자 앱 OAuth 대체 또는 역방향 프록시를 사용하는 경우 `.env`에서 브라우저에 표시되는 기본 URL을 설정하세요.
+다른 컴퓨터에서 SongMirror을 열면 `http://<server>:8888`에서 작동합니다. 기본 Spotify 연결은 붙여넣은 `sp_dc` 웹 세션을 사용하므로 개발자 앱이나 콜백 URL이 필요하지 않습니다. 의도적으로 Docker 뒤의 기존 개발자 앱 OAuth 대체 또는 역방향 프록시를 사용하는 경우 `.env`에서 브라우저에 표시되는 기본 URL을 설정하세요. Compose는 이제 기본적으로 localhost에서만 수신합니다. 신뢰할 수 있는 LAN에서 접근하려면 `.env`에 `SONGMIRROR_BIND_ADDRESS=0.0.0.0`을 설정하세요.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth
