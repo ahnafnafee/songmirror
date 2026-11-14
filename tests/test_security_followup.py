@@ -218,6 +218,24 @@ def test_folder_symlink_cannot_escape_root(tmp_path, monkeypatch):
     assert not client.get("/api/folders", params={"path": str(allowed)}).json()["directories"]
 
 
+def test_outside_folder_is_rejected_before_filesystem_resolution(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    allowed, outside = tmp_path / "allowed", tmp_path / "outside"
+    allowed.mkdir()
+    monkeypatch.setenv("SONGMIRROR_FOLDER_ROOTS", json.dumps([str(allowed)]))
+    app = create_app(settings=SettingsStore(dir=tmp_path / "data"))
+    resolve = Path.resolve
+
+    def guarded(path, *args, **kwargs):
+        if path == outside:
+            pytest.fail("Outside paths must be rejected before filesystem or network resolution")
+        return resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", guarded)
+    assert TestClient(app).get("/api/folders", params={"path": str(outside)}).status_code == 422
+
+
 def test_response_headers_cover_success_rejections_and_api_docs(tmp_path):
     client = TestClient(create_app(settings=SettingsStore(dir=tmp_path / "data")))
     for response in (client.get("/health"), client.get("/health", headers={"host": "hostile.example"}),

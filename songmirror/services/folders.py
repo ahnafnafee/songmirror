@@ -69,7 +69,14 @@ class FolderBrowser:
         value = self.server_path(value)
         if not isinstance(value, str) or "\0" in value or len(value) > 4096:
             raise ValueError("Enter a valid folder path.")
-        path = self._absolute(value)
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            raise ValueError("Enter a full folder path.")
+        # Admit the lexical path before filesystem resolution, so an outside
+        # UNC path cannot initiate a network lookup just to be rejected later.
+        path = Path(os.path.abspath(path))
+        self._root(path)
+        path = path.resolve()
         self._root(path)
         if writable:
             return writable_directory(str(path))
