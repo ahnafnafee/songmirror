@@ -10,6 +10,17 @@ from starlette.responses import JSONResponse
 
 MAX_REQUEST_BYTES = 10 * 1024 * 1024 + 64 * 1024
 
+RESPONSE_HEADERS = {
+    b"x-content-type-options": b"nosniff",
+    b"x-frame-options": b"DENY",
+    b"referrer-policy": b"no-referrer",
+    b"content-security-policy": (
+        b"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        b"img-src 'self' https: http: data: blob:; font-src 'self'; connect-src 'self'; "
+        b"object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    ),
+}
+
 
 class RequestSecurity:
     def __init__(self, app, settings):
@@ -42,6 +53,25 @@ class RequestSecurity:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
+        original_send = send
+
+        async def secure_send(message):
+            if message["type"] == "http.response.start":
+                message = dict(message)
+                response_headers = [(key, value) for key, value in message.get("headers", [])
+                                    if key.lower() not in RESPONSE_HEADERS]
+                policies = dict(RESPONSE_HEADERS)
+                if scope.get("path") in {"/docs", "/redoc", "/docs/oauth2-redirect"}:
+                    policies[b"content-security-policy"] = (
+                        b"default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+                        b"style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com 'unsafe-inline'; "
+                        b"font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; "
+                        b"connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+                    )
+                message["headers"] = response_headers + list(policies.items())
+            await original_send(message)
+
+        send = secure_send
         headers = {}
         for key, value in scope["headers"]:
             headers.setdefault(key.lower(), []).append(value.decode("latin-1"))

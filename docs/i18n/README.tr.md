@@ -50,6 +50,7 @@ Otomatik yeniden başlatmalarla kalıcı bir kurulum için:
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -215,8 +216,9 @@ SongMirror; manuel olarak tek tek şarkı eklemeye, kopyalamaya ya da kitaplığ
 Docker konteyneri önerilen dağıtım yöntemidir: web arayüzünü sunar, senkronizasyonlarınızı kendi zaman planlarına göre yürütür ve ana makineyle birlikte otomatik olarak yeniden başlar. Compose, **`ghcr.io/ahnafnafee/songmirror:latest`** imajını çeker, **`songmirror`** adıyla çalıştırır ve tüm kimlik doğrulama ile önbellekleri `./data` dizininde saklar.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ Güncellemek için `docker compose up -d --pull always` komutunu çalıştırın
 
 **Başlamak için `.env` gerekmez** — her şey tarayıcıda yapılandırılır ve `./data` altına kaydedilir. OAuth, ortak belirteci ve API anahtarı kurulumunun tümü Hesaplar sayfasındadır; her sihirbaz servise özel önkoşulları ve tam geri arama URI'sini açıklar. Daha sonra senkronizasyonlarınızı Senkronizasyon sayfasında oluşturun.
 
-SongMirror'ı başka bir bilgisayardan açmak `http://<server>:8888` adresinde çalışır. Varsayılan Spotify bağlantısı, yapıştırılan `sp_dc` web oturumunu kullanır, dolayısıyla geliştirici uygulamasına veya geri arama URL'sine ihtiyaç duymaz. Kasıtlı olarak eski geliştirici uygulaması OAuth yöntemini Docker arkasında veya ters proxy ile kullanıyorsanız, tarayıcı tarafından görülebilen temel URL'yi `.env` olarak ayarlayın:
+SongMirror'ı başka bir bilgisayardan açmak `http://<server>:8888` adresinde çalışır. Varsayılan Spotify bağlantısı, yapıştırılan `sp_dc` web oturumunu kullanır, dolayısıyla geliştirici uygulamasına veya geri arama URL'sine ihtiyaç duymaz. Kasıtlı olarak eski geliştirici uygulaması OAuth yöntemini Docker arkasında veya ters proxy ile kullanıyorsanız, tarayıcı tarafından görülebilen temel URL'yi `.env` olarak ayarlayın: Compose artık varsayılan olarak yalnızca localhost üzerinde dinler; güvenilir LAN erişimi için `.env` içinde `SONGMIRROR_BIND_ADDRESS=0.0.0.0` ayarlayın.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth

@@ -104,7 +104,7 @@ class YTMusicConnector(Connector):
                 os.replace(candidate.name, path)
         except OSError as e:
             return ConnStatus("error", f"couldn't save the YouTube Music cookies ({type(e).__name__})")
-        self._store.save({"YTMUSIC_BROWSER_AUTH": path, "YTMUSIC_PREFER_BROWSER": "1"})
+        self._store.save({"YTMUSIC_PREFER_BROWSER": "1"})
         return ConnStatus("connected", "no-quota (browser cookies) mode")
 
     def disable_browser(self) -> ConnStatus:

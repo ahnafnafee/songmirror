@@ -50,6 +50,7 @@ Soundiiz, TuneMyMusic, और FreeYourMusic का एक मुफ़्त, �
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -215,8 +216,9 @@ SongMirror आपकी प्लेलिस्ट को मैन्युअ
 Docker कंटेनर अनुशंसित परिनियोजन है: यह वेब यूआई की सेवा करता है, आपके सिंक को उनके शेड्यूल पर चलाता है, और होस्ट के साथ पुनः आरंभ करता है। Compose `ghcr.io/ahnafnafee/songmirror:latest` को खींचता है, इसे `songmirror` के रूप में चलाता है, और `./data` में सभी ऑथ + कैश को बनाए रखता है।
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ docker compose logs -f           # watch it work
 
 प्रारंभ करने के लिए किसी `.env` की आवश्यकता नहीं है - सब कुछ ब्राउज़र में कॉन्फ़िगर किया गया है और `./data` के अंतर्गत सहेजा गया है। OAuth, पार्टनर-टोकन, और API-कुंजी सेटअप सभी अकाउंट पेज पर लाइव हैं; प्रत्येक विज़ार्ड सेवा-विशिष्ट आवश्यकताएँ और सटीक कॉलबैक यूआरआई बताता है। फिर सिंक पेज पर अपने सिंक बनाएं।
 
-दूसरे कंप्यूटर से SongMirror खोलने पर `http://<server>:8888` पर काम होता है। डिफ़ॉल्ट Spotify कनेक्शन एक चिपकाए गए `sp_dc` वेब सत्र का उपयोग करता है, इसलिए इसे किसी डेवलपर ऐप या कॉलबैक यूआरएल की आवश्यकता नहीं है। यदि आप जानबूझकर लीगेसी डेवलपर-ऐप OAuth फ़ॉलबैक Docker या रिवर्स प्रॉक्सी का उपयोग करते हैं, तो ब्राउज़र-दृश्यमान आधार URL को `.env` में सेट करें:
+दूसरे कंप्यूटर से SongMirror खोलने पर `http://<server>:8888` पर काम होता है। डिफ़ॉल्ट Spotify कनेक्शन एक चिपकाए गए `sp_dc` वेब सत्र का उपयोग करता है, इसलिए इसे किसी डेवलपर ऐप या कॉलबैक यूआरएल की आवश्यकता नहीं है। यदि आप जानबूझकर लीगेसी डेवलपर-ऐप OAuth फ़ॉलबैक Docker या रिवर्स प्रॉक्सी का उपयोग करते हैं, तो ब्राउज़र-दृश्यमान आधार URL को `.env` में सेट करें: Compose अब डिफ़ॉल्ट रूप से केवल localhost पर सुनता है; विश्वसनीय स्थानीय नेटवर्क से पहुँच के लिए `.env` में `SONGMIRROR_BIND_ADDRESS=0.0.0.0` सेट करें।
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth

@@ -54,6 +54,7 @@
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -231,8 +232,9 @@ SongMirror يبقي قوائم التشغيل الخاصة بك متطابقة �
 <div dir="ltr">
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -242,7 +244,7 @@ docker compose logs -f           # watch it work
 
 ليس هناك حاجة إلى `.env` للبدء — كل شيء تم تكوينه في المتصفح وحفظه تحت `./data`. إعداد مفتاح OAuth ورمز الشريك وAPI جميعها مباشرة على صفحة الحسابات؛ يشرح كل معالج المتطلبات الأساسية الخاصة بالخدمة وURI الدقيق لرد الاتصال. ثم أنشئ عمليات المزامنة الخاصة بك على صفحة المزامنة.
 
-فتح SongMirror من كمبيوتر آخر يعمل على `http://<server>:8888`. يستخدم اتصال Spotify الافتراضي جلسة ويب `sp_dc` ملصوقة، لذلك لا يحتاج إلى تطبيق مطور أو عنوان URL لرد الاتصال. إذا كنت تستخدم عمدًا تطبيق المطور القديم OAuth الاحتياطي خلف Docker أو وكيلًا عكسيًا، فاضبط عنوان URL الأساسي المرئي للمتصفح في `.env`:
+فتح SongMirror من كمبيوتر آخر يعمل على `http://<server>:8888`. يستخدم اتصال Spotify الافتراضي جلسة ويب `sp_dc` ملصوقة، لذلك لا يحتاج إلى تطبيق مطور أو عنوان URL لرد الاتصال. إذا كنت تستخدم عمدًا تطبيق المطور القديم OAuth الاحتياطي خلف Docker أو وكيلًا عكسيًا، فاضبط عنوان URL الأساسي المرئي للمتصفح في `.env`: يرتبط Compose الآن بالمضيف المحلي افتراضيًا؛ لتمكين الوصول عبر شبكة محلية موثوقة، اضبط `SONGMIRROR_BIND_ADDRESS=0.0.0.0` في `.env`.
 
 <div dir="ltr">
 

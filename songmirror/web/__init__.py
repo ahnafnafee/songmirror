@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..services.account_profiles import AccountProfileStore
 from ..services.events import EventBus
+from ..services.folders import FolderBrowser
 from ..services.imports import ImportService
 from ..services.playlist_backups import PlaylistBackupService, PlaylistBackupStore
 from ..services.playlists import LinkStore
@@ -45,11 +46,15 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
                syncs=None, resolve_cache=None, account_profiles=None,
                playlist_backups=None, imports=None) -> FastAPI:
     install_oauth_access_log_filter()
+    # Read trusted host configuration before freezing filesystem policy.
+    load_dotenv()
     settings = settings or SettingsStore()
+    settings.restrict_to(settings_router.MANAGED_KEYS)
+    folder_browser = FolderBrowser(settings)
     bus = bus or EventBus()
     account_profiles = account_profiles or AccountProfileStore(settings)
     syncs = syncs or SyncStore(dir=Path(settings.env_path).parent, profiles=account_profiles)
-    sync_service = sync_service or SyncService(settings, bus, syncs, profiles=account_profiles)
+    sync_service = sync_service or SyncService(settings, bus, syncs, profiles=account_profiles, folders=folder_browser)
     links = links or LinkStore(dir=Path(settings.env_path).parent, profiles=account_profiles)
     transfers = transfers or TransferService(settings, bus, sync_service, profiles=account_profiles)
     resolve_cache = resolve_cache or ResolveCacheStore(
@@ -59,7 +64,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
         settings,
         sync_service,
         bus,
-        PlaylistBackupStore(settings.data_dir, profiles=account_profiles),
+        PlaylistBackupStore(settings.data_dir, profiles=account_profiles, folders=folder_browser),
         profiles=account_profiles,
     )
     imports = imports or ImportService(
@@ -76,7 +81,6 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
         # Surface the gitignored config (.env / docker env_file) to os.getenv so
         # the settings API shows the actual running defaults; the managed env
         # file + settings.json then take precedence.
-        load_dotenv()
         os.environ["SONGMIRROR_ENV_FILE"] = settings.env_path
         settings.apply_to_env()
         account_profiles.capture_environment()
@@ -98,6 +102,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
     app.add_middleware(RequestSecurity, settings=settings)
     app.state.connection_attempts = ConnectionAttempts()
     app.state.settings = settings
+    app.state.folders = folder_browser
     app.state.account_profiles = account_profiles
     app.state.bus = bus
     app.state.sync = sync_service

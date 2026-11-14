@@ -245,6 +245,13 @@ def rename_account(account_id: str, request: Request, body: dict = Body(...)):
 @router.post("/api/accounts/{account_id}/config")
 def save_config(account_id: str, request: Request, values: dict = Body(...)):
     profile = _profile(request, account_id)
+    allowed = {field.key for field in CONNECTORS[profile.provider].config_fields}
+    if profile.provider == "spotify":
+        allowed.add("SPOTIFY_AUTH_MODE")
+    if set(values) - allowed or any(not isinstance(value, str) for value in values.values()):
+        raise HTTPException(status_code=422, detail="Only this provider's connection fields can be updated.")
+    if "SPOTIFY_AUTH_MODE" in values and values["SPOTIFY_AUTH_MODE"] not in {"oauth", "cookie"}:
+        raise HTTPException(status_code=422, detail="Unsupported Spotify authentication mode.")
     request.app.state.connection_attempts.invalidate(profile.id)
     try:
         values = _conn(request, profile.id).normalize_config(values)

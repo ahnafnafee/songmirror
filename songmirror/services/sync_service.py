@@ -40,11 +40,12 @@ def next_boundary_delay(now, interval):
 
 
 class SyncService:
-    def __init__(self, settings, bus, syncs=None, profiles=None):
+    def __init__(self, settings, bus, syncs=None, profiles=None, folders=None):
         self._settings = settings
         self._bus = bus
         self._syncs = syncs or SyncStore()
         self._profiles = profiles
+        self._folders = folders
         self._running_job = None       # id of the job currently holding the lock, or None
         self._running_mode = None      # "preview" | "execute" while a pass runs
         self._active = set()           # ids running-or-queued, to coalesce duplicate triggers
@@ -84,6 +85,8 @@ class SyncService:
         # Explicit UI folder choices are validated on the server. Legacy host
         # paths still fall back to Docker's configured mount.
         opts.download_dir = download_directory(self._settings) if job.download else ""
+        if opts.download_dir and self._folders is not None:
+            opts.download_dir = str(self._folders.directory(opts.download_dir, writable=True))
         return opts
 
     async def run_job(self, job_id, execute=False):

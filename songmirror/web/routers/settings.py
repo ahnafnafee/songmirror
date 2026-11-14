@@ -6,8 +6,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 
 from ...services.accounts import CONNECTORS
 from ...services.account_profiles import PROVIDER_KEYS
-from ...services.folders import download_directory, writable_directory
-from ...services.folders import FolderBrowser
+from ...services.folders import download_directory
 from ...services.settings import VALID_CREATE_PLAYLIST_DEFAULT_SOURCES
 
 router = APIRouter()
@@ -43,6 +42,20 @@ CONFIG_KEYS = ("DISPLAY_NAME", "SYNC_MODE", "SYNC_SOURCE", "SYNC_INTERVAL", "PRO
 PUBLIC_KEYS = frozenset(CONFIG_KEYS) | {"AUTO_SYNC", "LOCAL_MIRROR_ORDER",
     "LOCAL_MIRROR_AUDIO_PROVIDERS", "LOCAL_MIRROR_BITRATE", "LOCAL_LIBRARY_DIR"}
 
+# HTTP fields are deliberately narrower than provider environment-isolation
+# keys: executable, loader, storage and security-policy options belong to the
+# host startup environment. Internal connector state can still be persisted.
+WRITABLE_KEYS = frozenset(CONFIG_KEYS) | {"AUTO_SYNC"} | {
+    field.key for cls in CONNECTORS.values() for field in cls.config_fields
+} | SECRET_KEYS
+MANAGED_KEYS = WRITABLE_KEYS | {
+    "DOWNLOAD_DIR_CONFIRMED", "APPLE_STOREFRONT", "LASTFM_AUTH_PENDING", "LASTFM_USER",
+    "SPOTIFY_AUTH_MODE", "SPOTIFY_WRITE_BACKEND", "SPOTIFY_REDIRECT_URI",
+    "TIDAL_CLIENT_ID", "TIDAL_COUNTRY_CODE", "TIDAL_REDIRECT_URI",
+    "YTMUSIC_PREFER_BROWSER", "QOBUZ_APP_ID", "QOBUZ_USER_ID", "DEEZER_APP_ID",
+    "AMAZON_MUSIC_CLIENT_ID",
+}
+
 
 @router.get("/api/settings")
 def get_settings(request: Request):
@@ -57,7 +70,13 @@ def get_settings(request: Request):
 
 @router.put("/api/settings")
 def put_settings(request: Request, values: dict = Body(...)):
+    if set(values) - WRITABLE_KEYS or any(not isinstance(value, str) or "\0" in value for value in values.values()):
+        raise HTTPException(status_code=422, detail="Only supported string settings can be updated.")
     values.pop("DOWNLOAD_DIR_CONFIRMED", None)
+    if "LOCAL_MIRROR_FORMAT" in values and values["LOCAL_MIRROR_FORMAT"] not in {
+        "", "mp3", "flac", "opus", "ogg", "m4a", "wav",
+    }:
+        raise HTTPException(status_code=422, detail="Unsupported audio format.")
     if "create_playlist_default_source" in values:
         value = values["create_playlist_default_source"]
         if not isinstance(value, str) or value not in VALID_CREATE_PLAYLIST_DEFAULT_SOURCES:
@@ -67,10 +86,10 @@ def put_settings(request: Request, values: dict = Body(...)):
             )
     if "DOWNLOAD_DIR" in values:
         try:
-            value = FolderBrowser(request.app.state.settings).server_path(values["DOWNLOAD_DIR"])
+            value = values["DOWNLOAD_DIR"]
             if not isinstance(value, str):
                 raise ValueError("Download folder must be a path.")
-            values["DOWNLOAD_DIR"] = str(writable_directory(value)) if value.strip() else ""
+            values["DOWNLOAD_DIR"] = str(request.app.state.folders.directory(value, writable=True)) if value.strip() else ""
             values["DOWNLOAD_DIR_CONFIRMED"] = "1"
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
