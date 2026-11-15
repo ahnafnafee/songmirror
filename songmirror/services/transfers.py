@@ -123,6 +123,20 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
         and getattr(source, "catalog_ids_global", True)
         and getattr(dest, "catalog_ids_global", True)
     )
+    if not same_provider and (not should_continue or should_continue() == "run"):
+        pending = [norm for norm in src
+                   if not spotify_track_keys(norm) & seen
+                   and (only_keys is None or track_key(norm["name"], norm["artist"]) in only_keys)
+                   and track_key(norm["name"], norm["artist"]) not in cache.get("manual", ())]
+        if enrich := getattr(source, "enrich_isrcs", None):
+            enrich([norm["_raw"] for norm in pending], should_continue=should_continue)
+            for norm in pending:
+                norm["isrc"] = norm["_raw"].get("isrc") or norm.get("isrc")
+        if pending and (not should_continue or should_continue() == "run"):
+            log_note(f"Matching metadata: {len(pending)} pending tracks, "
+                     f"{sum(bool(track.get('isrc')) for track in pending)} with ISRCs", tag="transfer")
+            if prefetch := getattr(dest, "prefetch", None):
+                prefetch(pending, cache)
     additions, not_found = [], []
     resolved_existing = {}
     applied_keys = set()

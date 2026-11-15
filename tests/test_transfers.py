@@ -50,6 +50,39 @@ def test_transfer_copies_matches_skips_dupes_reports_conflicts():
     # "Dup" already exists on the destination (same track_key) -> skipped, not re-added
 
 
+def test_transfer_enriches_pending_tracks_before_destination_prefetch():
+    source, added, calls = _Src(), [], []
+    destination = _dst_factory(added)
+
+    def enrich(tracks, **kwargs):
+        calls.append(("enrich", [track["id"] for track in tracks]))
+        for track in tracks:
+            track["isrc"] = "GBAYE9200070"
+
+    def prefetch(tracks, cache):
+        calls.append(("prefetch", [track["isrc"] for track in tracks]))
+
+    source.enrich_isrcs = enrich
+    destination.prefetch = prefetch
+    transfer(source, destination, {"id": "s"}, {"id": "d"},
+             {"search": {}, "isrc": {}, "dirty": False}, execute=True, max_adds=100)
+    assert calls == [("enrich", ["a", "b"]), ("prefetch", ["GBAYE9200070", "GBAYE9200070"])]
+    assert added == ["dest-Match"]
+
+
+def test_transfer_metadata_failure_prevents_destination_writes():
+    source, added = _Src(), []
+
+    def enrich(*args, **kwargs):
+        raise RuntimeError("metadata rate limited")
+
+    source.enrich_isrcs = enrich
+    with pytest.raises(RuntimeError, match="metadata rate limited"):
+        transfer(source, _dst_factory(added), {"id": "s"}, {"id": "d"},
+                 {"search": {}, "isrc": {}, "dirty": False}, execute=True, max_adds=100)
+    assert added == []
+
+
 def test_symbol_title_manual_mapping_does_not_claim_another_track():
     from songmirror.engine.matching import track_key
 

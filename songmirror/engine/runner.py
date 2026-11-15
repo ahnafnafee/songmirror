@@ -229,6 +229,8 @@ def _run_merge(opts, sp, should_continue=None):
                 source, "playlist_tracks_for_transfer", source.playlist_tracks
             )
             rows = list(reader(playlist))
+            if enrich := getattr(source, "enrich_isrcs", None):
+                enrich(rows, should_continue=ctrl)
         except Exception as exc:
             incomplete = True
             _merge_failure(agg, descriptor, str(exc) or repr(exc))
@@ -940,9 +942,14 @@ def run_pass(opts, should_continue=None):
             snap = sp_snap.get(playlist_id)
             entry = tracks_cache.get(playlist_id)
             if entry and snap and entry.get("snapshot") == snap:
+                if enrich := getattr(source, "enrich_isrcs", None):
+                    enrich(entry["tracks"], should_continue=ctrl)
+                    tracks_state["dirty"] = True
                 sp_memo[playlist_id] = entry["tracks"]  # unchanged since last pass
                 return entry["tracks"]
             tracks = source.playlist_tracks(playlist)
+            if enrich := getattr(source, "enrich_isrcs", None):
+                enrich(tracks, should_continue=ctrl)
             sp_memo[playlist_id] = tracks
             if snap:
                 tracks_cache[playlist_id] = {"snapshot": snap, "tracks": tracks}

@@ -19,6 +19,51 @@ class _BoomSp:
         raise AssertionError(f"spotipy was used for a write: {name}")
 
 
+def test_metadata_isrc_uses_web_endpoint_and_caches_native_results(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+    sc._metadata_isrc_cache.clear()
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"name": "Creep", "external_id": [{"type": "isrc", "id": "GB-AYE-92-00070"}]}
+
+    monkeypatch.setattr(sc, "_headers", lambda: {"authorization": "Bearer test"})
+    monkeypatch.setattr(sc, "polite_sleep", lambda _: None)
+    monkeypatch.setattr(sc.requests, "get", lambda url, **kwargs: (calls.append((url, kwargs)), Response())[1])
+    tid = "4uLU6hMCjMI75M1A2tKUQC"
+    try:
+        assert sc.metadata_isrcs([tid, tid]) == {tid: "GBAYE9200070"}
+        assert sc.metadata_isrcs([tid]) == {tid: "GBAYE9200070"}
+        assert len(calls) == 1
+        assert calls[0][0].endswith("/metadata/4/track/93bc414a606747b2b612491ef83d5a3e")
+        assert calls[0][1]["headers"]["authorization"] == "Bearer test"
+    finally:
+        sc._metadata_isrc_cache.clear()
+
+
+def test_metadata_isrc_rate_limit_is_not_cached_or_retried(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+    sc._metadata_isrc_cache.clear()
+    calls = []
+
+    class Response:
+        status_code = 429
+        headers = {"Retry-After": "3600"}
+
+    monkeypatch.setattr(sc, "_headers", lambda: {})
+    monkeypatch.setattr(sc.requests, "get", lambda *a, **k: (calls.append(1), Response())[1])
+    with pytest.raises(RuntimeError, match="3600"):
+        sc.metadata_isrcs(["4uLU6hMCjMI75M1A2tKUQC"])
+    assert calls == [1]
+    assert sc._metadata_isrc_cache == {}
+
+
 def _stub_cookie(monkeypatch):
     calls = []
     monkeypatch.setattr(st.spotify_cookie, "create",

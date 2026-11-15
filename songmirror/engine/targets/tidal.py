@@ -6,6 +6,7 @@ playback/download endpoints are intentionally outside this adapter.
 
 import os
 import random
+import re
 import time
 import uuid
 from urllib.parse import parse_qs, urlsplit
@@ -23,7 +24,7 @@ from ...tidal_web import (
 from .. import archive
 from ..config import REQUEST_TIMEOUT, polite_sleep
 from ..logs import log_note, log_warn
-from ..matching import normalize_text, romanized, track_key
+from ..matching import normalize_isrc, normalize_text, romanized, track_key
 from .base import MirrorTarget, TargetAuthError, TargetTransientError
 from .provider_utils import (
     best_candidate, chunks, compatible_isrc_candidates, iso_duration_ms,
@@ -104,6 +105,8 @@ class TidalTarget(MirrorTarget):
         return self._tok["access_token"]
 
     def _request(self, method, path, *, params=None, json_body=None):
+        if params and isinstance(params.get("include"), (list, tuple)):
+            params = {**params, "include": ",".join(params["include"])}
         url = path if str(path).startswith("http") else f"{API}/{str(path).lstrip('/')}"
         short = url.removeprefix(API + "/")
         attempts = 5
@@ -226,6 +229,8 @@ class TidalTarget(MirrorTarget):
                     "image": image,
                     "duration_ms": iso_duration_ms(attrs.get("duration")),
                     "isrc": attrs.get("isrc"),
+                    **({"streamable": "STREAM" in attrs["availability"]}
+                       if isinstance(attrs.get("availability"), list) else {}),
                     "added_at": meta.get("addedAt") or "",
                 }
             )
@@ -622,18 +627,21 @@ class TidalTarget(MirrorTarget):
         return (playlist.get("attributes") or {}).get("description", "") or ""
 
     def prefetch(self, source_tracks, cache):
-        isrcs = sorted({t.get("isrc") for t in source_tracks if t.get("isrc")})
+        isrcs = sorted({normalize_isrc(t.get("isrc")) for t in source_tracks if t.get("isrc")})
         missing = [isrc for isrc in isrcs if isrc not in cache["isrc"]]
+        self._prefetch_isrcs(missing, cache)
+
+    def _prefetch_isrcs(self, missing, cache):
         for group in chunks(missing, MAX_ISRC_FILTER_VALUES):
-            body = self._request(
-                "GET",
-                "tracks",
-                params={"filter[isrc]": group, "include": ["artists", "albums"], "countryCode": self.country},
-            ).json()
             found = {}
-            for candidate in self._tracks_from_body(body):
-                if candidate.get("isrc"):
-                    found.setdefault(candidate["isrc"], []).append(candidate)
+            for body in self._pages("tracks", {
+                "filter[isrc]": ",".join(group), "include": ["artists", "albums"],
+                "countryCode": self.country,
+            }):
+                for candidate in self._tracks_from_body(body):
+                    if candidate.get("isrc"):
+                        candidate["isrc"] = normalize_isrc(candidate["isrc"])
+                        found.setdefault(candidate["isrc"], []).append(candidate)
             for isrc in group:
                 cache["isrc"][isrc] = found.get(isrc, [])
             cache["dirty"] = True
@@ -661,6 +669,13 @@ class TidalTarget(MirrorTarget):
         if manual := self.manual_resolution(track, cache):
             return manual
         candidates = compatible_isrc_candidates(track, cache)
+        isrc = normalize_isrc(track.get("isrc"))
+        checked = cache.setdefault("_tidal_single_isrc", set())
+        if re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", isrc) and not candidates and isrc not in checked:
+            # Bulk lookup returns one release per ISRC; single lookup offers alternatives.
+            self._prefetch_isrcs([isrc], cache)
+            checked.add(isrc)
+            candidates = compatible_isrc_candidates(track, cache)
         if candidates:
             return best_candidate(track, candidates) or str(candidates[0]["id"]), "isrc"
         key = track_key(track.get("name", ""), " ".join(track.get("artists") or []))

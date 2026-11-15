@@ -171,6 +171,24 @@ class SpotifyTarget(MirrorTarget):
                 playlist["id"], require_isrc=False, known_isrc=known)
         return spotify.playlist_tracks(self._sp, playlist["id"])
 
+    def enrich_isrcs(self, tracks, *, should_continue=None):
+        """Enrich matching inputs only; ordinary playlist browsing stays cheap."""
+        if spotify_write_backend() != "cookie":
+            return
+        pending = [track for track in tracks if (not track.get("isrc") or track.get("_isrc_inferred"))
+                   and not track.get("unavailable") and not track.get("is_local")]
+        ids = [spotify_track_id(track["id"]) for track in pending]
+        found = spotify_cookie.metadata_isrcs(ids, should_continue=should_continue)
+        for track, tid in zip(pending, ids):
+            if found.get(tid):
+                track["isrc"] = found[tid]
+                track.pop("_isrc_inferred", None)
+
+    def resource_tracks(self, resource):
+        tracks = super().resource_tracks(resource)
+        self.enrich_isrcs(tracks)
+        return tracks
+
     @staticmethod
     def _album(data):
         if not data.get("id") or not data.get("name") or not data.get("artists"):

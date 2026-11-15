@@ -784,6 +784,7 @@ def _enrich_hard_isrcs(songs, source_key, source_tracks):
             continue
         copy = dict(track)
         copy["isrc"] = isrc
+        copy["_isrc_inferred"] = True
         enriched.append(copy)
     return enriched
 
