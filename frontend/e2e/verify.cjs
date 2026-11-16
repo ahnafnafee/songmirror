@@ -3950,12 +3950,13 @@ async function main() {
           body: JSON.stringify([{ id: 'pl_spotify_1', name: 'Road Trip 2025', count: 2389, image: svgCover('#3b6fd6') }]),
         })
       })
+      let metadataProgress = {}
       await page.route('**/api/transfers/*', async (route) => {
         if (route.request().method() !== 'GET') return route.fallback()
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ ...TRANSFER_JOB, status: 'running', total: 2389, processed: 1450, added: 1320, deferred: 0, conflicts: [] }),
+          body: JSON.stringify({ ...TRANSFER_JOB, status: 'running', total: 2389, processed: 1450, added: 1320, deferred: 0, conflicts: [], ...metadataProgress }),
         })
       })
       await page.setViewportSize({ width: 1280, height: 900 })
@@ -4003,8 +4004,16 @@ async function main() {
       console.log(`${addedOk ? 'ok        ' : 'FAIL      '} "+1,320" + "ADDED SO FAR" headline is visible`)
       if (!addedOk) results.push({ label: 'transfer added so far', overflow: true })
 
-      await checkOverflow(page, 'TransferProgress determinate bar (1450/2389) @ 1280', results)
-      await shot(page, 'transfer-progress-determinate')
+      metadataProgress = { phase: 'metadata', total: 30, processed: 15, added: 0 }
+      await page.getByText('Reading recording metadata…').waitFor()
+      const metadataBarOk = await bar.getAttribute('aria-valuenow') === '15'
+        && await bar.getAttribute('aria-valuemax') === '30'
+        && (await bar.locator('> div').getAttribute('style') ?? '').includes('50%')
+      console.log(`${metadataBarOk ? 'ok        ' : 'FAIL      '} metadata phase shows 15/30 (~50% fill)`)
+      if (!metadataBarOk) results.push({ label: 'transfer metadata progress', overflow: true })
+
+      await checkOverflow(page, 'TransferProgress metadata bar (15/30) @ 1280', results)
+      await shot(page, 'transfer-progress-metadata')
       await context.close()
     }
 

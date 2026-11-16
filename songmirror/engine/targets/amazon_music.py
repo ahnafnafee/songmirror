@@ -6,6 +6,7 @@ for existing partner installations.
 """
 
 import os
+import re
 import random
 import time
 
@@ -92,6 +93,26 @@ query SongMirrorAmazonPlaylistTracks($id: String!, $cursor: String, $limit: Floa
 WEB_SEARCH_QUERY = """
 query SongMirrorAmazonSearchTracks($field: String!, $query: String!) {
   searchTracks(searchOptions: { searchFilters: [{ field: $field, query: $query }] }) {
+    edges {
+      node {
+        id
+        title
+        isrc
+        duration
+        images { url width height imageType aspectRatio }
+        album { id title }
+        contributingArtists { edges { role node { id name } } }
+      }
+    }
+    edgeCount
+  }
+}
+"""
+
+# Track search with a second (artist) filter; see AmazonMusicTarget.resolve.
+WEB_SEARCH_TITLE_ARTIST_QUERY = """
+query SongMirrorAmazonSearchTracksByArtist($title: String!, $artist: String!) {
+  searchTracks(searchOptions: { searchFilters: [{ field: "name", query: $title }, { field: "artist", query: $artist }] }) {
     edges {
       node {
         id
@@ -674,8 +695,10 @@ class AmazonMusicTarget(MirrorTarget):
         details = self._track_details([str(node["id"]) for node in nodes if node.get("id")])
         return [_normalized_track({**node, **details.get(str(node.get("id")), {})}) for node in nodes if node.get("id")]
 
-    def prefetch(self, source_tracks, cache):
+    def prefetch(self, source_tracks, cache, *, should_continue=None):
         for isrc in sorted({t.get("isrc") for t in source_tracks if t.get("isrc")}):
+            if should_continue and should_continue() != "run":
+                return
             if isrc in cache["isrc"]:
                 continue
             # Compared through normalize_isrc: Amazon returns ISRCs in mixed
@@ -717,16 +740,43 @@ class AmazonMusicTarget(MirrorTarget):
         if key in cache["search"]:
             return self._cached_id(key, cache), "search"
         primary = (track.get("artists") or [""])[0]
-        queries = [track.get("name", "")]
-        roman = romanized(track.get("name"))
-        if roman and roman != normalize_text(queries[0]):
+        # A title-only query buries songs with common titles under unrelated
+        # same-name tracks. Amazon's "name" filter matches titles only, but a
+        # second search filter carrying the artist narrows the results to that
+        # performer, so try title+artist first, then fall back to title alone.
+        title = track.get("name", "")
+        # Spotify decorates titles ("Song (feat. X)", "Song - Original Version",
+        # "Song - 2014 Remaster") in ways Amazon's catalog often doesn't; Amazon
+        # often drops a leading "The" from band names ("The Spinners" ->
+        # "Spinners"). Search variants only widen what is fetched — every
+        # candidate is still validated by best_candidate (version + length).
+        base_title = re.sub(r"\s+-\s+.*$", "", re.sub(
+            r"\s*[\(\[](?:feat|ft|featuring|with)\b[^\)\]]*[\)\]]", "", title, flags=re.IGNORECASE
+        )).strip()
+        plain_title = re.sub(r"\s+-\s+.*$", "", re.sub(r"\s*[\(\[][^\)\]]*[\)\]]", " ", title))
+        plain_title = " ".join(plain_title.split())
+        titles = list(dict.fromkeys(t for t in (title, base_title, plain_title) if t))
+        artists = [primary] if primary else []
+        if re.match(r"(?i)the\s+\S", primary or ""):
+            artists.append(primary[4:].strip())
+        queries = []
+        if artists and getattr(self, "_web", None) is not None:
+            queries += [(t, a) for t in titles for a in artists]
+        queries += titles
+        roman = romanized(title)
+        if roman and roman != normalize_text(title):
             queries.append(roman)
+        artist_keys = [normalize_text(a) for a in artists if normalize_text(a)]
         best = None
         for query in queries:
-            candidates = self.search_candidates(query, limit=20)
-            if primary:
+            if isinstance(query, tuple):
+                candidates = self._search_title_artist(*query)
+            else:
+                candidates = self.search_candidates(query, limit=20)
+            if artist_keys:
                 candidates = [
-                    c for c in candidates if normalize_text(primary) in normalize_text(c.get("artist"))
+                    c for c in candidates
+                    if any(k in normalize_text(c.get("artist")) for k in artist_keys)
                 ] or candidates
             best = best_candidate(track, candidates)
             if best:
@@ -735,6 +785,25 @@ class AmazonMusicTarget(MirrorTarget):
         cache["dirty"] = True
         polite_sleep(0.25)
         return best, "search"
+
+    def _search_title_artist(self, title, artist, limit=50):
+        """Web-client track search with a title filter AND an artist filter."""
+        try:
+            data = self._graphql(
+                "SongMirrorAmazonSearchTracksByArtist",
+                WEB_SEARCH_TITLE_ARTIST_QUERY,
+                {"title": str(title), "artist": str(artist)},
+            )
+        except (TargetAuthError, TargetTransientError):
+            raise
+        except Exception:
+            return []
+        connection = data.get("searchTracks") or {}
+        return [
+            _normalized_track(edge.get("node") or {})
+            for edge in (connection.get("edges") or [])[:limit]
+            if (edge.get("node") or {}).get("id")
+        ]
 
     def search_candidates(self, query, *, limit=5):
         query = str(query or "").strip()

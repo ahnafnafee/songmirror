@@ -194,10 +194,11 @@ export function TransferProgress({
   const isStopped = job.status === 'stopped'
   const unavailable = job.unavailable ?? 0
   // `total` is 0 until the source playlist finishes reading; only then can the
-  // bar go determinate. `processed` counts source tracks examined, not tracks
-  // added (misses and already-present tracks still advance the scan).
+  // bar go determinate. `processed` counts tracks examined in the current
+  // metadata or matching phase, including cached results and misses.
   const hasTotal = job.total > 0
   const isCopying = job.phase === 'copying'
+  const isMetadata = job.phase === 'metadata'
   // Older servers counted queued additions as if they had already been written.
   // Show an indeterminate writing phase until confirmed counts are available.
   const legacyCopying = !job.phase && hasTotal && job.processed >= job.total
@@ -283,7 +284,7 @@ export function TransferProgress({
               <span className="font-mono text-[28px] font-bold leading-none text-success">+{formatNumber(job.added)}</span>
               <span className="font-mono text-[10px] tracking-[0.1em] text-text-3">{t("ADDED SO FAR")}</span>
             </div>
-          ) : !isCopying ? (
+          ) : !isCopying && !isMetadata ? (
             // Nothing's landed yet — a prominent "+0" reads as broken, so this
             // stays a subtle status line until the count has something to show,
             // then the live counter above takes over. The label distinguishes
@@ -301,7 +302,13 @@ export function TransferProgress({
               <span>{t('Copying tracks…')} <span className="font-mono">{formatNumber(progressNow)} / {formatNumber(progressMax)}</span></span>
             </div>
           )}
-          {hasTotal && (
+          {isMetadata && (
+            <div className="flex items-center gap-2 text-sm text-text-2">
+              {isRunning && <Spinner className="size-3.5 shrink-0" aria-hidden="true" />}
+              <span>{t('Reading recording metadata…')} <span className="font-mono">{formatNumber(progressNow)} / {formatNumber(progressMax)}</span></span>
+            </div>
+          )}
+          {hasTotal && !isMetadata && (
             <div className="flex items-baseline gap-1.5">
               <span className="font-mono text-sm font-semibold text-text-2">
                 {formatNumber(job.processed)} / {formatNumber(job.total)}

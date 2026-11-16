@@ -245,6 +245,11 @@ def _has_credit(credit, artists):
     return f" {romanized(credit)} " in f" {romanized(artists)} "
 
 
+def _credit_spelling(value):
+    """Normalize an internal dollar used as S in a performer credit."""
+    return re.sub(r"(?<=[A-Za-z])\$(?=[A-Za-z])", "s", str(value or ""))
+
+
 def recording_version_signature(name):
     """Recording family plus named mix, venue, or version-number qualifiers.
 
@@ -277,10 +282,10 @@ def recording_versions_compatible(name, artists, cand_name, cand_artists):
         artists = [artists]
     if isinstance(cand_artists, str):
         cand_artists = [cand_artists]
-    credits = " ".join([*(artists or []), *features])
-    cand_credits = " ".join([*(cand_artists or []), *cand_features])
-    return all(_has_credit(guest, cand_credits) for guest in features) and all(
-        _has_credit(guest, credits) for guest in cand_features
+    credits = _credit_spelling(" ".join([*(artists or []), *features]))
+    cand_credits = _credit_spelling(" ".join([*(cand_artists or []), *cand_features]))
+    return all(_has_credit(_credit_spelling(guest), cand_credits) for guest in features) and all(
+        _has_credit(_credit_spelling(guest), credits) for guest in cand_features
     )
 
 
@@ -289,9 +294,13 @@ def track_artist(track):
     return track.get("artist") or ", ".join(track.get("artists") or [])
 
 
-def track_key(name, artist):
+def track_key(name, artist, *, stylized_credit=False):
     credits = str(artist or "")
+    if stylized_credit:
+        credits = _credit_spelling(credits)
     for guest in featured_artists(name):
+        if stylized_credit:
+            guest = _credit_spelling(guest)
         if not _has_credit(guest, credits):
             credits += " " + guest
     return f"{loose_name(name)}|{normalize_text(credits)}"
@@ -334,6 +343,10 @@ def _artist_variants(track):
             romanized(joined),
             normalize_text(display),
             romanized(display),
+            normalize_text(_credit_spelling(joined)),
+            romanized(_credit_spelling(joined)),
+            normalize_text(_credit_spelling(display)),
+            romanized(_credit_spelling(display)),
         )
         if variant
     }
@@ -341,6 +354,10 @@ def _artist_variants(track):
     # M|A|R|R|S vs MARRS). Keep the ordinary tokenized forms too so multi-artist
     # subset matching still behaves as before.
     variants.update(variant.replace(" ", "") for variant in list(variants))
+    # "Treacherous Three" vs "The Treacherous Three": a leading
+    # article alone must not push a correct performer under the threshold.
+    variants.update(variant[4:] for variant in list(variants)
+                    if variant.startswith("the ") and len(variant) > 4)
     return variants
 
 
@@ -404,7 +421,7 @@ def _artist_similarity(track, candidate):
     )
 
 
-def recording_metadata_compatible(track, candidate):
+def recording_metadata_compatible(track, candidate, *, compare_artists=True):
     """Reject explicit recording conflicts, including on ID and archive paths.
 
     Missing metadata cannot disprove a hard identifier. Known performer or
@@ -416,16 +433,16 @@ def recording_metadata_compatible(track, candidate):
         candidate.get("name"), candidate.get("artists") or candidate.get("artist"),
     ):
         return False
-    return recording_performance_compatible(track, candidate)
+    return recording_performance_compatible(track, candidate, compare_artists=compare_artists)
 
 
-def recording_performance_compatible(track, candidate):
+def recording_performance_compatible(track, candidate, *, compare_artists=True):
     """Whether usable performer and duration evidence can describe the same audio.
 
     Historical hard identities tolerate mutable version labels, but must not
     equate a different performer or a materially different recording length.
     """
-    if _artist_names(track) and _artist_names(candidate) and _artist_similarity(track, candidate) < FUZZY_THRESHOLD:
+    if compare_artists and _artist_names(track) and _artist_names(candidate) and _artist_similarity(track, candidate) < FUZZY_THRESHOLD:
         return False
     duration, candidate_duration = track.get("duration_ms"), candidate.get("duration_ms")
     if duration is not None and candidate_duration is not None:
@@ -466,12 +483,24 @@ def score_candidate(name, artists, duration_ms, cand_name, cand_artist, cand_dur
     score = 0.45 * name_sim + 0.35 * artist_sim + 0.20 * duration_score
     strong = duration_close and name_sim >= 0.78 and artist_sim >= FUZZY_THRESHOLD
     fuzzy = name_strict >= 0.88 and artist_sim >= FUZZY_THRESHOLD
-    return score, (strong or fuzzy)
+    # Reuse same_catalog_recording's rule for search results: a
+    # remaster-year / clean / explicit catalog decoration with the same artist
+    # and a near-identical length is the same audio ("Plush (2017 Remaster)").
+    catalog = (
+        duration_ms is not None and cand_duration_ms is not None
+        and abs(duration_ms - cand_duration_ms) <= CATALOG_DURATION_TOLERANCE_MS
+        and artist_sim >= FUZZY_THRESHOLD
+        and bool(catalog_name(name)) and catalog_name(name) == catalog_name(cand_name)
+    )
+    return score, (strong or fuzzy or catalog)
 
 
 def spotify_track_keys(track):
-    keys = {track_key(track["name"], artist) for artist in track["artists"]}
-    keys.add(track_key(track["name"], " ".join(track["artists"])))
+    credits = [*track["artists"], " ".join(track["artists"])]
+    # Keep existing cache/search keys while adding a cross-provider spelling
+    # alias: Asap Rocky and A$AP Rocky must not create separate playlist copies.
+    keys = {track_key(track["name"], artist) for artist in credits}
+    keys.update(track_key(track["name"], artist, stylized_credit=True) for artist in credits)
     return keys
 
 

@@ -444,8 +444,10 @@ class DeezerTarget(MirrorTarget):
     def playlist_description(self, playlist):
         return playlist.get("description", "") or ""
 
-    def prefetch(self, source_tracks, cache):
+    def prefetch(self, source_tracks, cache, *, should_continue=None):
         for isrc in sorted({t.get("isrc") for t in source_tracks if t.get("isrc")}):
+            if should_continue and should_continue() != "run":
+                return
             if isrc in cache["isrc"]:
                 continue
             try:

@@ -773,6 +773,7 @@
   "queued": "がキューに入れられました",
   "Raw request headers": "生のリクエストヘッダー",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "{{total, number}} 件中 {{current, number}} 件目のプレイリストを読み込み中: {{playlist}}",
+  "Reading recording metadata…": "録音のメタデータを読み込み中…",
   "Reading source playlist…": "ソース プレイリストを読み取り中…",
   "Reading the playlist list…": "プレイリスト一覧を読み込み中…",
   "Reading the source playlist": "ソースプレイリストの読み込み",

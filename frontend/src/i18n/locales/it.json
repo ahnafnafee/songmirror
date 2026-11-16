@@ -779,6 +779,7 @@
   "queued": "in coda",
   "Raw request headers": "Intestazioni della richiesta grezza",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "Lettura della playlist {{current, number}} di {{total, number}}: {{playlist}}",
+  "Reading recording metadata…": "Lettura dei metadati delle registrazioni…",
   "Reading source playlist…": "Lettura della playlist sorgente…",
   "Reading the playlist list…": "Lettura dell'elenco delle playlist…",
   "Reading the source playlist": "Lettura della playlist sorgente",

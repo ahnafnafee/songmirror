@@ -9,11 +9,47 @@ from songmirror.engine import archive
 from songmirror.engine.config import parse_interval
 from songmirror.engine.matching import (
     compute_diff, loose_name, normalize_canonical_id, normalize_isrc,
-    normalize_text, protect_removals, romanized, score_candidate, track_key,
+    normalize_text, protect_removals, recording_metadata_compatible,
+    romanized, score_candidate, spotify_track_keys, track_key,
 )
 from songmirror.engine.spotify import playlist_item_track
 
 CID = "catalog"
+
+
+def test_stylized_guest_alias_keeps_existing_search_keys():
+    track = {
+        "name": "Hands on the Wheel (feat. Asap Rocky)",
+        "artists": ["ScHoolboy Q", "A$AP Rocky"],
+    }
+    other = {
+        "name": "Hands On The Wheel (feat. A$AP Rocky)",
+        "artists": ["ScHoolboy Q"],
+    }
+    legacy = "hands on the wheel|schoolboy q a ap rocky asap rocky"
+    assert track_key(track["name"], " ".join(track["artists"])) == legacy
+    assert legacy in spotify_track_keys(track)
+    assert spotify_track_keys(track) & spotify_track_keys(other)
+
+
+@pytest.mark.parametrize("change", ["guest", "version", "duration"])
+def test_stylized_credit_alias_still_rejects_different_recordings(change):
+    original = {
+        "name": "Hands on the Wheel (feat. Asap Rocky)",
+        "artists": ["ScHoolboy Q"], "duration_ms": 197131,
+    }
+    candidate = {
+        "name": "Hands On The Wheel (feat. A$AP Rocky)",
+        "artists": ["ScHoolboy Q"], "duration_ms": 197132,
+    }
+    assert recording_metadata_compatible(original, candidate)
+    if change == "guest":
+        candidate["name"] = "Hands On The Wheel (feat. A$AP Ferg)"
+    elif change == "version":
+        candidate["name"] += " - Live"
+    else:
+        candidate["duration_ms"] = 250000
+    assert not recording_metadata_compatible(original, candidate)
 
 
 def sp(name, artist, isrc, added, dur=200_000, tid=None):

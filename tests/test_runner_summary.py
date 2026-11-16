@@ -327,6 +327,11 @@ def test_oneway_liked_tracks_use_each_destinations_selected_resource(monkeypatch
             return [{"id": "sp-one", "name": "One", "artist": "Artist", "artists": ["Artist"]}]
 
         @staticmethod
+        def enrich_isrcs(tracks, **kwargs):
+            liked_reads.append("enrich")
+            tracks[0]["isrc"] = "USAAA2600001"
+
+        @staticmethod
         def track_id(track):
             return track["id"]
 
@@ -368,6 +373,7 @@ def test_oneway_liked_tracks_use_each_destinations_selected_resource(monkeypatch
     seen = {}
 
     def capture(target, source_tracks, source_resource, target_resource, *_args, **_kwargs):
+        assert source_tracks[0]["isrc"] == "USAAA2600001"
         seen[target.source] = {
             "source_kind": source_resource["_kind"],
             "target_kind": target_resource.get("_kind", "playlist"),
@@ -400,7 +406,7 @@ def test_oneway_liked_tracks_use_each_destinations_selected_resource(monkeypatch
     ))
 
     assert summary["ok"] is True
-    assert liked_reads == ["read"]
+    assert liked_reads == ["read", "enrich"]
     assert playlist_list_reads == ["apple"]
     assert seen == {
         "tidal": {

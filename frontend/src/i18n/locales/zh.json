@@ -773,6 +773,7 @@
   "queued": "已排队",
   "Raw request headers": "原始请求标头",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "正在读取第 {{current, number}}/{{total, number}} 个播放列表：{{playlist}}",
+  "Reading recording metadata…": "正在读取录音元数据…",
   "Reading source playlist…": "正在读取源播放列表...",
   "Reading the playlist list…": "正在读取播放列表清单…",
   "Reading the source playlist": "读取源播放列表",

@@ -3,7 +3,7 @@
 import html
 import re
 
-from ..matching import normalize_text, recording_metadata_compatible, score_candidate
+from ..matching import normalize_isrc, normalize_text, recording_metadata_compatible, score_candidate
 
 
 def title_with_version(title, version):
@@ -15,16 +15,33 @@ def title_with_version(title, version):
     return f"{title} ({version.strip('()[] ')})".strip()
 
 
+def _isrc_metadata_compatible(track, candidate):
+    source_isrc = normalize_isrc(track.get("isrc"))
+    candidate_isrc = normalize_isrc(candidate.get("isrc"))
+    if (re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", source_isrc)
+            and re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", candidate_isrc)
+            and source_isrc != candidate_isrc):
+        return False
+    if (re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", source_isrc)
+            and not track.get("_raw", track).get("_isrc_inferred")
+            and not candidate.get("_isrc_inferred")
+            and source_isrc == candidate_isrc):
+        # Native recording equality survives translated performer credits.
+        return recording_metadata_compatible(track, candidate, compare_artists=False)
+    return recording_metadata_compatible(track, candidate)
+
+
 def compatible_isrc_candidates(track, cache):
     """Use an ISRC crosswalk only when its known recording metadata agrees.
 
-    A cached identifier cannot bypass performer, version, or duration conflicts
-    that would reject the same candidate during a fresh search.
+    Equal native ISRCs tolerate translated credits; version and duration checks
+    still apply. Candidates without native evidence keep the strict artist guard.
     """
     return [
-        candidate for candidate in cache["isrc"].get(track.get("isrc") or "", [])
+        candidate for candidate in cache["isrc"].get(normalize_isrc(track.get("isrc")), [])
         if candidate and candidate.get("id")
-        and recording_metadata_compatible(track, candidate)
+        and candidate.get("streamable") is not False
+        and _isrc_metadata_compatible(track, candidate)
     ]
 
 
@@ -60,6 +77,8 @@ def best_candidate(track, candidates):
     """Return the id of the highest-scoring acceptable normalized candidate."""
     best_id, best_score = None, -1.0
     for candidate in candidates:
+        if candidate.get("streamable") is False:
+            continue
         score, acceptable = score_candidate(
             track.get("name", ""),
             track.get("artists") or [track.get("artist", "")],

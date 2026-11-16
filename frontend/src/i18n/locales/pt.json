@@ -779,6 +779,7 @@
   "queued": "na fila",
   "Raw request headers": "Cabeçalhos de solicitação bruta",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "Lendo a playlist {{current, number}} de {{total, number}}: {{playlist}}",
+  "Reading recording metadata…": "Lendo metadados das gravações…",
   "Reading source playlist…": "Lendo a playlist fonte…",
   "Reading the playlist list…": "Lendo a lista de playlists…",
   "Reading the source playlist": "Lendo a playlist de origem",

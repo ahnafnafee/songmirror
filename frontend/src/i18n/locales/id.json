@@ -773,6 +773,7 @@
   "queued": "mengantri",
   "Raw request headers": "Header permintaan mentah",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "Membaca playlist {{current, number}} dari {{total, number}}: {{playlist}}",
+  "Reading recording metadata…": "Membaca metadata rekaman…",
   "Reading source playlist…": "Membaca playlist sumber…",
   "Reading the playlist list…": "Membaca daftar playlist…",
   "Reading the source playlist": "Membaca playlist sumber",

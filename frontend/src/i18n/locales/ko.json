@@ -773,6 +773,7 @@
   "queued": "대기 중",
   "Raw request headers": "원시 요청 헤더",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "재생목록 {{total, number}}개 중 {{current, number}}번째 읽는 중: {{playlist}}",
+  "Reading recording metadata…": "녹음 메타데이터 읽는 중…",
   "Reading source playlist…": "소스 재생목록을 읽는 중…",
   "Reading the playlist list…": "재생목록 목록을 읽는 중…",
   "Reading the source playlist": "소스 재생목록 읽기",
