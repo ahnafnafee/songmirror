@@ -51,6 +51,7 @@ class TidalTarget(MirrorTarget):
     name = "TIDAL"
     tag = "tidal"
     source = "tidal"
+    transfer_batch_size = 1  # Report confirmed writes and check Pause/Stop between tracks.
     stable_occurrence_ids = True
     favorite_tracks_name = "Favorite Tracks"
     supports_saved_albums = True

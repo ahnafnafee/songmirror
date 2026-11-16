@@ -852,6 +852,36 @@ def test_transfer_reports_progress():
     assert calls[-1] == (3, 3, 1)                           # every track scanned, 1 added
 
 
+@pytest.mark.parametrize("pause_after_first", [False, True])
+def test_tidal_transfer_reports_each_confirmed_write(monkeypatch, pause_after_first):
+    from songmirror.engine.targets.tidal import TidalTarget
+
+    target = TidalTarget.__new__(TidalTarget)
+    target.playlist_tracks = lambda _: []
+    target.prefetch = lambda *_: None
+    target.resolve = lambda track, _: (track["_raw"]["id"], "isrc")
+    written, progress = [], []
+
+    def request(method, path, *, json_body):
+        assert method == "POST" and path == "playlists/d/relationships/items"
+        assert progress[-1] == (len(written), 3)
+        written.append(json_body["data"][0]["id"])
+
+    target._request = request
+    monkeypatch.setattr("songmirror.engine.targets.tidal.polite_sleep", lambda _: None)
+    result = transfer(
+        _Src(), target, {"id": "s"}, {"id": "d"},
+        {"search": {}, "isrc": {}, "dirty": False}, execute=True, max_adds=100,
+        on_write_progress=lambda n, total: progress.append((n, total)),
+        should_continue=lambda: "pause" if pause_after_first and written else "run",
+    )
+    expected = ["c"] if pause_after_first else ["c", "a", "b"]
+    assert written == expected
+    assert progress == [(n, 3) for n in range(len(expected) + 1)]
+    assert result["added"] == len(expected)
+    assert result["completed"] is not pause_after_first
+
+
 def test_transfer_stops_early_on_signal():
     added, progress = [], []
 
