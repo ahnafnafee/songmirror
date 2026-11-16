@@ -428,7 +428,7 @@ class AppleMusicTarget(MirrorTarget):
                 isrc = attrs.get("isrc")
                 if isrc:
                     found.setdefault(isrc, []).append({
-                        "id": song.get("id"), "name": attrs.get("name", ""),
+                        "id": song.get("id"), "name": attrs.get("name", ""), "isrc": isrc,
                         "artist": attrs.get("artistName", ""), "duration_ms": attrs.get("durationInMillis"),
                     })
             for isrc in chunk:

@@ -3063,6 +3063,22 @@ def _apple_target(request, storefront="us"):
     return target
 
 
+def test_apple_prefetch_resolves_translated_credits_by_native_isrc(monkeypatch):
+    isrc = "JPA301900123"
+    target = _apple_target(lambda *args, **kwargs: _JsonResponse({"data": [{
+        "id": "catalog-track", "attributes": {
+            "name": "Song", "artistName": "Tokyo Incidents",
+            "durationInMillis": 180000, "isrc": isrc,
+        },
+    }]}))
+    target._search = lambda *_: pytest.fail("native ISRC match fell through to search")
+    monkeypatch.setattr("songmirror.engine.targets.apple.polite_sleep", lambda _: None)
+    source = {"name": "Song", "artists": ["東京事変"], "duration_ms": 180000, "isrc": isrc}
+    cache = {"isrc": {}, "search": {}, "dirty": False}
+    target.prefetch([source], cache)
+    assert cache["isrc"][isrc][0]["isrc"] == isrc
+    assert target.resolve(source, cache) == ("catalog-track", "isrc")
+
 
 @pytest.mark.parametrize("action", ["pause", "stop"])
 def test_apple_prefetch_interrupts_between_batches(monkeypatch, action):
