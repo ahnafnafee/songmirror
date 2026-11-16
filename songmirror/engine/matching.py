@@ -354,6 +354,10 @@ def _artist_variants(track):
     # M|A|R|R|S vs MARRS). Keep the ordinary tokenized forms too so multi-artist
     # subset matching still behaves as before.
     variants.update(variant.replace(" ", "") for variant in list(variants))
+    # "Treacherous Three" vs "The Treacherous Three": a leading
+    # article alone must not push a correct performer under the threshold.
+    variants.update(variant[4:] for variant in list(variants)
+                    if variant.startswith("the ") and len(variant) > 4)
     return variants
 
 
@@ -479,7 +483,16 @@ def score_candidate(name, artists, duration_ms, cand_name, cand_artist, cand_dur
     score = 0.45 * name_sim + 0.35 * artist_sim + 0.20 * duration_score
     strong = duration_close and name_sim >= 0.78 and artist_sim >= FUZZY_THRESHOLD
     fuzzy = name_strict >= 0.88 and artist_sim >= FUZZY_THRESHOLD
-    return score, (strong or fuzzy)
+    # Reuse same_catalog_recording's rule for search results: a
+    # remaster-year / clean / explicit catalog decoration with the same artist
+    # and a near-identical length is the same audio ("Plush (2017 Remaster)").
+    catalog = (
+        duration_ms is not None and cand_duration_ms is not None
+        and abs(duration_ms - cand_duration_ms) <= CATALOG_DURATION_TOLERANCE_MS
+        and artist_sim >= FUZZY_THRESHOLD
+        and bool(catalog_name(name)) and catalog_name(name) == catalog_name(cand_name)
+    )
+    return score, (strong or fuzzy or catalog)
 
 
 def spotify_track_keys(track):
