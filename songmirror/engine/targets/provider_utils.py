@@ -27,8 +27,7 @@ def _isrc_metadata_compatible(track, candidate):
             and not candidate.get("_isrc_inferred")
             and source_isrc == candidate_isrc):
         # Native recording equality survives translated performer credits.
-        track = {**track, "artists": [], "artist": ""}
-        candidate = {**candidate, "artists": [], "artist": ""}
+        return recording_metadata_compatible(track, candidate, compare_artists=False)
     return recording_metadata_compatible(track, candidate)
 
 

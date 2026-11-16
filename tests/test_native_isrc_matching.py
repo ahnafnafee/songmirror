@@ -4,6 +4,22 @@ import pytest
 
 from songmirror.engine.matching import score_candidate
 from songmirror.engine.targets.provider_utils import compatible_isrc_candidates
+from songmirror.engine.targets.tidal import TidalTarget
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("guest_present", [False, True])
+def test_native_isrc_preserves_featured_guest_evidence(reverse, guest_present):
+    titled = {"name": "Song (feat. Guest)", "artists": ["Main"]}
+    credited = {"name": "Song", "artists": ["Main", "Guest"] if guest_present else ["Main"]}
+    source, candidate = (credited, titled) if reverse else (titled, credited)
+    source = {**source, "isrc": "JPA301900123", "duration_ms": 180000}
+    candidate = {**candidate, "id": "match", "isrc": source["isrc"], "duration_ms": 180000}
+    cache = {"isrc": {source["isrc"]: [candidate]}}
+    assert compatible_isrc_candidates(source, cache) == ([candidate] if guest_present else [])
+    if guest_present:
+        target = TidalTarget.__new__(TidalTarget)
+        assert target.resolve(source, cache) == ("match", "isrc")
 
 
 @pytest.mark.parametrize(("title", "artist", "target_title", "target_artist"), [

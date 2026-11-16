@@ -404,7 +404,7 @@ def _artist_similarity(track, candidate):
     )
 
 
-def recording_metadata_compatible(track, candidate):
+def recording_metadata_compatible(track, candidate, *, compare_artists=True):
     """Reject explicit recording conflicts, including on ID and archive paths.
 
     Missing metadata cannot disprove a hard identifier. Known performer or
@@ -416,16 +416,16 @@ def recording_metadata_compatible(track, candidate):
         candidate.get("name"), candidate.get("artists") or candidate.get("artist"),
     ):
         return False
-    return recording_performance_compatible(track, candidate)
+    return recording_performance_compatible(track, candidate, compare_artists=compare_artists)
 
 
-def recording_performance_compatible(track, candidate):
+def recording_performance_compatible(track, candidate, *, compare_artists=True):
     """Whether usable performer and duration evidence can describe the same audio.
 
     Historical hard identities tolerate mutable version labels, but must not
     equate a different performer or a materially different recording length.
     """
-    if _artist_names(track) and _artist_names(candidate) and _artist_similarity(track, candidate) < FUZZY_THRESHOLD:
+    if compare_artists and _artist_names(track) and _artist_names(candidate) and _artist_similarity(track, candidate) < FUZZY_THRESHOLD:
         return False
     duration, candidate_duration = track.get("duration_ms"), candidate.get("duration_ms")
     if duration is not None and candidate_duration is not None:
