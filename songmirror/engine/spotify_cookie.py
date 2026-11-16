@@ -558,17 +558,21 @@ def search_tracks(query, limit=8):
     return out
 
 
-def metadata_isrcs(ids, *, should_continue=None):
+def metadata_isrcs(ids, *, should_continue=None, on_progress=None):
     """Native recording identifiers without the developer REST API.
 
     Cache successful absences, but never cache transport or protocol failures.
     """
     alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
     ids = list(dict.fromkeys(ids))
+    if ids and on_progress:
+        on_progress(0, len(ids))
     for index, tid in enumerate(ids, 1):
         if should_continue and should_continue() != "run":
             break
         if tid in _metadata_isrc_cache:
+            if on_progress:
+                on_progress(index, len(ids))
             continue
         if not re.fullmatch(r"[A-Za-z0-9]{22}", str(tid)):
             raise ValueError("Invalid Spotify catalog track id for metadata lookup")
@@ -602,6 +606,8 @@ def metadata_isrcs(ids, *, should_continue=None):
                 log_note(f"Spotify recording metadata: {index}/{len(ids)}", tag="spotify")
             polite_sleep(0.2)
             break
+        if on_progress:
+            on_progress(index, len(ids))
     return {tid: _metadata_isrc_cache[tid] for tid in ids if tid in _metadata_isrc_cache}
 
 

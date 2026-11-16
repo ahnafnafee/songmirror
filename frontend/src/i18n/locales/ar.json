@@ -797,6 +797,7 @@
   "queued": "في قائمة الانتظار",
   "Raw request headers": "رؤوس الطلبات الأولية",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "قراءة قائمة التشغيل {{current, number}} من {{total, number}}: {{playlist}}",
+  "Reading recording metadata…": "جارٍ قراءة بيانات التسجيل…",
   "Reading source playlist…": "قراءة قائمة التشغيل المصدر...",
   "Reading the playlist list…": "جارٍ قراءة قائمة قوائم التشغيل…",
   "Reading the source playlist": "قراءة قائمة التشغيل المصدر",

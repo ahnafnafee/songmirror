@@ -37,9 +37,13 @@ def test_metadata_isrc_uses_web_endpoint_and_caches_native_results(monkeypatch):
     monkeypatch.setattr(sc, "polite_sleep", lambda _: None)
     monkeypatch.setattr(sc.requests, "get", lambda url, **kwargs: (calls.append((url, kwargs)), Response())[1])
     tid = "4uLU6hMCjMI75M1A2tKUQC"
+    progress = []
     try:
-        assert sc.metadata_isrcs([tid, tid]) == {tid: "GBAYE9200070"}
-        assert sc.metadata_isrcs([tid]) == {tid: "GBAYE9200070"}
+        assert sc.metadata_isrcs([tid, tid], on_progress=lambda n, total: progress.append((n, total))) == {tid: "GBAYE9200070"}
+        assert progress == [(0, 1), (1, 1)]
+        progress.clear()
+        assert sc.metadata_isrcs([tid], on_progress=lambda n, total: progress.append((n, total))) == {tid: "GBAYE9200070"}
+        assert progress == [(0, 1), (1, 1)]
         assert len(calls) == 1
         assert calls[0][0].endswith("/metadata/4/track/93bc414a606747b2b612491ef83d5a3e")
         assert calls[0][1]["headers"]["authorization"] == "Bearer test"
@@ -62,6 +66,38 @@ def test_metadata_isrc_rate_limit_is_not_cached_or_retried(monkeypatch):
         sc.metadata_isrcs(["4uLU6hMCjMI75M1A2tKUQC"])
     assert calls == [1]
     assert sc._metadata_isrc_cache == {}
+
+
+def test_metadata_progress_stops_at_last_completed_track(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+
+    monkeypatch.setattr(sc, "_metadata_isrc_cache", {"first": "GBAYE9200070", "second": None})
+    progress = []
+    result = sc.metadata_isrcs(
+        ["first", "second"],
+        on_progress=lambda n, total: progress.append((n, total)),
+        should_continue=lambda: "pause" if progress[-1][0] == 1 else "run",
+    )
+    assert progress == [(0, 2), (1, 2)]
+    assert result == {"first": "GBAYE9200070", "second": None}
+
+
+def test_metadata_enrichment_forwards_progress_for_missing_isrcs(monkeypatch):
+    monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
+    tracks = [{"id": "missing"}, {"id": "known", "isrc": "GBAYE9200070"}]
+    progress = []
+
+    def metadata(ids, *, should_continue, on_progress):
+        assert ids == ["missing"]
+        on_progress(0, 1)
+        on_progress(1, 1)
+        return {"missing": "JPA301900123"}
+
+    monkeypatch.setattr(st.spotify_cookie, "metadata_isrcs", metadata)
+    SpotifyTarget(None, "cache.json").enrich_isrcs(
+        tracks, on_progress=lambda n, total: progress.append((n, total)))
+    assert progress == [(0, 1), (1, 1)]
+    assert tracks[0]["isrc"] == "JPA301900123"
 
 
 def _stub_cookie(monkeypatch):

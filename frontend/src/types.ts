@@ -622,13 +622,13 @@ export interface TransferJob {
   chronology_replayed?: number
   /** Hidden source relationships skipped because the provider exposes no metadata. */
   unavailable?: number
-  /** Total source tracks to examine, or 0 before the source playlist has been
-   * read (the progress bar stays indeterminate until then). */
+  /** Tracks to examine in the current metadata or matching phase, or 0
+   * before the source playlist has been read. */
   total: number
-  /** Source tracks examined so far (0..total) — drives the determinate bar. */
+  /** Tracks examined in the current phase (0..total). */
   processed: number
   /** Writing progress is separate from reading and matching the source. */
-  phase?: 'waiting' | 'reading' | 'matching' | 'copying'
+  phase?: 'waiting' | 'reading' | 'metadata' | 'matching' | 'copying'
   written?: number
   write_total?: number
   conflicts: TransferConflict[]

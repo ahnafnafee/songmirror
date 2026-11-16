@@ -779,6 +779,7 @@
   "queued": "en file d'attente",
   "Raw request headers": "En-têtes de requête bruts",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "Lecture de la playlist {{current, number}} sur {{total, number}} : {{playlist}}",
+  "Reading recording metadata…": "Lecture des métadonnées des enregistrements…",
   "Reading source playlist…": "Lecture de la liste de lecture source…",
   "Reading the playlist list…": "Lecture de la liste des playlists…",
   "Reading the source playlist": "Lecture de la playlist source",

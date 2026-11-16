@@ -56,6 +56,7 @@ def test_transfer_enriches_pending_tracks_before_destination_prefetch():
 
     def enrich(tracks, **kwargs):
         calls.append(("enrich", [track["id"] for track in tracks]))
+        kwargs["on_progress"](1, len(tracks))
         for track in tracks:
             track["isrc"] = "GBAYE9200070"
 
@@ -64,9 +65,14 @@ def test_transfer_enriches_pending_tracks_before_destination_prefetch():
 
     source.enrich_isrcs = enrich
     destination.prefetch = prefetch
+    metadata_progress, matching_progress = [], []
     transfer(source, destination, {"id": "s"}, {"id": "d"},
-             {"search": {}, "isrc": {}, "dirty": False}, execute=True, max_adds=100)
+             {"search": {}, "isrc": {}, "dirty": False}, execute=True, max_adds=100,
+             on_metadata_progress=lambda n, total: metadata_progress.append((n, total)),
+             on_progress=lambda n, total, added: matching_progress.append((n, total)))
     assert calls == [("enrich", ["a", "b"]), ("prefetch", ["GBAYE9200070", "GBAYE9200070"])]
+    assert metadata_progress == [(1, 2)]
+    assert matching_progress[1] == (0, 3)  # restore the source total after metadata preparation
     assert added == ["dest-Match"]
 
 

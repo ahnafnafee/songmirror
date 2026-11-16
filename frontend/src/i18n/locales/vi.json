@@ -773,6 +773,7 @@
   "queued": "đã xếp hàng",
   "Raw request headers": "Tiêu đề yêu cầu thô",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "Đang đọc danh sách phát {{current, number}}/{{total, number}}: {{playlist}}",
+  "Reading recording metadata…": "Đang đọc siêu dữ liệu bản thu…",
   "Reading source playlist…": "Đang đọc danh sách phát nguồn…",
   "Reading the playlist list…": "Đang đọc danh sách các danh sách phát…",
   "Reading the source playlist": "Đọc danh sách phát nguồn",

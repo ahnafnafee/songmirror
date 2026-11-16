@@ -763,6 +763,7 @@
   "Read loved recordings and playlists by username; add a user token to receive them.": "Read loved recordings and playlists by username; add a user token to receive them.",
   "Read-only": "Read-only",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}",
+  "Reading recording metadata…": "Reading recording metadata…",
   "Reading source playlist…": "Reading source playlist…",
   "Reading the playlist list…": "Reading the playlist list…",
   "Reading the source playlist": "Reading the source playlist",

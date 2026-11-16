@@ -773,6 +773,7 @@
   "queued": "in der Warteschlange",
   "Raw request headers": "Rohe Anforderungsheader",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "Playlist {{current, number}} von {{total, number}} wird gelesen: {{playlist}}",
+  "Reading recording metadata…": "Aufnahmemetadaten werden gelesen…",
   "Reading source playlist…": "Quell-Playlist wird gelesen…",
   "Reading the playlist list…": "Playlist-Liste wird gelesen…",
   "Reading the source playlist": "Lesen der Quell-Playlist",
