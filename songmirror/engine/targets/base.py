@@ -1649,6 +1649,8 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             provider_rows = _resource_call(
                 p, "resource_tracks", "playlist_tracks", playlists[p.source]
             )
+            if enrich := getattr(p, "enrich_isrcs", None):
+                enrich(provider_rows, should_continue=should_continue)
         except TargetAuthError:
             raise
         except Exception as e:
@@ -1681,11 +1683,9 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                                t.get("artist") or ", ".join(t.get("artists") or [])] for t in raw])
         present[p.source] = {p.track_id(t) for t in raw if p.track_id(t)}
 
-    # Read every peer before assigning any identities. Spotify's signed-in web
-    # payload intentionally has no ISRC, so its tracks learn hard identities
-    # from the exact title/artist keys exposed by ISRC-rich peers in this same
-    # snapshot. This removes the developer-catalog lookup without making peer
-    # ordering part of correctness.
+    # Read every peer before assigning identities. Tracks still missing native
+    # ISRCs can learn them from exact title/artist keys in this same snapshot,
+    # without making peer ordering part of correctness.
     for p in peers:
         native = p.native_isrc_map(caches[p.source])
         for track in raw_by_source[p.source]:

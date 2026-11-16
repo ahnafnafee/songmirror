@@ -451,6 +451,29 @@ class _FakePeer:
         pass
 
 
+def test_reconcile_enriches_peer_metadata_before_archiving(tmp_path):
+    conn = archive.connect(str(tmp_path / "metadata.db"))
+    spotify, apple = _FakePeer("spotify"), _FakePeer("apple")
+    spotify.playlist_tracks = lambda _: [
+        {"id": "spotify1", "name": "Song", "artists": ["A"], "duration_ms": 1000}]
+    calls = []
+
+    def enrich(tracks, **kwargs):
+        calls.extend(track["id"] for track in tracks)
+        for track in tracks:
+            track["isrc"] = "ISRCX"
+
+    spotify.enrich_isrcs = enrich
+    caches = {source: {"isrc": {}, "search": {}, "dirty": False} for source in ("spotify", "apple")}
+    try:
+        reconcile([spotify, apple], "Mix", {"spotify": {"id": "s"}, "apple": {"id": "a"}},
+                  caches, conn, execute=True, max_removals=25, max_adds=200)
+        assert calls == ["spotify1"]
+        assert archive.get_isrcs(conn, "spotify", ["spotify1"]) == {"spotify1": "ISRCX"}
+    finally:
+        conn.close()
+
+
 def test_reconcile_uses_link_key_for_state():
     conn = archive.connect(os.path.join(tempfile.mkdtemp(), "s.db"))
     peers = [_FakePeer("spotify"), _FakePeer("apple")]

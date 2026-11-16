@@ -185,11 +185,6 @@ class SpotifyTarget(MirrorTarget):
                 track["isrc"] = found[tid]
                 track.pop("_isrc_inferred", None)
 
-    def resource_tracks(self, resource):
-        tracks = super().resource_tracks(resource)
-        self.enrich_isrcs(tracks)
-        return tracks
-
     @staticmethod
     def _album(data):
         if not data.get("id") or not data.get("name") or not data.get("artists"):

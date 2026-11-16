@@ -750,7 +750,7 @@ def test_tidal_isrc_prefetch_respects_twenty_value_api_limit(monkeypatch):
 
     def request(method, path, params=None):
         assert (method, path) == ("GET", "tracks")
-        batch_sizes.append(len(params["filter[isrc]"]))
+        batch_sizes.append(len(params["filter[isrc]"].split(",")))
         return Response()
 
     target._request = request

@@ -857,7 +857,7 @@ def test_tidal_transfer_reports_each_confirmed_write(monkeypatch, pause_after_fi
     from songmirror.engine.targets.tidal import TidalTarget
 
     target = TidalTarget.__new__(TidalTarget)
-    target.playlist_tracks = lambda _: []
+    target.playlist_tracks_for_transfer = lambda _: []
     target.prefetch = lambda *_: None
     target.resolve = lambda track, _: (track["_raw"]["id"], "isrc")
     written, progress = [], []

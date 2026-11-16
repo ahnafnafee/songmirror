@@ -914,6 +914,8 @@ def run_pass(opts, should_continue=None):
                 if memo_key in sp_memo:
                     return sp_memo[memo_key]
                 raw_tracks = source.resource_tracks(playlist)
+                if enrich := getattr(source, "enrich_isrcs", None):
+                    enrich(raw_tracks, should_continue=ctrl)
                 if src_is_spotify:
                     tracks = raw_tracks
                 else:
