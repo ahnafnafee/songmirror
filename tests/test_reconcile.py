@@ -1201,6 +1201,44 @@ class _ManyPeer:
         self.removed.append(raw)
 
 
+@pytest.mark.parametrize("mirror_source", ["tidal", "deezer"])
+@pytest.mark.parametrize("full_credit", [False, True])
+def test_stylized_guest_credit_cannot_restore_a_cleaned_duplicate(
+    tmp_path, mirror_source, full_credit,
+):
+    conn = archive.connect(str(tmp_path / "stylized-credit.db"))
+    original = {
+        "id": "original", "name": "Hands on the Wheel (feat. Asap Rocky)",
+        "artists": ["ScHoolboy Q", "A$AP Rocky"] if full_credit else ["ScHoolboy Q"],
+        "duration_ms": 197131, "isrc": "TCABZ1472036",
+    }
+    alternate = {
+        "id": "apple-copy", "name": "Hands On The Wheel (feat. A$AP Rocky)",
+        "artists": ["ScHoolboy Q"], "duration_ms": 197132,
+        "isrc": "TCABD1241479",
+    }
+    peers = [
+        _ManyPeer("spotify", [original], lambda _: "spotify-extra"),
+        _ManyPeer("apple", [alternate], lambda _: "apple-extra"),
+        _ManyPeer(mirror_source, [{**original, "id": "mirror-original"}],
+                  lambda _: "mirror-extra"),
+    ]
+    key = "group:apple,spotify:aurora"
+    for peer in peers:
+        archive.set_playlist_state(conn, key, peer.source,
+                                   {f"i:{peer._tracks[0]['isrc']}"})
+    for _ in range(2):
+        stats = reconcile(
+            peers, "Aurora", {p.source: {"id": p.source} for p in peers},
+            _caches(*(p.source for p in peers)), conn,
+            execute=True, max_adds=200, max_removals=0,
+            authority_sources={"spotify", "apple"},
+        )
+        assert stats["added"] == 0
+        assert all(not p.added and not p.removed for p in peers)
+    conn.close()
+
+
 @pytest.mark.parametrize("profiled", [False, True])
 @pytest.mark.parametrize("remembered_link_only", [False, True])
 def test_removed_song_is_not_resurrected_by_a_link_without_snapshot_isrc(
