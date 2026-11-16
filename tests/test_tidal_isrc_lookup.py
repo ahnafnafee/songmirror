@@ -25,7 +25,7 @@ def test_prefetch_follows_pages_and_encodes_batch_filter(monkeypatch):
     target.country = "GB"
     calls = []
 
-    def pages(path, params):
+    def pages(path, params, *, should_continue=None):
         calls.append((path, params))
         yield {"data": [{"id": "first", "isrc": "GB-AYE-92-00070"}]}
         yield {"data": [{"id": "second", "isrc": "JPA301900123"}]}
@@ -54,6 +54,29 @@ def test_failed_second_page_does_not_cache_missing_recordings(monkeypatch):
     with pytest.raises(RuntimeError, match="second page failed"):
         target.prefetch([{"isrc": "GBAYE9200070"}], cache)
     assert cache["isrc"] == {}
+
+
+@pytest.mark.parametrize("action", ["pause", "stop"])
+@pytest.mark.parametrize("paginated", [False, True])
+def test_prefetch_interrupts_before_next_request(monkeypatch, action, paginated):
+    target = TidalTarget.__new__(TidalTarget)
+    target.country = "GB"
+    state, calls = ["run"], []
+
+    def request(*args, **kwargs):
+        calls.append(args)
+        state[0] = action
+        return SimpleNamespace(json=lambda: {
+            "data": [], "links": {"next": "next-page"} if paginated else {},
+        })
+
+    target._request = request
+    monkeypatch.setattr("songmirror.engine.targets.tidal.polite_sleep", lambda _: None)
+    cache = {"isrc": {}, "dirty": False}
+    target.prefetch([{"isrc": f"USAAA26{n:05d}"} for n in range(41)], cache,
+                    should_continue=lambda: state[0])
+    assert len(calls) == 1
+    assert cache["isrc"] == {}  # An interrupted page sequence cannot prove a miss.
 
 
 def test_single_lookup_recovers_release_rejected_by_bulk_result():

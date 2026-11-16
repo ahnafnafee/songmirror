@@ -141,7 +141,7 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
             log_note(f"Matching metadata: {len(pending)} pending tracks, "
                      f"{sum(bool(track.get('isrc')) for track in pending)} with ISRCs", tag="transfer")
             if prefetch := getattr(dest, "prefetch", None):
-                prefetch(pending, cache)
+                prefetch(pending, cache, should_continue=should_continue)
     additions, not_found = [], []
     resolved_existing = {}
     applied_keys = set()

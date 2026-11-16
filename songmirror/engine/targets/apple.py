@@ -412,12 +412,14 @@ class AppleMusicTarget(MirrorTarget):
     def playlist_description(self, playlist):
         return (playlist.get("attributes", {}).get("description") or {}).get("standard", "")
 
-    def prefetch(self, sp_tracks, cache):
+    def prefetch(self, sp_tracks, cache, *, should_continue=None):
         """Batch-resolve ISRCs to catalog candidates via filter[isrc]. Results
         (including empties) are cached forever — ISRCs don't change."""
         isrcs = sorted({t["isrc"] for t in sp_tracks if t["isrc"]})
         missing = [i for i in isrcs if i not in cache["isrc"]]
         for chunk in _chunks(missing, 25):
+            if should_continue and should_continue() != "run":
+                return
             r = self._request("GET", f"{AMP}/catalog/{self.storefront}/songs",
                              params={"filter[isrc]": ",".join(chunk)})
             found = {}

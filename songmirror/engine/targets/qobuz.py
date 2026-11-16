@@ -413,8 +413,10 @@ class QobuzTarget(MirrorTarget):
             if str(candidate.get("isrc") or "") == isrc
         ]
 
-    def prefetch(self, source_tracks, cache):
+    def prefetch(self, source_tracks, cache, *, should_continue=None):
         for isrc in sorted({t.get("isrc") for t in source_tracks if t.get("isrc")}):
+            if should_continue and should_continue() != "run":
+                return
             if isrc in cache["isrc"]:
                 continue
             candidates = [candidate for candidate in self._search(isrc, 10) if candidate.get("isrc") == isrc]

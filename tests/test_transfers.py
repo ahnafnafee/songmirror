@@ -60,7 +60,7 @@ def test_transfer_enriches_pending_tracks_before_destination_prefetch():
         for track in tracks:
             track["isrc"] = "GBAYE9200070"
 
-    def prefetch(tracks, cache):
+    def prefetch(tracks, cache, *, should_continue=None):
         calls.append(("prefetch", [track["isrc"] for track in tracks]))
 
     source.enrich_isrcs = enrich
@@ -87,6 +87,36 @@ def test_transfer_metadata_failure_prevents_destination_writes():
         transfer(source, _dst_factory(added), {"id": "s"}, {"id": "d"},
                  {"search": {}, "isrc": {}, "dirty": False}, execute=True, max_adds=100)
     assert added == []
+
+
+@pytest.mark.parametrize("action", ["pause", "stop"])
+@pytest.mark.parametrize("provider", ["qobuz", "amazon_music", "deezer"])
+def test_transfer_interrupts_destination_prefetch(monkeypatch, provider, action):
+    from importlib import import_module
+
+    module = import_module(f"songmirror.engine.targets.{provider}")
+    cls = getattr(module, {"qobuz": "QobuzTarget", "amazon_music": "AmazonMusicTarget",
+                           "deezer": "DeezerTarget"}[provider])
+    target = cls.__new__(cls)
+    target.playlist_tracks = lambda _: []
+    state, calls = ["run"], []
+
+    def lookup(*args):
+        calls.append(args)
+        state[0] = action
+        return {} if provider == "deezer" else []
+
+    target._search = lookup
+    target._catalog_get = lookup
+    target.resolve = lambda *_: pytest.fail("resolved after interruption")
+    target.add = lambda *_: pytest.fail("wrote after interruption")
+    monkeypatch.setattr(module, "polite_sleep", lambda _: None)
+    cache = {"search": {}, "isrc": {}, "dirty": False}
+    result = transfer(_Src(), target, {"id": "s"}, {"id": "d"}, cache,
+                      execute=True, max_adds=100, should_continue=lambda: state[0])
+    assert len(calls) == 1
+    assert len(cache["isrc"]) == 1
+    assert result["completed"] is False
 
 
 def test_symbol_title_manual_mapping_does_not_claim_another_track():
@@ -858,7 +888,7 @@ def test_tidal_transfer_reports_each_confirmed_write(monkeypatch, pause_after_fi
 
     target = TidalTarget.__new__(TidalTarget)
     target.playlist_tracks_for_transfer = lambda _: []
-    target.prefetch = lambda *_: None
+    target.prefetch = lambda *_, **kwargs: None
     target.resolve = lambda track, _: (track["_raw"]["id"], "isrc")
     written, progress = [], []
 

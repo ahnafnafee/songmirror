@@ -674,8 +674,10 @@ class AmazonMusicTarget(MirrorTarget):
         details = self._track_details([str(node["id"]) for node in nodes if node.get("id")])
         return [_normalized_track({**node, **details.get(str(node.get("id")), {})}) for node in nodes if node.get("id")]
 
-    def prefetch(self, source_tracks, cache):
+    def prefetch(self, source_tracks, cache, *, should_continue=None):
         for isrc in sorted({t.get("isrc") for t in source_tracks if t.get("isrc")}):
+            if should_continue and should_continue() != "run":
+                return
             if isrc in cache["isrc"]:
                 continue
             # Compared through normalize_isrc: Amazon returns ISRCs in mixed

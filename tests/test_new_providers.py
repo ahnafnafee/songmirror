@@ -3063,6 +3063,25 @@ def _apple_target(request, storefront="us"):
     return target
 
 
+
+@pytest.mark.parametrize("action", ["pause", "stop"])
+def test_apple_prefetch_interrupts_between_batches(monkeypatch, action):
+    state, calls = ["run"], []
+
+    def request(*args, **kwargs):
+        calls.append(kwargs["params"]["filter[isrc]"])
+        state[0] = action
+        return _JsonResponse({"data": []})
+
+    target = _apple_target(request)
+    monkeypatch.setattr("songmirror.engine.targets.apple.polite_sleep", lambda _: None)
+    cache = {"isrc": {}, "dirty": False}
+    target.prefetch([{"isrc": f"USAAA26{n:05d}"} for n in range(51)], cache,
+                    should_continue=lambda: state[0])
+    assert len(calls) == 1
+    assert len(cache["isrc"]) == 25
+
+
 def test_apple_reads_a_shared_playlist_from_the_catalog_not_the_library():
     # A pasted Apple link always carries a `pl.` catalog id. The library endpoint
     # cannot open one, so fetch_playlist has to take the other route.

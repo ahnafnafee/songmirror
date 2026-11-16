@@ -320,7 +320,7 @@ class MirrorTarget:
     def playlist_description(self, playlist):
         return playlist.get("description", "")
 
-    def prefetch(self, sp_tracks, cache):
+    def prefetch(self, sp_tracks, cache, *, should_continue=None):
         """Optional batch work before resolving (Apple: bulk ISRC lookup)."""
 
     def native_isrc_map(self, cache):

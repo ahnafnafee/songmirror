@@ -158,9 +158,11 @@ class TidalTarget(MirrorTarget):
             return response
         raise TargetTransientError("TIDAL request retry budget exhausted")
 
-    def _pages(self, path, params=None):
+    def _pages(self, path, params=None, *, should_continue=None):
         next_url, next_params = path, dict(params or {})
         while next_url:
+            if should_continue and should_continue() != "run":
+                return
             body = self._request("GET", next_url, params=next_params).json()
             yield body
             link = (body.get("links") or {}).get("next")
@@ -627,22 +629,26 @@ class TidalTarget(MirrorTarget):
     def playlist_description(self, playlist):
         return (playlist.get("attributes") or {}).get("description", "") or ""
 
-    def prefetch(self, source_tracks, cache):
+    def prefetch(self, source_tracks, cache, *, should_continue=None):
         isrcs = sorted({normalize_isrc(t.get("isrc")) for t in source_tracks if t.get("isrc")})
         missing = [isrc for isrc in isrcs if isrc not in cache["isrc"]]
-        self._prefetch_isrcs(missing, cache)
+        self._prefetch_isrcs(missing, cache, should_continue=should_continue)
 
-    def _prefetch_isrcs(self, missing, cache):
+    def _prefetch_isrcs(self, missing, cache, *, should_continue=None):
         for group in chunks(missing, MAX_ISRC_FILTER_VALUES):
+            if should_continue and should_continue() != "run":
+                return
             found = {}
             for body in self._pages("tracks", {
                 "filter[isrc]": ",".join(group), "include": ["artists", "albums"],
                 "countryCode": self.country,
-            }):
+            }, should_continue=should_continue):
                 for candidate in self._tracks_from_body(body):
                     if candidate.get("isrc"):
                         candidate["isrc"] = normalize_isrc(candidate["isrc"])
                         found.setdefault(candidate["isrc"], []).append(candidate)
+            if should_continue and should_continue() != "run":
+                return
             for isrc in group:
                 cache["isrc"][isrc] = found.get(isrc, [])
             cache["dirty"] = True
