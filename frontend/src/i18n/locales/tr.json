@@ -773,6 +773,7 @@
   "queued": "sıraya alındı",
   "Raw request headers": "Ham istek başlıkları",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "{{total, number}} çalma listesinden {{current, number}}. okunuyor: {{playlist}}",
+  "Reading recording metadata…": "Kayıt meta verileri okunuyor…",
   "Reading source playlist…": "Kaynak çalma listesi okunuyor…",
   "Reading the playlist list…": "Çalma listeleri okunuyor…",
   "Reading the source playlist": "Kaynak çalma listesi okunuyor",

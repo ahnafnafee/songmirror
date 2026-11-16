@@ -779,6 +779,7 @@
   "queued": "en cola",
   "Raw request headers": "Encabezados de solicitud sin procesar",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "Leyendo la lista {{current, number}} de {{total, number}}: {{playlist}}",
+  "Reading recording metadata…": "Leyendo metadatos de la grabación…",
   "Reading source playlist…": "Leyendo la lista de reproducción fuente…",
   "Reading the playlist list…": "Leyendo la lista de listas de reproducción…",
   "Reading the source playlist": "Leyendo la lista de reproducción fuente",

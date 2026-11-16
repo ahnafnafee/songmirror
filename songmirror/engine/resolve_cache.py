@@ -12,7 +12,7 @@ from pathlib import Path
 from .track_references import normalize_track_reference
 
 
-MATCHING_CACHE_VERSION = 3
+MATCHING_CACHE_VERSION = 5
 _LOCK = threading.RLock()
 _MISSING = object()
 

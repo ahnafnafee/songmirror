@@ -773,6 +773,7 @@
   "queued": "पंक्तिबद्ध",
   "Raw request headers": "कच्चे अनुरोध शीर्षलेख",
   "Reading playlist {{current, number}} of {{total, number}}: {{playlist}}": "{{total, number}} में से प्लेलिस्ट {{current, number}} पढ़ी जा रही है: {{playlist}}",
+  "Reading recording metadata…": "रिकॉर्डिंग का मेटाडेटा पढ़ा जा रहा है…",
   "Reading source playlist…": "स्रोत प्लेलिस्ट पढ़ रहा हूं…",
   "Reading the playlist list…": "प्लेलिस्ट की सूची पढ़ी जा रही है…",
   "Reading the source playlist": "स्रोत प्लेलिस्ट पढ़ रहा हूं",

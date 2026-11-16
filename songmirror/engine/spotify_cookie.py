@@ -30,6 +30,7 @@ import requests
 
 from .config import REQUEST_TIMEOUT, polite_sleep
 from .logs import log, log_note, log_warn
+from .matching import normalize_isrc
 from .spotify_ids import track_id as spotify_track_id
 from .targets.base import TargetAuthError
 
@@ -68,6 +69,7 @@ _provider = None   # cached spotify_scraper CookieTokenProvider (lazy)
 _catalog = None    # cached spotify_scraper SpotifyClient (lazy)
 _uid = None        # cached cookie-account user id (for rootlist filing)
 _isrc_cache = {}   # track_id -> isrc|None, backfilled from /tracks (see _track_isrcs)
+_metadata_isrc_cache = {}  # native web-player metadata, separate from inferred identities
 _playlist_count_cache = {}  # playlist_id -> (revision_id, total); libraryV3 omits totals
 _PATHFINDER_TRANSIENT = (
     requests.exceptions.ConnectionError,
@@ -101,6 +103,7 @@ def reset_session():
     _catalog = None
     _uid = None
     _isrc_cache.clear()
+    _metadata_isrc_cache.clear()
     _playlist_count_cache.clear()
     if old_catalog is not None:
         try:
@@ -555,6 +558,59 @@ def search_tracks(query, limit=8):
     return out
 
 
+def metadata_isrcs(ids, *, should_continue=None, on_progress=None):
+    """Native recording identifiers without the developer REST API.
+
+    Cache successful absences, but never cache transport or protocol failures.
+    """
+    alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    ids = list(dict.fromkeys(ids))
+    if ids and on_progress:
+        on_progress(0, len(ids))
+    for index, tid in enumerate(ids, 1):
+        if should_continue and should_continue() != "run":
+            break
+        if tid in _metadata_isrc_cache:
+            if on_progress:
+                on_progress(index, len(ids))
+            continue
+        if not re.fullmatch(r"[A-Za-z0-9]{22}", str(tid)):
+            raise ValueError("Invalid Spotify catalog track id for metadata lookup")
+        value = 0
+        for char in tid:
+            value = value * 62 + alphabet.index(char)
+        if value >= 1 << 128:
+            raise ValueError("Spotify track id exceeds 128 bits")
+        url = f"{_SPCLIENT}/metadata/4/track/{value:032x}"
+        for attempt in range(2):
+            response = requests.get(url, params={"market": "from_token"},
+                                    headers=_headers(), timeout=REQUEST_TIMEOUT)
+            if response.status_code == 401 and attempt == 0:
+                _prov().invalidate()
+                continue
+            if response.status_code == 429:
+                retry = response.headers.get("Retry-After", "unspecified")
+                raise RuntimeError(f"Spotify metadata rate limited; Retry-After: {retry}. Retry later.")
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, dict) or not data.get("name"):
+                raise RuntimeError("Spotify returned incomplete track metadata")
+            external = data.get("external_id", [])
+            if not isinstance(external, list):
+                raise RuntimeError("Spotify returned invalid external identifiers")
+            isrc = next((normalize_isrc(item.get("id")) for item in external
+                         if isinstance(item, dict) and str(item.get("type", "")).lower() == "isrc"
+                         and re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", normalize_isrc(item.get("id")))), None)
+            _metadata_isrc_cache[tid] = isrc
+            if index == 1 or index % 25 == 0 or index == len(ids):
+                log_note(f"Spotify recording metadata: {index}/{len(ids)}", tag="spotify")
+            polite_sleep(0.2)
+            break
+        if on_progress:
+            on_progress(index, len(ids))
+    return {tid: _metadata_isrc_cache[tid] for tid in ids if tid in _metadata_isrc_cache}
+
+
 def _track_isrcs(ids):
     """{track_id: isrc|None} from the official catalog via a CLIENT-CREDENTIALS APP token on
     the BATCH /tracks?ids endpoint (50 ids/call). Cached in-process; only unknown ids fetch.
@@ -703,6 +759,8 @@ def _apply_playlist_isrcs(out, *, require_isrc=False, known_isrc=None):
         cached = known_isrc(ids) or {}
         for t in out:
             t["isrc"] = cached.get(t["id"])
+            if t["isrc"]:
+                t["_isrc_inferred"] = True
     if require_isrc and out:
         missing = [t["id"] for t in out if not t.get("isrc")]
         fetched = _track_isrcs(missing)

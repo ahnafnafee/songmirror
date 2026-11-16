@@ -124,6 +124,8 @@ def test_saved_manual_spotify_reference_adds_once(tmp_path, monkeypatch, backend
     """An old mapping must emit a track URI and diff against its id next pass."""
     monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", backend)
     monkeypatch.setattr(spotify_cookie, "polite_sleep", lambda *_: None)
+    monkeypatch.setattr(spotify_cookie, "metadata_isrcs",
+                        lambda *_args, **_kwargs: pytest.fail("destination read must not fetch Spotify metadata"))
     monkeypatch.setattr("songmirror.engine.targets.spotify_target.polite_sleep", lambda *_: None)
     source = {
         "id": "apple-source", "name": "Darlin' (Stereo Mix)",

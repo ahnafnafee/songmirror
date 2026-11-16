@@ -13,6 +13,7 @@ from ytmusicapi import YTMusic
 
 from songmirror.engine import archive
 from songmirror.engine.runner import load_cache
+from songmirror.engine.resolve_cache import MATCHING_CACHE_VERSION
 from songmirror.engine.targets.apple import AppleMusicTarget
 from songmirror.engine.targets.base import TargetTransientError
 from songmirror.engine.targets.spotify_target import SpotifyTarget
@@ -86,11 +87,11 @@ def test_import_honors_apple_manual_mapping_after_cache_migration(tmp_path, monk
     key = f"{name}|{artists[0]}".casefold()
     path = tmp_path / "apple-cache.json"
     monkeypatch.setenv("APPLE_CACHE_FILE", str(path))
-    path.write_text(json.dumps({"matching_version": 3, "isrc": {}, "search": {key: "old-auto"}, "manual": []}))
+    path.write_text(json.dumps({"matching_version": MATCHING_CACHE_VERSION, "isrc": {}, "search": {key: "old-auto"}, "manual": []}))
     store = ResolveCacheStore(SettingsStore(dir=tmp_path / "settings"))
     store.set("apple", key, "123456")
     persisted = json.loads(path.read_text())
-    persisted["matching_version"] = 2
+    persisted["matching_version"] = MATCHING_CACHE_VERSION - 1
     path.write_text(json.dumps(persisted))
     cache = load_cache(path)
 

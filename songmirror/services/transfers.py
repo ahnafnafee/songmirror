@@ -37,7 +37,7 @@ from .playlist_links import (
 
 def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserve_order=False,
              on_progress=None, should_continue=None, source_tracks=None, only_keys=None,
-             on_write_progress=None):
+             on_write_progress=None, on_metadata_progress=None):
     """Copy `src_pl` (on `source`) into `dest_pl` (on `dest`). Returns
     {added, deferred, chronology_replayed, unavailable,
     not_found: [{name, artist, key}], completed}.
@@ -47,6 +47,8 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
 
     `on_progress(processed, total, added)` (optional) fires after each source
     track is examined, so a caller can surface live progress against the total.
+
+    `on_metadata_progress(processed, total)` reports recording metadata preparation.
 
     `should_continue()` (optional) returns "run" | "pause" | "stop"; it's checked
     before each track and, on anything but "run", ends the copy early with
@@ -123,6 +125,23 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
         and getattr(source, "catalog_ids_global", True)
         and getattr(dest, "catalog_ids_global", True)
     )
+    if not same_provider and (not should_continue or should_continue() == "run"):
+        pending = [norm for norm in src
+                   if not spotify_track_keys(norm) & seen
+                   and (only_keys is None or track_key(norm["name"], norm["artist"]) in only_keys)
+                   and track_key(norm["name"], norm["artist"]) not in cache.get("manual", ())]
+        if enrich := getattr(source, "enrich_isrcs", None):
+            enrich([norm["_raw"] for norm in pending], should_continue=should_continue,
+                   on_progress=on_metadata_progress)
+            for norm in pending:
+                norm["isrc"] = norm["_raw"].get("isrc") or norm.get("isrc")
+            if on_progress and (not should_continue or should_continue() == "run"):
+                on_progress(unavailable_count, total, 0)
+        if pending and (not should_continue or should_continue() == "run"):
+            log_note(f"Matching metadata: {len(pending)} pending tracks, "
+                     f"{sum(bool(track.get('isrc')) for track in pending)} with ISRCs", tag="transfer")
+            if prefetch := getattr(dest, "prefetch", None):
+                prefetch(pending, cache, should_continue=should_continue)
     additions, not_found = [], []
     resolved_existing = {}
     applied_keys = set()
@@ -716,11 +735,15 @@ class TransferService:
                 job.update(phase="copying", written=written, write_total=total, added=base_added + written)
                 self._record(job, progress=True)
 
+            def metadata_progress(processed, total):
+                job.update(phase="metadata", processed=processed, total=total)
+                self._record(job, progress=True)
+
             res = transfer(src, dst, src_pl, dest_pl, cache, execute=True, max_adds=opts.max_adds,
                            preserve_order=job["preserve_order"],
                            source_tracks=job["_source_tracks"],
                            on_progress=on_progress, should_continue=lambda: job.get("_control", "run"),
-                           on_write_progress=write_progress)
+                           on_write_progress=write_progress, on_metadata_progress=metadata_progress)
             save_cache(dst.cache_file, cache)
             return res
 

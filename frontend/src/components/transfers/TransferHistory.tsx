@@ -34,6 +34,7 @@ function eventLabel(event: TransferAuditEvent) {
   if (event.status === 'running') {
     if (event.phase === 'copying') return t('Copying tracks…')
     if (event.phase === 'matching') return t('Matching tracks…')
+    if (event.phase === 'metadata') return t('Reading recording metadata…')
   }
   return TRANSFER_STATUS_STYLES[event.status].label
 }
