@@ -2744,7 +2744,9 @@ async function main() {
       await page.route('**/api/accounts', async (route) => {
         if (route.request().method() !== 'GET') return route.fallback()
         const body = ACCOUNTS.map((a) =>
-          a.id === 'ytmusic' ? { ...a, detail: ytmusicBrowserActive ? 'no-quota (browser cookies) mode' : null } : a,
+          a.id === 'ytmusic' && ytmusicBrowserActive
+            ? { ...a, state: 'connected', detail: 'no-quota (browser cookies) mode' }
+            : a,
         )
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
       })
