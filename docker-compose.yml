@@ -11,14 +11,15 @@ services:
     # under ./data. Keep a .env only to preset things like DOWNLOAD_DIR or
     # credentials. (`required: false` needs Docker Compose v2.24+; on older
     # versions either create an empty `.env` or drop the `path:`/`required:` keys.)
-    # For redirect-based OAuth on a remote host, set SONGMIRROR_PUBLIC_URL in
-    # that file to the browser-visible HTTPS base URL.
+    # Set up owner sign-in in the browser or supply SONGMIRROR_AUTH_USERNAME and
+    # SONGMIRROR_AUTH_PASSWORD here for an unattended deployment. Set
+    # SONGMIRROR_PUBLIC_URL for redirect-based OAuth on a remote host.
     env_file:
       - path: .env
         required: false
     ports:
       # Web GUI at http://<host>:8888 (host 8888 -> container 8080).
-      # LAN-only — do NOT port-forward this to the internet (the UI has no login).
+      # Keep the backend port private. Use an HTTPS proxy for remote access.
       - "${SONGMIRROR_BIND_ADDRESS:-127.0.0.1}:8888:8080"
     user: "${SONGMIRROR_UID:-1000}:${SONGMIRROR_GID:-1000}"
     read_only: true

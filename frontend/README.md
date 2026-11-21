@@ -16,7 +16,13 @@ pnpm build
 pnpm test:e2e
 ```
 
-The browser tests intercept backend requests and run against the production bundle. They do not connect to music services or modify real playlists. Install Chromium once with `pnpm exec playwright install chromium`.
+The browser tests intercept backend requests and run against the production bundle. They do not connect to music services or modify real playlists. Install Chromium once with `pnpm exec playwright install chromium`. Set `SONGMIRROR_E2E_PORT` to override the preview port of 4300.
+
+Run the owner sign-in confidence test with `pnpm test:e2e:profile-auth` after
+`uv sync --locked` at the repository root and `pnpm build` in this directory.
+It starts the real backend on a free loopback port with temporary data and
+checks setup, authenticated and anonymous requests, browser and cookie
+protections, session revocation, and persistence across a restart.
 
 To refresh the six README screenshots, build the frontend and run `node e2e/capture-readme.cjs` from this directory. It serves the production bundle on a temporary local port, uses the regression suite's sample accounts and playlists, and writes the gallery to `.github/assets` at the repository root. API calls are mocked and external requests are blocked, so captures contain no personal account data. Review the images before committing them.
 

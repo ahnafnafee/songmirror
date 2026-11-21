@@ -62,7 +62,7 @@ Hoặc thử trực tiếp hình ảnh GHCR công khai mà không cần sao ché
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-Sau đó mở `http://localhost:8888` và kết nối các dịch vụ của bạn trong trình duyệt. Quá trình thiết lập Compose không cần `.env` để bắt đầu; mọi thứ đều được định cấu hình trong giao diện người dùng và được lưu trong `./data`.
+Sau đó mở `http://localhost:8888` và kết nối các dịch vụ của bạn trong trình duyệt. Quá trình thiết lập Compose không cần `.env` để bắt đầu. Các thiết lập dịch vụ nhạc bạn nhập trong ứng dụng web được lưu trong `./data`.
 
 Tùy chọn `docker run` trực tiếp chỉ dùng một lần: `docker stop songmirror` xóa vùng chứa và cấu hình của nó. Sử dụng Compose để cài đặt lâu bền với thông tin xác thực, bộ nhớ đệm và nội dung tải xuống liên tục hoặc xem [hướng dẫn hình ảnh container](../docker-image.md) để biết thẻ và ghim thông báo.
 
@@ -159,7 +159,7 @@ SongMirror giữ cho danh sách phát của bạn giống hệt nhau ở mọi n
 - 🐳 **Chạy ở mọi nơi** — một `docker compose up -d` cho ứng dụng trình duyệt hoặc CLI đơn giản + cron / Task Scheduler.
 
 > [!IMPORTANT]
-> Tự lưu trữ và riêng tư theo thiết kế. Dữ liệu nghe và thông tin xác thực của bạn không bao giờ rời khỏi máy của bạn. Giao diện người dùng web không có xác thực — liên kết nó với LAN của bạn và không chuyển tiếp nó sang internet.
+> Giữ cổng web trong mạng đáng tin cậy. Bật [đăng nhập dành cho chủ sở hữu](../profile-auth.md) để bảo vệ danh sách phát, tài khoản đã kết nối và cài đặt đồng bộ.
 
 <div align="right">
 
@@ -240,7 +240,7 @@ SongMirror sau đó sẽ quảng cáo `https://music.example.com/oauth/spotify/c
 | | |
 | --- | --- |
 | Hình ảnh | `ghcr.io/ahnafnafee/songmirror:latest` hỗ trợ AMD64 và ARM64. Mỗi bản dựng cũng được xuất bản với thẻ `sha-...` dành riêng cho cam kết; Các thẻ Git như `v1.2.3` xuất bản thêm `1.2.3`, `1.2` và `1`. Sử dụng [hướng dẫn hình ảnh container](../docker-image.md) để ghim một bản tóm tắt bất biến. |
-| Cảng | Giao diện người dùng được xuất bản trên máy chủ 8888 (ánh xạ `8888:8080` trong `docker-compose.yml`; thay đổi phía máy chủ nếu nó xung đột). LAN-only — không chuyển tiếp nó sang internet; giao diện người dùng chưa có xác thực. |
+| Cảng | Giao diện người dùng được xuất bản trên máy chủ 8888 (ánh xạ `8888:8080` trong `docker-compose.yml`; thay đổi phía máy chủ nếu nó xung đột). Giữ cổng HTTP này ở chế độ riêng tư. Dùng proxy ngược HTTPS để truy cập từ xa. |
 | Kiên trì | `./data` chứa thông tin xác thực, mã thông báo, bộ nhớ đệm, kho lưu trữ bài hát và ảnh chụp nhanh danh sách phát theo lịch trong `playlist_backups/`. Sao lưu nó để duy trì thiết lập và lưu trữ của bạn trong quá trình xây dựng lại. |
 | Tải xuống | Đặt `DOWNLOAD_DIR` (trong `.env` hoặc shell của bạn) vào thư mục nhạc chủ của bạn (ví dụ: `F:\Torrent\Music`); soạn liên kết gắn kết nó với `/music`. Từ Docker, đặt `JELLYFIN_URL` thành `http://host.docker.internal:8096`. |
 | Phiên hết hạn | Các phiên có thể gia hạn sẽ phục hồi ở lần vượt qua theo lịch trình hoặc thủ công tiếp theo. TIDAL phiên trình phát trên web được gia hạn từ mã thông báo làm mới đã ghi lại; Mã thông báo Qobuz và Apple Music vẫn phải được dán lại khi bị từ chối. Không cần khởi động lại. |

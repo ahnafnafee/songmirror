@@ -62,7 +62,7 @@ Ou experimente a imagem pública do GHCR diretamente, sem clonar o repositório:
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-Em seguida, abra `http://localhost:8888` e conecte seus serviços no navegador. A configuração Compose não precisa de `.env` para iniciar; tudo é configurado na UI e salvo em `./data`.
+Em seguida, abra `http://localhost:8888` e conecte seus serviços no navegador. A configuração Compose não precisa de `.env` para iniciar. As configurações dos serviços de música inseridas no aplicativo web são salvas em `./data`.
 
 A opção direta `docker run` é descartável: `docker stop songmirror` remove o contêiner e sua configuração. Use Compose para uma instalação durável com credenciais, caches e downloads persistentes, ou consulte [guia de imagem de contêiner](../docker-image.md) para tags e fixação de resumo.
 
@@ -159,7 +159,7 @@ SongMirror mantém suas listas de reprodução idênticas em todos os lugares, s
 - 🐳 **Executa em qualquer lugar** — um `docker compose up -d` para o aplicativo do navegador ou CLI simples + cron / Task Scheduler.
 
 > [!IMPORTANT]
-> Auto-hospedado e privado por design. Seus dados e credenciais de escuta nunca saem da sua máquina. A UI da web não tem autenticação - vincule-a ao seu LAN e não a encaminhe para a Internet.
+> Mantenha a porta web em uma rede confiável. Ative o [login do proprietário](../profile-auth.md) para proteger playlists, contas conectadas e configurações de sincronização.
 
 <div align="right">
 
@@ -240,7 +240,7 @@ SongMirror anunciará então `https://music.example.com/oauth/spotify/callback`;
 | | |
 | --- | --- |
 | Imagem | `ghcr.io/ahnafnafee/songmirror:latest` suporta AMD64 e ARM64. Cada compilação também é publicada com uma tag `sha-...` específica do commit; Tags Git como `v1.2.3` publicam adicionalmente `1.2.3`, `1.2` e `1`. Use [guia de imagem de contêiner](../docker-image.md) para fixar um resumo imutável. |
-| Porto | A UI é publicada no host 8888 (o mapeamento `8888:8080` em `docker-compose.yml`; altere o lado do host se houver conflito). Somente LAN — não encaminhe-o para a Internet; a UI ainda não tem autenticação. |
+| Porto | A UI é publicada no host 8888 (o mapeamento `8888:8080` em `docker-compose.yml`; altere o lado do host se houver conflito). Mantenha esta porta HTTP privada. Use um proxy reverso HTTPS para acesso remoto. |
 | Persistência | `./data` contém credenciais, tokens, caches, arquivo de músicas e instantâneos de listas de reprodução agendadas em `playlist_backups/`. Faça backup para manter sua configuração e arquivos durante as reconstruções. |
 | Transferências | Defina `DOWNLOAD_DIR` (em `.env` ou em seu shell) para o diretório de música do host (por exemplo, `F:\Torrent\Music`); compose bind-monta-o em `/music`. De Docker, defina `JELLYFIN_URL` para `http://host.docker.internal:8096`. |
 | Sessões expiradas | As sessões renováveis ​​são recuperadas na próxima passagem agendada ou manual. TIDAL sessões do web player são renovadas a partir do token de atualização capturado; Os tokens Qobuz e Apple Music ainda devem ser colados novamente quando rejeitados. Não é necessário reiniciar. |

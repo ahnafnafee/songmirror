@@ -31,11 +31,19 @@ class ConnectionAttempts:
             self._pending[nonce] = {"profile": profile, "kind": kind, "expires": now + TTL, **data}
             return nonce
 
-    def get(self, nonce, profile, *, browser=None, consume=False):
+    @staticmethod
+    def _require_owner(attempt, owner_session):
+        if owner_session is not None and (
+            not owner_session or not secrets.compare_digest(attempt.get("owner_session") or "", owner_session)
+        ):
+            raise ValueError("Authorization belongs to a different SongMirror session. Connect again.")
+
+    def get(self, nonce, profile, *, browser=None, owner_session=None, consume=False):
         with self._lock:
             attempt = self._pending.get(nonce)
             if not attempt or attempt["profile"] != profile or attempt["expires"] <= time.monotonic():
                 raise ValueError("Authorization attempt is missing or expired. Connect again.")
+            self._require_owner(attempt, owner_session)
             if browser is not None and (not attempt.get("browser") or not browser or
                                         not secrets.compare_digest(attempt["browser"], browser)):
                 raise ValueError("Authorization belongs to a different browser. Connect again.")
@@ -47,21 +55,23 @@ class ConnectionAttempts:
         with self._lock:
             self._pending[nonce].update(data)
 
-    def device(self, profile, browser, code):
+    def device(self, profile, browser, code, *, owner_session=None):
         with self._lock:
             for nonce, attempt in self._pending.items():
                 if (attempt["profile"] == profile and attempt["kind"] == "device"
                         and attempt["expires"] > time.monotonic() and browser
                         and secrets.compare_digest(attempt.get("browser", ""), browser)
                         and secrets.compare_digest(attempt.get("device_code", ""), code)):
+                    self._require_owner(attempt, owner_session)
                     return nonce, dict(attempt)
         raise ValueError("Device authorization is missing or belongs to another browser. Connect again.")
 
-    def bind(self, nonce, profile, browser):
+    def bind(self, nonce, profile, browser, *, owner_session=None):
         with self._lock:
             attempt = self._pending.get(nonce)
             if not attempt or attempt["profile"] != profile or attempt["expires"] <= time.monotonic():
                 raise ValueError("Authorization attempt is missing or expired. Connect again.")
+            self._require_owner(attempt, owner_session)
             if attempt.get("browser") and not secrets.compare_digest(attempt["browser"], browser):
                 raise ValueError("Authorization already started in another browser.")
             attempt["browser"] = browser

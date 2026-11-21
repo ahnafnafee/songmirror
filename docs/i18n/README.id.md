@@ -62,7 +62,7 @@ Atau coba image GHCR publik secara langsung tanpa mengkloning repositori:
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-Kemudian buka `http://localhost:8888` dan sambungkan layanan Anda di browser. Penyiapan Compose tidak memerlukan `.env` untuk memulai; semuanya dikonfigurasi di UI dan disimpan di bawah `./data`.
+Kemudian buka `http://localhost:8888` dan sambungkan layanan Anda di browser. Penyiapan Compose tidak memerlukan `.env` untuk memulai. Pengaturan layanan musik yang Anda masukkan di aplikasi web disimpan di `./data`.
 
 Opsi langsung `docker run` dapat dibuang: `docker stop songmirror` menghapus wadah dan konfigurasinya. Gunakan Compose untuk instalasi yang tahan lama dengan kredensial, cache, dan unduhan yang persisten, atau lihat [panduan gambar kontainer](../docker-image.md) untuk penyematan tag dan intisari.
 
@@ -159,7 +159,7 @@ SongMirror menjaga daftar putar Anda tetap sama di mana saja tanpa menambahkan u
 - 🐳 **Berjalan di mana saja** — satu `docker compose up -d` untuk aplikasi browser, atau CLI + cron / Task Scheduler.
 
 > [!IMPORTANT]
-> Dihosting sendiri dan bersifat pribadi berdasarkan desain. Data dan kredensial pendengaran Anda tidak pernah meninggalkan mesin Anda. UI web tidak memiliki autentikasi — ikat ke LAN Anda dan jangan meneruskannya ke internet.
+> Tempatkan port web di jaringan tepercaya. Aktifkan [login pemilik](../profile-auth.md) untuk melindungi daftar putar, akun yang terhubung, dan pengaturan sinkronisasi.
 
 <div align="right">
 
@@ -240,7 +240,7 @@ SongMirror kemudian akan mengiklankan `https://music.example.com/oauth/spotify/c
 | | |
 | --- | --- |
 | Gambar | `ghcr.io/ahnafnafee/songmirror:latest` mendukung AMD64 dan ARM64. Setiap build juga diterbitkan dengan tag `sha-...` khusus komit; Tag Git seperti `v1.2.3` juga menerbitkan `1.2.3`, `1.2`, dan `1`. Gunakan [panduan gambar kontainer](../docker-image.md) untuk menyematkan intisari yang tidak dapat diubah. |
-| Pelabuhan | UI diterbitkan pada host 8888 (pemetaan `8888:8080` di `docker-compose.yml`; ubah sisi host jika bentrok). LAN-only — jangan meneruskannya ke internet; UI belum memiliki otentikasi. |
+| Pelabuhan | UI diterbitkan pada host 8888 (pemetaan `8888:8080` di `docker-compose.yml`; ubah sisi host jika bentrok). Jaga port HTTP ini tetap privat. Gunakan proksi balik HTTPS untuk akses jarak jauh. |
 | Kegigihan | `./data` menyimpan kredensial, token, cache, arsip lagu, dan cuplikan daftar putar terjadwal di bawah `playlist_backups/`. Cadangkan untuk menyimpan pengaturan dan arsip Anda selama pembangunan kembali. |
 | Unduhan | Setel `DOWNLOAD_DIR` (dalam `.env` atau shell Anda) ke direktori musik host Anda (misalnya `F:\Torrent\Music`); composer bind-pasang ke `/music`. Dari Docker, setel `JELLYFIN_URL` ke `http://host.docker.internal:8096`. |
 | Sesi kedaluwarsa | Sesi yang dapat diperbarui dipulihkan pada pass terjadwal atau manual berikutnya. TIDAL sesi pemutar web diperbarui dari token penyegaran yang diambil; Token Qobuz dan Apple Music masih harus ditempel ulang ketika ditolak. Tidak perlu memulai ulang. |

@@ -20,11 +20,9 @@ docker compose ps
 
 Open `http://localhost:8888`. Configuration entered in the browser is stored in
 `./data`; downloaded music is stored in `./downloads` unless `DOWNLOAD_DIR` is
-set in `.env`. Back up those directories before upgrades. The web UI has no
-login. Compose publishes port 8888 on loopback by default. Set
-`SONGMIRROR_BIND_ADDRESS=0.0.0.0` in `.env` only when every client on that LAN is
-trusted, or place the service behind an authenticated reverse proxy. Do not
-expose the unauthenticated API directly to the internet.
+set in `.env`. Back up those directories before upgrades. Compose publishes
+port 8888 on loopback by default. For remote access, keep the backend port
+private, enable [owner sign-in](profile-auth.md), and use an HTTPS reverse proxy.
 
 ### Non-root storage and upgrades
 
@@ -95,8 +93,8 @@ hostname by default. For another DNS name, set `SONGMIRROR_ALLOWED_HOSTS` to a
 comma-separated list of exact hostnames, or set `SONGMIRROR_PUBLIC_URL` to the
 browser-visible HTTP(S) URL. Wildcard hosts are not supported. Reverse proxies
 must preserve the intended Host and Origin; the configured public URL also
-supports TLS termination and a path prefix. These checks complement the trusted
-LAN deployment and do not add application login.
+supports TLS termination and a path prefix. These checks also apply when owner
+sign-in is enabled.
 
 Browser mutations reject foreign or null origins and cross-site request metadata.
 Command-line API clients without browser-origin headers remain supported. Import

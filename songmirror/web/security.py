@@ -6,9 +6,16 @@ import os
 import socket
 from urllib.parse import urlsplit
 
+from starlette._utils import get_route_path
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from .profile_auth import MAX_CREDENTIAL_BODY, PUBLIC_AUTH_ROUTES
+
 MAX_REQUEST_BYTES = 10 * 1024 * 1024 + 64 * 1024
+_PRIVATE_NAMESPACES = {"api", "events", "oauth", "docs", "redoc", "openapi.json"}
+_CREDENTIAL_PATHS = {"/api/auth/login", "/api/auth/setup"}
+_DOC_UI_PATHS = {"/docs", "/redoc", "/docs/oauth2-redirect"}
 
 RESPONSE_HEADERS = {
     b"x-content-type-options": b"nosniff",
@@ -23,8 +30,9 @@ RESPONSE_HEADERS = {
 
 
 class RequestSecurity:
-    def __init__(self, app, settings):
+    def __init__(self, app, settings, profile_auth):
         self.app, self.settings = app, settings
+        self.profile_auth = profile_auth
 
     def _public_url(self):
         return self.settings.get("SONGMIRROR_PUBLIC_URL") or os.getenv("SONGMIRROR_PUBLIC_URL", "")
@@ -53,22 +61,22 @@ class RequestSecurity:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
+        path = get_route_path(scope)
+        private_path = path.lstrip("/").partition("/")[0] in _PRIVATE_NAMESPACES
+        protected = False
+        auth_request = path.startswith("/api/auth/")
+        docs_ui = path.rstrip("/") in _DOC_UI_PATHS
         original_send = send
 
         async def secure_send(message):
             if message["type"] == "http.response.start":
                 message = dict(message)
-                response_headers = [(key, value) for key, value in message.get("headers", [])
-                                    if key.lower() not in RESPONSE_HEADERS]
                 policies = dict(RESPONSE_HEADERS)
-                if scope.get("path") in {"/docs", "/redoc", "/docs/oauth2-redirect"}:
-                    policies[b"content-security-policy"] = (
-                        b"default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
-                        b"style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com 'unsafe-inline'; "
-                        b"font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; "
-                        b"connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
-                    )
-                message["headers"] = response_headers + list(policies.items())
+                if protected or auth_request:
+                    policies[b"cache-control"] = b"no-store"
+                message["headers"] = [
+                    (key, value) for key, value in message.get("headers", []) if key.lower() not in policies
+                ] + list(policies.items())
             await original_send(message)
 
         send = secure_send
@@ -78,22 +86,44 @@ class RequestSecurity:
         hosts = headers.get(b"host", [])
         if len(hosts) != 1 or not self._allowed_host(hosts[0]):
             return await JSONResponse({"detail": "Unrecognized request host."}, status_code=400)(scope, receive, send)
-        mutation = scope["method"] not in {"GET", "HEAD", "OPTIONS"}
+        method = scope["method"]
+        mutation = method not in {"GET", "HEAD", "OPTIONS"}
+
+        def owner_admission_error():
+            nonlocal protected
+            protected = private_path and self.profile_auth.enabled
+            if protected and (method, path) not in PUBLIC_AUTH_ROUTES and not self.profile_auth.signed_in(Request(scope)):
+                return JSONResponse(
+                    {"detail": "Sign in to SongMirror to continue."}, status_code=401,
+                    headers={"X-SongMirror-Auth-Required": "1"},
+                )
+            # A docs tab opened before setup would keep running its CDN scripts
+            # under the same origin even after that browser gets an owner cookie.
+            if docs_ui:
+                return JSONResponse({"detail": "Use the OpenAPI schema at /openapi.json."}, status_code=404)
+            if mutation and (protected or path == "/api/auth/setup") and headers.get(b"x-songmirror-request") != ["1"]:
+                return JSONResponse({"detail": "Missing SongMirror request header."}, status_code=403)
+            return None
+
+        denied = owner_admission_error()
+        if denied is not None:
+            return await denied(scope, receive, send)
+
         if mutation:
             origins = headers.get(b"origin", [])
             expected = {f"{scope['scheme']}://{hosts[0]}".lower()}
             public = urlsplit(self._public_url())
             if public.scheme in {"http", "https"} and public.netloc:
                 expected.add(f"{public.scheme}://{public.netloc}".lower())
-            cross_site = headers.get(b"sec-fetch-site", [""])[0] in {"cross-site", "same-site"}
-            if (origins and (len(origins) != 1 or origins[0].lower() not in expected)) or (
-                not origins and cross_site
-            ):
+            cross_site = any(site in {"cross-site", "same-site"} for site in headers.get(b"sec-fetch-site", []))
+            if cross_site or (origins and (len(origins) != 1 or origins[0].lower() not in expected)):
                 return await JSONResponse({"detail": "Cross-origin control requests are not allowed."}, status_code=403)(scope, receive, send)
-            # Buffer only a bounded body before FastAPI resolves File/Form dependencies.
+            # Bound the body before resolving any FastAPI dependencies. Auth
+            # endpoints only need a small JSON document.
+            limit = MAX_CREDENTIAL_BODY if path.rstrip("/") in _CREDENTIAL_PATHS else MAX_REQUEST_BYTES
             try:
                 lengths = headers.get(b"content-length", [])
-                if len(lengths) > 1 or (lengths and (int(lengths[0]) < 0 or int(lengths[0]) > MAX_REQUEST_BYTES)):
+                if len(lengths) > 1 or (lengths and not 0 <= int(lengths[0]) <= limit):
                     raise ValueError
                 body = bytearray()
                 async with asyncio.timeout(60):
@@ -102,13 +132,17 @@ class RequestSecurity:
                         if message["type"] == "http.disconnect":
                             return
                         chunk = message.get("body", b"")
-                        if len(body) + len(chunk) > MAX_REQUEST_BYTES:
+                        if len(body) + len(chunk) > limit:
                             raise ValueError
                         body.extend(chunk)
                         if not message.get("more_body", False):
                             break
             except (ValueError, TimeoutError):
                 return await JSONResponse({"detail": "Request body too large or incomplete."}, status_code=413)(scope, receive, send)
+            # Setup, sign-out or expiration may occur while a body is in transit.
+            denied = owner_admission_error()
+            if denied is not None:
+                return await denied(scope, receive, send)
             delivered = False
 
             async def bounded_receive():

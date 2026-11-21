@@ -62,7 +62,7 @@ docker compose up -d
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-그런 다음 `http://localhost:8888`를 열고 브라우저에서 서비스를 연결하세요. Compose 설정을 시작하려면 `.env`가 필요하지 않습니다. 모든 것이 UI에서 구성되고 `./data` 아래에 저장됩니다.
+그런 다음 `http://localhost:8888`를 열고 브라우저에서 서비스를 연결하세요. Compose 설정을 시작하려면 `.env`가 필요하지 않습니다. 웹 앱에서 입력한 음악 서비스 설정은 `./data`에 저장됩니다.
 
 직접 `docker run` 옵션은 일회용입니다. `docker stop songmirror`는 컨테이너와 해당 구성을 제거합니다. 영구 자격 증명, 캐시 및 다운로드가 포함된 내구성 있는 설치를 위해 Compose를 사용하거나 태그 및 다이제스트 고정을 위해 [컨테이너 이미지 가이드](../docker-image.md)를 참조하세요.
 
@@ -159,7 +159,7 @@ SongMirror 수동으로 다시 추가하거나 하나씩 복사하거나 라이�
 - 🐳 어디서나 실행됩니다. 브라우저 앱용 `docker compose up -d` 또는 일반 CLI + cron / Task Scheduler 중 하나입니다.
 
 > [!IMPORTANT]
-> 자체 호스팅 및 비공개 설계. 귀하의 청취 데이터와 자격 증명은 귀하의 컴퓨터를 떠나지 않습니다. 웹 UI에는 인증이 없습니다. 이를 LAN에 바인딩하고 인터넷으로 포트 포워딩하지 마세요.
+> 웹 포트는 신뢰할 수 있는 네트워크에서 사용하세요. 재생 목록, 연결된 계정 및 동기화 설정을 보호하려면 [소유자 로그인](../profile-auth.md)을 활성화하세요.
 
 <div align="right">
 
@@ -240,7 +240,7 @@ SONGMIRROR_PUBLIC_URL=https://music.example.com
 | | |
 | --- | --- |
 | 이미지 | `ghcr.io/ahnafnafee/songmirror:latest`는 AMD64 및 ARM64을 지원합니다. 각 빌드는 커밋별 `sha-...` 태그와 함께 게시됩니다. `v1.2.3`와 같은 Git 태그는 `1.2.3`, `1.2` 및 `1`를 추가로 게시합니다. 불변 다이제스트를 고정하려면 [컨테이너 이미지 가이드](../docker-image.md)를 사용하세요. |
-| 포트 | UI는 호스트 8888에 게시됩니다(`docker-compose.yml`의 `8888:8080` 매핑, 충돌하는 경우 호스트 측 변경). LAN 전용 — 인터넷으로 포트 포워딩하지 마세요. UI에는 아직 인증이 없습니다. |
+| 포트 | UI는 호스트 8888에 게시됩니다(`docker-compose.yml`의 `8888:8080` 매핑, 충돌하는 경우 호스트 측 변경). 이 HTTP 포트를 외부에 공개하지 마세요. 원격 접속에는 HTTPS 리버스 프록시를 사용하세요. |
 | 지속성 | `./data`에는 `playlist_backups/` 아래에 자격 증명, 토큰, 캐시, 노래 아카이브 및 예약된 재생 목록 스냅샷이 보관되어 있습니다. 재구축 시 설정과 아카이브를 유지하려면 백업하세요. |
 | 다운로드 | `DOWNLOAD_DIR`(`.env` 또는 쉘에서)를 호스트 음악 디렉토리(예: `F:\Torrent\Music`)로 설정합니다. compose는 이를 `/music`에 바인드 마운트합니다. Docker에서 `JELLYFIN_URL`를 `http://host.docker.internal:8096`로 설정하세요. |
 | 만료된 세션 | 갱신 가능한 세션은 다음 예약 또는 수동 전달에서 복구됩니다. TIDAL 웹 플레이어 세션은 캡처된 새로 고침 토큰에서 갱신됩니다. Qobuz 및 Apple Music 토큰은 거부되면 다시 붙여넣어야 합니다. 다시 시작할 필요가 없습니다. |

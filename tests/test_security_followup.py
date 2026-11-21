@@ -244,7 +244,10 @@ def test_response_headers_cover_success_rejections_and_api_docs(tmp_path):
         assert response.headers["x-content-type-options"] == "nosniff"
         assert response.headers["referrer-policy"] == "no-referrer"
         assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
-    assert "https://cdn.jsdelivr.net" in client.get("/docs").headers["content-security-policy"]
+    docs = client.get("/docs")
+    assert docs.status_code == 404
+    assert "https://cdn.jsdelivr.net" not in docs.headers["content-security-policy"]
+    assert client.get("/openapi.json").status_code == 200
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows ACL enforcement")

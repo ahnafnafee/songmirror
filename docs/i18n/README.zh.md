@@ -62,7 +62,7 @@ docker compose up -d
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-然后打开`http://localhost:8888`并在浏览器中连接您的服务。 Compose 设置无需 `.env` 即可启动；一切都在 UI 中配置并保存在 `./data` 下。
+然后打开`http://localhost:8888`并在浏览器中连接您的服务。 Compose 设置无需 `.env` 即可启动。在 Web 应用中填写的音乐服务设置会保存在 `./data` 中。
 
 直接 `docker run` 选项是一次性的：`docker stop songmirror` 删除容器及其配置。使用 Compose 进行具有持久凭证、缓存和下载的持久安装，或者查看 [容器镜像指南](../docker-image.md) 进行标签和摘要固定。
 
@@ -159,7 +159,7 @@ SongMirror 使您的播放列表在任何地方都保持相同，无需手动重
 - 🐳 **可以在任何地方运行** — 一个用于浏览器应用程序的 `docker compose up -d`，或者普通的 CLI + cron / Task Scheduler。
 
 > [!IMPORTANT]
-> 自托管且设计私密。您的收听数据和凭据永远不会离开您的机器。 Web UI 没有身份验证 - 将其绑定到您的 LAN 并且不要将其端口转发到互联网。
+> 请将 Web 端口限制在可信网络内。启用[所有者登录](../profile-auth.md)可保护播放列表、已连接的账户和同步设置。
 
 <div align="right">
 
@@ -240,7 +240,7 @@ SongMirror 将会发布`https://music.example.com/oauth/spotify/callback`；在 
 | | |
 | --- | --- |
 |图片| `ghcr.io/ahnafnafee/songmirror:latest`支持AMD64和ARM64。每个构建版本还带有特定于提交的 `sha-...` 标签； Git 标签（例如 `v1.2.3`）另外发布 `1.2.3`、`1.2` 和 `1`。使用 [容器镜像指南](../docker-image.md) 固定不可变的摘要。 |
-|港口| UI 发布在主机 8888 上（`docker-compose.yml` 中的 `8888:8080` 映射；如果发生冲突，请更改主机端）。 LAN-only — 不要将其端口转发到互联网； UI 尚未进行身份验证。 |
+|港口| UI 发布在主机 8888 上（`docker-compose.yml` 中的 `8888:8080` 映射；如果发生冲突，请更改主机端）。请勿公开此 HTTP 端口。远程访问请使用 HTTPS 反向代理。 |
 |坚持| `./data` 在 `playlist_backups/` 下保存凭证、令牌、缓存、歌曲存档和计划的播放列表快照。对其进行备份，以在重建过程中保留您的设置和存档。 |
 |下载 |将 `DOWNLOAD_DIR` （在 `.env` 或您的 shell 中）设置为您的主机音乐目录（例如 `F:\Torrent\Music`）； compose 将其绑定安装到 `/music`。从Docker，将`JELLYFIN_URL`设置为`http://host.docker.internal:8096`。 |
 |过期会话 |可更新会话将在下一次计划或手动传递时恢复。 TIDAL 网络播放器会话通过捕获的刷新令牌进行更新； Qobuz 和 Apple Music 令牌在被拒绝后仍必须重新粘贴。无需重新启动。 |

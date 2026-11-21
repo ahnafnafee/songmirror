@@ -21,6 +21,7 @@ from ...services.accounts import CONNECTORS
 from ...services.accounts.base import FULL_PEER_CAPABILITIES, ConnStatus, DeviceCode
 from ...diagnostics import redact_text
 from ..connection_attempts import COOKIE, TTL, with_query
+from ..profile_auth import COOKIE as OWNER_COOKIE
 
 router = APIRouter()
 
@@ -33,6 +34,10 @@ def _profile(request: Request, identity: str):
     if profile is None:
         raise HTTPException(status_code=404, detail="account profile not found")
     return profile
+
+
+def _owner_session(request: Request) -> str | None:
+    return request.cookies.get(OWNER_COOKIE, "") if request.app.state.profile_auth.enabled else None
 
 
 def _conn(request: Request, identity: str):
@@ -278,8 +283,20 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
             # profile id. Additional profiles use isolated callback paths.
             callback_id = profile.provider if profile.is_default else profile.id
             uri = _redirect_uri(request, callback_id)
+            owner_session = _owner_session(request)
+            callback = urlsplit(uri)
+            frontend = urlsplit(str(request.base_url))
+            if owner_session is not None and (
+                callback.scheme != frontend.scheme or callback.hostname != frontend.hostname
+                or (callback.port or (443 if callback.scheme == "https" else 80))
+                != (frontend.port or (443 if frontend.scheme == "https" else 80))
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Open SongMirror at {callback.scheme}://{callback.netloc} and sign in there before connecting this account.",
+                )
             attempts = request.app.state.connection_attempts
-            nonce = attempts.begin(profile.id, "redirect", redirect_uri=uri)
+            nonce = attempts.begin(profile.id, "redirect", redirect_uri=uri, owner_session=owner_session)
             try:
                 provider_uri = with_query(uri, state=nonce) if profile.provider == "lastfm" else uri
                 url = connector.begin_redirect(provider_uri)
@@ -301,7 +318,7 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
             code = connector.begin_device()
             browser = request.cookies.get(COOKIE) or secrets.token_urlsafe(32)
             request.app.state.connection_attempts.begin(
-                profile.id, "device", browser=browser, **asdict(code))
+                profile.id, "device", browser=browser, owner_session=_owner_session(request), **asdict(code))
             response = JSONResponse({"kind": "device", **asdict(code)})
             _browser_cookie(response, browser, request.url.scheme == "https")
             return response
@@ -321,7 +338,8 @@ def oauth_start(account_id: str, request: Request, attempt: str):
     profile = _profile(request, account_id)
     browser = request.cookies.get(COOKIE) or secrets.token_urlsafe(32)
     try:
-        pending = request.app.state.connection_attempts.bind(attempt, profile.id, browser)
+        pending = request.app.state.connection_attempts.bind(
+            attempt, profile.id, browser, owner_session=_owner_session(request))
         if pending["kind"] != "redirect":
             raise ValueError("Not a redirect authorization.")
     except ValueError as exc:
@@ -339,7 +357,7 @@ def oauth_callback(account_id: str, request: Request):
     try:
         request.app.state.connection_attempts.get(
             request.query_params.get("state", ""), profile.id,
-            browser=request.cookies.get(COOKIE, ""), consume=True)
+            browser=request.cookies.get(COOKIE, ""), owner_session=_owner_session(request), consume=True)
     except ValueError as exc:
         return HTMLResponse(html.escape(str(exc)), status_code=400,
                             headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
@@ -369,7 +387,8 @@ async def poll(account_id: str, request: Request, body: dict = Body(...)):
     profile = _profile(request, account_id)
     try:
         nonce, pending = request.app.state.connection_attempts.device(
-            profile.id, request.cookies.get(COOKIE, ""), str(body.get("device_code") or ""))
+            profile.id, request.cookies.get(COOKIE, ""), str(body.get("device_code") or ""),
+            owner_session=_owner_session(request))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     code = DeviceCode(pending["user_code"], pending["verification_url"],

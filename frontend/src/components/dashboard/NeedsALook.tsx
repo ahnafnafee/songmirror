@@ -1,4 +1,5 @@
 import { formatNumber } from '@/lib/format'
+import { browserDataCacheEnabled, DISMISSED_ALERTS_CACHE_KEY as STORAGE_KEY } from '@/lib/browserDataCache'
 import { t, useTranslation } from '@/i18n'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -8,8 +9,6 @@ import type { IconType } from 'react-icons'
 import type { Account, ChangeDiagnostic, ChangeDiagnosticCategory, SyncStatus } from '@/types'
 
 import { BUTTON_BASE_CLASSES, BUTTON_SIZE_CLASSES, BUTTON_VARIANT_CLASSES } from '../ui/buttonStyles'
-
-const STORAGE_KEY = 'songmirror-dismissed-alerts'
 
 /** Enough held-back removals to see the pattern without turning a summary card
  * into a track listing; the remainder is reported as a count. */
@@ -344,6 +343,7 @@ function signature(item: NeedsLookItem): string {
 /** Never throws — an unavailable or corrupted store just means "nothing
  * dismissed" rather than a render crash (mirrors the live feed's persistence). */
 function loadDismissed(): string[] {
+  if (!browserDataCacheEnabled()) return []
   try {
     if (typeof window === 'undefined' || !window.localStorage) return []
     const parsed: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '[]')
@@ -384,6 +384,7 @@ export function NeedsALook({ accounts, status }: { accounts: Account[] | null; s
   }, [loaded, live])
 
   useEffect(() => {
+    if (!browserDataCacheEnabled()) return
     try {
       window.localStorage?.setItem(STORAGE_KEY, JSON.stringify(dismissed))
     } catch {

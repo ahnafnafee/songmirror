@@ -2,9 +2,10 @@ import { useCallback, useMemo } from 'react'
 import useSWR from 'swr'
 
 import { errorMessage } from '@/api'
+import { browserDataCacheEnabled, RESOURCE_CACHE_PREFIX } from './browserDataCache'
 
 const CACHE_SCHEMA_VERSION = 2
-const CACHE_PREFIX = `songmirror-cache-v${CACHE_SCHEMA_VERSION}:`
+const CACHE_PREFIX = `${RESOURCE_CACHE_PREFIX}${CACHE_SCHEMA_VERSION}:`
 
 interface CacheEnvelope<T> {
   version: number
@@ -30,7 +31,7 @@ function removePersistedResource(resource: string): void {
 /** Read a versioned last-known snapshot. Invalid or old-schema data is
  * discarded rather than being allowed to break a route during render. */
 export function readPersistedResource<T>(resource: string, validate: ResourceValidator<T>): T | undefined {
-  if (typeof window === 'undefined') return undefined
+  if (typeof window === 'undefined' || !browserDataCacheEnabled()) return undefined
 
   try {
     if (resource === 'settings') {
@@ -66,7 +67,7 @@ export function readPersistedResource<T>(resource: string, validate: ResourceVal
  * are best-effort so a full/quota-disabled localStorage never breaks data
  * loading. */
 export function writePersistedResource<T>(resource: string, data: T): void {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined' || !browserDataCacheEnabled()) return
 
   try {
     const envelope: CacheEnvelope<T> = {

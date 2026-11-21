@@ -56,33 +56,33 @@ export class ApiError extends Error {
   }
 }
 
+let reloadingForSignIn = false
+
 async function fetchResponse(path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers)
+  if (typeof init?.body === 'string' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+  if (init?.method && !['GET', 'HEAD', 'OPTIONS'].includes(init.method)) {
+    headers.set('X-SongMirror-Request', '1')
+  }
+
   let res: Response
   try {
-    res = await fetch(path, {
-      headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
-      ...init,
-    })
+    res = await fetch(path, { ...init, headers })
   } catch {
     throw new ApiError(0, t("Could not reach the server. Check that it is running and reachable."))
   }
 
+  if (res.status === 401 && res.headers.get('X-SongMirror-Auth-Required') === '1' && !reloadingForSignIn) {
+    reloadingForSignIn = true
+    window.location.reload()
+  }
   return res
 }
 
 async function requireOk(res: Response): Promise<void> {
-  if (!res.ok) {
-    let detail = res.statusText || t("HTTP {{resStatus}}", { resStatus: res.status })
-    try {
-      const body: unknown = await res.clone().json()
-      if (body && typeof body === 'object' && 'detail' in body && typeof body.detail === 'string') {
-        detail = body.detail
-      }
-    } catch {
-      // Response wasn't JSON — fall back to the status text above.
-    }
-    throw new ApiError(res.status, detail)
-  }
+  if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res))
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -126,6 +126,12 @@ async function download(path: string, fallbackFilename: string): Promise<void> {
 const json = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) })
 
 export const api = {
+  profileSession: () => request<{ enabled: boolean; authenticated: boolean }>('/api/auth/session', { cache: 'no-store' }),
+  setupOwnerSignIn: (username: string, password: string, setupCode: string) =>
+    request<void>('/api/auth/setup', json({ username, password, setup_code: setupCode })),
+  signIn: (username: string, password: string) => request<void>('/api/auth/login', json({ username, password })),
+  signOut: () => request<void>('/api/auth/logout', { method: 'POST' }),
+
   // Accounts
   getAccounts: () => request<Account[]>('/api/accounts'),
   addAccount: (provider: string, label: string) =>
@@ -375,15 +381,7 @@ export const importApi = {
       }
     })
 
-    let res: Response
-    try {
-      // Do not set Content-Type — the browser must add the multipart boundary.
-      res = await fetch('/api/imports/file', { method: 'POST', body: formData })
-    } catch {
-      throw new ApiError(0, t('Could not reach the server. Check that it is running and reachable.'))
-    }
-    if (!res.ok) throw new ApiError(res.status, await parseErrorDetail(res))
-    return (await res.json()) as ImportJob
+    return request<ImportJob>('/api/imports/file', { method: 'POST', body: formData })
   },
 
   createUrlImport: (data: {
