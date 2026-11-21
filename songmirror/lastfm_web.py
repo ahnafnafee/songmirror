@@ -7,6 +7,7 @@ import re
 import select
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -93,6 +94,7 @@ class _Browser:
         self._browser = None
         self._display = None
         self._display_number = None
+        self._browser_home = None
 
     def run(self, cookies, operation):
         try:
@@ -127,11 +129,18 @@ class _Browser:
         env = {name: os.environ[name] for name in names if name in os.environ}
         if sys.platform.startswith("linux") and not env.get("DISPLAY"):
             env["DISPLAY"] = self._virtual_display()
+        in_container = os.getenv("SONGMIRROR_CONTAINER") == "1"
+        if in_container:
+            if self._browser_home:
+                self._browser_home.cleanup()
+            self._browser_home = TemporaryDirectory(prefix="songmirror-chromium-")
+            directory = self._browser_home.name
+            env.update(HOME=directory, XDG_CONFIG_HOME=directory, XDG_CACHE_HOME=directory)
         self._driver = sync_playwright().start()
         try:
             self._browser = self._driver.chromium.launch(
                 headless=False, env=env, timeout=_TIMEOUT,
-                chromium_sandbox=os.getenv("SONGMIRROR_CONTAINER") != "1",
+                chromium_sandbox=not in_container,
             )
         except BrowserError:
             self._driver.stop()

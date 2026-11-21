@@ -33,4 +33,4 @@ COPY --from=frontend /frontend/dist ./frontend/dist
 # credentials win over any stale .env.
 ENV PYTHONUNBUFFERED=1 SONGMIRROR_DATA_DIR=/data SONGMIRROR_ENV_FILE=/data/app.env
 EXPOSE 8080
-CMD ["uv", "run", "--no-sync", "uvicorn", "songmirror.web:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["/app/.venv/bin/uvicorn", "songmirror.web:app", "--host", "0.0.0.0", "--port", "8080"]
