@@ -206,6 +206,11 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
     note: t("Next you’ll enter a short code at google.com/device to authorize."),
     link: { href: 'https://console.cloud.google.com/apis/credentials', label: t("Open Google Cloud credentials") },
   },
+  soundcloud: {
+    intro: t("Sync your SoundCloud playlists with other services."),
+    steps: [<>{t("Register the callback URL in your SoundCloud app and configure its credentials on the SongMirror server. Then continue to sign in with SoundCloud.")}</>],
+    link: { href: 'https://developers.soundcloud.com/docs/api/register-app', label: t("SoundCloud app setup") },
+  },
   lastfm: {
     intro: t("Reads your listening history. Authorize it to read a private profile and love tracks."),
     steps: [
@@ -311,13 +316,14 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
   const [showSuccess, setShowSuccess] = useState(false)
   const [lastfmMode, setLastfmMode] = useState<'api' | 'public'>('api')
   const isLastfm = account.provider === 'lastfm'
+  const usesLastfmApp = isLastfm && !account.fields.some((field) => field.key === 'LASTFM_API_KEY')
   const setupAccount = useMemo(() => {
     if (!isLastfm) return account
     const keys = lastfmMode === 'public' ? ['LASTFM_API_KEY', 'LASTFM_USER']
       : ['LASTFM_API_KEY', 'LASTFM_API_SECRET']
-    return { ...account, callback_url: lastfmMode === 'api' ? account.callback_url : null,
+    return { ...account, callback_url: lastfmMode === 'api' && !usesLastfmApp ? account.callback_url : null,
       fields: account.fields.filter((field) => keys.includes(field.key)).map((field) => ({ ...field, required: true })) }
-  }, [account, isLastfm, lastfmMode])
+  }, [account, isLastfm, lastfmMode, usesLastfmApp])
 
   // onConnected fires from inside timeout chains below; storing it in a ref
   // means those effects don't need the (unstable, inline-function) prop in
@@ -411,8 +417,8 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
         const accounts = await api.getAccounts()
         if (cancelled) return
         const current = accounts.find((a) => a.id === account.id)
-        if (current?.state === 'connected' && (!isLastfm ||
-            (current.capabilities?.favorites_write && current.authorization_pending === false))) {
+        if (current?.state === 'connected' && !current.authorization_pending &&
+            (!isLastfm || current.capabilities?.favorites_write)) {
           setShowSuccess(true)
           return
         }
@@ -516,7 +522,12 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
                     disabled={saving || requiredMissing} loading={saving}
                     onSubmit={() => void (lastfmMode === 'api' ? saveAndConnect() : submitDirect())}
                     submitLabel={lastfmMode === 'api' ? t("Save and continue") : t("Connect")}
-                    guideOverride={lastfmMode === 'public' ? {
+                    guideOverride={usesLastfmApp ? {
+                      intro: lastfmMode === 'public'
+                        ? t("Enter a Last.fm username to read public history through this server’s app.")
+                        : t("Continue to Last.fm to authorize your account through this server’s app."),
+                      steps: [],
+                    } : lastfmMode === 'public' ? {
                       intro: t("An API key and username let you read public listening history. This does not enable playlist creation or loving tracks."),
                       steps: [],
                       link: { href: 'https://www.last.fm/api/account/create', label: t("Create a Last.fm API account") },

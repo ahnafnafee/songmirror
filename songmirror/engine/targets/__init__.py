@@ -26,6 +26,7 @@ from .lastfm import LastfmTarget
 from .listenbrainz import ListenBrainzTarget
 from .subsonic import SubsonicTarget
 from .qobuz import QobuzTarget
+from .soundcloud import SoundCloudTarget
 from .spotify_target import SpotifyTarget
 from .tidal import TidalTarget
 from . import ytmusic
@@ -33,7 +34,7 @@ from . import ytmusic
 __all__ = ["AppleMusicTarget", "AmazonMusicTarget", "DeezerTarget", "JellyfinTarget", "LastfmTarget",
            "ListenBrainzTarget", "SubsonicTarget",
            "QobuzTarget",
-           "SpotifyTarget", "TidalTarget", "MirrorTarget", "TargetAuthError",
+           "SoundCloudTarget", "SpotifyTarget", "TidalTarget", "MirrorTarget", "TargetAuthError",
            "TargetCapabilityError",
            "TargetDirectoryIncompleteError", "TargetTransientError",
            "mirror_pair", "reconcile", "build_targets", "build_peers", "build_one", "is_peer",
@@ -94,6 +95,7 @@ _REGISTRY = {
     "amazon": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(AmazonMusicTarget, "Amazon Music"),
     "apple": lambda opts, sp, sync_peer=False, songs=None: _apple(opts),
     "ytmusic": lambda opts, sp, sync_peer=False, songs=None: ytmusic.build(),
+    "soundcloud": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(SoundCloudTarget, "SoundCloud"),
     "lastfm": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(
         LastfmTarget, "Last.fm"),
     "listenbrainz": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(
@@ -107,7 +109,7 @@ _REGISTRY = {
 # History sources come last because their reads may carry no ISRC, so their
 # metadata matching must not pre-empt a provider with catalog identity.
 _SOURCE_ORDER = ["spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
-                 "subsonic", "jellyfin", "lastfm", "listenbrainz"]
+                 "soundcloud", "subsonic", "jellyfin", "lastfm", "listenbrainz"]
 
 # The same providers as _REGISTRY, by class rather than by builder, for the
 # class-level facts a caller needs WITHOUT credentials (where the resolution
@@ -122,6 +124,7 @@ _CLASSES = {
     "amazon": AmazonMusicTarget,
     "apple": AppleMusicTarget,
     "ytmusic": ytmusic.YTMusicTarget,
+    "soundcloud": SoundCloudTarget,
     "lastfm": LastfmTarget,
     "listenbrainz": ListenBrainzTarget,
     "subsonic": SubsonicTarget,

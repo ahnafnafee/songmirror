@@ -29,6 +29,13 @@ SECRET_KEYS |= {
     "TIDAL_OAUTH_STATE",
     "DEEZER_OAUTH_STATE",
     "AMAZON_MUSIC_OAUTH_STATE",
+    "LASTFM_APP_API_KEY",
+    "LASTFM_APP_API_SECRET",
+    "LASTFM_SESSION_KEY",
+    "LASTFM_SESSION_APP_KEY",
+    "LASTFM_AUTH_PENDING",
+    "SOUNDCLOUD_CLIENT_ID",
+    "SOUNDCLOUD_CLIENT_SECRET",
 }
 
 # Non-secret config the UI manages. When settings.json doesn't have a key, fall

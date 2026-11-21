@@ -1,4 +1,4 @@
-import { SiApplemusic, SiDeezer, SiJellyfin, SiSpotify, SiTidal, SiYoutubemusic } from 'react-icons/si'
+import { SiApplemusic, SiDeezer, SiJellyfin, SiSoundcloud, SiSpotify, SiTidal, SiYoutubemusic } from 'react-icons/si'
 
 import lastfmLogo from '@/assets/providers/lastfm.png'
 import listenbrainzLogo from '@/assets/providers/listenbrainz.svg'
@@ -7,7 +7,7 @@ import qobuzLogo from '@/assets/providers/qobuz.svg'
 
 const AMAZON_MUSIC_MARK = 'https://m.media-amazon.com/images/G/01/music/logo/1.0/smile_256x256.png'
 
-export type ServiceId = 'spotify' | 'tidal' | 'qobuz' | 'deezer' | 'amazon' | 'apple' | 'ytmusic' | 'lastfm' | 'listenbrainz' | 'subsonic' | 'jellyfin'
+export type ServiceId = 'soundcloud' | 'spotify' | 'tidal' | 'qobuz' | 'deezer' | 'amazon' | 'apple' | 'ytmusic' | 'lastfm' | 'listenbrainz' | 'subsonic' | 'jellyfin'
 
 interface ServiceLogoProps {
   service: ServiceId
@@ -44,6 +44,8 @@ export function ServiceLogo({ service, className }: ServiceLogoProps) {
       return <SiApplemusic className={className} aria-hidden="true" />
     case 'ytmusic':
       return <SiYoutubemusic className={className} aria-hidden="true" />
+    case 'soundcloud':
+      return <SiSoundcloud className={className} aria-hidden="true" />
     case 'lastfm':
       return <img src={lastfmLogo} alt="" className={`${className ?? ''} object-contain`} draggable={false} />
     case 'jellyfin':

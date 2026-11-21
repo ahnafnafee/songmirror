@@ -70,8 +70,9 @@ PROVIDER_KEYS = {
     "lastfm": {
         "LASTFM_API_KEY", "LASTFM_API_SECRET", "LASTFM_USER",
         "LASTFM_SESSION_KEY", "LASTFM_CACHE_FILE",
-        "LASTFM_AUTH_PENDING",
+        "LASTFM_AUTH_PENDING", "LASTFM_SESSION_APP_KEY",
     },
+    "soundcloud": {"SOUNDCLOUD_TOKEN_FILE", "SOUNDCLOUD_CACHE_FILE"},
     "jellyfin": {"JELLYFIN_URL", "JELLYFIN_API_KEY", "JELLYFIN_USER_ID", "JELLYFIN_CACHE_FILE"},
     "listenbrainz": {"LISTENBRAINZ_USER", "LISTENBRAINZ_TOKEN", "LISTENBRAINZ_CACHE_FILE"},
     "subsonic": {"SUBSONIC_URL", "SUBSONIC_USER", "SUBSONIC_PASSWORD", "SUBSONIC_CACHE_FILE"},
@@ -106,6 +107,8 @@ _FILE_DEFAULTS = {
         "YTMUSIC_CACHE_FILE": "ytmusic_resolve_cache.json",
     },
     "lastfm": {"LASTFM_CACHE_FILE": "lastfm_resolve_cache.json"},
+    "soundcloud": {"SOUNDCLOUD_TOKEN_FILE": "soundcloud_oauth.json",
+                   "SOUNDCLOUD_CACHE_FILE": "soundcloud_resolve_cache.json"},
     "listenbrainz": {"LISTENBRAINZ_CACHE_FILE": "listenbrainz_resolve_cache.json"},
     "subsonic": {"SUBSONIC_CACHE_FILE": "subsonic_resolve_cache.json"},
     "jellyfin": {"JELLYFIN_CACHE_FILE": "jellyfin_resolve_cache.json"},
@@ -187,7 +190,7 @@ class ProfileSettings:
         values = self._local.load()
         if self.profile.is_default:
             values.update(self._fallback_values())
-        if not self.profile.is_default:
+        if not self.profile.is_default or self.profile.provider == "soundcloud":
             root = self.data_dir
             for key, filename in _FILE_DEFAULTS.get(self.profile.provider, {}).items():
                 values.setdefault(key, str(root / filename))
@@ -545,7 +548,7 @@ class AccountProfileStore:
         return {
             "spotify": "Spotify", "tidal": "TIDAL", "qobuz": "Qobuz",
             "deezer": "Deezer", "amazon": "Amazon Music", "apple": "Apple Music",
-            "ytmusic": "YouTube Music", "lastfm": "Last.fm",
+            "ytmusic": "YouTube Music", "lastfm": "Last.fm", "soundcloud": "SoundCloud",
             "listenbrainz": "ListenBrainz", "subsonic": "Navidrome / Subsonic",
             "jellyfin": "Jellyfin",
         }.get(provider, provider)

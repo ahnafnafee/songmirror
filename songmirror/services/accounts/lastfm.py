@@ -6,7 +6,8 @@ session key has an infinite lifetime, so unlike every pasted credential in this
 project it needs no renewal; the user revokes it from their Last.fm settings.
 """
 
-from urllib.parse import parse_qs, urlsplit
+import secrets
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import requests
 
@@ -16,8 +17,10 @@ from ...lastfm import (
     USER_AGENT,
     LastfmError,
     LastfmTransient,
+    application_key,
     auth_url,
     get_session,
+    profile_credentials,
     sign,
 )
 from .base import ConnStatus, Connector, Field
@@ -57,14 +60,21 @@ class LastfmConnector(Connector):
                    "to read a different public profile"),
     ]
 
+    def __init__(self, store):
+        super().__init__(store)
+        if application_key(store.get)[2]:
+            self.config_fields = self.config_fields[-1:]
+
+    @property
+    def authorization_pending(self):
+        return bool(self._store.get("LASTFM_AUTH_PENDING"))
+
     def _granted(self):
-        granted = set(READ)
-        if self._configured("LASTFM_API_KEY", "LASTFM_API_SECRET", "LASTFM_SESSION_KEY"):
-            granted |= LOVE
-        return frozenset(granted)
+        _, secret, session_key = profile_credentials(self._store.get)
+        return READ | LOVE if secret and session_key else READ
 
     def status(self) -> ConnStatus:
-        if not self._configured("LASTFM_API_KEY"):
+        if not application_key(self._store.get)[0]:
             return ConnStatus("unconfigured", "add a Last.fm API key",
                               capabilities=frozenset())
         if not self._store.get("LASTFM_USER"):
@@ -77,19 +87,19 @@ class LastfmConnector(Connector):
 
     def normalize_config(self, values: dict) -> dict:
         """Discard an old authorization when its account credentials change."""
-        values = dict(values)
-        if any(key in values and self._store.get(key) and
-               str(values[key]).strip() != self._store.get(key)
-               for key in ("LASTFM_API_KEY", "LASTFM_API_SECRET", "LASTFM_USER")):
-            values["LASTFM_SESSION_KEY"] = ""
+        values = {field.key: str(values[field.key] or "").strip()
+                  for field in type(self).config_fields if field.key in values}
+        if any(value != (self._store.get(key) or "") for key, value in values.items()):
+            values.update(LASTFM_SESSION_KEY="", LASTFM_SESSION_APP_KEY="", LASTFM_AUTH_PENDING="")
         return values
 
     def submit(self, values: dict) -> ConnStatus:
-        values = self.normalize_config(values)
-        self._store.save({key: (values.get(key) or "").strip()
-                          for key in ("LASTFM_API_KEY", "LASTFM_API_SECRET",
-                                      "LASTFM_USER", "LASTFM_SESSION_KEY")
-                          if key in values})
+        updates = self.normalize_config(values)
+        personal_key = updates.get("LASTFM_API_KEY", self._store.get("LASTFM_API_KEY"))
+        if personal_key and "LASTFM_SESSION_KEY" in values:
+            updates["LASTFM_SESSION_KEY"] = str(values["LASTFM_SESSION_KEY"] or "").strip()
+            updates["LASTFM_SESSION_APP_KEY"] = ""
+        self._store.save(updates)
         ok, detail = self._validate()
         return ConnStatus("connected" if ok else "error", detail,
                           capabilities=self._granted() if ok else frozenset())
@@ -97,29 +107,36 @@ class LastfmConnector(Connector):
     # -- oauth_redirect half: adds the session key ---------------------------
 
     def begin_redirect(self, redirect_uri: str) -> str:
-        key = self._store.get("LASTFM_API_KEY")
-        if not key:
-            raise RuntimeError("add the Last.fm API key first")
-        if not self._store.get("LASTFM_API_SECRET"):
-            raise RuntimeError(
-                "add the Last.fm shared secret first; the session key cannot be "
-                "signed without it")
-        self._store.save({"LASTFM_AUTH_PENDING": "1"})
+        key, secret, app_key = application_key(self._store.get)
+        if not (key and secret):
+            raise ValueError("Add the Last.fm API key and shared secret first")
+        pending = "1"
+        if app_key:
+            nonce = secrets.token_urlsafe(32)
+            pending = f"{app_key}.{nonce}"
+            redirect_uri += "?" + urlencode({"state": nonce})
+        self._store.save({"LASTFM_AUTH_PENDING": pending})
         return auth_url(key, redirect_uri)
 
     def complete_redirect(self, params: dict) -> ConnStatus:
         token = _callback_token(params)
         if not token:
             return ConnStatus("error", "Last.fm returned no token")
-        key = self._store.get("LASTFM_API_KEY")
-        secret = self._store.get("LASTFM_API_SECRET")
+        key, secret, app_key = application_key(self._store.get)
         if not (key and secret):
             return ConnStatus("error", "add the Last.fm API key and shared secret first")
+        if app_key:
+            query = parse_qs(urlsplit(params.get("url") or "").query)
+            nonce = query.get("state", [""])[0]
+            pending = self._store.get("LASTFM_AUTH_PENDING") or ""
+            if not nonce.isascii() or not secrets.compare_digest(pending, f"{app_key}.{nonce}"):
+                return ConnStatus("error", "Last.fm authorization is invalid or expired")
         try:
             session_key, username = get_session(key, secret, token)
         except (LastfmError, LastfmTransient) as exc:
             return ConnStatus("error", str(exc))
-        updates = {"LASTFM_SESSION_KEY": session_key, "LASTFM_USER": username}
+        updates = {"LASTFM_SESSION_KEY": session_key, "LASTFM_USER": username,
+                   "LASTFM_SESSION_APP_KEY": app_key}
         self._store.save(updates)
         ok, detail = self._validate()
         if ok:
@@ -132,17 +149,16 @@ class LastfmConnector(Connector):
     def disconnect(self) -> None:
         self._store.save({"LASTFM_API_KEY": "", "LASTFM_API_SECRET": "",
                           "LASTFM_USER": "", "LASTFM_SESSION_KEY": "",
-                          "LASTFM_AUTH_PENDING": ""})
+                          "LASTFM_SESSION_APP_KEY": "", "LASTFM_AUTH_PENDING": ""})
 
     # -- validation ----------------------------------------------------------
 
     def _validate(self):
-        key = self._store.get("LASTFM_API_KEY")
+        key, secret, session_key = profile_credentials(self._store.get)
         user = self._store.get("LASTFM_USER")
         if not (key and user):
             return False, "add a Last.fm API key and username"
         params = {"method": "user.getInfo", "user": user, "api_key": key}
-        secret, session_key = self._store.get("LASTFM_API_SECRET"), self._store.get("LASTFM_SESSION_KEY")
         if secret and session_key:
             # Without `user`, getInfo validates the session's own identity.
             params.pop("user")
@@ -153,8 +169,8 @@ class LastfmConnector(Connector):
             response = requests.get(
                 API, timeout=REQUEST_TIMEOUT, headers={"User-Agent": USER_AGENT},
                 params=params)
-        except requests.RequestException as exc:
-            return False, f"could not reach Last.fm ({exc!r})"
+        except requests.RequestException:
+            return False, "could not reach Last.fm"
         if not response.ok and response.status_code >= 500:
             return False, f"Last.fm returned HTTP {response.status_code}"
         try:

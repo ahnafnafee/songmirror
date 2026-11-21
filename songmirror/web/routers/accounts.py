@@ -160,6 +160,7 @@ def _status_payload(request, profile):
         transferable = is_peer(profile.provider)
         public_playlists = _public_playlists(profile.provider)
         editable_details = _editable_details(profile.provider)
+        authorization_pending = connector.authorization_pending
         fields = []
         for field in connector.config_fields:
             data = asdict(field)
@@ -187,8 +188,14 @@ def _status_payload(request, profile):
         "public_playlists": public_playlists,
         "editable_details": editable_details,
         "callback_url": _callback_url(request, profile, connector),
-        "authorization_pending": bool(store.get("LASTFM_AUTH_PENDING")) if profile.provider == "lastfm" else False,
+        "authorization_pending": authorization_pending,
     }
+
+
+def _callback_id(profile):
+    # SoundCloud registers one redirect URI per application. Its signed-in
+    # profile is selected by the OAuth state and verified by the connector.
+    return profile.provider if profile.is_default or profile.provider == "soundcloud" else profile.id
 
 
 def _callback_url(request, profile, connector):
@@ -202,9 +209,8 @@ def _callback_url(request, profile, connector):
     """
     if connector.auth_kind != "oauth_redirect":
         return None
-    callback_id = profile.provider if profile.is_default else profile.id
     try:
-        return _redirect_uri(request, callback_id)
+        return _redirect_uri(request, _callback_id(profile))
     except HTTPException:
         return None
 
@@ -242,11 +248,13 @@ def rename_account(account_id: str, request: Request, body: dict = Body(...)):
 @router.post("/api/accounts/{account_id}/config")
 def save_config(account_id: str, request: Request, values: dict = Body(...)):
     profile = _profile(request, account_id)
-    try:
-        values = _conn(request, profile.id).normalize_config(values)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    request.app.state.account_profiles.settings_for(profile.id).save(values)
+    profiles = request.app.state.account_profiles
+    with profiles.activate(profile.id):
+        try:
+            values = _conn(request, profile.id).normalize_config(values)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        profiles.settings_for(profile.id).save(values)
     return {"ok": True}
 
 
@@ -263,12 +271,15 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
         if connector.auth_kind == "oauth_redirect":
             # Deterministic defaults keep the provider callback registered by
             # existing installations even when the new UI addresses them by
-            # profile id. Additional profiles use isolated callback paths.
-            callback_id = profile.provider if profile.is_default else profile.id
-            uri = _redirect_uri(request, callback_id)
+            # profile id.
+            uri = _redirect_uri(request, _callback_id(profile))
+            try:
+                url = connector.begin_redirect(uri)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
             return {
                 "kind": "redirect",
-                "url": connector.begin_redirect(uri),
+                "url": url,
                 "redirect_uri": uri,
             }
         if connector.auth_kind == "oauth_device":
@@ -281,9 +292,14 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
 def oauth_callback(account_id: str, request: Request):
     profile = _profile(request, account_id)
     profiles = request.app.state.account_profiles
+    if account_id == "soundcloud":
+        profile_id = request.query_params.get("state", "").partition(".")[0]
+        candidate = profiles.get(profile_id)
+        if candidate is not None and candidate.provider == "soundcloud":
+            profile = candidate
     connector = _conn(request, profile.id)
     error = request.query_params.get("error")
-    if error:
+    if error and profile.provider != "soundcloud":
         status = ConnStatus(
             "error", f"{connector.name} returned '{error}' — nothing was authorized."
         )

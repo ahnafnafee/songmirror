@@ -18,6 +18,10 @@ async function main() {
   const browser = await chromium.launch({ headless: true })
   const errors = [], connections = [], saved = [], profiles = []
   const accounts = [
+    { id: 'cloud', provider: 'soundcloud', name: 'SoundCloud', provider_name: 'SoundCloud',
+      auth_kind: 'oauth_redirect', fields: [], transferable: true, source_capable: true,
+      supports_playlists: true, supports_favorites: false,
+      callback_url: base + '/oauth/soundcloud/callback' },
     { id: 'loves', provider: 'listenbrainz', name: 'ListenBrainz', provider_name: 'ListenBrainz',
       transferable: true, source_capable: true, supports_playlists: true,
       fields: [{ key: 'LISTENBRAINZ_USER', label: 'Username', required: true, secret: false },
@@ -90,7 +94,8 @@ async function main() {
     await picker.click()
     let menu = page.getByRole('listbox', { name: 'Provider', exact: true })
     await menu.waitFor()
-    assert.equal(await menu.getByRole('option').count(), 11)
+    assert.equal(await menu.getByRole('option').count(), 12)
+    assert.equal(await menu.getByRole('option', { name: 'SoundCloud', exact: true }).count(), 1)
     for (const option of await menu.getByRole('option').all()) {
       assert.ok(await option.locator('svg, img').count() >= 1, `${await option.innerText()} needs its provider mark`)
     }
@@ -136,6 +141,14 @@ async function main() {
     await addedProfile
     assert.deepEqual(profiles, [{ provider: 'listenbrainz', label: 'Test listener' }])
     console.log('PASS: provider marks, keyboard selection, typeahead, dismissal, mobile bounds, and selected profile submission')
+    const cloudCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'SoundCloud', exact: true }) })
+    await cloudCard.getByRole('button', { name: 'Connect', exact: true }).click()
+    const cloudDialog = page.getByRole('dialog')
+    await cloudDialog.getByText(base + '/oauth/soundcloud/callback', { exact: true }).waitFor()
+    assert.equal(await cloudDialog.locator('input[type="password"]').count(), 0)
+    assert.equal(await cloudDialog.getByRole('button', { name: 'Save and continue' }).isEnabled(), true)
+    await page.keyboard.press('Escape')
+    await cloudDialog.waitFor({ state: 'hidden' })
     const lovesCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'ListenBrainz', exact: true }) })
     const localCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'Navidrome / Subsonic', exact: true }) })
     await lovesCard.getByRole('button', { name: 'Connect', exact: true }).click()

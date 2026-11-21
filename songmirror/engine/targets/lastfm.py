@@ -29,6 +29,7 @@ from ...lastfm import (
     LastfmAuthError,
     LastfmError,
     LastfmTransient,
+    profile_credentials,
 )
 from ..config import polite_sleep
 from ..logs import log_warn
@@ -73,10 +74,10 @@ class LastfmTarget(MirrorTarget):
     replay_chronology = None
 
     def __init__(self, client=None):
-        self._api = client or Lastfm(
-            api_secret=os.getenv("LASTFM_API_SECRET") or "",
-            session_key=os.getenv("LASTFM_SESSION_KEY") or "",
-        )
+        if client is None:
+            key, secret, session_key = profile_credentials(os.getenv)
+            client = Lastfm(api_key=key, api_secret=secret, session_key=session_key)
+        self._api = client
         self.cache_file = self.resolve_cache_path()
 
     @classmethod

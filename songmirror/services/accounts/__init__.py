@@ -13,6 +13,7 @@ from .lastfm import LastfmConnector
 from .listenbrainz import ListenBrainzConnector
 from .subsonic import SubsonicConnector
 from .qobuz import QobuzConnector
+from .soundcloud import SoundCloudConnector
 from .spotify import SpotifyConnector
 from .tidal import TidalConnector
 from .ytmusic import YTMusicConnector
@@ -27,7 +28,7 @@ CONNECTORS = {
     "amazon": AmazonMusicConnector,
     "apple": AppleConnector,
     "ytmusic": YTMusicConnector,
-    # Read-only source: supplies listening history, accepts no writes.
+    "soundcloud": SoundCloudConnector,
     "lastfm": LastfmConnector,
     "listenbrainz": ListenBrainzConnector,
     "subsonic": SubsonicConnector,

@@ -18,7 +18,7 @@ import { tagText } from '@/lib/constants'
 const PROVIDERS = [
   ['spotify', 'Spotify'], ['tidal', 'TIDAL'], ['qobuz', 'Qobuz'], ['deezer', 'Deezer'],
   ['amazon', 'Amazon Music'], ['apple', 'Apple Music'], ['ytmusic', 'YouTube Music'],
-  ['lastfm', 'Last.fm'], ['listenbrainz', 'ListenBrainz'],
+  ['soundcloud', 'SoundCloud'], ['lastfm', 'Last.fm'], ['listenbrainz', 'ListenBrainz'],
   ['subsonic', 'Navidrome / Subsonic'], ['jellyfin', 'Jellyfin'],
 ] as const
 
