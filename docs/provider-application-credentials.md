@@ -20,8 +20,9 @@ for that profile.
 
 This mode uses the browser session for playlist metadata and does not need a
 registered developer app. Paste a fresh request when SoundCloud expires the
-session. If you have already set up OAuth, **Switch back to OAuth** restores
-that connection.
+session. If SoundCloud asks for browser verification, complete it on
+SoundCloud before copying a fresh request. If you have already set up OAuth,
+**Switch back to OAuth** restores that connection.
 
 The web client uses these requests:
 

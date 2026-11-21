@@ -875,7 +875,9 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
 
         {account.state === 'expired' && (!soundcloud || selected) && (
           <p className="text-xs leading-relaxed text-warning">
-            {t("The pasted session expired — no-quota mode stays selected, it just needs fresh headers below.")}
+            {soundcloud && account.detail
+              ? account.detail
+              : t("The pasted session expired — no-quota mode stays selected, it just needs fresh headers below.")}
           </p>
         )}
 

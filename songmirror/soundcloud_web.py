@@ -24,6 +24,21 @@ class _NoRedirect(HTTPRedirectHandler):
 _WEB_OPENER = build_opener(_NoRedirect())
 
 
+def _browser_verification_required(response):
+    if response.code != 403:
+        return False
+    try:
+        body = json.loads(response.read(16_384))
+        challenge_url = body.get("url") if isinstance(body, dict) else None
+        if not isinstance(challenge_url, str):
+            return False
+        url = urlsplit(challenge_url)
+    except (OSError, TypeError, ValueError):
+        return False
+    return (url.scheme == "https" and url.netloc == "geo.captcha-delivery.com"
+            and (url.path == "/captcha" or url.path.startswith("/captcha/")))
+
+
 def _request(method, url, *, authorization, body=None):
     headers = {"Authorization": authorization, "Accept": "application/json"}
     payload = None
@@ -36,6 +51,11 @@ def _request(method, url, *, authorization, body=None):
             return api_result(response.status, response.headers, lambda: json.load(response))
     except HTTPError as exc:
         with exc:
+            if _browser_verification_required(exc):
+                raise SoundCloudAuthError(
+                    "SoundCloud requested browser verification. Complete it on soundcloud.com "
+                    "and paste a fresh SoundCloud library request."
+                ) from None
             return api_result(exc.code, exc.headers, lambda: json.load(exc))
     except (OSError, URLError) as exc:
         raise SoundCloudTransient("Could not reach SoundCloud's web API") from exc

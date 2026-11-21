@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from songmirror import soundcloud, soundcloud_web
 from songmirror.engine.config import parse_args
 from songmirror.engine.targets import build_one
-from songmirror.engine.targets.base import TargetCapabilityError, TargetTransientError
+from songmirror.engine.targets.base import TargetAuthError, TargetCapabilityError, TargetTransientError
 from songmirror.engine.targets.soundcloud import SoundCloudWebTarget
 from songmirror.services.account_profiles import AccountProfileStore
 from songmirror.services.settings import SettingsStore
@@ -169,3 +169,26 @@ def test_browser_transport_respects_retry_after_and_pagination_origin(monkeypatc
     with pytest.raises(soundcloud.SoundCloudTransient, match="page URL"):
         web.request("GET", "https://example.org/me/library/all")
     assert [urlsplit(url).path for url in calls] == ["/me/library/all"]
+
+
+@pytest.mark.parametrize(("body", "error", "message"), [
+    (b'{"url":"https://geo.captcha-delivery.com/captcha/?challenge=example"}',
+     TargetAuthError, "SoundCloud requested browser verification"),
+    (b'{"url":"https://example.org/captcha/"}', soundcloud.SoundCloudError, "HTTP 403"),
+    (b'{"url":7}', soundcloud.SoundCloudError, "HTTP 403"),
+    (b'', soundcloud.SoundCloudError, "HTTP 403"),
+])
+def test_browser_write_classifies_verification_without_following_it(monkeypatch, body, error, message):
+    calls = []
+
+    def request(request, *, timeout):
+        calls.append((request.get_method(), urlsplit(request.full_url).hostname))
+        raise HTTPError(request.full_url, 403, "Forbidden", {}, BytesIO(body))
+
+    monkeypatch.setattr(soundcloud_web._WEB_OPENER, "open", request)
+    target = SoundCloudWebTarget(SoundCloudWeb(parse_browser_request(pasted("token"))))
+    with pytest.raises(error, match=message) as caught:
+        target.create({"name": "Private test"})
+    assert "captcha-delivery" not in str(caught.value)
+    assert "challenge=example" not in str(caught.value)
+    assert calls == [("POST", "api-v2.soundcloud.com")]
