@@ -172,6 +172,7 @@ _LABELS = {
     "listenbrainz": "ListenBrainz",
     "subsonic": "Navidrome / Subsonic",
     "lastfm": "Last.fm",
+    "soundcloud": "SoundCloud",
 }
 
 

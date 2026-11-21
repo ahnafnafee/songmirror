@@ -89,3 +89,66 @@ def test_public_history_connects_directly_without_enabling_playlist_writes(tmp_p
         assert {field["key"] for field in account["fields"]} == {
             "LASTFM_API_KEY", "LASTFM_API_SECRET", "LASTFM_USER",
         }
+
+def test_deployment_key_supports_public_history_and_isolated_authorization(tmp_path, monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+
+    from fastapi.testclient import TestClient
+    from songmirror.engine import targets
+    from songmirror.engine.config import parse_args
+    from songmirror.services.account_profiles import AccountProfileStore
+    from songmirror.services.settings import SettingsStore
+    from songmirror.web import create_app
+
+    monkeypatch.setenv("LASTFM_APP_API_KEY", "deployment-key")
+    monkeypatch.setenv("LASTFM_APP_API_SECRET", "deployment-secret")
+    monkeypatch.setattr("songmirror.web.load_dotenv", lambda: False)
+    settings = SettingsStore(tmp_path)
+    profiles = AccountProfileStore(settings, providers=["lastfm"])
+    first = profiles.create("lastfm", "First")
+    second = profiles.create("lastfm", "Second")
+    exchanged = []
+
+    def get_session(key, secret, token):
+        exchanged.append((key, secret, token))
+        return f"session-{token}", token
+
+    monkeypatch.setattr("songmirror.services.accounts.lastfm.get_session", get_session)
+    monkeypatch.setattr(LastfmConnector, "_validate", lambda self: (True, self._store.get("LASTFM_USER")))
+
+    with TestClient(create_app(settings=settings, account_profiles=profiles)) as client:
+        public = client.post(f"/api/accounts/{first.id}/connect", json={"LASTFM_USER": "public"})
+        assert public.json()["capabilities"]["library_read"] is True
+        assert public.json()["capabilities"]["favorites_write"] is False
+        start = client.post(f"/api/accounts/{second.id}/connect").json()
+        assert parse_qs(urlsplit(start["url"]).query)["api_key"] == ["deployment-key"]
+        assert "deployment-secret" not in str(start)
+        callback = parse_qs(urlsplit(start["url"]).query)["cb"][0]
+        assert "error" in client.get(start["redirect_uri"], params={"token": "alice"}).text
+        assert not exchanged
+        assert "connected" in client.get(callback + "&token=alice").text
+        assert exchanged == [("deployment-key", "deployment-secret", "alice")]
+        accounts = {row["id"]: row for row in client.get("/api/accounts").json()}
+        assert [field["key"] for field in accounts[second.id]["fields"]] == ["LASTFM_USER"]
+        assert accounts[second.id]["capabilities"]["favorites_write"] is True
+        assert accounts[first.id]["capabilities"]["favorites_write"] is False
+
+    opts = parse_args([])
+    opts.account_profiles = profiles
+    public_target = targets.build_one(first.id, opts)._target
+    private_target = targets.build_one(second.id, opts)._target
+    assert public_target._api.user == "public" and not public_target._api.authenticated
+    assert private_target._api.user == "alice" and private_target._api.authenticated
+
+    monkeypatch.setenv("LASTFM_APP_API_KEY", "replacement-key")
+    assert not targets.build_one(second.id, opts)._target._api.authenticated
+
+
+def test_personal_lastfm_key_does_not_inherit_deployment_secret(monkeypatch):
+    from songmirror.lastfm import profile_credentials
+
+    monkeypatch.setenv("LASTFM_APP_API_KEY", "deployment-key")
+    monkeypatch.setenv("LASTFM_APP_API_SECRET", "deployment-secret")
+    store = Store(LASTFM_API_KEY="personal")
+    assert profile_credentials(store.get) == ("personal", "", "")
+    assert len(LastfmConnector(store).config_fields) == 3

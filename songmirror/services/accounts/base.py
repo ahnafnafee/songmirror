@@ -67,6 +67,8 @@ class Connector:
     def __init__(self, store):
         self._store = store
 
+    authorization_pending = False
+
     def status(self) -> ConnStatus:
         raise NotImplementedError
 

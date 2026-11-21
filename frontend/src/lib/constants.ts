@@ -46,6 +46,7 @@ const SERVICE_STYLES: Record<string, ServiceStyle> = {
   amazon: { label: 'Amazon Music', dot: 'bg-svc-amazon', soft: 'bg-svc-amazon-soft', text: 'text-svc-amazon' },
   apple: { label: 'Apple Music', dot: 'bg-svc-apple', soft: 'bg-svc-apple-soft', text: 'text-svc-apple' },
   ytmusic: { label: 'YouTube Music', dot: 'bg-svc-ytmusic', soft: 'bg-svc-ytmusic-soft', text: 'text-svc-ytmusic' },
+  soundcloud: { label: 'SoundCloud', dot: 'bg-svc-soundcloud', soft: 'bg-svc-soundcloud-soft', text: 'text-svc-soundcloud' },
   lastfm: { label: 'Last.fm', dot: 'bg-svc-lastfm', soft: 'bg-svc-lastfm-soft', text: 'text-svc-lastfm' },
   listenbrainz: { label: 'ListenBrainz', dot: 'bg-svc-listenbrainz', soft: 'bg-svc-listenbrainz-soft', text: 'text-svc-listenbrainz' },
   subsonic: { label: 'Navidrome / Subsonic', dot: 'bg-svc-subsonic', soft: 'bg-svc-subsonic-soft', text: 'text-svc-subsonic' },
@@ -91,7 +92,7 @@ export function tagText(tag: string): string {
 
 /** Provider id -> ServiceLogo id (both the "yt" event tag and the "ytmusic"
  * account id resolve to the same YouTube Music mark). */
-export function serviceLogoId(idOrTag: string): 'spotify' | 'tidal' | 'qobuz' | 'deezer' | 'amazon' | 'apple' | 'ytmusic' | 'lastfm' | 'listenbrainz' | 'subsonic' | 'jellyfin' | null {
+export function serviceLogoId(idOrTag: string): 'soundcloud' | 'spotify' | 'tidal' | 'qobuz' | 'deezer' | 'amazon' | 'apple' | 'ytmusic' | 'lastfm' | 'listenbrainz' | 'subsonic' | 'jellyfin' | null {
   idOrTag = activitySourceId(idOrTag)
   if (idOrTag === 'spotify') return 'spotify'
   if (idOrTag === 'tidal') return 'tidal'
@@ -100,6 +101,7 @@ export function serviceLogoId(idOrTag: string): 'spotify' | 'tidal' | 'qobuz' | 
   if (idOrTag === 'amazon') return 'amazon'
   if (idOrTag === 'apple') return 'apple'
   if (idOrTag === 'ytmusic') return 'ytmusic'
+  if (idOrTag === 'soundcloud') return 'soundcloud'
   if (idOrTag === 'lastfm') return 'lastfm'
   if (idOrTag === 'listenbrainz') return 'listenbrainz'
   if (idOrTag === 'subsonic') return 'subsonic'
@@ -130,6 +132,7 @@ const SERVICE_HOME_URLS: Record<string, string> = {
   amazon: 'https://music.amazon.com/',
   apple: 'https://music.apple.com/',
   ytmusic: 'https://music.youtube.com/',
+  soundcloud: 'https://soundcloud.com/',
   lastfm: 'https://www.last.fm/',
   listenbrainz: 'https://listenbrainz.org/',
 }
