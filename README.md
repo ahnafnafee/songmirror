@@ -528,6 +528,10 @@ To move playlists between Google accounts, connect both accounts for private lis
 
 Last.fm playlist sync is not supported, so it is never a playlist destination. It contributes **listening history** as read-only collections, and its **Loved Tracks** is a liked-tracks collection like every other provider's, which becomes writable once you authorize the account.
 
+For keyless setup, open **Accounts → Last.fm → No-quota mode**. Sign in to Last.fm, then use your browser's Network tab to copy the home document request headers or cURL. Paste the result into the setup form. The Docker image includes Chromium for this mode. On a native install, install Playwright's Chromium and provide a graphical display. Paste fresh headers when the Last.fm session expires.
+
+You can also connect through the Last.fm API.
+
 1. Create an API account at <https://www.last.fm/api/account/create>. Note both the **API key** and the **shared secret**.
 2. In Accounts → Last.fm, paste both, then click through the Last.fm authorization page.
 

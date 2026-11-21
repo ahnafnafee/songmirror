@@ -31,6 +31,7 @@ from ...lastfm import (
     LastfmTransient,
     profile_credentials,
 )
+from ...lastfm_web import LastfmBrowser, browser_session_path
 from ..config import polite_sleep
 from ..logs import log_warn
 from .base import (
@@ -46,8 +47,7 @@ TOP_PREFIX = "top:"
 ID_SEP = "␟"
 
 _NO_PLAYLISTS = "Last.fm playlist sync is not supported; it cannot receive playlist changes"
-_NEEDS_AUTH = ("loving tracks on Last.fm needs the shared secret and an "
-               "authorized session; reconnect the Last.fm account")
+_NEEDS_AUTH = "Connect an authorized Last.fm account to love or unlove tracks"
 
 
 def compose_id(artist, name):
@@ -75,8 +75,12 @@ class LastfmTarget(MirrorTarget):
 
     def __init__(self, client=None):
         if client is None:
-            key, secret, session_key = profile_credentials(os.getenv)
-            client = Lastfm(api_key=key, api_secret=secret, session_key=session_key)
+            path = browser_session_path()
+            if path.is_file():
+                client = LastfmBrowser.load(path)
+            else:
+                key, secret, session_key = profile_credentials(os.getenv)
+                client = Lastfm(api_key=key, api_secret=secret, session_key=session_key)
         self._api = client
         self.cache_file = self.resolve_cache_path()
 

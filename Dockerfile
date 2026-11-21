@@ -11,11 +11,14 @@ RUN pnpm build   # -> /frontend/dist
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
 # ffmpeg + spotDL power the optional local download mirror.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libatomic1 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/songmirror-browser SONGMIRROR_CONTAINER=1
+RUN uv run --no-sync playwright install --with-deps --no-shell chromium && rm -rf /var/lib/apt/lists/*
 
 # spotDL as an isolated tool so its old pins never constrain the app's web stack
 # (see downloads._spotdl_cmd, which finds it on PATH).

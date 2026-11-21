@@ -189,7 +189,7 @@ def _status_payload(request, profile):
         "editable_details": editable_details,
         "callback_url": _callback_url(request, profile, connector),
         "authorization_pending": authorization_pending,
-        **({"browser_mode": connector.browser_active} if profile.provider == "soundcloud" else {}),
+        **({"browser_mode": connector.browser_active} if profile.provider in {"soundcloud", "lastfm"} else {}),
     }
 
 
@@ -361,6 +361,22 @@ def soundcloud_enable_browser(account_id: str, request: Request, body: dict = Bo
     profile, connector = _provider_connector(request, account_id, "soundcloud")
     with request.app.state.account_profiles.activate(profile.id):
         status = connector.enable_browser(body.get("headers", ""))
+    return _status_values(profile.provider, status)
+
+
+@router.post("/api/accounts/{account_id}/lastfm/browser")
+def lastfm_enable_browser(account_id: str, request: Request, body: dict = Body(...)):
+    profile, connector = _provider_connector(request, account_id, "lastfm")
+    with request.app.state.account_profiles.activate(profile.id):
+        status = connector.enable_browser(body.get("headers", ""))
+    return _status_values(profile.provider, status)
+
+
+@router.delete("/api/accounts/{account_id}/lastfm/browser")
+def lastfm_disable_browser(account_id: str, request: Request):
+    profile, connector = _provider_connector(request, account_id, "lastfm")
+    with request.app.state.account_profiles.activate(profile.id):
+        status = connector.disable_browser()
     return _status_values(profile.provider, status)
 
 

@@ -585,7 +585,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
               </>
             )}
 
-            {(account.provider === 'ytmusic' || account.provider === 'soundcloud') &&
+            {['ytmusic', 'soundcloud', 'lastfm'].includes(account.provider) &&
               <NoQuotaModeSection account={account} onChanged={onChanged} />}
           </>
         )}
@@ -809,7 +809,8 @@ function HeaderPasteBox({ fields, onFilled }: { fields: AccountField[]; onFilled
 function NoQuotaModeSection({ account, onChanged }: { account: Account; onChanged: () => void }) {
   useTranslation()
   const soundcloud = account.provider === 'soundcloud'
-  const selected = soundcloud ? Boolean(account.browser_mode) : account.detail === YTMUSIC_BROWSER_MODE_DETAIL
+  const lastfm = account.provider === 'lastfm'
+  const selected = soundcloud || lastfm ? Boolean(account.browser_mode) : account.detail === YTMUSIC_BROWSER_MODE_DETAIL
   const active = selected && account.state === 'connected'
   const [headers, setHeaders] = useState('')
   const [saving, setSaving] = useState(false)
@@ -826,7 +827,8 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     setSaving(true)
     setError(null)
     try {
-      const enableMode = soundcloud ? api.enableSoundcloudBrowserMode : api.enableYtmusicBrowserMode
+      const enableMode = lastfm ? api.enableLastfmBrowserMode
+        : soundcloud ? api.enableSoundcloudBrowserMode : api.enableYtmusicBrowserMode
       const res = await enableMode(account.id, headers)
       if (res.state === 'connected') onChanged()
       else setError(res.detail || t("Could not enable no-quota mode with those headers."))
@@ -841,7 +843,8 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     setSaving(true)
     setError(null)
     try {
-      const disableMode = soundcloud ? api.disableSoundcloudBrowserMode : api.disableYtmusicBrowserMode
+      const disableMode = lastfm ? api.disableLastfmBrowserMode
+        : soundcloud ? api.disableSoundcloudBrowserMode : api.disableYtmusicBrowserMode
       await disableMode(account.id)
       onChanged()
     } catch (err) {
@@ -868,14 +871,18 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
       </summary>
       <div className="flex flex-col gap-3 border-t border-border px-3.5 py-3">
         <p className="text-xs leading-relaxed text-text-3">
-          {soundcloud
+          {lastfm
+            ? t("Use your Last.fm browser session without an API key. SongMirror can read your history and love or unlove tracks. Paste fresh headers when the session expires.")
+            : soundcloud
             ? t("Use your SoundCloud browser session without a developer API key. Paste a fresh request if the session expires.")
             : t("Routes reads and writes through your YT Music browser session instead of the Data API, so large syncs aren't capped by its daily quota. Each pass refreshes the session, so a paste keeps working on its own — you'll only be asked for fresh headers if syncs stop running for several days.")}
         </p>
 
-        {account.state === 'expired' && (!soundcloud || selected) && (
+        {((soundcloud || lastfm)
+          ? selected && (account.state === 'expired' || account.state === 'error')
+          : account.state === 'expired') && (
           <p className="text-xs leading-relaxed text-warning">
-            {soundcloud && account.detail
+            {(soundcloud || lastfm) && account.detail
               ? account.detail
               : t("The pasted session expired — no-quota mode stays selected, it just needs fresh headers below.")}
           </p>
@@ -894,14 +901,19 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
           <>
             <ol className="flex list-decimal flex-col gap-1.5 ps-5 text-[13px] leading-relaxed text-text-2 marker:font-mono marker:text-xs marker:text-text-3">
               <li className="ps-1">
-                <Trans i18nKey={"Open <link1/> and sign in."} components={{ link1: soundcloud
-                  ? <GuideLink href="https://soundcloud.com/you/sets">soundcloud.com/you/sets</GuideLink>
-                  : <GuideLink href="https://music.youtube.com">music.youtube.com</GuideLink> }} />
+                <Trans i18nKey={"Open <link1/> and sign in."} components={{ link1: lastfm
+                  ? <GuideLink href="https://www.last.fm/home">last.fm/home</GuideLink>
+                  : soundcloud ? <GuideLink href="https://soundcloud.com/you/sets">soundcloud.com/you/sets</GuideLink>
+                    : <GuideLink href="https://music.youtube.com">music.youtube.com</GuideLink> }} />
               </li>
               <li className="ps-1">
                 <Trans i18nKey={"Open your browser's dev tools (<code1/>) and pick the <strong2>Network</strong2> tab."} components={{ code1: <Code>F12</Code>, strong2: <strong /> }} />
               </li>
-              {soundcloud ? (
+              {lastfm ? (
+                <li className="ps-1">
+                  <Trans i18nKey={"Reload the page. Right-click the <code1/> document request and choose Copy as cURL (bash), or copy its request headers. Paste the result below."} components={{ code1: <Code>home</Code> }} />
+                </li>
+              ) : soundcloud ? (
                 <li className="ps-1">
                   <Trans i18nKey={"Reload the page, then right-click <code1/> and choose Copy as cURL (bash). Paste the request below."} components={{ code1: <Code>/me/library/all</Code> }} />
                 </li>
@@ -919,7 +931,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
             <textarea
               value={headers}
               onChange={(e) => setHeaders(e.target.value)}
-              placeholder={soundcloud ? undefined : t("authority: music.youtube.com\ncookie: …\nauthorization: SAPISIDHASH …")}
+              placeholder={lastfm || soundcloud ? undefined : t("authority: music.youtube.com\ncookie: …\nauthorization: SAPISIDHASH …")}
               rows={4}
               aria-label={t("Raw request headers")}
               className="w-full resize-y rounded-control border border-border-strong bg-field px-3 py-2 font-mono text-xs text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
@@ -931,7 +943,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
         )}
         {selected && (
           <Button variant="secondary" size="sm" onClick={() => void disable()} loading={saving} className="w-fit">
-            {t("Switch back to OAuth")}
+            {lastfm ? t("Switch back to API access") : t("Switch back to OAuth")}
           </Button>
         )}
       </div>

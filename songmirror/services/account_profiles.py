@@ -70,7 +70,7 @@ PROVIDER_KEYS = {
     "lastfm": {
         "LASTFM_API_KEY", "LASTFM_API_SECRET", "LASTFM_USER",
         "LASTFM_SESSION_KEY", "LASTFM_CACHE_FILE",
-        "LASTFM_AUTH_PENDING", "LASTFM_SESSION_APP_KEY",
+        "LASTFM_AUTH_PENDING", "LASTFM_SESSION_APP_KEY", "LASTFM_BROWSER_SESSION_FILE",
     },
     "soundcloud": {"SOUNDCLOUD_TOKEN_FILE", "SOUNDCLOUD_CACHE_FILE",
                    "SOUNDCLOUD_WEB_SESSION_FILE", "SOUNDCLOUD_PREFER_BROWSER"},
@@ -107,7 +107,8 @@ _FILE_DEFAULTS = {
         "YTMUSIC_BROWSER_AUTH": "ytmusic_browser.json",
         "YTMUSIC_CACHE_FILE": "ytmusic_resolve_cache.json",
     },
-    "lastfm": {"LASTFM_CACHE_FILE": "lastfm_resolve_cache.json"},
+    "lastfm": {"LASTFM_CACHE_FILE": "lastfm_resolve_cache.json",
+               "LASTFM_BROWSER_SESSION_FILE": "lastfm_browser.json"},
     "soundcloud": {"SOUNDCLOUD_TOKEN_FILE": "soundcloud_oauth.json",
                    "SOUNDCLOUD_WEB_SESSION_FILE": "soundcloud_browser.json",
                    "SOUNDCLOUD_CACHE_FILE": "soundcloud_resolve_cache.json"},
@@ -196,6 +197,8 @@ class ProfileSettings:
             root = self.data_dir
             for key, filename in _FILE_DEFAULTS.get(self.profile.provider, {}).items():
                 values.setdefault(key, str(root / filename))
+        elif self.profile.provider == "lastfm":
+            values.setdefault("LASTFM_BROWSER_SESSION_FILE", str(self.data_dir / "lastfm_browser.json"))
         return {key: str(value) for key, value in values.items() if value is not None}
 
     def _fallback_values(self):

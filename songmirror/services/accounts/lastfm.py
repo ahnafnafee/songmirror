@@ -7,6 +7,7 @@ project it needs no renewal; the user revokes it from their Last.fm settings.
 """
 
 import secrets
+from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import requests
@@ -23,6 +24,8 @@ from ...lastfm import (
     profile_credentials,
     sign,
 )
+from ...lastfm_web import SESSION_FILENAME, LastfmBrowser, browser_session_path, parse_browser_request
+from ...soundcloud import write_private
 from .base import ConnStatus, Connector, Field
 
 # Public history reads need an API key; loving tracks also needs authorization.
@@ -69,11 +72,55 @@ class LastfmConnector(Connector):
     def authorization_pending(self):
         return bool(self._store.get("LASTFM_AUTH_PENDING"))
 
+    @property
+    def _browser_file(self):
+        configured = self._store.get("LASTFM_BROWSER_SESSION_FILE")
+        if configured:
+            return Path(configured)
+        directory = getattr(self._store, "data_dir", None)
+        return directory / SESSION_FILENAME if directory else browser_session_path()
+
+    @property
+    def browser_active(self):
+        return self._browser_file.is_file()
+
+    def enable_browser(self, raw):
+        try:
+            cookies = parse_browser_request(raw)
+            client = LastfmBrowser(cookies)
+            user = client.display_name()
+            if self.browser_active:
+                try:
+                    current = LastfmBrowser.load(self._browser_file).user
+                except LastfmError:
+                    current = None
+                if current and current.casefold() != user.casefold():
+                    return ConnStatus("error", "This Last.fm request belongs to a different account")
+            write_private(self._browser_file, {"user": user, "cookies": cookies})
+        except (LastfmError, LastfmTransient, ValueError) as exc:
+            return ConnStatus("error", str(exc))
+        except OSError:
+            return ConnStatus("error", "Could not save the Last.fm browser session")
+        return ConnStatus("connected", user, capabilities=READ | LOVE)
+
+    def disable_browser(self):
+        self._browser_file.unlink(missing_ok=True)
+        return self.status()
+
     def _granted(self):
         _, secret, session_key = profile_credentials(self._store.get)
         return READ | LOVE if secret and session_key else READ
 
     def status(self) -> ConnStatus:
+        if self.browser_active:
+            try:
+                client = LastfmBrowser.load(self._browser_file)
+                user = client.display_name()
+            except LastfmError as exc:
+                return ConnStatus("expired", str(exc), capabilities=frozenset())
+            except LastfmTransient as exc:
+                return ConnStatus("error", str(exc), capabilities=frozenset())
+            return ConnStatus("connected", user, capabilities=READ | LOVE)
         if not application_key(self._store.get)[0]:
             return ConnStatus("unconfigured", "add a Last.fm API key",
                               capabilities=frozenset())
@@ -101,6 +148,8 @@ class LastfmConnector(Connector):
             updates["LASTFM_SESSION_APP_KEY"] = ""
         self._store.save(updates)
         ok, detail = self._validate()
+        if ok and self.browser_active:
+            self._browser_file.unlink()
         return ConnStatus("connected" if ok else "error", detail,
                           capabilities=self._granted() if ok else frozenset())
 
@@ -141,12 +190,16 @@ class LastfmConnector(Connector):
         ok, detail = self._validate()
         if ok:
             self._store.save({"LASTFM_AUTH_PENDING": ""})
+            if self.browser_active:
+                self._browser_file.unlink()
         suffix = " (private reads and loving enabled)"
         return ConnStatus("connected" if ok else "error",
                           (detail + suffix) if ok else detail,
                           capabilities=self._granted())
 
     def disconnect(self) -> None:
+        if self.browser_active:
+            self._browser_file.unlink()
         self._store.save({"LASTFM_API_KEY": "", "LASTFM_API_SECRET": "",
                           "LASTFM_USER": "", "LASTFM_SESSION_KEY": "",
                           "LASTFM_SESSION_APP_KEY": "", "LASTFM_AUTH_PENDING": ""})
