@@ -11,7 +11,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Đồng bộ hóa danh sách phát tự lưu trữ, luôn bật cho Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music và YouTube Music — cùng với một máy nhân bản âm thanh cục bộ sẵn sàng cho Jellyfin.<br/>
+Đồng bộ hóa danh sách phát tự lưu trữ, luôn bật cho Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music và YouTube Music, SoundCloud — cùng với một máy nhân bản âm thanh cục bộ sẵn sàng cho Jellyfin.<br/>
 Một giải pháp thay thế miễn phí, mã nguồn mở, tự lưu trữ cho Soundiiz, TuneMyMusic và FreeYourMusic mà bạn sở hữu và điều hành.
 
 **Hợp nhất một chiều, nhiều nguồn, nhóm có thẩm quyền hoặc đồng bộ hóa hai chiều hoàn toàn (N-way) · chuyển danh sách phát một lần · khớp chính xác tới ISRC · tất cả từ trình duyệt của bạn**
@@ -75,6 +75,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 > Yêu cầu [`uv`](https://docs.astral.sh/uv/) (Python 3.13+). Đối với máy nhân bản tải xuống cục bộ, cũng có `uv tool install spotdl` và có `ffmpeg` trên PATH.
 
+Để yêu cầu tên người dùng và mật khẩu, mở **Cài đặt → Chung → ĐĂNG NHẬP CỦA CHỦ SỞ HỮU** rồi chọn **Thiết lập đăng nhập**. Dùng mã thiết lập một lần trong nhật ký khởi động máy chủ.
+
 <a id="app-language"></a>
 
 ### Ngôn ngữ ứng dụng
@@ -116,6 +118,7 @@ SongMirror hỗ trợ tiếng Anh, tiếng Ả Rập, tiếng Thổ Nhĩ Kỳ, t
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️ không có giao diện đồ họa CLI](#headless-cli)
 - [🛡️ Biện pháp đảm bảo an toàn](#safety-rails)
@@ -435,7 +438,7 @@ SongMirror làm mới thông tin xác thực đúng lúc chứ không phải b�
 | Amazon Music | Mã thông báo truy cập web sẽ gia hạn thông qua `/pandaToken` bằng cách sử dụng tác nhân người dùng, người giới thiệu và cookie trong danh sách cho phép của trình duyệt đã thu thập. Bối cảnh thiết bị khởi động luồng `POST config.json?skipToken=false` hiện tại khi cần và các cookie đã xoay vẫn được duy trì. Đăng xuất, thay đổi bảo mật hoặc thu hồi phía máy chủ vẫn yêu cầu bản chụp mới. |
 | Apple Music | Không thể gia hạn Bearer và Media-User-Token đã dán trước SongMirror và phải được chụp lại sau khi bị từ chối. |
 | YouTube Music | Data API OAuth tự động làm mới trong vòng 60 giây sau khi hết hạn. Chế độ trình duyệt thử xoay cookie của Google bất cứ khi nào mục tiêu đồng bộ hóa được tạo; phiên trình duyệt đã hết hạn phải được xuất lại. |
-| Last.fm | Cả khóa API lẫn khóa phiên đều không hết hạn nên không có gì được làm mới. Chỉ cấp quyền lại nếu bạn thu hồi quyền truy cập của ứng dụng trong phần cài đặt tài khoản Last.fm. |
+| Last.fm | Dán yêu cầu mới khi phiên trình duyệt hết hạn. Ở chế độ API, kết nối lại nếu quyền bị thu hồi. |
 | Jellyfin | Khóa API không có chu kỳ làm mới mã thông báo truy cập; chỉ thay thế nó nếu nó bị thu hồi hoặc xóa. |
 
 <a id="spotify"></a>
@@ -524,11 +527,21 @@ Nói chuyện với [YouTube Data API v3](https://developers.google.com/youtube/
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+Kết nối dịch vụ tại **Tài khoản → SoundCloud**. Dùng **Chế độ không hạn ngạch** với phiên trình duyệt đã đăng nhập hoặc dùng OAuth với ứng dụng được cấu hình trên máy chủ. Bạn có thể duyệt, sao chép và đồng bộ các danh sách phát của mình. [Hướng dẫn kết nối](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 Việc đồng bộ danh sách phát tới Last.fm không được hỗ trợ nên không bao giờ là đích đến của danh sách phát. Nó góp **lịch sử nghe** dưới dạng các bộ sưu tập chỉ đọc, và **Loved Tracks** của nó là một bộ sưu tập bài hát yêu thích giống như ở mọi nhà cung cấp khác, và trở nên ghi được khi bạn cấp quyền cho tài khoản.
+
+Để truy cập không cần khóa, mở **Tài khoản → Last.fm → Chế độ không hạn ngạch** rồi dán yêu cầu trang chủ từ trình duyệt đã đăng nhập. Ảnh Docker có sẵn Chromium. Dán yêu cầu mới khi phiên hết hạn.
+
+Khi dùng API, hãy dùng thông tin xác thực ứng dụng dùng chung của máy chủ hoặc khóa riêng.
 
 1. Tạo tài khoản API tại <https://www.last.fm/api/account/create>. Ghi lại cả **khóa API** và **khóa bí mật chia sẻ**.
 2. Trong Tài khoản → Last.fm, dán cả hai rồi hoàn tất trang cấp quyền của Last.fm.

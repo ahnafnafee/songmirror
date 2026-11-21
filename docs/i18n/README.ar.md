@@ -13,7 +13,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-مزامنة قائمة التشغيل ذاتية الاستضافة ودائمة التشغيل لـ Spotify وTIDAL وQobuz وDeezer وAmazon Music وApple Music وYouTube Music — بالإضافة إلى مرآة صوت محلية جاهزة ل Jellyfin.<br/>
+مزامنة قائمة التشغيل ذاتية الاستضافة ودائمة التشغيل لـ Spotify وTIDAL وQobuz وDeezer وAmazon Music وApple Music وYouTube Music وSoundCloud — بالإضافة إلى مرآة صوت محلية جاهزة ل Jellyfin.<br/>
 بديل مجاني ومفتوح المصدر ومستضاف ذاتيًا لـ Soundiiz وTuneMyMusic وFreeYourMusic التي تمتلكها وتديرها.
 
 **دمج أحادي الاتجاه أو متعدد المصادر أو مجموعة موثوقة أو مزامنة ثنائية الاتجاه كاملة (N-way) · عمليات نقل قائمة التشغيل لمرة واحدة · المطابقة الدقيقة بواسطة ISRC · كل ذلك من متصفحك**
@@ -89,6 +89,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 > يتطلب [`uv`](https://docs.astral.sh/uv/) (Python 3.13+). للحصول على مرآة التنزيل المحلية، أيضًا `uv tool install spotdl` ولديك `ffmpeg` على PATH.
 
+لاشتراط اسم مستخدم وكلمة مرور، افتح **الإعدادات → عام → تسجيل دخول المالك** واختر **إعداد تسجيل الدخول**. استخدم رمز الإعداد لمرة واحدة من سجل بدء الخادم.
+
 <a id="app-language"></a>
 
 ### لغة التطبيق
@@ -130,6 +132,7 @@ SongMirror يدعم اللغات الإنجليزية والعربية والت�
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️ بدون واجهة رسومية CLI](#headless-cli)
 - [🛡️ ضمانات السلامة](#safety-rails)
@@ -465,7 +468,7 @@ SongMirror يقوم بتحديث بيانات الاعتماد في الوقت �
 | Amazon Music | يتم تجديد رمز الوصول إلى الويب من خلال `/pandaToken` باستخدام وكيل مستخدم المتصفح والمرجع وملفات تعريف الارتباط المدرجة في القائمة المسموح بها. يعمل تدفق `POST config.json?skipToken=false` الحالي على تمهيد سياق الجهاز عند الحاجة، وتستمر ملفات تعريف الارتباط التي تم تدويرها. لا يزال تسجيل الخروج أو التغييرات الأمنية أو الإلغاء من جانب الخادم يتطلب التقاطًا جديدًا. |
 | Apple Music | لا يمكن تجديد Bearer و Media-User-Token الملصقة بواسطة SongMirror ويجب التقاطها مرة أخرى بعد الرفض. |
 | YouTube Music | Data API OAuth يتم التحديث تلقائيًا خلال 60 ثانية من انتهاء الصلاحية. يحاول وضع المتصفح تدوير ملف تعريف الارتباط الخاص بـ Google كلما تم إنشاء هدف مزامنة؛ يجب تصدير جلسة المتصفح منتهية الصلاحية مرة أخرى. |
-| Last.fm | لا ينتهي مفتاح API ولا مفتاح الجلسة، فلا يُجدَّد شيء. أعد التفويض فقط إذا سحبت صلاحية التطبيق من إعدادات حسابك على Last.fm. |
+| Last.fm | الصق طلبًا جديدًا عند انتهاء جلسة المتصفح. في وضع API، أعد الاتصال إذا أُلغي التفويض. |
 | Jellyfin | لا يحتوي المفتاح API على دورة تحديث لرمز الوصول؛ استبدله فقط في حالة إبطاله أو حذفه. |
 
 <a id="spotify"></a>
@@ -554,11 +557,21 @@ SongMirror يستمد نفس قيمة التفويض `AmznMusic` محليًا و
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+اتصل من **الحسابات → SoundCloud**. استخدم **وضع عدم الحصص** لجلسة متصفح مسجّل الدخول أو استخدم OAuth مع تطبيق مُعدّ على الخادم. يمكنك تصفح قوائم التشغيل ونسخها ومزامنة القوائم التي تملكها. [دليل الاتصال](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 مزامنة قوائم التشغيل مع Last.fm غير مدعومة، لذلك لا يكون أبدًا وجهةً لقائمة تشغيل. يقدّم **سجل استماعك** في صورة مجموعات للقراءة فقط، ومجموعة **Loved Tracks** فيه هي مجموعة مقطوعات مفضلة مثل أي مزوّد آخر، وتصبح قابلة للكتابة بعد تفويض الحساب.
+
+للاتصال بلا مفتاح، افتح **الحسابات → Last.fm → وضع عدم الحصص** والصق طلب الصفحة الرئيسية من متصفح مسجّل الدخول. تتضمن صورة Docker متصفح Chromium. استخدم طلبًا جديدًا عند انتهاء الجلسة.
+
+يمكن استخدام بيانات اعتماد التطبيق المشتركة في الخادم أو مفتاح API شخصي.
 
 1. أنشئ حساب API على <https://www.last.fm/api/account/create>، ودوّن **مفتاح API** و**المفتاح السري المشترك** معًا.
 2. في الحسابات → Last.fm الصق الاثنين، ثم أكمل صفحة التفويض في Last.fm.

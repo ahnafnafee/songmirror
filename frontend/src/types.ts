@@ -65,6 +65,8 @@ export interface Account {
   callback_url?: string | null
   /** A Last.fm API approval has started but its callback has not succeeded. */
   authorization_pending?: boolean
+  /** A browser session is selected, even if it needs to be renewed. */
+  browser_mode?: boolean
   /** Whether this service can replay date-added order into an existing playlist.
    * False where the provider's writes can't express the repair safely (Deezer),
    * which greys out the transfer form's "preserve order" switch. */

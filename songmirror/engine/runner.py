@@ -852,6 +852,9 @@ def run_pass(opts, should_continue=None):
             log_warn(f"not found on {source.name}: {', '.join(sorted(missing))}", indent="  ")
 
     if opts.refresh_local:
+        if target_provider(source) == "soundcloud":
+            log_warn("SoundCloud supports playlist metadata sync only", indent="  ")
+            return _summary(opts, [], pass_started)
         if not opts.download_dir:
             log_warn("--refresh-local needs a download dir (set DOWNLOAD_DIR or --download-dir)", indent="  ")
             return _summary(opts, [], pass_started)
@@ -1094,7 +1097,9 @@ def _post_sync(opts, sp, selected, source_is_spotify=True, should_continue=None,
             log_note("download mirror skipped: the job did not supply a source target",
                      tag="local")
         return
-    if opts.download_dir and opts.execute:
+    if opts.download_dir and opts.execute and target_provider(source) == "soundcloud":
+        log_note("Download mirror skipped: SoundCloud supports playlist metadata sync only", tag="local")
+    elif opts.download_dir and opts.execute:
         try:
             from . import downloads
 

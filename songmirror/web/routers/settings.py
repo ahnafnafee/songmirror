@@ -31,6 +31,15 @@ SECRET_KEYS |= {
     "TIDAL_OAUTH_STATE",
     "DEEZER_OAUTH_STATE",
     "AMAZON_MUSIC_OAUTH_STATE",
+    "LASTFM_APP_API_KEY",
+    "LASTFM_APP_API_SECRET",
+    "LASTFM_SESSION_APP_KEY",
+    "LASTFM_AUTH_PENDING",
+    "SOUNDCLOUD_CLIENT_ID",
+    "SOUNDCLOUD_CLIENT_SECRET",
+}
+_DEPLOYMENT_CREDENTIAL_KEYS = {
+    "LASTFM_APP_API_KEY", "LASTFM_APP_API_SECRET", "SOUNDCLOUD_CLIENT_ID", "SOUNDCLOUD_CLIENT_SECRET",
 }
 
 # Non-secret config the UI manages. When settings.json doesn't have a key, fall
@@ -45,15 +54,15 @@ PUBLIC_KEYS = frozenset(CONFIG_KEYS) | {"AUTO_SYNC", "LOCAL_MIRROR_ORDER",
 # HTTP fields are deliberately narrower than provider environment-isolation
 # keys: executable, loader, storage and security-policy options belong to the
 # host startup environment. Internal connector state can still be persisted.
-WRITABLE_KEYS = frozenset(CONFIG_KEYS) | {"AUTO_SYNC"} | {
+WRITABLE_KEYS = (frozenset(CONFIG_KEYS) | {"AUTO_SYNC"} | {
     field.key for cls in CONNECTORS.values() for field in cls.config_fields
-} | SECRET_KEYS
+} | SECRET_KEYS) - _DEPLOYMENT_CREDENTIAL_KEYS - {"LASTFM_SESSION_APP_KEY", "LASTFM_AUTH_PENDING"}
 MANAGED_KEYS = WRITABLE_KEYS | {
-    "DOWNLOAD_DIR_CONFIRMED", "APPLE_STOREFRONT", "LASTFM_AUTH_PENDING", "LASTFM_USER",
+    "DOWNLOAD_DIR_CONFIRMED", "APPLE_STOREFRONT", "LASTFM_AUTH_PENDING", "LASTFM_SESSION_APP_KEY", "LASTFM_USER",
     "SPOTIFY_AUTH_MODE", "SPOTIFY_WRITE_BACKEND", "SPOTIFY_REDIRECT_URI",
     "TIDAL_CLIENT_ID", "TIDAL_COUNTRY_CODE", "TIDAL_REDIRECT_URI",
     "YTMUSIC_PREFER_BROWSER", "QOBUZ_APP_ID", "QOBUZ_USER_ID", "DEEZER_APP_ID",
-    "AMAZON_MUSIC_CLIENT_ID",
+    "AMAZON_MUSIC_CLIENT_ID", "SOUNDCLOUD_PREFER_BROWSER",
 }
 
 

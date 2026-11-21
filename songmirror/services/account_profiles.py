@@ -70,8 +70,10 @@ PROVIDER_KEYS = {
     "lastfm": {
         "LASTFM_API_KEY", "LASTFM_API_SECRET", "LASTFM_USER",
         "LASTFM_SESSION_KEY", "LASTFM_CACHE_FILE",
-        "LASTFM_AUTH_PENDING",
+        "LASTFM_AUTH_PENDING", "LASTFM_SESSION_APP_KEY", "LASTFM_BROWSER_SESSION_FILE",
     },
+    "soundcloud": {"SOUNDCLOUD_TOKEN_FILE", "SOUNDCLOUD_CACHE_FILE",
+                   "SOUNDCLOUD_WEB_SESSION_FILE", "SOUNDCLOUD_PREFER_BROWSER"},
     "jellyfin": {"JELLYFIN_URL", "JELLYFIN_API_KEY", "JELLYFIN_USER_ID", "JELLYFIN_CACHE_FILE"},
     "listenbrainz": {"LISTENBRAINZ_USER", "LISTENBRAINZ_TOKEN", "LISTENBRAINZ_CACHE_FILE"},
     "subsonic": {"SUBSONIC_URL", "SUBSONIC_USER", "SUBSONIC_PASSWORD", "SUBSONIC_CACHE_FILE"},
@@ -105,7 +107,11 @@ _FILE_DEFAULTS = {
         "YTMUSIC_BROWSER_AUTH": "ytmusic_browser.json",
         "YTMUSIC_CACHE_FILE": "ytmusic_resolve_cache.json",
     },
-    "lastfm": {"LASTFM_CACHE_FILE": "lastfm_resolve_cache.json"},
+    "lastfm": {"LASTFM_CACHE_FILE": "lastfm_resolve_cache.json",
+               "LASTFM_BROWSER_SESSION_FILE": "lastfm_browser.json"},
+    "soundcloud": {"SOUNDCLOUD_TOKEN_FILE": "soundcloud_oauth.json",
+                   "SOUNDCLOUD_WEB_SESSION_FILE": "soundcloud_browser.json",
+                   "SOUNDCLOUD_CACHE_FILE": "soundcloud_resolve_cache.json"},
     "listenbrainz": {"LISTENBRAINZ_CACHE_FILE": "listenbrainz_resolve_cache.json"},
     "subsonic": {"SUBSONIC_CACHE_FILE": "subsonic_resolve_cache.json"},
     "jellyfin": {"JELLYFIN_CACHE_FILE": "jellyfin_resolve_cache.json"},
@@ -189,7 +195,7 @@ class ProfileSettings:
         values = self._local.load()
         if self.profile.is_default:
             values.update(self._fallback_values())
-        if not self.profile.is_default:
+        if not self.profile.is_default or self.profile.provider == "soundcloud":
             root = self.data_dir
             for key, filename in _FILE_DEFAULTS.get(self.profile.provider, {}).items():
                 values.setdefault(key, str(root / filename))
@@ -198,6 +204,8 @@ class ProfileSettings:
             # defaults need the same path at engine activation without making
             # a persisted settings value capable of selecting a destination.
             values["YTMUSIC_BROWSER_AUTH"] = str(self._profiles.settings.data_dir / "ytmusic_browser.json")
+        elif self.profile.provider == "lastfm":
+            values.setdefault("LASTFM_BROWSER_SESSION_FILE", str(self.data_dir / "lastfm_browser.json"))
         return {key: str(value) for key, value in values.items() if value is not None}
 
     def _fallback_values(self):
@@ -552,7 +560,7 @@ class AccountProfileStore:
         return {
             "spotify": "Spotify", "tidal": "TIDAL", "qobuz": "Qobuz",
             "deezer": "Deezer", "amazon": "Amazon Music", "apple": "Apple Music",
-            "ytmusic": "YouTube Music", "lastfm": "Last.fm",
+            "ytmusic": "YouTube Music", "lastfm": "Last.fm", "soundcloud": "SoundCloud",
             "listenbrainz": "ListenBrainz", "subsonic": "Navidrome / Subsonic",
             "jellyfin": "Jellyfin",
         }.get(provider, provider)

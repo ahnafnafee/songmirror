@@ -23,6 +23,7 @@ const SERVICE_BLURBS: Record<string, string> = {
   get amazon() { return t("Syncs playlists using an auto-renewing session from your signed-in Amazon Music web player.") },
   get apple() { return t("Paste a couple of tokens from the Apple Music web player. No developer account needed.") },
   get ytmusic() { return t("Sign in with a Google account using a short code. Approve it from your phone or another tab.") },
+  get soundcloud() { return t("Sync your SoundCloud playlists with other services.") },
   get lastfm() { return t("Reads your listening history. Authorize it to read a private profile and love tracks.") },
   get listenbrainz() { return t("Read loved recordings and playlists by username; add a user token to receive them.") },
   get subsonic() { return t("Syncs playlists and starred songs already stored on your music server.") },

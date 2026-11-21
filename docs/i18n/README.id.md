@@ -11,7 +11,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Sinkronisasi playlist yang dihosting sendiri dan selalu aktif untuk Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, dan YouTube Music — ditambah cermin audio lokal yang siap digunakan Jellyfin.<br/>
+Sinkronisasi playlist yang dihosting sendiri dan selalu aktif untuk Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, dan YouTube Music, SoundCloud — ditambah cermin audio lokal yang siap digunakan Jellyfin.<br/>
 Alternatif gratis, sumber terbuka, dan dihosting sendiri untuk Soundiiz, TuneMyMusic, dan FreeYourMusic yang Anda miliki dan jalankan.
 
 **Sinkronisasi satu arah, penggabungan multi-sumber, grup otoritatif, atau dua arah penuh (N-arah) · transfer daftar putar satu kali · pencocokan akurat sebesar ISRC · semuanya dari browser Anda**
@@ -75,6 +75,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 > Memerlukan [`uv`](https://docs.astral.sh/uv/) (Python 3.13+). Untuk mirror unduhan lokal, juga `uv tool install spotdl` dan miliki `ffmpeg` di PATH.
 
+Untuk mewajibkan nama pengguna dan kata sandi, buka **Pengaturan → Umum → LOGIN PEMILIK** lalu pilih **Siapkan login**. Gunakan kode sekali pakai dari log awal server.
+
 <a id="app-language"></a>
 
 ### Bahasa aplikasi
@@ -116,6 +118,7 @@ SongMirror mendukung bahasa Inggris, Arab, Turki, Spanyol, Cina Sederhana, Peran
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️ tanpa antarmuka grafis CLI](#headless-cli)
 - [🛡️ Perlindungan keamanan](#safety-rails)
@@ -435,7 +438,7 @@ SongMirror menyegarkan kredensial tepat pada waktunya, bukan dengan pengatur wak
 | Amazon Music | Token akses web diperbarui melalui `/pandaToken` menggunakan agen pengguna browser yang diambil, rujukan, dan cookie yang diizinkan. Konteks perangkat bootstrap aliran `POST config.json?skipToken=false` saat ini bila diperlukan, dan cookie yang diputar tetap ada. Logout, perubahan keamanan, atau pencabutan sisi server masih memerlukan pengambilan baru. |
 | Apple Music | Bearer dan Media-User-Token yang ditempel tidak dapat diperpanjang dengan SongMirror dan harus diambil lagi setelah ditolak. |
 | YouTube Music | Data API OAuth disegarkan secara otomatis dalam waktu 60 detik setelah habis masa berlakunya. Mode browser mencoba rotasi cookie Google setiap kali target sinkronisasi dibuat; sesi browser yang sudah kedaluwarsa harus diekspor lagi. |
-| Last.fm | Kunci API maupun kunci sesi tidak kedaluwarsa, jadi tidak ada yang diperbarui. Otorisasi ulang hanya jika Anda mencabut akses aplikasi di pengaturan akun Last.fm Anda. |
+| Last.fm | Tempel permintaan baru saat sesi browser kedaluwarsa. Dalam mode API, sambungkan kembali akun jika otorisasi dicabut. |
 | Jellyfin | Kunci API tidak memiliki siklus penyegaran token akses; menggantinya hanya jika dicabut atau dihapus. |
 
 <a id="spotify"></a>
@@ -524,11 +527,21 @@ Untuk memindahkan daftar pribadi antar akun Google, hubungkan keduanya; untuk da
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+Sambungkan layanan melalui **Akun → SoundCloud**. Gunakan **Mode tanpa kuota** dengan sesi browser yang sudah masuk, atau OAuth dengan aplikasi yang disiapkan di server. Anda dapat menelusuri dan menyalin daftar putar serta menyinkronkan daftar putar milik Anda. [Panduan koneksi](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 Sinkronisasi daftar putar ke Last.fm tidak didukung, jadi tidak pernah menjadi tujuan daftar putar. Layanan ini menyumbang **riwayat mendengarkan** sebagai koleksi baca-saja, dan **Loved Tracks** miliknya adalah koleksi lagu favorit seperti pada penyedia lain, yang bisa ditulis begitu Anda mengotorisasi akun.
+
+Untuk akses tanpa kunci, buka **Akun → Last.fm → Mode tanpa kuota** dan tempel permintaan halaman utama dari browser yang sudah masuk. Citra Docker menyertakan Chromium. Tempel permintaan baru saat sesi kedaluwarsa.
+
+Untuk akses API, gunakan kredensial aplikasi bersama dari server atau kunci Anda sendiri.
 
 1. Buat akun API di <https://www.last.fm/api/account/create>. Catat baik **kunci API** maupun **rahasia bersama**.
 2. Di Akun → Last.fm, tempel keduanya, lalu selesaikan halaman otorisasi Last.fm.

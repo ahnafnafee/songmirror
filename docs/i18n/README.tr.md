@@ -11,7 +11,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music ve YouTube Music için kendi kendine barındırılan, kesintisiz çalışan çalma listesi senkronizasyonu — artı Jellyfin ile uyumlu yerel bir çevrimdışı ses kopyası.<br/>
+Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music ve YouTube Music, SoundCloud için kendi kendine barındırılan, kesintisiz çalışan çalma listesi senkronizasyonu — artı Jellyfin ile uyumlu yerel bir çevrimdışı ses kopyası.<br/>
 Soundiiz, TuneMyMusic ve FreeYourMusic servislerine ücretsiz, açık kaynaklı, tamamen kendi sunucunuzda çalışan ve kontrolü sizde olan bir alternatif.
 
 **Tek yönlü, çok kaynaklı birleştirme, yetkili grup veya tam çift yönlü (N yönlü) senkronizasyon · tek seferlik çalma listesi aktarımları · ISRC düzeyinde kesin eşleştirme · hepsi tarayıcınızdan**
@@ -75,6 +75,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 > [`uv`](https://docs.astral.sh/uv/) (Python 3.13+) gerektirir. Yerel indirme aynası için ayrıca `uv tool install spotdl` komutunu çalıştırın ve PATH üzerinde `ffmpeg` bulundurun.
 
+Kullanıcı adı ve parola istemek için **Ayarlar → Genel → SAHİP OTURUMU** bölümünden **Oturum açmayı ayarla** seçeneğini seçin. Sunucu başlangıç günlüğündeki tek kullanımlık kodu girin.
+
 <a id="app-language"></a>
 
 ### Uygulama dili
@@ -116,6 +118,7 @@ SongMirror İngilizce, Arapça, Türkçe, İspanyolca, Basitleştirilmiş Çince
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️ Arayüzsüz CLI (Headless)](#headless-cli)
 - [🛡️ Güvenlik önlemleri](#safety-rails)
@@ -435,7 +438,7 @@ SongMirror kimlik bilgilerini ayrı bir belirteç yenileme zamanlayıcısıyla d
 | **Amazon Music** | Web erişim belirteci, yakalanan tarayıcı kullanıcı aracısı, yönlendiren ve izin verilenler listesine eklenen çerezler kullanılarak `/pandaToken` aracılığıyla yenilenir. Mevcut `POST config.json?skipToken=false` akışı, gerektiğinde cihaz bağlamını önyükler ve döndürülen çerezler kalıcı olur. Oturum kapatma, güvenlik değişiklikleri veya sunucu tarafı iptali hâlâ yeni bir yakalama gerektirir. |
 | **Apple Music** | Yapıştırılan Bearer ve Media-User-Token, SongMirror tarafından yenilenemez ve reddedildikten sonra yeniden yakalanmalıdır. |
 | **YouTube Music** | Data API OAuth sürenin dolmasından itibaren 60 saniye içinde otomatik olarak yenilenir. Tarayıcı modu, bir senkronizasyon hedefi oluşturulduğunda Google'ın çerez rotasyonunu dener; süresi dolmuş bir tarayıcı oturumunun yeniden dışa aktarılması gerekir. |
-| **Last.fm** | Ne API anahtarı ne de oturum anahtarı sona erer, dolayısıyla hiçbir şey yenilenmez. Yalnızca uygulamanın erişimini Last.fm hesap ayarlarınızdan geri aldıysanız yeniden yetkilendirin. |
+| **Last.fm** | Tarayıcı oturumu sona ererse yeni bir istek yapıştırın. API modunda yetkilendirme iptal edilirse yeniden bağlanın. |
 | **Jellyfin** | API anahtarının erişim belirteci yenileme döngüsü yoktur; yalnızca iptal edilmesi veya silinmesi durumunda değiştirin. |
 
 <a id="spotify"></a>
@@ -524,11 +527,21 @@ Google hesapları arasında özel listeleri taşımak için iki hesabı da bağl
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+**Hesaplar → SoundCloud** bölümünden bağlanın. Oturum açık tarayıcıyla **Kotasız mod** seçeneğini veya sunucuda yapılandırılmış bir uygulamayla OAuth kullanın. Çalma listelerine göz atabilir, listeleri kopyalayabilir ve kendi listelerinizi eşitleyebilirsiniz. [Bağlantı kılavuzu](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 Last.fm ile çalma listesi senkronizasyonu desteklenmez, dolayısıyla asla bir çalma listesi hedefi olamaz. **Dinleme geçmişinizi** salt okunur koleksiyonlar olarak sunar ve **Loved Tracks** koleksiyonu, diğer tüm sağlayıcılardaki gibi bir beğenilen şarkı koleksiyonudur; hesabı yetkilendirdiğinizde yazılabilir hale gelir.
+
+Anahtarsız erişim için **Hesaplar → Last.fm → Kotasız mod** bölümünü açıp oturum açık tarayıcıdaki ana sayfa isteğini yapıştırın. Docker görüntüsü Chromium içerir. Oturum sona ererse yeni bir istek yapıştırın.
+
+API erişiminde sunucunun paylaşılan uygulama kimlik bilgilerini veya kendi anahtarınızı kullanabilirsiniz.
 
 1. <https://www.last.fm/api/account/create> adresinde bir API hesabı oluşturun. Hem **API anahtarını** hem de **paylaşılan gizli anahtarı** not edin.
 2. Hesaplar → Last.fm bölümünde ikisini de yapıştırın, ardından Last.fm yetkilendirme sayfasını tamamlayın.

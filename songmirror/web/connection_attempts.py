@@ -20,7 +20,7 @@ class ConnectionAttempts:
         self._pending = {}
         self._lock = threading.Lock()
 
-    def begin(self, profile, kind, **data):
+    def begin(self, profile, kind, *, include_profile=False, **data):
         with self._lock:
             now = time.monotonic()
             self._pending = {key: value for key, value in self._pending.items()
@@ -28,6 +28,8 @@ class ConnectionAttempts:
             if len(self._pending) >= 64:
                 raise ValueError("Too many pending connections. Try again later.")
             nonce = secrets.token_urlsafe(32)
+            if include_profile:
+                nonce = f"{profile}.{nonce}"
             self._pending[nonce] = {"profile": profile, "kind": kind, "expires": now + TTL, **data}
             return nonce
 

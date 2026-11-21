@@ -13,6 +13,7 @@ _LABELS = {
     "spotify": "Spotify", "apple": "Apple Music", "ytmusic": "YouTube Music",
     "tidal": "Tidal", "qobuz": "Qobuz", "deezer": "Deezer",
     "amazon": "Amazon Music", "lastfm": "Last.fm", "listenbrainz": "ListenBrainz",
+    "soundcloud": "SoundCloud",
 }
 _PATTERNS = {
     "spotify": r"[A-Za-z0-9]{22}", "ytmusic": r"[A-Za-z0-9_-]{11}",
@@ -82,6 +83,11 @@ def normalize_track_reference(provider, value):
         if artist and title:
             return f"{artist}\u241f{title}"
         raise ValueError("A Last.fm track id must contain both artist and title, separated by \u241f.")
+    if provider == "soundcloud":
+        match = re.fullmatch(r"(?:soundcloud:tracks:)?([1-9][0-9]*)", raw)
+        if match:
+            return f"soundcloud:tracks:{match[1]}"
+        raise ValueError("Enter a SoundCloud track URN or numeric track ID.")
     if provider == "spotify":
         match = re.fullmatch(r"spotify:track:([A-Za-z0-9]{22})", raw)
         if match:

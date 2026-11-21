@@ -10,6 +10,7 @@ dependencies = [
     "certifi>=2026.10.19",
     "fastapi>=0.115",
     "mutagen>=1.47",
+    "playwright>=1.56,<2",
     "python-dotenv>=1.2.2",
     "python-multipart>=0.0.9",
     "rapidfuzz>=3.9,<4",

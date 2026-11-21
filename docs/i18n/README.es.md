@@ -11,7 +11,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Sincronización de listas de reproducción autohospedadas y siempre activas para Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music y YouTube Music, además de un espejo de audio local listo para Jellyfin.<br/>
+Sincronización de listas de reproducción autohospedadas y siempre activas para Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music y YouTube Music, SoundCloud, además de un espejo de audio local listo para Jellyfin.<br/>
 Una alternativa gratuita, de código abierto y autohospedada a Soundiiz, TuneMyMusic y FreeYourMusic que usted posee y administra.
 
 **Sincronización unidireccional, de fusión de múltiples fuentes, de grupo autorizado o completamente bidireccional (N-direccional) · transferencias de listas de reproducción únicas · coincidencia precisa por ISRC · todo desde su navegador**
@@ -75,6 +75,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 > Requiere [`uv`](https://docs.astral.sh/uv/) (Python 3.13+). Para el espejo de descarga local, también `uv tool install spotdl` y tenga `ffmpeg` en PATH.
 
+Abre **Ajustes → General → INICIO DE SESIÓN DEL PROPIETARIO** y elige **Configurar el inicio de sesión** para exigir un nombre de usuario y una contraseña. Usa el código de un solo uso del registro de inicio del servidor.
+
 <a id="app-language"></a>
 
 ### Idioma de la aplicación
@@ -116,6 +118,7 @@ SongMirror admite inglés, árabe, turco, español, chino simplificado, francés
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️ sin interfaz gráfica CLI](#headless-cli)
 - [🛡️ Medidas de seguridad](#safety-rails)
@@ -435,7 +438,7 @@ SongMirror actualiza las credenciales justo a tiempo, no con un temporizador de 
 | Amazon Music | El token de acceso web se renueva hasta `/pandaToken` utilizando el agente de usuario del navegador capturado, el referente y las cookies incluidas en la lista de permitidos. El flujo actual `POST config.json?skipToken=false` arranca el contexto del dispositivo cuando es necesario y las cookies rotadas se conservan. El cierre de sesión, los cambios de seguridad o la revocación del lado del servidor aún requieren una captura nueva. |
 | Apple Music | Los Bearer y Media-User-Token pegados no se pueden renovar antes del SongMirror y deben capturarse nuevamente después del rechazo. |
 | YouTube Music | Data API OAuth se actualiza automáticamente dentro de los 60 segundos posteriores a su vencimiento. El modo de navegador intenta la rotación de cookies de Google cada vez que se crea un objetivo de sincronización; una sesión del navegador que ya haya caducado debe exportarse nuevamente. |
-| Last.fm | Ni la clave de API ni la clave de sesión caducan, así que no se renueva nada. Vuelve a autorizar solo si revocas el acceso de la aplicación en los ajustes de tu cuenta de Last.fm. |
+| Last.fm | Pega una solicitud nueva cuando caduque la sesión del navegador. En modo API, vuelve a conectar la cuenta si se revoca la autorización. |
 | Jellyfin | La clave API no tiene un ciclo de actualización del token de acceso; reemplácelo sólo si es revocado o eliminado. |
 
 <a id="spotify"></a>
@@ -524,11 +527,21 @@ Para mover listas entre cuentas de Google, conecta ambas para listas privadas o 
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+Conéctate desde **Cuentas → SoundCloud**. Usa **Modo sin cuota** con una sesión iniciada en el navegador, u OAuth con una aplicación configurada en el servidor. Puedes explorar y copiar listas de reproducción y sincronizar las que te pertenecen. [Guía de conexión](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 La sincronización de listas con Last.fm no está admitida, por lo que nunca es un destino de listas. Aporta tu **historial de escucha** como colecciones de solo lectura, y sus **Loved Tracks** son una colección de canciones favoritas igual que en cualquier otro proveedor, que pasa a ser escribible cuando autorizas la cuenta.
+
+Para acceder sin clave, abre **Cuentas → Last.fm → Modo sin cuota** y pega la solicitud de la página de inicio desde tu navegador con sesión iniciada. La imagen de Docker incluye Chromium. Pega una solicitud nueva cuando caduque la sesión.
+
+Para acceder mediante la API, usa las credenciales de aplicación compartidas del servidor o una clave propia.
 
 1. Crea una cuenta de API en <https://www.last.fm/api/account/create>. Apunta tanto la **clave de API** como el **secreto compartido**.
 2. En Cuentas → Last.fm, pega ambos y después completa la página de autorización de Last.fm.

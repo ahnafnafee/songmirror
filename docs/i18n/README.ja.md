@@ -11,7 +11,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Spotify、TIDAL、Qobuz、Deezer、Amazon Music、Apple Music、YouTube Music の自己ホスト型常時プレイリスト同期 — さらにローカルオーディオミラーJellyfin.<br/> の準備ができました
+Spotify、TIDAL、Qobuz、Deezer、Amazon Music、Apple Music、YouTube Music、SoundCloud の自己ホスト型常時プレイリスト同期 — さらにローカルオーディオミラーJellyfin.<br/> の準備ができました
 ユーザーが所有して実行する、Soundiiz、TuneMyMusic、および FreeYourMusic に代わる、無料のオープンソースで自己ホスト型の代替サービス。
 
 **一方向、マルチソースのマージ、権威グループ、または完全な双方向 (N 方向) 同期 · ワンタイム プレイリスト転送 · ISRC による正確なマッチング · すべてブラウザから**
@@ -75,6 +75,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 > [`uv`](https://docs.astral.sh/uv/) (Python 3.13+) が必要です。ローカル ダウンロード ミラーの場合も、`uv tool install spotdl` を指定し、PATH に `ffmpeg` を指定します。
 
+ユーザー名とパスワードを必須にするには、**設定 → 一般 → 所有者のログイン** から **ログインを設定** を選びます。サーバー起動ログに表示される使い捨ての設定コードを使います。
+
 <a id="app-language"></a>
 
 ### アプリ言語
@@ -116,6 +118,7 @@ SongMirror は、英語、アラビア語、トルコ語、スペイン語、簡
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️ グラフィカルインターフェイス CLI なし](#headless-cli)
 - [🛡️ 安全対策](#safety-rails)
@@ -435,7 +438,7 @@ SongMirror は、別個のトークン更新タイマーを使用するのでは
 | Amazon Music | Web アクセス トークンは、キャプチャされたブラウザ ユーザー エージェント、リファラー、およびホワイトリストに登録された Cookie を使用して、`/pandaToken` まで更新されます。現在の `POST config.json?skipToken=false` フローは、必要に応じてデバイス コンテキストをブートストラップし、ローテーションされた Cookie は永続化されます。ログアウト、セキュリティの変更、またはサーバー側の取り消しには、引き続き新しいキャプチャが必要です。 |
 | Apple Music |貼り付けられた Bearer と Media-User-Token は SongMirror で更新できず、拒否後に再度キャプチャする必要があります。 |
 | YouTube Music | Data API OAuth は有効期限が切れてから 60 秒以内に自動的に更新されます。ブラウザ モードでは、同期ターゲットが構築されるたびに Google の Cookie ローテーションが試行されます。すでに期限切れになっているブラウザ セッションは再度エクスポートする必要があります。 |
-| Last.fm | API キーもセッションキーも期限切れにならないため、更新は行われません。Last.fm のアカウント設定でアプリのアクセスを取り消した場合にのみ、再認証してください。 |
+| Last.fm | ブラウザーセッションが切れたらリクエストを貼り直します。API モードでは認可が取り消された場合に再接続します。 |
 | Jellyfin | API キーにはアクセス トークンの更新サイクルがありません。取り消されたり削除された場合にのみ置き換えてください。 |
 
 <a id="spotify"></a>
@@ -524,11 +527,21 @@ Google アカウント間で非公開リストを移す場合は両方を接続�
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+**アカウント → SoundCloud** で接続します。ログイン済みのブラウザーセッションを使う **割り当てなしモード**、またはサーバーで設定したアプリを使う OAuth を選べます。プレイリストの閲覧とコピー、自分のプレイリストの同期ができます。 [接続ガイド](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 Last.fm はプレイリストの同期には対応していないため、プレイリストの送り先になることはありません。**再生履歴** を読み取り専用のコレクションとして提供し、その **Loved Tracks** は他のどの提供元とも同じお気に入り曲のコレクションで、アカウントを認証すると書き込み可能になります。
+
+キーを使わずに接続するには、**アカウント → Last.fm → 割り当てなしモード** から、ログイン済みのブラウザーで取得したホームページのリクエストを貼り付けます。Docker イメージには Chromium が含まれます。セッションが切れたら新しいリクエストを貼り付けてください。
+
+API ではサーバーで設定した共通のアプリ資格情報、または自分のキーを使えます。
 
 1. <https://www.last.fm/api/account/create> で API アカウントを作成します。**API キー** と **共有シークレット** の両方を控えてください。
 2. アカウント → Last.fm で両方を貼り付け、続いて Last.fm の認証ページを進めます。

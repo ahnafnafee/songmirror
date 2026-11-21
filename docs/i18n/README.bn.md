@@ -11,7 +11,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-নিজের সার্ভারে চলা, সর্বক্ষণ সক্রিয় **Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music এবং YouTube Music-এর প্লেলিস্ট সিঙ্ক** — সঙ্গে Jellyfin-এর উপযোগী একটি স্থানীয় অডিও মিরর।<br/>
+নিজের সার্ভারে চলা, সর্বক্ষণ সক্রিয় **Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music এবং YouTube Music, SoundCloud-এর প্লেলিস্ট সিঙ্ক** — সঙ্গে Jellyfin-এর উপযোগী একটি স্থানীয় অডিও মিরর।<br/>
 Soundiiz, TuneMyMusic, এবং FreeYourMusic এর একটি বিনামূল্যে, ওপেন সোর্স, স্ব-হোস্টেড বিকল্প যা আপনার মালিকানাধীন এবং চালান৷
 
 **ওয়ান-ওয়ে, মাল্টি-সোর্স মার্জ, প্রামাণিক-গ্রুপ, বা সম্পূর্ণ দ্বিমুখী (N-ওয়ে) সিঙ্ক · এককালীন প্লেলিস্ট স্থানান্তর · ISRC দ্বারা সঠিক মিল · সমস্ত আপনার ব্রাউজার থেকে**
@@ -75,6 +75,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 > [`uv`](https://docs.astral.sh/uv/) (Python 3.13+) প্রয়োজন। স্থানীয় ডাউনলোড মিররের জন্য, এছাড়াও `uv tool install spotdl` এবং PATH-এ `ffmpeg` আছে।
 
+ব্যবহারকারীর নাম ও পাসওয়ার্ড আবশ্যক করতে **সেটিংস → সাধারণ → মালিকের সাইন-ইন** খুলে **সাইন-ইন সেট আপ করুন** নির্বাচন করুন। সার্ভার চালুর লগ থেকে একবার ব্যবহারযোগ্য সেটআপ কোড নিন।
+
 <a id="app-language"></a>
 
 ### অ্যাপের ভাষা
@@ -116,6 +118,7 @@ SongMirror ইংরেজি, আরবি, তুর্কি, স্প্য
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️ গ্রাফিকাল ইন্টারফেস CLI ছাড়াই](#headless-cli)
 - [🛡️ নিরাপত্তা সুরক্ষা](#safety-rails)
@@ -435,7 +438,7 @@ SongMirror নির্দিষ্ট সময়ে শংসাপত্র 
 | Amazon Music | ওয়েব অ্যাক্সেস টোকেন `/pandaToken` দ্বারা ক্যাপচার করা ব্রাউজার ব্যবহারকারী এজেন্ট, রেফারার এবং অনুমোদিত কুকি ব্যবহার করে পুনর্নবীকরণ করা হয়। প্রয়োজনে বর্তমান `POST config.json?skipToken=false` ফ্লো বুটস্ট্র্যাপ ডিভাইসের প্রসঙ্গ এবং ঘোরানো কুকিগুলি অব্যাহত থাকে। লগআউট, নিরাপত্তা পরিবর্তন, বা সার্ভার-সাইড প্রত্যাহার এখনও একটি নতুন ক্যাপচার প্রয়োজন৷ |
 | Apple Music | পেস্ট করা Bearer এবং Media-User-Token SongMirror দ্বারা পুনর্নবীকরণ করা যাবে না এবং প্রত্যাখ্যানের পরে আবার ক্যাপচার করতে হবে৷ |
 | YouTube Music | Data API OAuth মেয়াদ শেষ হওয়ার 60 সেকেন্ডের মধ্যে স্বয়ংক্রিয়ভাবে রিফ্রেশ হয়। ব্রাউজার মোড চেষ্টা করে Google এর কুকি রোটেশন যখনই একটি সিঙ্ক টার্গেট তৈরি করা হয়; একটি ইতিমধ্যে মেয়াদোত্তীর্ণ ব্রাউজার সেশন আবার রপ্তানি করা আবশ্যক. |
-| Last.fm | API কী বা সেশন কী কোনোটিরই মেয়াদ শেষ হয় না, তাই কিছুই নবায়ন হয় না। কেবল তখনই আবার অনুমোদন দিন যখন আপনি Last.fm অ্যাকাউন্ট সেটিংসে অ্যাপটির প্রবেশাধিকার বাতিল করেছেন। |
+| Last.fm | ব্রাউজার সেশনের মেয়াদ শেষ হলে নতুন রিকোয়েস্ট পেস্ট করুন। API মোডে অনুমোদন প্রত্যাহার হলে আবার সংযোগ করুন। |
 | Jellyfin | API কীটির কোনো অ্যাক্সেস-টোকেন রিফ্রেশ চক্র নেই; এটি প্রত্যাহার বা মুছে ফেলা হলেই এটি প্রতিস্থাপন করুন। |
 
 <a id="spotify"></a>
@@ -524,11 +527,21 @@ Google অ্যাকাউন্টের মধ্যে ব্যক্ত�
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+**অ্যাকাউন্ট → SoundCloud** থেকে সংযোগ করুন। সাইন-ইন করা ব্রাউজার সেশনের জন্য **নো-কোটা মোড** অথবা সার্ভারে কনফিগার করা অ্যাপের সঙ্গে OAuth ব্যবহার করুন। প্লেলিস্ট দেখুন ও কপি করুন এবং নিজের প্লেলিস্ট সিঙ্ক করুন। [সংযোগ নির্দেশিকা](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 Last.fm-এ প্লেলিস্ট সিঙ্ক সমর্থিত নয়, তাই এটি কখনও প্লেলিস্টের গন্তব্য হয় না। এটি আপনার **শোনার ইতিহাস** কেবল-পঠনযোগ্য সংগ্রহ হিসেবে দেয়, আর এর **Loved Tracks** অন্য সব পরিষেবার মতোই পছন্দের ট্র্যাকের সংগ্রহ, যা অ্যাকাউন্ট অনুমোদনের পর লেখাযোগ্য হয়ে ওঠে।
+
+কী ছাড়া সংযোগ করতে **অ্যাকাউন্ট → Last.fm → নো-কোটা মোড** খুলে সাইন ইন করা ব্রাউজারের হোম পেজের রিকোয়েস্ট পেস্ট করুন। Docker ইমেজে Chromium আছে। সেশন শেষ হলে নতুন রিকোয়েস্ট পেস্ট করুন।
+
+সার্ভারে সেট করা শেয়ার করা অ্যাপের পরিচয়পত্র অথবা নিজের API কী ব্যবহার করতে পারেন।
 
 1. <https://www.last.fm/api/account/create> এ একটি API অ্যাকাউন্ট তৈরি করুন। **API কী** এবং **শেয়ার করা সিক্রেট** দুটোই লিখে রাখুন।
 2. অ্যাকাউন্ট → Last.fm-এ দুটোই পেস্ট করুন, তারপর Last.fm-এর অনুমোদন পাতাটি সম্পন্ন করুন।

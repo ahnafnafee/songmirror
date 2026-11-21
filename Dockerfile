@@ -12,11 +12,14 @@ FROM python:3.13.16-slim-bookworm@sha256:73aa5faee130c60da030e105ec971ccf57473fb
 COPY --from=ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff /uv /uvx /bin/
 
 # ffmpeg + spotDL power the optional local download mirror.
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg libatomic1 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/songmirror-browser SONGMIRROR_CONTAINER=1
+RUN uv run --no-sync playwright install --with-deps --no-shell chromium && rm -rf /var/lib/apt/lists/*
 
 # spotDL as an isolated tool so its old pins never constrain the app's web stack
 # (see downloads._spotdl_cmd, which finds it on PATH).

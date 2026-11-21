@@ -168,6 +168,7 @@ def _status_payload(request, profile):
         transferable = is_peer(profile.provider)
         public_playlists = _public_playlists(profile.provider)
         editable_details = _editable_details(profile.provider)
+        authorization_pending = connector.authorization_pending
         fields = []
         for field in connector.config_fields:
             data = asdict(field)
@@ -195,8 +196,15 @@ def _status_payload(request, profile):
         "public_playlists": public_playlists,
         "editable_details": editable_details,
         "callback_url": _callback_url(request, profile, connector),
-        "authorization_pending": bool(store.get("LASTFM_AUTH_PENDING")) if profile.provider == "lastfm" else False,
+        "authorization_pending": authorization_pending,
+        **({"browser_mode": connector.browser_active} if profile.provider in {"soundcloud", "lastfm"} else {}),
     }
+
+
+def _callback_id(profile):
+    # SoundCloud registers one redirect URI per application. Its signed-in
+    # profile is selected by the OAuth state and verified by the connector.
+    return profile.provider if profile.is_default or profile.provider == "soundcloud" else profile.id
 
 
 def _callback_url(request, profile, connector):
@@ -210,9 +218,8 @@ def _callback_url(request, profile, connector):
     """
     if connector.auth_kind != "oauth_redirect":
         return None
-    callback_id = profile.provider if profile.is_default else profile.id
     try:
-        return _redirect_uri(request, callback_id)
+        return _redirect_uri(request, _callback_id(profile))
     except HTTPException:
         return None
 
@@ -258,11 +265,13 @@ def save_config(account_id: str, request: Request, values: dict = Body(...)):
     if "SPOTIFY_AUTH_MODE" in values and values["SPOTIFY_AUTH_MODE"] not in {"oauth", "cookie"}:
         raise HTTPException(status_code=422, detail="Unsupported Spotify authentication mode.")
     request.app.state.connection_attempts.invalidate(profile.id)
-    try:
-        values = _conn(request, profile.id).normalize_config(values)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    request.app.state.account_profiles.settings_for(profile.id).save(values)
+    profiles = request.app.state.account_profiles
+    with profiles.activate(profile.id):
+        try:
+            values = _conn(request, profile.id).normalize_config(values)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        profiles.settings_for(profile.id).save(values)
     return {"ok": True}
 
 
@@ -280,9 +289,8 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
         if connector.auth_kind == "oauth_redirect":
             # Deterministic defaults keep the provider callback registered by
             # existing installations even when the new UI addresses them by
-            # profile id. Additional profiles use isolated callback paths.
-            callback_id = profile.provider if profile.is_default else profile.id
-            uri = _redirect_uri(request, callback_id)
+            # profile id. SoundCloud uses its shared registered callback path.
+            uri = _redirect_uri(request, _callback_id(profile))
             owner_session = _owner_session(request)
             callback = urlsplit(uri)
             frontend = urlsplit(str(request.base_url))
@@ -296,13 +304,21 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
                     detail=f"Open SongMirror at {callback.scheme}://{callback.netloc} and sign in there before connecting this account.",
                 )
             attempts = request.app.state.connection_attempts
-            nonce = attempts.begin(profile.id, "redirect", redirect_uri=uri, owner_session=owner_session)
+            nonce = attempts.begin(
+                profile.id, "redirect", include_profile=profile.provider == "soundcloud",
+                redirect_uri=uri, owner_session=owner_session,
+            )
             try:
-                provider_uri = with_query(uri, state=nonce) if profile.provider == "lastfm" else uri
-                url = connector.begin_redirect(provider_uri)
-                if profile.provider != "lastfm":
-                    url = with_query(url, state=nonce)
+                if profile.provider == "soundcloud":
+                    url = connector.begin_redirect(uri, state=nonce)
+                elif profile.provider == "lastfm":
+                    url = connector.begin_redirect(with_query(uri, state=nonce))
+                else:
+                    url = with_query(connector.begin_redirect(uri), state=nonce)
                 attempts.configure(nonce, url=url)
+            except ValueError as exc:
+                attempts.invalidate(profile.id)
+                raise HTTPException(status_code=422, detail=redact_text(exc)) from exc
             except Exception:
                 attempts.invalidate(profile.id)
                 raise
@@ -333,9 +349,18 @@ def _browser_cookie(response, browser, secure):
     response.headers["Referrer-Policy"] = "no-referrer"
 
 
+def _redirect_profile(request: Request, account_id: str, state: str):
+    if account_id == "soundcloud":
+        profile_id, _, _ = state.partition(".")
+        candidate = request.app.state.account_profiles.get(profile_id)
+        if candidate is not None and candidate.provider == "soundcloud":
+            return candidate
+    return _profile(request, account_id)
+
+
 @router.get("/oauth/{account_id}/start")
 def oauth_start(account_id: str, request: Request, attempt: str):
-    profile = _profile(request, account_id)
+    profile = _redirect_profile(request, account_id, attempt)
     browser = request.cookies.get(COOKIE) or secrets.token_urlsafe(32)
     try:
         pending = request.app.state.connection_attempts.bind(
@@ -351,18 +376,19 @@ def oauth_start(account_id: str, request: Request, attempt: str):
 
 @router.get("/oauth/{account_id}/callback")
 def oauth_callback(account_id: str, request: Request):
-    profile = _profile(request, account_id)
+    state = request.query_params.get("state", "")
+    profile = _redirect_profile(request, account_id, state)
     profiles = request.app.state.account_profiles
     connector = _conn(request, profile.id)
     try:
         request.app.state.connection_attempts.get(
-            request.query_params.get("state", ""), profile.id,
+            state, profile.id,
             browser=request.cookies.get(COOKIE, ""), owner_session=_owner_session(request), consume=True)
     except ValueError as exc:
         return HTMLResponse(html.escape(str(exc)), status_code=400,
                             headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
     error = request.query_params.get("error")
-    if error:
+    if error and profile.provider != "soundcloud":
         status = ConnStatus(
             "error", f"{connector.name} returned '{error}' — nothing was authorized."
         )
@@ -428,6 +454,38 @@ def _provider_connector(request, account_id, expected):
         raise HTTPException(status_code=422, detail=f"that profile is not a {expected} account")
     request.app.state.connection_attempts.invalidate(profile.id)
     return profile, _conn(request, profile.id)
+
+
+@router.post("/api/accounts/{account_id}/soundcloud/browser")
+def soundcloud_enable_browser(account_id: str, request: Request, body: dict = Body(...)):
+    profile, connector = _provider_connector(request, account_id, "soundcloud")
+    with request.app.state.account_profiles.activate(profile.id):
+        status = connector.enable_browser(body.get("headers", ""))
+    return _status_values(profile.provider, status)
+
+
+@router.post("/api/accounts/{account_id}/lastfm/browser")
+def lastfm_enable_browser(account_id: str, request: Request, body: dict = Body(...)):
+    profile, connector = _provider_connector(request, account_id, "lastfm")
+    with request.app.state.account_profiles.activate(profile.id):
+        status = connector.enable_browser(body.get("headers", ""))
+    return _status_values(profile.provider, status)
+
+
+@router.delete("/api/accounts/{account_id}/lastfm/browser")
+def lastfm_disable_browser(account_id: str, request: Request):
+    profile, connector = _provider_connector(request, account_id, "lastfm")
+    with request.app.state.account_profiles.activate(profile.id):
+        status = connector.disable_browser()
+    return _status_values(profile.provider, status)
+
+
+@router.delete("/api/accounts/{account_id}/soundcloud/browser")
+def soundcloud_disable_browser(account_id: str, request: Request):
+    profile, connector = _provider_connector(request, account_id, "soundcloud")
+    with request.app.state.account_profiles.activate(profile.id):
+        status = connector.disable_browser()
+    return _status_values(profile.provider, status)
 
 
 @router.post("/api/accounts/{account_id}/ytmusic/browser")

@@ -122,7 +122,7 @@ def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
         accounts = client.get("/api/accounts").json()
         assert {a["provider"] for a in accounts} == {
             "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
-            "lastfm", "jellyfin", "listenbrainz", "subsonic"
+            "lastfm", "jellyfin", "listenbrainz", "soundcloud", "subsonic"
         }
         assert all(a["id"].startswith("profile_default_") for a in accounts)
         assert all(a["id"] != a["provider"] for a in accounts)
@@ -136,7 +136,7 @@ def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
         assert by_provider["jellyfin"]["preserves_order"] is False   # deletes every copy of an item
         # The create flows offer "public" only where create() can honor it.
         assert {p for p, a in by_provider.items() if a["public_playlists"]} == {
-            "spotify", "tidal", "qobuz", "amazon", "ytmusic", "subsonic", "jellyfin", "listenbrainz",
+            "spotify", "tidal", "qobuz", "amazon", "ytmusic", "subsonic", "jellyfin", "listenbrainz", "soundcloud",
         }
 
 

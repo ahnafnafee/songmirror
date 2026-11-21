@@ -26,6 +26,7 @@ than on catalog identity.
 from __future__ import annotations
 
 import hashlib
+import os
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
@@ -180,6 +181,25 @@ def _track(row):
         "added_at": _iso((row.get("date") or {}).get("uts")
                          if isinstance(row.get("date"), dict) else None),
     }
+
+
+def application_key(get):
+    """Use a profile's own key when set, otherwise the deployment's app."""
+    key = get("LASTFM_API_KEY")
+    if key:
+        return key, get("LASTFM_API_SECRET") or "", ""
+    key, secret = os.getenv("LASTFM_APP_API_KEY"), os.getenv("LASTFM_APP_API_SECRET")
+    if key and secret:
+        return key, secret, hashlib.sha256(key.encode()).hexdigest()
+    return "", "", ""
+
+
+def profile_credentials(get):
+    key, secret, app_key = application_key(get)
+    # Legacy sessions are attached to personal keys. Shared-app sessions must
+    # be reauthorized if the deployment changes its application key.
+    session_key = get("LASTFM_SESSION_KEY") if (get("LASTFM_SESSION_APP_KEY") or "") == app_key else ""
+    return key, secret, session_key or ""
 
 
 class Lastfm:

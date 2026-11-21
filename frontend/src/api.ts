@@ -151,6 +151,10 @@ export const api = {
    * raw "copy request headers" block from a music.youtube.com XHR. */
   enableYtmusicBrowserMode: (id: string, headers: string) => request<PollResponse>(`/api/accounts/${id}/ytmusic/browser`, json({ headers })),
   disableYtmusicBrowserMode: (id: string) => request<PollResponse>(`/api/accounts/${id}/ytmusic/browser`, { method: 'DELETE' }),
+  enableSoundcloudBrowserMode: (id: string, headers: string) => request<PollResponse>(`/api/accounts/${id}/soundcloud/browser`, json({ headers })),
+  disableSoundcloudBrowserMode: (id: string) => request<PollResponse>(`/api/accounts/${id}/soundcloud/browser`, { method: 'DELETE' }),
+  enableLastfmBrowserMode: (id: string, headers: string) => request<PollResponse>(`/api/accounts/${id}/lastfm/browser`, json({ headers })),
+  disableLastfmBrowserMode: (id: string) => request<PollResponse>(`/api/accounts/${id}/lastfm/browser`, { method: 'DELETE' }),
   /** Spotify signed-in web session: routes library reads, playlist reads/writes,
    * and catalog search through the first-party web client without a developer app. */
   enableSpotifyCookieMode: (id: string, spDc: string) => request<PollResponse>(`/api/accounts/${id}/spotify/cookie`, json({ sp_dc: spDc })),

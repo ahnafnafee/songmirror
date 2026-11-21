@@ -460,6 +460,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
   // changed on any authority.
   const syncSource = form.source || 'spotify'
   const sourceAccount = syncPeers.find((account) => account.id === syncSource)
+  const soundCloudSource = form.mode !== 'nway' && sourceAccount?.provider === 'soundcloud'
   const authorityIds = authorityProvidersOf({ mode: form.mode, authorities: form.authorities })
   const lockedProviderIds = lockedProvidersOf({
     mode: form.mode,
@@ -738,7 +739,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
     max_adds: Number(form.max_adds) || 0,
     max_removals: form.mirror_removals ? Number(form.max_removals) || 0 : 0,
     apply_large_removals: form.mirror_removals && form.apply_large_removals,
-    download: form.download,
+    download: !soundCloudSource && form.download,
     sources: form.sources,
     destination: form.destination,
     removal_strategy: form.mode === 'merge'
@@ -773,7 +774,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
         max_adds: Number(form.max_adds),
         max_removals: form.mirror_removals ? Number(form.max_removals) : 0,
         apply_large_removals: form.mirror_removals && form.apply_large_removals,
-        download: form.mode === 'merge' ? false : form.download,
+        download: form.mode !== 'merge' && !soundCloudSource && form.download,
         sources: form.mode === 'merge' ? form.sources : [],
         destination: form.mode === 'merge' ? form.destination : null,
         removal_strategy: form.mode === 'merge'
@@ -1241,7 +1242,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
                 )}
               </div>
 
-              {!form.saved_albums && <div className="border-t border-border pt-3.5">
+              {!form.saved_albums && (!soundCloudSource || form.mode === 'merge') && <div className="border-t border-border pt-3.5">
                 {form.mode === 'merge' ? (
                   <p className="text-xs leading-relaxed text-text-3">
                     {t("Aggregate jobs write one provider playlist. The separate download mirror currently follows ordinary Spotify-led playlist jobs and is unavailable here.")}
