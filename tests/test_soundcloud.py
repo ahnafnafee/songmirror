@@ -105,22 +105,28 @@ def test_oauth_profiles_share_a_callback_and_keep_rotating_tokens_isolated(
         start = client.post(f"/api/accounts/{other.id}/connect").json()
         uri = start["redirect_uri"]
         assert uri.endswith("/oauth/soundcloud/callback")
-        query = parse_qs(urlsplit(start["url"]).query)
+        state = parse_qs(urlsplit(start["url"]).query)["attempt"][0]
+        assert state.startswith(other.id + ".")
+        callback = {"state": state, "code": "listener"}
+        assert client.get(uri, params=callback).status_code == 400
+        bridge = client.get(start["url"], follow_redirects=False)
+        assert bridge.status_code == 303
+        location = bridge.headers["location"]
+        query = parse_qs(urlsplit(location).query)
         assert query["code_challenge_method"] == ["S256"]
-        state = query["state"][0]
-        assert start["url"].startswith(soundcloud.AUTHORIZE)
+        assert query["state"] == [state]
+        assert location.startswith(soundcloud.AUTHORIZE)
         assert not requests
-        assert "error" in client.get(uri, params={"state": other.id + ".bad", "code": "listener"}).text
+        assert client.get(uri, params={"state": other.id + ".bad", "code": "listener"}).status_code == 400
         assert not requests
 
-        callback = {"state": state, "code": "listener"}
         assert "connected" in client.get(uri, params=callback).text
         form = requests[0][3]["data"]
         challenge = base64.urlsafe_b64encode(hashlib.sha256(form["code_verifier"].encode()).digest())
         assert query["code_challenge"] == [challenge.decode().rstrip("=")]
         assert form["redirect_uri"] == uri
         assert form["client_secret"] == "app-secret"
-        assert "error" in client.get(uri, params=callback).text
+        assert client.get(uri, params=callback).status_code == 400
         accounts = {row["id"]: row for row in client.get("/api/accounts").json()}
         assert accounts["profile_default_soundcloud"]["state"] == "unconfigured"
         assert accounts[other.id]["authorization_pending"] is False

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 
-_CALLBACK = re.compile(r"^/oauth/[^/?]+/callback$")
+_CALLBACK = re.compile(r"^/oauth/[^/?]+/(?:callback|start)$")
 
 
 class OAuthCallbackAccessFilter(logging.Filter):

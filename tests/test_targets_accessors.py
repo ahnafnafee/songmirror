@@ -1,6 +1,7 @@
 """Provider playlist accessors (name/id) resolve each service's dict shape."""
 
 import pytest
+from types import SimpleNamespace
 
 from songmirror.engine.targets.apple import AppleMusicTarget
 from songmirror.engine.targets.base import MirrorTarget, TargetTransientError
@@ -127,6 +128,7 @@ def test_ytmusic_browser_backend_maps_shapes_and_is_selected(monkeypatch, tmp_pa
 
     target = yt.build()
     assert isinstance(target, yt.YTMusicBrowserTarget)
+    target._youtube = SimpleNamespace(playlists=lambda: [{"playlistId": "p1", "_owned": True}])
 
     tracks = target.playlist_tracks({"playlistId": "p1"})
     assert len(tracks) == 1
@@ -134,7 +136,7 @@ def test_ytmusic_browser_backend_maps_shapes_and_is_selected(monkeypatch, tmp_pa
     assert (t["videoId"], t["setVideoId"], t["artist"], t["duration_ms"]) == ("v1", "s1", "A, B", 200000)
     assert target.list_playlists() == {
         "mix": {"playlistId": "p1", "title": "Mix", "count": "12 songs",
-                "thumbnails": [{"url": "http://yt/cover.jpg"}]}}
+                "thumbnails": [{"url": "http://yt/cover.jpg"}], "_owned": True}}
 
 
 def test_apple_playlist_count_uses_meta_total_and_caches():

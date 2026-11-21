@@ -11,7 +11,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-自托管、始终在线的播放列表同步，适用于 Spotify、TIDAL、Qobuz、Deezer、Amazon Music、Apple Music 和 YouTube Music — 以及本地音频镜像对于 Jellyfin.<br/>
+自托管、始终在线的播放列表同步，适用于 Spotify、TIDAL、Qobuz、Deezer、Amazon Music、Apple Music 和 YouTube Music、SoundCloud — 以及本地音频镜像对于 Jellyfin.<br/>
 您拥有并运行的免费、开源、自托管的 Soundiiz、TuneMyMusic 和 FreeYourMusic 替代方案。
 
 **单向、多源合并、权威组或完全双向（N 向）同步 · 一次性播放列表传输 · 通过 ISRC 精确匹配 · 全部来自您的浏览器**
@@ -50,6 +50,7 @@
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -61,7 +62,7 @@ docker compose up -d
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-然后打开`http://localhost:8888`并在浏览器中连接您的服务。 Compose 设置无需 `.env` 即可启动；一切都在 UI 中配置并保存在 `./data` 下。
+然后打开`http://localhost:8888`并在浏览器中连接您的服务。 Compose 设置无需 `.env` 即可启动。在 Web 应用中填写的音乐服务设置会保存在 `./data` 中。
 
 直接 `docker run` 选项是一次性的：`docker stop songmirror` 删除容器及其配置。使用 Compose 进行具有持久凭证、缓存和下载的持久安装，或者查看 [容器镜像指南](../docker-image.md) 进行标签和摘要固定。
 
@@ -73,6 +74,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 ```
 
 > 需要[`uv`](https://docs.astral.sh/uv/)（Python 3.13+）。对于本地下载镜像，PATH 上还有`uv tool install spotdl` 和`ffmpeg`。
+
+如需使用用户名和密码保护实例，请打开 **设置 → 常规 → 所有者登录**，选择 **设置登录**，并输入服务器启动日志中的一次性设置代码。
 
 <a id="app-language"></a>
 
@@ -115,6 +118,7 @@ SongMirror支持英语、阿拉伯语、土耳其语、西班牙语、简体中�
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️没有图形界面CLI](#headless-cli)
 - [🛡️安全保障](#safety-rails)
@@ -158,7 +162,7 @@ SongMirror 使您的播放列表在任何地方都保持相同，无需手动重
 - 🐳 **可以在任何地方运行** — 一个用于浏览器应用程序的 `docker compose up -d`，或者普通的 CLI + cron / Task Scheduler。
 
 > [!IMPORTANT]
-> 自托管且设计私密。您的收听数据和凭据永远不会离开您的机器。 Web UI 没有身份验证 - 将其绑定到您的 LAN 并且不要将其端口转发到互联网。
+> 请将 Web 端口限制在可信网络内。启用[所有者登录](../profile-auth.md)可保护播放列表、已连接的账户和同步设置。
 
 <div align="right">
 
@@ -215,8 +219,9 @@ SongMirror 使您的播放列表在任何地方都保持相同，无需手动重
 Docker 容器是建议的部署：它提供 Web UI，按计划运行同步，并与主机一起重新启动。 Compose拉取`ghcr.io/ahnafnafee/songmirror:latest`，将其作为`songmirror`运行，并将所有身份验证+缓存保留在`./data`中。
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +229,7 @@ docker compose logs -f           # watch it work
 
 无需 `.env` 即可启动 — 所有内容均在浏览器中配置并保存在 `./data` 下。 OAuth、合作伙伴令牌和API密钥设置均位于帐户页面上；每个向导都会解释特定于服务的先决条件和确切的回调 URI。然后在“同步”页面上构建同步。
 
-从另一台计算机打开 SongMirror 的效果为 `http://<server>:8888`。默认 Spotify 连接使用粘贴的 `sp_dc` Web 会话，因此不需要开发人员应用程序或回调 URL。如果您有意使用旧版开发者应用程序 OAuth 后备Docker 或反向代理，请在 `.env` 中设置浏览器可见的基本 URL：
+从另一台计算机打开 SongMirror 的效果为 `http://<server>:8888`。默认 Spotify 连接使用粘贴的 `sp_dc` Web 会话，因此不需要开发人员应用程序或回调 URL。如果您有意使用旧版开发者应用程序 OAuth 后备Docker 或反向代理，请在 `.env` 中设置浏览器可见的基本 URL： Compose 现在默认仅监听 localhost；如需从可信局域网访问，请在 `.env` 中设置 `SONGMIRROR_BIND_ADDRESS=0.0.0.0`。
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth
@@ -238,7 +243,7 @@ SongMirror 将会发布`https://music.example.com/oauth/spotify/callback`；在 
 | | |
 | --- | --- |
 |图片| `ghcr.io/ahnafnafee/songmirror:latest`支持AMD64和ARM64。每个构建版本还带有特定于提交的 `sha-...` 标签； Git 标签（例如 `v1.2.3`）另外发布 `1.2.3`、`1.2` 和 `1`。使用 [容器镜像指南](../docker-image.md) 固定不可变的摘要。 |
-|港口| UI 发布在主机 8888 上（`docker-compose.yml` 中的 `8888:8080` 映射；如果发生冲突，请更改主机端）。 LAN-only — 不要将其端口转发到互联网； UI 尚未进行身份验证。 |
+|港口| UI 发布在主机 8888 上（`docker-compose.yml` 中的 `8888:8080` 映射；如果发生冲突，请更改主机端）。请勿公开此 HTTP 端口。远程访问请使用 HTTPS 反向代理。 |
 |坚持| `./data` 在 `playlist_backups/` 下保存凭证、令牌、缓存、歌曲存档和计划的播放列表快照。对其进行备份，以在重建过程中保留您的设置和存档。 |
 |下载 |将 `DOWNLOAD_DIR` （在 `.env` 或您的 shell 中）设置为您的主机音乐目录（例如 `F:\Torrent\Music`）； compose 将其绑定安装到 `/music`。从Docker，将`JELLYFIN_URL`设置为`http://host.docker.internal:8096`。 |
 |过期会话 |可更新会话将在下一次计划或手动传递时恢复。 TIDAL 网络播放器会话通过捕获的刷新令牌进行更新； Qobuz 和 Apple Music 令牌在被拒绝后仍必须重新粘贴。无需重新启动。 |
@@ -433,7 +438,7 @@ SongMirror 及时刷新凭据，而不是使用单独的令牌刷新计时器。
 | Amazon Music | Web 访问令牌使用捕获的浏览器用户代理、引用者和白名单 cookie 通过 `/pandaToken` 进行更新。当前的 `POST config.json?skipToken=false` 流会在需要时引导设备上下文，并保留旋转的 cookie。注销、安全更改或服务器端撤销仍然需要重新捕获。 |
 | Apple Music |粘贴的Bearer和Media-User-Token无法通过SongMirror续订，必须在拒绝后重新捕获。 |
 | YouTube Music | Data API OAuth 到期后 60 秒内自动刷新。每当构建同步目标时，浏览器模式都会尝试 Google 的 cookie 轮换；必须再次导出已过期的浏览器会话。 |
-| Last.fm | API 密钥和会话密钥都不会过期，因此无需任何续期。只有在你于 Last.fm 账户设置中撤销该应用的访问权限后，才需要重新授权。 |
+| Last.fm | 浏览器会话过期后请粘贴新的请求。API 授权被撤销后请重新连接账户。 |
 | Jellyfin | API密钥没有访问令牌刷新周期；仅当其被撤销或删除时才予以替换。 |
 
 <a id="spotify"></a>
@@ -522,11 +527,21 @@ SongMirror在本地导出相同的`AmznMusic`授权值，并在到期前或身�
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+在 **账户 → SoundCloud** 中连接服务。选择 **无配额模式** 使用已登录的浏览器会话，或通过服务器配置的应用使用 OAuth。你可以浏览、复制播放列表，并同步自己拥有的播放列表。 [连接指南](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 不支持向 Last.fm 同步歌单，因此永远不会成为歌单目标。它以只读集合的形式提供你的**收听记录**，其中的 **Loved Tracks** 与其他所有服务的喜欢歌曲集合一样，在你授权账户后即可写入。
+
+如需免密钥访问，请打开 **账户 → Last.fm → 无配额模式**，粘贴从已登录浏览器复制的主页请求。Docker 镜像内置 Chromium。会话过期后请粘贴新的请求。
+
+通过 API 访问时，可以使用部署时配置的共享应用凭据，也可以使用自己的密钥。
 
 1. 在 <https://www.last.fm/api/account/create> 创建 API 账户，同时记下 **API 密钥** 和 **共享密钥**。
 2. 在账户 → Last.fm 中粘贴两者，然后走完 Last.fm 的授权页面。

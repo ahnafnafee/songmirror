@@ -18,7 +18,8 @@ const FRONTEND_DIR = path.resolve(__dirname, '..')
 // Gitignored (see frontend/.gitignore) - throwaway debugging artifacts, not
 // something to commit. CI doesn't need them at all (see shot() below).
 const SHOT_DIR = path.join(__dirname, 'screenshots')
-const PORT = 4300
+const PORT = Number(process.env.SONGMIRROR_E2E_PORT ?? 4300)
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) throw new Error('SONGMIRROR_E2E_PORT must be a valid TCP port')
 const BASE_URL = `http://localhost:${PORT}`
 // CI only needs pass/fail - screenshots are purely a local debugging aid,
 // and writing ~60 full-page PNGs adds real wall-clock time for no benefit

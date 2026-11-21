@@ -646,7 +646,7 @@ class AmazonMusicWebClient:
                 **self._cookie_kwargs(),
             )
         except requests.RequestException as exc:
-            raise AmazonMusicWebAuthError(f"Amazon Music config renewal failed ({exc!r}).") from exc
+            raise AmazonMusicWebAuthError(f"Amazon Music config renewal failed ({type(exc).__name__}).") from None
         self._sync_response_cookies(response)
         if response.status_code in (400, 401, 403):
             raise _AmazonMusicRenewalRejected(
@@ -672,7 +672,7 @@ class AmazonMusicWebClient:
                 **self._cookie_kwargs(),
             )
         except requests.RequestException as exc:
-            raise AmazonMusicWebAuthError(f"Amazon Music token renewal failed ({exc!r}).") from exc
+            raise AmazonMusicWebAuthError(f"Amazon Music token renewal failed ({type(exc).__name__}).") from None
         self._sync_response_cookies(response)
         if response.status_code in (400, 401, 403):
             raise _AmazonMusicRenewalRejected(

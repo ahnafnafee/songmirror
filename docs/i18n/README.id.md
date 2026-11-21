@@ -11,7 +11,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Sinkronisasi playlist yang dihosting sendiri dan selalu aktif untuk Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, dan YouTube Music — ditambah cermin audio lokal yang siap digunakan Jellyfin.<br/>
+Sinkronisasi playlist yang dihosting sendiri dan selalu aktif untuk Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, dan YouTube Music, SoundCloud — ditambah cermin audio lokal yang siap digunakan Jellyfin.<br/>
 Alternatif gratis, sumber terbuka, dan dihosting sendiri untuk Soundiiz, TuneMyMusic, dan FreeYourMusic yang Anda miliki dan jalankan.
 
 **Sinkronisasi satu arah, penggabungan multi-sumber, grup otoritatif, atau dua arah penuh (N-arah) · transfer daftar putar satu kali · pencocokan akurat sebesar ISRC · semuanya dari browser Anda**
@@ -50,6 +50,7 @@ Untuk instalasi persisten dengan restart otomatis:
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -61,7 +62,7 @@ Atau coba image GHCR publik secara langsung tanpa mengkloning repositori:
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-Kemudian buka `http://localhost:8888` dan sambungkan layanan Anda di browser. Penyiapan Compose tidak memerlukan `.env` untuk memulai; semuanya dikonfigurasi di UI dan disimpan di bawah `./data`.
+Kemudian buka `http://localhost:8888` dan sambungkan layanan Anda di browser. Penyiapan Compose tidak memerlukan `.env` untuk memulai. Pengaturan layanan musik yang Anda masukkan di aplikasi web disimpan di `./data`.
 
 Opsi langsung `docker run` dapat dibuang: `docker stop songmirror` menghapus wadah dan konfigurasinya. Gunakan Compose untuk instalasi yang tahan lama dengan kredensial, cache, dan unduhan yang persisten, atau lihat [panduan gambar kontainer](../docker-image.md) untuk penyematan tag dan intisari.
 
@@ -73,6 +74,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 ```
 
 > Memerlukan [`uv`](https://docs.astral.sh/uv/) (Python 3.13+). Untuk mirror unduhan lokal, juga `uv tool install spotdl` dan miliki `ffmpeg` di PATH.
+
+Untuk mewajibkan nama pengguna dan kata sandi, buka **Pengaturan → Umum → LOGIN PEMILIK** lalu pilih **Siapkan login**. Gunakan kode sekali pakai dari log awal server.
 
 <a id="app-language"></a>
 
@@ -115,6 +118,7 @@ SongMirror mendukung bahasa Inggris, Arab, Turki, Spanyol, Cina Sederhana, Peran
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️ tanpa antarmuka grafis CLI](#headless-cli)
 - [🛡️ Perlindungan keamanan](#safety-rails)
@@ -158,7 +162,7 @@ SongMirror menjaga daftar putar Anda tetap sama di mana saja tanpa menambahkan u
 - 🐳 **Berjalan di mana saja** — satu `docker compose up -d` untuk aplikasi browser, atau CLI + cron / Task Scheduler.
 
 > [!IMPORTANT]
-> Dihosting sendiri dan bersifat pribadi berdasarkan desain. Data dan kredensial pendengaran Anda tidak pernah meninggalkan mesin Anda. UI web tidak memiliki autentikasi — ikat ke LAN Anda dan jangan meneruskannya ke internet.
+> Tempatkan port web di jaringan tepercaya. Aktifkan [login pemilik](../profile-auth.md) untuk melindungi daftar putar, akun yang terhubung, dan pengaturan sinkronisasi.
 
 <div align="right">
 
@@ -215,8 +219,9 @@ SongMirror menjaga daftar putar Anda tetap sama di mana saja tanpa menambahkan u
 Kontainer Docker adalah penerapan yang direkomendasikan: kontainer ini melayani UI web, menjalankan sinkronisasi Anda sesuai jadwalnya, dan memulai ulang dengan host. Compose menarik `ghcr.io/ahnafnafee/songmirror:latest`, menjalankannya sebagai `songmirror`, dan menyimpan semua cache autentikasi + di `./data`.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +229,7 @@ Untuk memperbarui, jalankan `docker compose up -d --pull always`. Untuk membuat 
 
 Tidak diperlukan `.env` untuk memulai — semuanya sudah dikonfigurasi di browser dan disimpan di bawah `./data`. OAuth, token mitra, dan API-penyiapan kunci semuanya aktif di halaman Akun; setiap wizard menjelaskan prasyarat khusus layanan dan URI panggilan balik yang tepat. Kemudian buat sinkronisasi Anda di halaman Sinkronisasi.
 
-Membuka SongMirror dari komputer lain berfungsi pada `http://<server>:8888`. Koneksi Spotify default menggunakan sesi web `sp_dc` yang ditempelkan, sehingga tidak memerlukan aplikasi pengembang atau URL panggilan balik. Jika Anda sengaja menggunakan aplikasi pengembang lama OAuth sebagai pengganti Docker atau proksi terbalik, setel URL dasar yang terlihat di browser di `.env`:
+Membuka SongMirror dari komputer lain berfungsi pada `http://<server>:8888`. Koneksi Spotify default menggunakan sesi web `sp_dc` yang ditempelkan, sehingga tidak memerlukan aplikasi pengembang atau URL panggilan balik. Jika Anda sengaja menggunakan aplikasi pengembang lama OAuth sebagai pengganti Docker atau proksi terbalik, setel URL dasar yang terlihat di browser di `.env`: Compose kini secara bawaan hanya mendengarkan di localhost; untuk akses LAN tepercaya, atur `SONGMIRROR_BIND_ADDRESS=0.0.0.0` di `.env`.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth
@@ -238,7 +243,7 @@ SongMirror kemudian akan mengiklankan `https://music.example.com/oauth/spotify/c
 | | |
 | --- | --- |
 | Gambar | `ghcr.io/ahnafnafee/songmirror:latest` mendukung AMD64 dan ARM64. Setiap build juga diterbitkan dengan tag `sha-...` khusus komit; Tag Git seperti `v1.2.3` juga menerbitkan `1.2.3`, `1.2`, dan `1`. Gunakan [panduan gambar kontainer](../docker-image.md) untuk menyematkan intisari yang tidak dapat diubah. |
-| Pelabuhan | UI diterbitkan pada host 8888 (pemetaan `8888:8080` di `docker-compose.yml`; ubah sisi host jika bentrok). LAN-only — jangan meneruskannya ke internet; UI belum memiliki otentikasi. |
+| Pelabuhan | UI diterbitkan pada host 8888 (pemetaan `8888:8080` di `docker-compose.yml`; ubah sisi host jika bentrok). Jaga port HTTP ini tetap privat. Gunakan proksi balik HTTPS untuk akses jarak jauh. |
 | Kegigihan | `./data` menyimpan kredensial, token, cache, arsip lagu, dan cuplikan daftar putar terjadwal di bawah `playlist_backups/`. Cadangkan untuk menyimpan pengaturan dan arsip Anda selama pembangunan kembali. |
 | Unduhan | Setel `DOWNLOAD_DIR` (dalam `.env` atau shell Anda) ke direktori musik host Anda (misalnya `F:\Torrent\Music`); composer bind-pasang ke `/music`. Dari Docker, setel `JELLYFIN_URL` ke `http://host.docker.internal:8096`. |
 | Sesi kedaluwarsa | Sesi yang dapat diperbarui dipulihkan pada pass terjadwal atau manual berikutnya. TIDAL sesi pemutar web diperbarui dari token penyegaran yang diambil; Token Qobuz dan Apple Music masih harus ditempel ulang ketika ditolak. Tidak perlu memulai ulang. |
@@ -433,7 +438,7 @@ SongMirror menyegarkan kredensial tepat pada waktunya, bukan dengan pengatur wak
 | Amazon Music | Token akses web diperbarui melalui `/pandaToken` menggunakan agen pengguna browser yang diambil, rujukan, dan cookie yang diizinkan. Konteks perangkat bootstrap aliran `POST config.json?skipToken=false` saat ini bila diperlukan, dan cookie yang diputar tetap ada. Logout, perubahan keamanan, atau pencabutan sisi server masih memerlukan pengambilan baru. |
 | Apple Music | Bearer dan Media-User-Token yang ditempel tidak dapat diperpanjang dengan SongMirror dan harus diambil lagi setelah ditolak. |
 | YouTube Music | Data API OAuth disegarkan secara otomatis dalam waktu 60 detik setelah habis masa berlakunya. Mode browser mencoba rotasi cookie Google setiap kali target sinkronisasi dibuat; sesi browser yang sudah kedaluwarsa harus diekspor lagi. |
-| Last.fm | Kunci API maupun kunci sesi tidak kedaluwarsa, jadi tidak ada yang diperbarui. Otorisasi ulang hanya jika Anda mencabut akses aplikasi di pengaturan akun Last.fm Anda. |
+| Last.fm | Tempel permintaan baru saat sesi browser kedaluwarsa. Dalam mode API, sambungkan kembali akun jika otorisasi dicabut. |
 | Jellyfin | Kunci API tidak memiliki siklus penyegaran token akses; menggantinya hanya jika dicabut atau dihapus. |
 
 <a id="spotify"></a>
@@ -522,11 +527,21 @@ Untuk memindahkan daftar pribadi antar akun Google, hubungkan keduanya; untuk da
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+Sambungkan layanan melalui **Akun → SoundCloud**. Gunakan **Mode tanpa kuota** dengan sesi browser yang sudah masuk, atau OAuth dengan aplikasi yang disiapkan di server. Anda dapat menelusuri dan menyalin daftar putar serta menyinkronkan daftar putar milik Anda. [Panduan koneksi](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 Sinkronisasi daftar putar ke Last.fm tidak didukung, jadi tidak pernah menjadi tujuan daftar putar. Layanan ini menyumbang **riwayat mendengarkan** sebagai koleksi baca-saja, dan **Loved Tracks** miliknya adalah koleksi lagu favorit seperti pada penyedia lain, yang bisa ditulis begitu Anda mengotorisasi akun.
+
+Untuk akses tanpa kunci, buka **Akun → Last.fm → Mode tanpa kuota** dan tempel permintaan halaman utama dari browser yang sudah masuk. Citra Docker menyertakan Chromium. Tempel permintaan baru saat sesi kedaluwarsa.
+
+Untuk akses API, gunakan kredensial aplikasi bersama dari server atau kunci Anda sendiri.
 
 1. Buat akun API di <https://www.last.fm/api/account/create>. Catat baik **kunci API** maupun **rahasia bersama**.
 2. Di Akun → Last.fm, tempel keduanya, lalu selesaikan halaman otorisasi Last.fm.

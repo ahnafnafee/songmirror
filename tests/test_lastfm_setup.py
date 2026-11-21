@@ -121,10 +121,14 @@ def test_deployment_key_supports_public_history_and_isolated_authorization(tmp_p
         assert public.json()["capabilities"]["library_read"] is True
         assert public.json()["capabilities"]["favorites_write"] is False
         start = client.post(f"/api/accounts/{second.id}/connect").json()
-        assert parse_qs(urlsplit(start["url"]).query)["api_key"] == ["deployment-key"]
         assert "deployment-secret" not in str(start)
-        callback = parse_qs(urlsplit(start["url"]).query)["cb"][0]
-        assert "error" in client.get(start["redirect_uri"], params={"token": "alice"}).text
+        bridge = client.get(start["url"], follow_redirects=False)
+        assert bridge.status_code == 303
+        query = parse_qs(urlsplit(bridge.headers["location"]).query)
+        assert query["api_key"] == ["deployment-key"]
+        callback = query["cb"][0]
+        assert parse_qs(urlsplit(callback).query)["state"] == parse_qs(urlsplit(start["url"]).query)["attempt"]
+        assert client.get(start["redirect_uri"], params={"token": "alice"}).status_code == 400
         assert not exchanged
         assert "connected" in client.get(callback + "&token=alice").text
         assert exchanged == [("deployment-key", "deployment-secret", "alice")]

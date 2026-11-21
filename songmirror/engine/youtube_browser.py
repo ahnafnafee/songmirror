@@ -171,7 +171,7 @@ class YouTubeBrowser:
                 raise TargetTransientError("YouTube did not return the playlist library. Retry the request.")
         return result
 
-    def tracks(self, playlist_id):
+    def tracks(self, playlist_id, *, limit=None):
         if not re.fullmatch(r"[A-Za-z0-9_-]+", str(playlist_id)):
             raise ValueError("Invalid YouTube playlist ID")
         result, expected, hidden = [], None, False
@@ -182,6 +182,8 @@ class YouTubeBrowser:
                 info = node.get("playlistSidebarPrimaryInfoRenderer")
                 if isinstance(info, dict) and info.get("stats"):
                     expected = _count(_text(info["stats"][0]))
+                    if limit is not None and expected is not None and expected > limit:
+                        raise ValueError(f"too many tracks. Maximum is {limit} tracks per import")
             before = len(result)
             for node in _objects(contents):
                 modern = node.get("lockupViewModel")
@@ -199,10 +201,14 @@ class YouTubeBrowser:
                     artist = _text(legacy.get("shortBylineText"))
                     thumbnails = _image(legacy.get("thumbnail"))
                     if legacy.get("isPlayable") is False:
+                        if limit is not None and len(result) >= limit:
+                            raise ValueError(f"too many tracks. Maximum is {limit} tracks per import")
                         result.append({"unavailable": True})
                         continue
                 else:
                     continue
+                if limit is not None and len(result) >= limit:
+                    raise ValueError(f"too many tracks. Maximum is {limit} tracks per import")
                 if not video_id or not title:
                     raise TargetTransientError("YouTube returned an incomplete video entry. Retry the request.")
                 result.append({"id": video_id, "videoId": video_id, "name": title,

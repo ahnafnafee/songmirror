@@ -11,7 +11,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Sincronização de playlist auto-hospedada e sempre ativa para Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music e YouTube Music — além de um espelho de áudio local pronto para Jellyfin.<br/>
+Sincronização de playlist auto-hospedada e sempre ativa para Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music e YouTube Music, SoundCloud — além de um espelho de áudio local pronto para Jellyfin.<br/>
 Uma alternativa gratuita, de código aberto e auto-hospedada para Soundiiz, TuneMyMusic e FreeYourMusic que você possui e administra.
 
 **Sincronização unidirecional, de várias fontes, de grupo autoritativo ou totalmente bidirecional (N-way) · transferências únicas de listas de reprodução · correspondência precisa por ISRC · tudo a partir do seu navegador**
@@ -50,6 +50,7 @@ Para uma instalação persistente com reinicializações automáticas:
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -61,7 +62,7 @@ Ou experimente a imagem pública do GHCR diretamente, sem clonar o repositório:
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-Em seguida, abra `http://localhost:8888` e conecte seus serviços no navegador. A configuração Compose não precisa de `.env` para iniciar; tudo é configurado na UI e salvo em `./data`.
+Em seguida, abra `http://localhost:8888` e conecte seus serviços no navegador. A configuração Compose não precisa de `.env` para iniciar. As configurações dos serviços de música inseridas no aplicativo web são salvas em `./data`.
 
 A opção direta `docker run` é descartável: `docker stop songmirror` remove o contêiner e sua configuração. Use Compose para uma instalação durável com credenciais, caches e downloads persistentes, ou consulte [guia de imagem de contêiner](../docker-image.md) para tags e fixação de resumo.
 
@@ -73,6 +74,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 ```
 
 > Requer [`uv`](https://docs.astral.sh/uv/) (Python 3.13+). Para o espelho de download local, também `uv tool install spotdl` e tenha `ffmpeg` em PATH.
+
+Para exigir nome de usuário e senha, abra **Configurações → Geral → LOGIN DO PROPRIETÁRIO** e escolha **Configurar login**. Use o código de uso único registrado na inicialização do servidor.
 
 <a id="app-language"></a>
 
@@ -115,6 +118,7 @@ SongMirror suporta inglês, árabe, turco, espanhol, chinês simplificado, franc
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️ sem interface gráfica CLI](#headless-cli)
 - [🛡️ Salvaguardas de segurança](#safety-rails)
@@ -158,7 +162,7 @@ SongMirror mantém suas listas de reprodução idênticas em todos os lugares, s
 - 🐳 **Executa em qualquer lugar** — um `docker compose up -d` para o aplicativo do navegador ou CLI simples + cron / Task Scheduler.
 
 > [!IMPORTANT]
-> Auto-hospedado e privado por design. Seus dados e credenciais de escuta nunca saem da sua máquina. A UI da web não tem autenticação - vincule-a ao seu LAN e não a encaminhe para a Internet.
+> Mantenha a porta web em uma rede confiável. Ative o [login do proprietário](../profile-auth.md) para proteger playlists, contas conectadas e configurações de sincronização.
 
 <div align="right">
 
@@ -215,8 +219,9 @@ SongMirror mantém suas listas de reprodução idênticas em todos os lugares, s
 O contêiner Docker é a implantação recomendada: ele atende a UI da web, executa suas sincronizações de acordo com suas programações e reinicia com o host. Compose extrai `ghcr.io/ahnafnafee/songmirror:latest`, executa-o como `songmirror` e persiste todos os caches de autenticação + em `./data`.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +229,7 @@ Para atualizar, execute `docker compose up -d --pull always`. Em vez disso, para
 
 Não é necessário `.env` para iniciar — tudo é configurado no navegador e salvo em `./data`. Configuração de OAuth, token de parceiro e chave API, todos ativos na página Contas; cada assistente explica os pré-requisitos específicos do serviço e o URI de retorno de chamada exato. Em seguida, crie suas sincronizações na página Sincronizar.
 
-Abrir SongMirror de outro computador funciona em `http://<server>:8888`. A conexão Spotify padrão usa uma sessão da web `sp_dc` colada, portanto, não precisa de aplicativo de desenvolvedor ou URL de retorno de chamada. Se você usar intencionalmente o aplicativo de desenvolvedor legado OAuth substituto atrás de Docker ou um proxy reverso, defina o URL base visível do navegador em `.env`:
+Abrir SongMirror de outro computador funciona em `http://<server>:8888`. A conexão Spotify padrão usa uma sessão da web `sp_dc` colada, portanto, não precisa de aplicativo de desenvolvedor ou URL de retorno de chamada. Se você usar intencionalmente o aplicativo de desenvolvedor legado OAuth substituto atrás de Docker ou um proxy reverso, defina o URL base visível do navegador em `.env`: O Compose agora escuta apenas em localhost por padrão; para permitir uma LAN confiável, defina `SONGMIRROR_BIND_ADDRESS=0.0.0.0` em `.env`.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth
@@ -238,7 +243,7 @@ SongMirror anunciará então `https://music.example.com/oauth/spotify/callback`;
 | | |
 | --- | --- |
 | Imagem | `ghcr.io/ahnafnafee/songmirror:latest` suporta AMD64 e ARM64. Cada compilação também é publicada com uma tag `sha-...` específica do commit; Tags Git como `v1.2.3` publicam adicionalmente `1.2.3`, `1.2` e `1`. Use [guia de imagem de contêiner](../docker-image.md) para fixar um resumo imutável. |
-| Porto | A UI é publicada no host 8888 (o mapeamento `8888:8080` em `docker-compose.yml`; altere o lado do host se houver conflito). Somente LAN — não encaminhe-o para a Internet; a UI ainda não tem autenticação. |
+| Porto | A UI é publicada no host 8888 (o mapeamento `8888:8080` em `docker-compose.yml`; altere o lado do host se houver conflito). Mantenha esta porta HTTP privada. Use um proxy reverso HTTPS para acesso remoto. |
 | Persistência | `./data` contém credenciais, tokens, caches, arquivo de músicas e instantâneos de listas de reprodução agendadas em `playlist_backups/`. Faça backup para manter sua configuração e arquivos durante as reconstruções. |
 | Transferências | Defina `DOWNLOAD_DIR` (em `.env` ou em seu shell) para o diretório de música do host (por exemplo, `F:\Torrent\Music`); compose bind-monta-o em `/music`. De Docker, defina `JELLYFIN_URL` para `http://host.docker.internal:8096`. |
 | Sessões expiradas | As sessões renováveis ​​são recuperadas na próxima passagem agendada ou manual. TIDAL sessões do web player são renovadas a partir do token de atualização capturado; Os tokens Qobuz e Apple Music ainda devem ser colados novamente quando rejeitados. Não é necessário reiniciar. |
@@ -433,7 +438,7 @@ SongMirror atualiza as credenciais na hora certa, não com um cronômetro de atu
 | Amazon Music | O token de acesso à web é renovado por meio de `/pandaToken` usando o agente de usuário do navegador capturado, o referenciador e os cookies permitidos. O fluxo `POST config.json?skipToken=false` atual inicializa o contexto do dispositivo quando necessário e os cookies girados são persistidos. Logout, alterações de segurança ou revogação do lado do servidor ainda exigem uma nova captura. |
 | Apple Music | Os Bearer e Media-User-Token colados não podem ser renovados por SongMirror e devem ser capturados novamente após a rejeição. |
 | YouTube Music | Data API OAuth é atualizado automaticamente dentro de 60 segundos após expirar. O modo navegador tenta a rotação de cookies de Google sempre que um destino de sincronização é criado; uma sessão do navegador já expirada deve ser exportada novamente. |
-| Last.fm | Nem a chave de API nem a chave de sessão expiram, então nada é renovado. Autorize de novo apenas se revogar o acesso do aplicativo nas configurações da sua conta do Last.fm. |
+| Last.fm | Cole uma nova solicitação quando a sessão do navegador expirar. No modo API, reconecte a conta se a autorização for revogada. |
 | Jellyfin | A chave API não possui ciclo de atualização do token de acesso; substitua-o somente se for revogado ou excluído. |
 
 <a id="spotify"></a>
@@ -522,11 +527,21 @@ Para mover listas entre contas Google, conecte ambas para listas privadas ou col
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+Conecte o serviço em **Contas → SoundCloud**. Use **Modo sem cota** com uma sessão ativa no navegador ou OAuth com um aplicativo configurado no servidor. Você pode navegar e copiar playlists e sincronizar aquelas que possui. [Guia de conexão](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 A sincronização de playlists com o Last.fm não é suportada, portanto nunca é um destino de playlist. Ele contribui com o seu **histórico de audição** como coleções somente de leitura, e os seus **Loved Tracks** são uma coleção de faixas favoritas como em qualquer outro fornecedor, que passa a aceitar escrita quando você autoriza a conta.
+
+Para acessar sem chave, abra **Contas → Last.fm → Modo sem cota** e cole a solicitação da página inicial do navegador em que você está conectado. A imagem Docker inclui Chromium. Cole uma nova solicitação quando a sessão expirar.
+
+Para acessar a API, use as credenciais de aplicativo compartilhadas do servidor ou uma chave própria.
 
 1. Crie uma conta de API em <https://www.last.fm/api/account/create>. Anote tanto a **chave de API** quanto o **segredo compartilhado**.
 2. Em Contas → Last.fm, cole os dois e depois conclua a página de autorização do Last.fm.

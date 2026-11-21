@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 import requests
 
 from .engine.config import REQUEST_TIMEOUT, required_env
+from .services.private_files import owner_only
 
 API = "https://api.soundcloud.com"
 AUTHORIZE = "https://secure.soundcloud.com/authorize"
@@ -58,6 +59,7 @@ def write_private(path, payload):
                                      delete=False) as handle:
         temporary = Path(handle.name)
         try:
+            owner_only(temporary)
             json.dump(payload, handle)
             handle.close()
             os.replace(temporary, path)

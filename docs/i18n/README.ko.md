@@ -11,7 +11,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music 및 YouTube Music에 대한 자체 호스팅 상시 재생 목록 동기화 — 추가로 로컬 오디오 미러 지원 Jellyfin.<br/>
+Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music 및 YouTube Music, SoundCloud에 대한 자체 호스팅 상시 재생 목록 동기화 — 추가로 로컬 오디오 미러 지원 Jellyfin.<br/>
 귀하가 소유하고 운영하는 Soundiiz, TuneMyMusic 및 FreeYourMusic에 대한 무료 오픈 소스 자체 호스팅 대안입니다.
 
 **단방향, 다중 소스 병합, 신뢰할 수 있는 그룹 또는 전체 양방향(N방향) 동기화 · 일회성 재생 목록 전송 · ISRC까지 정확한 일치 · 브라우저에서 모두 가능**
@@ -50,6 +50,7 @@ Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music 및 YouTube Music에 �
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -61,7 +62,7 @@ docker compose up -d
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-그런 다음 `http://localhost:8888`를 열고 브라우저에서 서비스를 연결하세요. Compose 설정을 시작하려면 `.env`가 필요하지 않습니다. 모든 것이 UI에서 구성되고 `./data` 아래에 저장됩니다.
+그런 다음 `http://localhost:8888`를 열고 브라우저에서 서비스를 연결하세요. Compose 설정을 시작하려면 `.env`가 필요하지 않습니다. 웹 앱에서 입력한 음악 서비스 설정은 `./data`에 저장됩니다.
 
 직접 `docker run` 옵션은 일회용입니다. `docker stop songmirror`는 컨테이너와 해당 구성을 제거합니다. 영구 자격 증명, 캐시 및 다운로드가 포함된 내구성 있는 설치를 위해 Compose를 사용하거나 태그 및 다이제스트 고정을 위해 [컨테이너 이미지 가이드](../docker-image.md)를 참조하세요.
 
@@ -73,6 +74,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 ```
 
 > [`uv`](https://docs.astral.sh/uv/)(Python 3.13+)가 필요합니다. 로컬 다운로드 미러의 경우 `uv tool install spotdl`도 있고 PATH에는 `ffmpeg`가 있습니다.
+
+사용자 이름과 비밀번호를 요구하려면 **설정 → 일반 → 소유자 로그인**에서 **로그인 설정**을 선택하세요. 서버 시작 로그에 있는 일회용 설정 코드를 사용하세요.
 
 <a id="app-language"></a>
 
@@ -115,6 +118,7 @@ SongMirror는 영어, 아랍어, 터키어, 스페인어, 중국어 간체, 프�
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️ 그래픽 인터페이스 CLI 없이](#headless-cli)
 - [🛡️ 안전 보호 장치](#safety-rails)
@@ -158,7 +162,7 @@ SongMirror 수동으로 다시 추가하거나 하나씩 복사하거나 라이�
 - 🐳 어디서나 실행됩니다. 브라우저 앱용 `docker compose up -d` 또는 일반 CLI + cron / Task Scheduler 중 하나입니다.
 
 > [!IMPORTANT]
-> 자체 호스팅 및 비공개 설계. 귀하의 청취 데이터와 자격 증명은 귀하의 컴퓨터를 떠나지 않습니다. 웹 UI에는 인증이 없습니다. 이를 LAN에 바인딩하고 인터넷으로 포트 포워딩하지 마세요.
+> 웹 포트는 신뢰할 수 있는 네트워크에서 사용하세요. 재생 목록, 연결된 계정 및 동기화 설정을 보호하려면 [소유자 로그인](../profile-auth.md)을 활성화하세요.
 
 <div align="right">
 
@@ -215,8 +219,9 @@ SongMirror 수동으로 다시 추가하거나 하나씩 복사하거나 라이�
 Docker 컨테이너는 권장되는 배포입니다. 웹 UI를 제공하고 일정에 따라 동기화를 실행하며 호스트에서 다시 시작됩니다. Compose는 `ghcr.io/ahnafnafee/songmirror:latest`를 가져와 `songmirror`로 실행하고 `./data`에 모든 인증 + 캐시를 유지합니다.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +229,7 @@ docker compose logs -f           # watch it work
 
 시작하려면 `.env`이 필요하지 않습니다. 모든 것이 브라우저에서 구성되고 `./data`에 저장됩니다. OAuth, 파트너 토큰 및 API-키 설정은 모두 계정 페이지에 있습니다. 각 마법사는 서비스별 전제 조건과 정확한 콜백 URI를 설명합니다. 그런 다음 동기화 페이지에서 동기화를 구축하세요.
 
-다른 컴퓨터에서 SongMirror을 열면 `http://<server>:8888`에서 작동합니다. 기본 Spotify 연결은 붙여넣은 `sp_dc` 웹 세션을 사용하므로 개발자 앱이나 콜백 URL이 필요하지 않습니다. 의도적으로 Docker 뒤의 기존 개발자 앱 OAuth 대체 또는 역방향 프록시를 사용하는 경우 `.env`에서 브라우저에 표시되는 기본 URL을 설정하세요.
+다른 컴퓨터에서 SongMirror을 열면 `http://<server>:8888`에서 작동합니다. 기본 Spotify 연결은 붙여넣은 `sp_dc` 웹 세션을 사용하므로 개발자 앱이나 콜백 URL이 필요하지 않습니다. 의도적으로 Docker 뒤의 기존 개발자 앱 OAuth 대체 또는 역방향 프록시를 사용하는 경우 `.env`에서 브라우저에 표시되는 기본 URL을 설정하세요. Compose는 이제 기본적으로 localhost에서만 수신합니다. 신뢰할 수 있는 LAN에서 접근하려면 `.env`에 `SONGMIRROR_BIND_ADDRESS=0.0.0.0`을 설정하세요.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth
@@ -238,7 +243,7 @@ SONGMIRROR_PUBLIC_URL=https://music.example.com
 | | |
 | --- | --- |
 | 이미지 | `ghcr.io/ahnafnafee/songmirror:latest`는 AMD64 및 ARM64을 지원합니다. 각 빌드는 커밋별 `sha-...` 태그와 함께 게시됩니다. `v1.2.3`와 같은 Git 태그는 `1.2.3`, `1.2` 및 `1`를 추가로 게시합니다. 불변 다이제스트를 고정하려면 [컨테이너 이미지 가이드](../docker-image.md)를 사용하세요. |
-| 포트 | UI는 호스트 8888에 게시됩니다(`docker-compose.yml`의 `8888:8080` 매핑, 충돌하는 경우 호스트 측 변경). LAN 전용 — 인터넷으로 포트 포워딩하지 마세요. UI에는 아직 인증이 없습니다. |
+| 포트 | UI는 호스트 8888에 게시됩니다(`docker-compose.yml`의 `8888:8080` 매핑, 충돌하는 경우 호스트 측 변경). 이 HTTP 포트를 외부에 공개하지 마세요. 원격 접속에는 HTTPS 리버스 프록시를 사용하세요. |
 | 지속성 | `./data`에는 `playlist_backups/` 아래에 자격 증명, 토큰, 캐시, 노래 아카이브 및 예약된 재생 목록 스냅샷이 보관되어 있습니다. 재구축 시 설정과 아카이브를 유지하려면 백업하세요. |
 | 다운로드 | `DOWNLOAD_DIR`(`.env` 또는 쉘에서)를 호스트 음악 디렉토리(예: `F:\Torrent\Music`)로 설정합니다. compose는 이를 `/music`에 바인드 마운트합니다. Docker에서 `JELLYFIN_URL`를 `http://host.docker.internal:8096`로 설정하세요. |
 | 만료된 세션 | 갱신 가능한 세션은 다음 예약 또는 수동 전달에서 복구됩니다. TIDAL 웹 플레이어 세션은 캡처된 새로 고침 토큰에서 갱신됩니다. Qobuz 및 Apple Music 토큰은 거부되면 다시 붙여넣어야 합니다. 다시 시작할 필요가 없습니다. |
@@ -433,7 +438,7 @@ SongMirror 별도의 토큰 새로 고침 타이머를 사용하지 않고 적�
 | Amazon Music | 웹 액세스 토큰은 캡처된 브라우저 사용자 에이전트, 리퍼러 및 허용 목록에 있는 쿠키를 사용하여 `/pandaToken`를 통해 갱신됩니다. 현재 `POST config.json?skipToken=false` 흐름은 필요한 경우 장치 컨텍스트를 부트스트랩하고 회전된 쿠키는 유지됩니다. 로그아웃, 보안 변경 또는 서버 측 취소에는 여전히 새로운 캡처가 필요합니다. |
 | Apple Music | 붙여넣은 Bearer 및 Media-User-Token는 SongMirror로 갱신할 수 없으며 거부 후 다시 캡처해야 합니다. |
 | YouTube Music | Data API OAuth 만료 후 60초 이내에 자동으로 새로고침됩니다. 브라우저 모드는 동기화 대상이 구축될 때마다 Google의 쿠키 순환을 시도합니다. 이미 만료된 브라우저 세션을 다시 내보내야 합니다. |
-| Last.fm | API 키도 세션 키도 만료되지 않으므로 갱신되는 것이 없습니다. Last.fm 계정 설정에서 앱 접근 권한을 철회한 경우에만 다시 승인하세요. |
+| Last.fm | 브라우저 세션이 만료되면 새 요청을 붙여넣으세요. API 모드에서는 인증이 취소된 경우 계정을 다시 연결하세요. |
 | Jellyfin | API 키에는 액세스 토큰 새로 고침 주기가 없습니다. 취소되거나 삭제된 경우에만 교체하십시오. |
 
 <a id="spotify"></a>
@@ -522,11 +527,21 @@ Google 계정 간 비공개 목록을 옮기려면 두 계정을 연결하고, �
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+**계정 → SoundCloud**에서 서비스를 연결하세요. 로그인된 브라우저 세션으로 **할당량 없음 모드**를 사용하거나 서버에 구성한 앱으로 OAuth를 사용할 수 있습니다. 재생 목록을 살펴보고 복사할 수 있으며 소유한 재생 목록은 동기화할 수 있습니다. [연결 가이드](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 Last.fm은 재생목록 동기화를 지원하지 않으므로 재생목록 대상이 되는 일은 없습니다. **감상 기록**을 읽기 전용 모음으로 제공하며, 그중 **Loved Tracks**는 다른 모든 공급자와 마찬가지로 좋아하는 트랙 모음이고, 계정을 승인하면 쓰기가 가능해집니다.
+
+키 없이 접속하려면 **계정 → Last.fm → 할당량 없음 모드**을 열고 로그인된 브라우저에서 복사한 홈 페이지 요청을 붙여넣으세요. Docker 이미지에 Chromium이 포함되어 있습니다. 세션이 만료되면 새 요청을 붙여넣으세요.
+
+API 접속 시 서버에 설정된 공유 앱 자격 증명이나 개인 키를 사용할 수 있습니다.
 
 1. <https://www.last.fm/api/account/create>에서 API 계정을 만드세요. **API 키**와 **공유 시크릿** 둘 다 적어 두세요.
 2. 계정 → Last.fm에서 둘을 붙여넣고, 이어서 Last.fm 승인 페이지를 진행하세요.

@@ -189,7 +189,8 @@ def _main(argv=None):
                     help="Also report variant twins — distinct recordings that fuzzy-match as one song.")
     args = ap.parse_args(argv)
 
-    load_dotenv(os.getenv("SONGMIRROR_ENV_FILE") or ".env", override=True)
+    managed = os.getenv("SONGMIRROR_ENV_FILE")
+    load_dotenv(managed or ".env", override=True, interpolate=not bool(managed))
 
     class _Opts:  # just the fields the peer builders read
         providers = os.getenv("PROVIDERS", DEFAULT_PROVIDERS)

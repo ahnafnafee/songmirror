@@ -11,7 +11,7 @@
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Đồng bộ hóa danh sách phát tự lưu trữ, luôn bật cho Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music và YouTube Music — cùng với một máy nhân bản âm thanh cục bộ sẵn sàng cho Jellyfin.<br/>
+Đồng bộ hóa danh sách phát tự lưu trữ, luôn bật cho Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music và YouTube Music, SoundCloud — cùng với một máy nhân bản âm thanh cục bộ sẵn sàng cho Jellyfin.<br/>
 Một giải pháp thay thế miễn phí, mã nguồn mở, tự lưu trữ cho Soundiiz, TuneMyMusic và FreeYourMusic mà bạn sở hữu và điều hành.
 
 **Hợp nhất một chiều, nhiều nguồn, nhóm có thẩm quyền hoặc đồng bộ hóa hai chiều hoàn toàn (N-way) · chuyển danh sách phát một lần · khớp chính xác tới ISRC · tất cả từ trình duyệt của bạn**
@@ -50,6 +50,7 @@ Cách nhanh nhất để chạy nó là Docker — Compose kéo hình ảnh đã
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -61,7 +62,7 @@ Hoặc thử trực tiếp hình ảnh GHCR công khai mà không cần sao ché
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-Sau đó mở `http://localhost:8888` và kết nối các dịch vụ của bạn trong trình duyệt. Quá trình thiết lập Compose không cần `.env` để bắt đầu; mọi thứ đều được định cấu hình trong giao diện người dùng và được lưu trong `./data`.
+Sau đó mở `http://localhost:8888` và kết nối các dịch vụ của bạn trong trình duyệt. Quá trình thiết lập Compose không cần `.env` để bắt đầu. Các thiết lập dịch vụ nhạc bạn nhập trong ứng dụng web được lưu trong `./data`.
 
 Tùy chọn `docker run` trực tiếp chỉ dùng một lần: `docker stop songmirror` xóa vùng chứa và cấu hình của nó. Sử dụng Compose để cài đặt lâu bền với thông tin xác thực, bộ nhớ đệm và nội dung tải xuống liên tục hoặc xem [hướng dẫn hình ảnh container](../docker-image.md) để biết thẻ và ghim thông báo.
 
@@ -73,6 +74,8 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 ```
 
 > Yêu cầu [`uv`](https://docs.astral.sh/uv/) (Python 3.13+). Đối với máy nhân bản tải xuống cục bộ, cũng có `uv tool install spotdl` và có `ffmpeg` trên PATH.
+
+Để yêu cầu tên người dùng và mật khẩu, mở **Cài đặt → Chung → ĐĂNG NHẬP CỦA CHỦ SỞ HỮU** rồi chọn **Thiết lập đăng nhập**. Dùng mã thiết lập một lần trong nhật ký khởi động máy chủ.
 
 <a id="app-language"></a>
 
@@ -115,6 +118,7 @@ SongMirror hỗ trợ tiếng Anh, tiếng Ả Rập, tiếng Thổ Nhĩ Kỳ, t
   - [Amazon Music](#amazon-music)
   - [Apple Music](#apple-music)
   - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
   - [Last.fm](#lastfm)
 - [🖥️ không có giao diện đồ họa CLI](#headless-cli)
 - [🛡️ Biện pháp đảm bảo an toàn](#safety-rails)
@@ -158,7 +162,7 @@ SongMirror giữ cho danh sách phát của bạn giống hệt nhau ở mọi n
 - 🐳 **Chạy ở mọi nơi** — một `docker compose up -d` cho ứng dụng trình duyệt hoặc CLI đơn giản + cron / Task Scheduler.
 
 > [!IMPORTANT]
-> Tự lưu trữ và riêng tư theo thiết kế. Dữ liệu nghe và thông tin xác thực của bạn không bao giờ rời khỏi máy của bạn. Giao diện người dùng web không có xác thực — liên kết nó với LAN của bạn và không chuyển tiếp nó sang internet.
+> Giữ cổng web trong mạng đáng tin cậy. Bật [đăng nhập dành cho chủ sở hữu](../profile-auth.md) để bảo vệ danh sách phát, tài khoản đã kết nối và cài đặt đồng bộ.
 
 <div align="right">
 
@@ -215,8 +219,9 @@ SongMirror giữ cho danh sách phát của bạn giống hệt nhau ở mọi n
 Vùng chứa Docker là cách triển khai được đề xuất: nó phục vụ giao diện người dùng web, chạy đồng bộ hóa của bạn theo lịch trình của chúng và khởi động lại với máy chủ. Compose kéo `ghcr.io/ahnafnafee/songmirror:latest`, chạy dưới dạng `songmirror` và duy trì tất cả xác thực + bộ đệm trong `./data`.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +229,7 @@ docker compose logs -f           # watch it work
 
 Không cần `.env` để bắt đầu - mọi thứ đều được định cấu hình trong trình duyệt và được lưu trong `./data`. OAuth, mã thông báo đối tác và thiết lập khóa API đều có trên trang Tài khoản; mỗi trình hướng dẫn giải thích các điều kiện tiên quyết dành riêng cho từng dịch vụ và URI gọi lại chính xác. Sau đó xây dựng đồng bộ hóa của bạn trên trang Đồng bộ hóa.
 
-Việc mở SongMirror từ một máy tính khác hoạt động ở `http://<server>:8888`. Kết nối Spotify mặc định sử dụng phiên web `sp_dc` đã dán, do đó, kết nối này không cần ứng dụng dành cho nhà phát triển hoặc URL gọi lại. Nếu bạn cố tình sử dụng ứng dụng cũ dành cho nhà phát triển OAuth dự phòng phía sau Docker hoặc proxy ngược, hãy đặt URL cơ sở hiển thị trên trình duyệt trong `.env`:
+Việc mở SongMirror từ một máy tính khác hoạt động ở `http://<server>:8888`. Kết nối Spotify mặc định sử dụng phiên web `sp_dc` đã dán, do đó, kết nối này không cần ứng dụng dành cho nhà phát triển hoặc URL gọi lại. Nếu bạn cố tình sử dụng ứng dụng cũ dành cho nhà phát triển OAuth dự phòng phía sau Docker hoặc proxy ngược, hãy đặt URL cơ sở hiển thị trên trình duyệt trong `.env`: Compose hiện mặc định chỉ lắng nghe trên localhost; để truy cập từ mạng LAN đáng tin cậy, đặt `SONGMIRROR_BIND_ADDRESS=0.0.0.0` trong `.env`.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth
@@ -238,7 +243,7 @@ SongMirror sau đó sẽ quảng cáo `https://music.example.com/oauth/spotify/c
 | | |
 | --- | --- |
 | Hình ảnh | `ghcr.io/ahnafnafee/songmirror:latest` hỗ trợ AMD64 và ARM64. Mỗi bản dựng cũng được xuất bản với thẻ `sha-...` dành riêng cho cam kết; Các thẻ Git như `v1.2.3` xuất bản thêm `1.2.3`, `1.2` và `1`. Sử dụng [hướng dẫn hình ảnh container](../docker-image.md) để ghim một bản tóm tắt bất biến. |
-| Cảng | Giao diện người dùng được xuất bản trên máy chủ 8888 (ánh xạ `8888:8080` trong `docker-compose.yml`; thay đổi phía máy chủ nếu nó xung đột). LAN-only — không chuyển tiếp nó sang internet; giao diện người dùng chưa có xác thực. |
+| Cảng | Giao diện người dùng được xuất bản trên máy chủ 8888 (ánh xạ `8888:8080` trong `docker-compose.yml`; thay đổi phía máy chủ nếu nó xung đột). Giữ cổng HTTP này ở chế độ riêng tư. Dùng proxy ngược HTTPS để truy cập từ xa. |
 | Kiên trì | `./data` chứa thông tin xác thực, mã thông báo, bộ nhớ đệm, kho lưu trữ bài hát và ảnh chụp nhanh danh sách phát theo lịch trong `playlist_backups/`. Sao lưu nó để duy trì thiết lập và lưu trữ của bạn trong quá trình xây dựng lại. |
 | Tải xuống | Đặt `DOWNLOAD_DIR` (trong `.env` hoặc shell của bạn) vào thư mục nhạc chủ của bạn (ví dụ: `F:\Torrent\Music`); soạn liên kết gắn kết nó với `/music`. Từ Docker, đặt `JELLYFIN_URL` thành `http://host.docker.internal:8096`. |
 | Phiên hết hạn | Các phiên có thể gia hạn sẽ phục hồi ở lần vượt qua theo lịch trình hoặc thủ công tiếp theo. TIDAL phiên trình phát trên web được gia hạn từ mã thông báo làm mới đã ghi lại; Mã thông báo Qobuz và Apple Music vẫn phải được dán lại khi bị từ chối. Không cần khởi động lại. |
@@ -433,7 +438,7 @@ SongMirror làm mới thông tin xác thực đúng lúc chứ không phải b�
 | Amazon Music | Mã thông báo truy cập web sẽ gia hạn thông qua `/pandaToken` bằng cách sử dụng tác nhân người dùng, người giới thiệu và cookie trong danh sách cho phép của trình duyệt đã thu thập. Bối cảnh thiết bị khởi động luồng `POST config.json?skipToken=false` hiện tại khi cần và các cookie đã xoay vẫn được duy trì. Đăng xuất, thay đổi bảo mật hoặc thu hồi phía máy chủ vẫn yêu cầu bản chụp mới. |
 | Apple Music | Không thể gia hạn Bearer và Media-User-Token đã dán trước SongMirror và phải được chụp lại sau khi bị từ chối. |
 | YouTube Music | Data API OAuth tự động làm mới trong vòng 60 giây sau khi hết hạn. Chế độ trình duyệt thử xoay cookie của Google bất cứ khi nào mục tiêu đồng bộ hóa được tạo; phiên trình duyệt đã hết hạn phải được xuất lại. |
-| Last.fm | Cả khóa API lẫn khóa phiên đều không hết hạn nên không có gì được làm mới. Chỉ cấp quyền lại nếu bạn thu hồi quyền truy cập của ứng dụng trong phần cài đặt tài khoản Last.fm. |
+| Last.fm | Dán yêu cầu mới khi phiên trình duyệt hết hạn. Ở chế độ API, kết nối lại nếu quyền bị thu hồi. |
 | Jellyfin | Khóa API không có chu kỳ làm mới mã thông báo truy cập; chỉ thay thế nó nếu nó bị thu hồi hoặc xóa. |
 
 <a id="spotify"></a>
@@ -522,11 +527,21 @@ Nói chuyện với [YouTube Data API v3](https://developers.google.com/youtube/
 
 </div>
 
+<a id="soundcloud"></a>
+
+### SoundCloud
+
+Kết nối dịch vụ tại **Tài khoản → SoundCloud**. Dùng **Chế độ không hạn ngạch** với phiên trình duyệt đã đăng nhập hoặc dùng OAuth với ứng dụng được cấu hình trên máy chủ. Bạn có thể duyệt, sao chép và đồng bộ các danh sách phát của mình. [Hướng dẫn kết nối](../provider-application-credentials.md)
+
 <a id="lastfm"></a>
 
 ### Last.fm
 
 Việc đồng bộ danh sách phát tới Last.fm không được hỗ trợ nên không bao giờ là đích đến của danh sách phát. Nó góp **lịch sử nghe** dưới dạng các bộ sưu tập chỉ đọc, và **Loved Tracks** của nó là một bộ sưu tập bài hát yêu thích giống như ở mọi nhà cung cấp khác, và trở nên ghi được khi bạn cấp quyền cho tài khoản.
+
+Để truy cập không cần khóa, mở **Tài khoản → Last.fm → Chế độ không hạn ngạch** rồi dán yêu cầu trang chủ từ trình duyệt đã đăng nhập. Ảnh Docker có sẵn Chromium. Dán yêu cầu mới khi phiên hết hạn.
+
+Khi dùng API, hãy dùng thông tin xác thực ứng dụng dùng chung của máy chủ hoặc khóa riêng.
 
 1. Tạo tài khoản API tại <https://www.last.fm/api/account/create>. Ghi lại cả **khóa API** và **khóa bí mật chia sẻ**.
 2. Trong Tài khoản → Last.fm, dán cả hai rồi hoàn tất trang cấp quyền của Last.fm.

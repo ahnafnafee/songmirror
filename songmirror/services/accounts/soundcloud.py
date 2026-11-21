@@ -103,12 +103,12 @@ class SoundCloudConnector(Connector):
             return ConnStatus("expired", str(exc))
         return ConnStatus("connected", username, capabilities=CAPABILITIES)
 
-    def begin_redirect(self, redirect_uri):
+    def begin_redirect(self, redirect_uri, *, state=None):
         try:
             api = SoundCloud(self._token_file)
         except RuntimeError as exc:
             raise ValueError("Configure the SoundCloud application on the server first") from exc
-        state = f"{self._store.profile.id}.{secrets.token_urlsafe(32)}"
+        state = state or f"{self._store.profile.id}.{secrets.token_urlsafe(32)}"
         verifier = secrets.token_urlsafe(48)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
         write_private(self._pending_file, {

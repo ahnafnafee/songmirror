@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 import requests
 
 from ..engine.config import REQUEST_TIMEOUT
+from ..deezer_links import share_location, share_url
 from ..engine.targets.deezer import SHARE_LINK_HOSTS as _DEEZER_SHARE_HOSTS
 
 # Shown when a paste does not resolve to a playlist on any known service.
@@ -100,14 +101,12 @@ def _resolve_share_link(url, resolve_redirect):
 
 def _head_location(url):
     try:
-        response = requests.head(url, allow_redirects=False, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-    except requests.RequestException:
+        return share_location(url, timeout=REQUEST_TIMEOUT)
+    except (requests.RequestException, ValueError):
         return None
-    return response.headers.get("Location", "")
 
 
-def parse_playlist_link(text, *, resolve_redirect=_head_location):
+def parse_playlist_link(text, *, resolve_redirect=_head_location, _visited=()):
     """(provider_id, playlist_id) for a pasted playlist link, or None.
 
     None means "not a playlist link on any service we know". A link that names a
@@ -131,9 +130,22 @@ def parse_playlist_link(text, *, resolve_redirect=_head_location):
         return None
 
     if provider == "deezer" and _host(parts) in _DEEZER_SHARE_HOSTS:
+        try:
+            raw = share_url(raw)
+        except ValueError as exc:
+            raise PlaylistLinkError("Invalid Deezer share URL.") from exc
+        if raw in _visited or len(_visited) >= 3:
+            raise PlaylistLinkError("Deezer share link has too many redirects.")
+        location = _resolve_share_link(raw, resolve_redirect)
+        try:
+            if _provider_for(_host(urlsplit(location))) != "deezer":
+                raise ValueError
+        except ValueError as exc:
+            raise PlaylistLinkError("Deezer share link did not name a Deezer playlist.") from exc
         return parse_playlist_link(
-            _resolve_share_link(raw, resolve_redirect),
+            location,
             resolve_redirect=resolve_redirect,
+            _visited=(*_visited, raw),
         )
 
     playlist_id = _playlist_id(provider, parts)

@@ -2,8 +2,9 @@ import { t, useTranslation } from '@/i18n'
 import type { ReactNode } from 'react'
 
 import { Sidebar } from './Sidebar'
+import type { ProfileControls } from './Sidebar'
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, profile }: { children: ReactNode; profile?: ProfileControls }) {
   useTranslation()
   return (
     <div className="min-h-dvh bg-bg lg:flex">
@@ -13,7 +14,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         {t("Skip to content")}
       </a>
-      <Sidebar />
+      <Sidebar profile={profile} />
       <main
         id="main-content"
         tabIndex={-1}

@@ -168,7 +168,7 @@ class PlaylistBackupStore:
     while standalone callers keep the original provider-only identity.
     """
 
-    def __init__(self, dir="data", profiles=None):
+    def __init__(self, dir="data", profiles=None, folders=None):
         self._dir = Path(dir)
         self._config_path = self._dir / "playlist_backups.json"
         self._status_path = self._dir / "playlist_backup_status.json"
@@ -176,6 +176,7 @@ class PlaylistBackupStore:
         self._dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._profiles = profiles
+        self._folders = folders
 
     def _account(self, identity):
         identity = str(identity or "").strip().casefold()
@@ -189,7 +190,9 @@ class PlaylistBackupStore:
         if storage_dir is None:
             job = self.get(account_id)
             storage_dir = job.storage_dir if job else ""
-        return Path(storage_dir).expanduser() if storage_dir else self._snapshots_dir
+        if storage_dir:
+            return self._folders.directory(storage_dir) if self._folders else Path(storage_dir).expanduser()
+        return self._snapshots_dir
 
     def account_dir(self, account_id, storage_dir=None):
         account_id = self._account(account_id)
@@ -657,11 +660,21 @@ class PlaylistBackupService:
     def list_status(self):
         return [self.job_status(job) for job in self.store.list()]
 
+    def is_running(self, account_id):
+        return account_id in self._runs
+
     def job_status(self, job):
         account_id = job.account_id
         provider = self._provider(account_id)
         history = self.store.status(account_id)
         progress = self._progress.get(account_id)
+        storage_error = None
+        try:
+            snapshot_count = len(self.store.snapshots(account_id))
+            storage_path = str(self.store.account_dir(account_id).resolve())
+        except (ValueError, OSError) as exc:
+            snapshot_count, storage_path = 0, ""
+            storage_error = str(exc)
         return {
             **asdict(job),
             "provider": provider,
@@ -670,8 +683,9 @@ class PlaylistBackupService:
             "running": account_id in self._runs,
             "progress": dict(progress) if progress is not None else None,
             "next_run_at": self._next_run.get(account_id) if job.enabled else None,
-            "snapshot_count": len(self.store.snapshots(account_id)),
-            "storage_path": str(self.store.account_dir(account_id).resolve()),
+            "snapshot_count": snapshot_count,
+            "storage_path": storage_path,
+            "storage_error": storage_error,
             "default_storage_dir": str(self.store.snapshots_dir.resolve()),
             "last_success": history.get("last_success"),
             "last_failure": history.get("last_failure"),

@@ -25,6 +25,7 @@ from ..engine.config import DEFAULT_INTERVAL, parse_args, parse_interval
 from ..engine.runner import run_pass
 from .syncs import SyncStore
 from .folders import download_directory
+from ..diagnostics import redact_data, redact_text
 
 
 async def _run_pass_async(opts, should_continue=None):
@@ -39,11 +40,12 @@ def next_boundary_delay(now, interval):
 
 
 class SyncService:
-    def __init__(self, settings, bus, syncs=None, profiles=None):
+    def __init__(self, settings, bus, syncs=None, profiles=None, folders=None):
         self._settings = settings
         self._bus = bus
         self._syncs = syncs or SyncStore()
         self._profiles = profiles
+        self._folders = folders
         self._running_job = None       # id of the job currently holding the lock, or None
         self._running_mode = None      # "preview" | "execute" while a pass runs
         self._active = set()           # ids running-or-queued, to coalesce duplicate triggers
@@ -83,6 +85,8 @@ class SyncService:
         # Explicit UI folder choices are validated on the server. Legacy host
         # paths still fall back to Docker's configured mount.
         opts.download_dir = download_directory(self._settings) if job.download else ""
+        if opts.download_dir and self._folders is not None:
+            opts.download_dir = str(self._folders.directory(opts.download_dir, writable=True))
         return opts
 
     async def run_job(self, job_id, execute=False):
@@ -116,6 +120,7 @@ class SyncService:
                         self._emit("section", f"{job.name}: pass started ({'execute' if execute else 'dry run'})", "sync")
                     summary = await _run_pass_async(self._opts_for(job, execute),
                                                     should_continue=lambda: self._control)
+                    summary = redact_data(summary)
                     summary.update(job_id=job_id, job_name=job.name)
                     aggregate = summary.get("aggregate") or {}
                     created_destination_id = aggregate.get("destination_playlist_id")
@@ -138,7 +143,7 @@ class SyncService:
                 except asyncio.CancelledError:
                     raise
                 except BaseException as e:  # a bad pass must never kill the scheduler
-                    summary = {"ok": False, "error": repr(e), "per_target": [], "job_id": job_id, "job_name": job.name}
+                    summary = {"ok": False, "error": redact_text(repr(e)), "per_target": [], "job_id": job_id, "job_name": job.name}
                     self._last[job_id] = self._last_any = summary
                     self._emit("warn", f"{job.name}: pass failed: {e!r}", "sync")
                 finally:

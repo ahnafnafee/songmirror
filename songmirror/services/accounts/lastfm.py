@@ -8,7 +8,7 @@ project it needs no renewal; the user revokes it from their Last.fm settings.
 
 import secrets
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 
@@ -161,9 +161,12 @@ class LastfmConnector(Connector):
             raise ValueError("Add the Last.fm API key and shared secret first")
         pending = "1"
         if app_key:
-            nonce = secrets.token_urlsafe(32)
+            parts = urlsplit(redirect_uri)
+            query = dict(parse_qsl(parts.query, keep_blank_values=True))
+            nonce = query.get("state") or secrets.token_urlsafe(32)
+            query["state"] = nonce
             pending = f"{app_key}.{nonce}"
-            redirect_uri += "?" + urlencode({"state": nonce})
+            redirect_uri = urlunsplit(parts._replace(query=urlencode(query)))
         self._store.save({"LASTFM_AUTH_PENDING": pending})
         return auth_url(key, redirect_uri)
 

@@ -1,7 +1,7 @@
 import { t, useTranslation } from '@/i18n'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
-import { AppShell } from './components/layout/AppShell'
+import { ProfileShell } from './components/layout/ProfileShell'
 import { BUTTON_BASE_CLASSES, BUTTON_SIZE_CLASSES, BUTTON_VARIANT_CLASSES } from './components/ui/buttonStyles'
 import Accounts from './pages/Accounts'
 import Dashboard from './pages/Dashboard'
@@ -15,7 +15,7 @@ import Transfers from './pages/Transfers'
 export default function App() {
   useTranslation()
   return (
-    <AppShell>
+    <ProfileShell>
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/accounts" element={<Accounts />} />
@@ -29,7 +29,7 @@ export default function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
-    </AppShell>
+    </ProfileShell>
   )
 }
 

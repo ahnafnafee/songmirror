@@ -208,7 +208,7 @@ def test_browser_adds_tracks_one_at_a_time_in_order(monkeypatch):
     })()
     monkeypatch.setattr(ytmusic, "polite_sleep", lambda _: None)
 
-    target.add({"playlistId": "playlist-1"}, ["video-1", "video-2", "video-3"])
+    target.add({"playlistId": "playlist-1", "_owned": True}, ["video-1", "video-2", "video-3"])
 
     assert calls == [
         ("playlist-1", ["video-1"], True),
