@@ -15,6 +15,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
+from itertools import islice
+from ..diagnostics import redact_data, redact_text
 
 from ..engine import archive, spotify, spotify_cookie
 from ..engine.config import parse_args, spotify_write_backend
@@ -205,7 +207,7 @@ class ImportService:
             updated_at=_parse_dt(row["updated_at"]) or _utc_now(),
             started_at=_parse_dt(row.get("started_at")),
             finished_at=_parse_dt(row.get("finished_at")),
-            error=row.get("error"),
+            error=redact_data(row.get("error")),
             options_json=row.get("options_json") or "{}",
             total_tracks=int(row.get("total_tracks") or 0),
             matched_tracks=int(row.get("matched_tracks") or 0),
@@ -234,7 +236,7 @@ class ImportService:
             resolved_method=row.get("resolved_method"),
             score=row.get("score"),
             write_status=row.get("write_status") or "pending",
-            write_error=row.get("write_error"),
+            write_error=redact_data(row.get("write_error")),
         )
 
     def _candidate_from_row(self, row: dict) -> ImportCandidate:
@@ -354,7 +356,7 @@ class ImportService:
     async def create_text_import(self, request: CreateTextImportRequest) -> ImportJob:
         """Parse pasted text and create an import job."""
         try:
-            result = parse_text(request.text)
+            result = await asyncio.to_thread(parse_text, request.text)
         except ValueError as exc:
             raise ImportServiceError(str(exc)) from exc
         return self._create_job_record(
@@ -378,7 +380,7 @@ class ImportService:
         if isinstance(request, dict):
             request = CreateFileImportRequest(**request)
         try:
-            result = parse_file(file_content, filename)
+            result = await asyncio.to_thread(parse_file, file_content, filename)
         except ValueError as exc:
             raise ImportServiceError(str(exc)) from exc
         return self._create_job_record(
@@ -457,7 +459,11 @@ class ImportService:
                 target.playlist_tracks,
             )
             try:
-                raw_tracks = list(read_tracks(playlist))
+                bounded_reader = getattr(target, "playlist_tracks_for_import", None)
+                raw_tracks = (bounded_reader(playlist, MAX_TRACKS_PER_IMPORT) if bounded_reader else
+                              list(islice(read_tracks(playlist), MAX_TRACKS_PER_IMPORT + 1)))
+                if len(raw_tracks) > MAX_TRACKS_PER_IMPORT:
+                    raise ImportServiceError("too many tracks. Maximum is 10000 tracks per import")
             except Exception as exc:
                 raise ImportServiceError(f"failed to read playlist tracks: {exc}") from exc
             return playlist, raw_tracks
@@ -1112,7 +1118,7 @@ class ImportService:
             self._set_status(
                 job_id,
                 ImportStatus.failed,
-                error=str(exc),
+                error=redact_text(exc),
                 finished_at=_utc_now_iso(),
             )
             self._emit("warn", f"import match failed: {exc}", data={"job_id": job_id})
@@ -1349,7 +1355,7 @@ class ImportService:
             self._set_status(
                 job_id,
                 ImportStatus.failed,
-                error=str(exc),
+                error=redact_text(exc),
                 finished_at=_utc_now_iso(),
             )
             self._emit("warn", f"import create failed: {exc}", data={"job_id": job_id})
@@ -1404,7 +1410,7 @@ class ImportService:
                     if not normalized:
                         raise ValueError("Paste a destination track link or id.")
                 except ValueError as exc:
-                    self._with_conn(lambda conn, row=track, message=str(exc): self.archive.update_import_track(
+                    self._with_conn(lambda conn, row=track, message=redact_text(exc): self.archive.update_import_track(
                         conn, job_id, row["position"], {"write_status": "failed", "write_error": message},
                     ))
                     raise ImportServiceError(f"Track {track['position'] + 1}: {exc}") from exc
@@ -1420,6 +1426,8 @@ class ImportService:
             playlist = dest.find_playlist(playlist_id) or dest.fetch_playlist(playlist_id)
             if playlist is None:
                 raise RuntimeError("destination playlist not found")
+            if not dest.is_editable(playlist):
+                raise ImportServiceError("The destination playlist is read-only.")
         elif mode == "append":
             raise RuntimeError("destination_playlist_id is required when appending")
         else:
@@ -1606,7 +1614,7 @@ class ImportService:
             # Providers may return None (all written) or the subset that landed.
             added_ids = dest.add(playlist, target_ids)
         except Exception as exc:
-            error = str(exc)[:500]
+            error = redact_text(exc)[:500]
             log_warn(f"import add failed: {exc!r}", tag="import")
 
         updates_by_position: dict[int, dict] = {}

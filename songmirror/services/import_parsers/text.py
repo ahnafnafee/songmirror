@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from .base import ParsedTrack, ParseResult
+from ..import_limits import MAX_LINE_LENGTH, ParseLimitError, append_track
 
 # Artist - Title, Artist – Title, Artist — Title
 _DASH_SPLIT = re.compile(
@@ -39,6 +40,8 @@ def _strip_leading_index(line: str) -> str:
 def parse_line(line: str, position: int) -> ParsedTrack | None:
     """Parse one non-empty playlist line into a track, or None for blanks."""
     raw = line.rstrip("\n")
+    if len(raw) > MAX_LINE_LENGTH:
+        raise ParseLimitError(f"Import line too large. Maximum is {MAX_LINE_LENGTH} characters")
     text = raw.strip()
     if not text:
         return None
@@ -46,6 +49,7 @@ def parse_line(line: str, position: int) -> ParsedTrack | None:
     # Plain text mode must keep hash-prefixed titles ("#1 Crush", "#41").
     # M3U comments/directives are handled in the M3U parser, not here.
     text = _strip_leading_index(text)
+    text = " ".join(text.split())
     if not text:
         return None
 
@@ -98,11 +102,11 @@ def parse_text(content: str) -> ParseResult:
     tracks: list[ParsedTrack] = []
     warnings: list[str] = []
     position = 0
-    for line in text.splitlines():
+    for line in iter_lines(text):
         track = parse_line(line, position)
         if track is None:
             continue
-        tracks.append(track)
+        append_track(tracks, track)
         position += 1
         warnings.extend(f"line {track.position + 1}: {w}" for w in track.warnings)
 
@@ -110,3 +114,9 @@ def parse_text(content: str) -> ParseResult:
         raise ValueError("no tracks found in text")
 
     return ParseResult(tracks=tracks, warnings=warnings)
+
+
+def iter_lines(text):
+    """Iterate nonempty splitlines without allocating a list for the full file."""
+    for match in re.finditer(r"[^\r\n\v\f\x1c-\x1e\x85\u2028\u2029]+", text):
+        yield match.group()

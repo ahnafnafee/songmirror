@@ -177,29 +177,29 @@ def test_finalize_returns_id_to_file():
 
 
 def test_fetch_image_cache():
-    calls, real = [], lm.requests.get
-    lm.requests.get = lambda *a, **k: (calls.append(1), types.SimpleNamespace(content=b"IMG", raise_for_status=lambda: None))[1]
+    calls, real = [], lm.media.fetch_image
+    lm.media.fetch_image = lambda *a, **k: (calls.append(1), b"IMG")[1]
     try:
         cache = {}
         assert lm._fetch_image("http://x/a.jpg", cache) == b"IMG"
         assert lm._fetch_image("http://x/a.jpg", cache) == b"IMG"  # served from cache
     finally:
-        lm.requests.get = real
+        lm.media.fetch_image = real
     assert len(calls) == 1
 
 
 def test_save_cover():
     with tempfile.TemporaryDirectory() as tmp:
         folder = Path(tmp)
-        real = lm.requests.get
-        lm.requests.get = lambda *a, **k: types.SimpleNamespace(content=b"JPEGDATA", raise_for_status=lambda: None)
+        real = lm.media.fetch_image
+        lm.media.fetch_image = lambda *a, **k: b"JPEGDATA"
         try:
             lm.save_cover({"images": [{"url": "http://x/big.jpg"}]}, folder)
             first = (folder / "cover.jpg").read_bytes()
-            lm.requests.get = lambda *a, **k: (_ for _ in ()).throw(AssertionError("should be cached"))
+            lm.media.fetch_image = lambda *a, **k: (_ for _ in ()).throw(AssertionError("should be cached"))
             lm.save_cover({"images": [{"url": "http://x/big.jpg"}]}, folder)  # unchanged URL -> no refetch
         finally:
-            lm.requests.get = real
+            lm.media.fetch_image = real
         assert first == b"JPEGDATA"
         assert (folder / "folder.jpg").read_bytes() == b"JPEGDATA"
 
@@ -249,8 +249,9 @@ def test_jellyfin_push_covers():
         calls["post"].append((u, headers, data))
         return types.SimpleNamespace(ok=True, status_code=200)
 
-    real = (jellyfin.requests.get, jellyfin.requests.post)
+    real = (jellyfin.requests.get, jellyfin.requests.post, jellyfin.fetch_image)
     jellyfin.requests.get, jellyfin.requests.post = fake_get, fake_post
+    jellyfin.fetch_image = lambda url: b"IMG"
     os.environ["JELLYFIN_URL"], os.environ["JELLYFIN_API_KEY"] = "http://jf:8096", "k"
     try:
         jellyfin.push_covers([
@@ -258,7 +259,7 @@ def test_jellyfin_push_covers():
             {"name": "NotInJellyfin", "images": [{"url": "http://img/b.jpg"}]},  # skipped, not found
         ])
     finally:
-        jellyfin.requests.get, jellyfin.requests.post = real
+        jellyfin.requests.get, jellyfin.requests.post, jellyfin.fetch_image = real
         del os.environ["JELLYFIN_URL"], os.environ["JELLYFIN_API_KEY"]
 
     assert len(calls["post"]) == 1  # only the matched playlist

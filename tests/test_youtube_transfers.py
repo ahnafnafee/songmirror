@@ -103,7 +103,7 @@ def test_long_youtube_copy_uses_exact_ids_and_reads_every_page(
     def copy():
         return transfer(
             source, destination,
-            {"playlistId": "old-playlist"}, {"playlistId": "new-playlist"},
+            {"playlistId": "old-playlist"}, {"playlistId": "new-playlist", "_owned": True},
             cache, execute=True, max_adds=3,
             on_progress=lambda *values: progress.append(values),
         )

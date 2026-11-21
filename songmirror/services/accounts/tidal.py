@@ -148,10 +148,10 @@ class TidalConnector(Connector):
             return ConnStatus("expired", str(exc))
         except TidalWebUnavailable as exc:
             return ConnStatus("error", str(exc))
+        except requests.RequestException as exc:
+            return ConnStatus("error", f"could not reach TIDAL ({type(exc).__name__})")
         except (TidalWebError, ValueError) as exc:
             return ConnStatus("expired", str(exc))
-        except requests.RequestException as exc:
-            return ConnStatus("error", f"could not reach TIDAL ({exc!r})")
 
     def _cache_key(self, raw):
         token = read_token(self._token_file())

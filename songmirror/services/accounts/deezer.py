@@ -2,6 +2,8 @@
 
 import os
 
+import requests
+
 from ...deezer_web import (
     DEFAULT_WEB_SESSION_FILE,
     DeezerWebAuthError,
@@ -65,10 +67,12 @@ class DeezerConnector(Connector):
             self._validated_client = client
             detail = "auto-renewing Pipe web session" if client.refresh_token else "short-lived Pipe web session"
             return True, detail
+        except requests.RequestException as exc:
+            return False, f"Deezer web-session check failed ({type(exc).__name__})"
         except (DeezerWebAuthError, ValueError) as exc:
             return False, str(exc)
         except Exception as exc:
-            return False, f"Deezer web-session check failed ({exc!r})"
+            return False, f"Deezer web-session check failed ({type(exc).__name__})"
 
     def status(self):
         if self._raw() or self._refresh_raw():

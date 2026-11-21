@@ -6,7 +6,8 @@ import re
 from typing import Optional
 
 from .base import ParsedTrack, ParseResult
-from .text import parse_line
+from .text import iter_lines, parse_line
+from ..import_limits import append_track
 
 _EXTINF = re.compile(
     r"^#EXTINF\s*:\s*(-?\d+(?:\.\d+)?)\s*(?:,\s*(.*))?$",
@@ -84,7 +85,7 @@ def parse_m3u(content: str) -> ParseResult:
             pending_album = None
             pending_warnings = []
             return
-        tracks.append(
+        append_track(tracks,
             ParsedTrack(
                 position=len(tracks),
                 title=title,
@@ -102,7 +103,7 @@ def parse_m3u(content: str) -> ParseResult:
         pending_raw = None
         pending_warnings = []
 
-    for line in text.splitlines():
+    for line in iter_lines(text):
         stripped = line.strip()
         if not stripped:
             continue

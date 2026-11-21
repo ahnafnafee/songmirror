@@ -132,6 +132,8 @@ class ProfileSettings:
             dir=profiles.profile_dir(profile.id),
             project_env=False,
         )
+        if profiles.settings.allowed_keys is not None:
+            self._local.restrict_to(profiles.settings.allowed_keys & PROVIDER_KEYS[profile.provider])
 
     @property
     def data_dir(self):
@@ -191,6 +193,11 @@ class ProfileSettings:
             root = self.data_dir
             for key, filename in _FILE_DEFAULTS.get(self.profile.provider, {}).items():
                 values.setdefault(key, str(root / filename))
+        elif self.profile.provider == "ytmusic" and not values.get("YTMUSIC_BROWSER_AUTH"):
+            # The browser wizard writes a fixed server-selected path. Native
+            # defaults need the same path at engine activation without making
+            # a persisted settings value capable of selecting a destination.
+            values["YTMUSIC_BROWSER_AUTH"] = str(self._profiles.settings.data_dir / "ytmusic_browser.json")
         return {key: str(value) for key, value in values.items() if value is not None}
 
     def _fallback_values(self):

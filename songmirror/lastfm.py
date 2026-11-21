@@ -132,8 +132,8 @@ def get_session(api_key, api_secret, token, session=None):
         response = (session or requests).get(
             API, params=params, timeout=REQUEST_TIMEOUT,
             headers={"User-Agent": USER_AGENT})
-    except requests.RequestException as exc:
-        raise LastfmTransient(f"could not reach Last.fm ({exc!r})") from exc
+    except requests.RequestException:
+        raise LastfmTransient("could not reach Last.fm") from None
     info = _payload(response).get("session") or {}
     key, name = (info.get("key") or "").strip(), (info.get("name") or "").strip()
     if not (key and name):
@@ -219,8 +219,8 @@ class Lastfm:
                 response = self._session.get(
                     API, params=query, timeout=REQUEST_TIMEOUT,
                     headers={"User-Agent": USER_AGENT})
-        except requests.RequestException as exc:
-            raise LastfmTransient(f"could not reach Last.fm ({exc!r})") from exc
+        except requests.RequestException:
+            raise LastfmTransient("could not reach Last.fm") from None
         return _payload(response)
 
     def _get(self, method, **params):

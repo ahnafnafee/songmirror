@@ -50,6 +50,7 @@ Pour une installation persistante avec redémarrages automatiques :
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -61,7 +62,7 @@ Ou essayez l'image publique GHCR directement sans cloner le référentiel :
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-Ouvrez ensuite `http://localhost:8888` et connectez vos services dans le navigateur. La configuration Compose n'a pas besoin de `.env` pour démarrer ; tout est configuré dans l'interface utilisateur et enregistré sous `./data`.
+Ouvrez ensuite `http://localhost:8888` et connectez vos services dans le navigateur. La configuration Compose n'a pas besoin de `.env` pour démarrer. Les paramètres des services musicaux saisis dans l’application web sont enregistrés dans `./data`.
 
 L'option directe `docker run` est jetable : `docker stop songmirror` supprime le conteneur et sa configuration. Utilisez Compose pour une installation durable avec des informations d'identification, des caches et des téléchargements persistants, ou consultez le [guide d'image du conteneur](../docker-image.md) pour les balises et l'épinglage de résumé.
 
@@ -158,7 +159,7 @@ SongMirror conserve vos listes de lecture identiques partout sans ré-ajout manu
 - 🐳 **Fonctionne n'importe où** — un `docker compose up -d` pour l'application de navigateur, ou un simple CLI + cron / Task Scheduler.
 
 > [!IMPORTANT]
-> Auto-hébergé et privé par conception. Vos données d'écoute et vos informations d'identification ne quittent jamais votre machine. L'interface utilisateur Web n'a pas d'authentification : liez-la à votre LAN et ne la transférez pas vers Internet.
+> Gardez le port web sur un réseau de confiance. Activez la [connexion du propriétaire](../profile-auth.md) pour protéger les listes de lecture, les comptes associés et les paramètres de synchronisation.
 
 <div align="right">
 
@@ -215,8 +216,9 @@ SongMirror conserve vos listes de lecture identiques partout sans ré-ajout manu
 Le conteneur Docker est le déploiement recommandé : il sert l'interface utilisateur Web, exécute vos synchronisations selon leurs planifications et redémarre avec l'hôte. Compose extrait `ghcr.io/ahnafnafee/songmirror:latest`, l'exécute sous le nom `songmirror` et conserve tous les caches d'authentification + dans `./data`.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ Pour mettre à jour, exécutez `docker compose up -d --pull always`. Pour créer
 
 Aucun `.env` n'est nécessaire pour démarrer — tout est configuré dans le navigateur et enregistré sous `./data`. La configuration des clés OAuth, du jeton de partenaire et de la clé API est disponible sur la page Comptes ; chaque assistant explique les conditions préalables spécifiques au service et l'URI de rappel exact. Créez ensuite vos synchronisations sur la page Sync.
 
-L'ouverture de SongMirror depuis un autre ordinateur fonctionne à `http://<server>:8888`. La connexion par défaut Spotify utilise une session Web `sp_dc` collée, elle ne nécessite donc aucune application de développeur ni URL de rappel. Si vous utilisez intentionnellement l'ancienne application de développement OAuth de secours derrière Docker ou un proxy inverse, définissez l'URL de base visible par le navigateur dans `.env` :
+L'ouverture de SongMirror depuis un autre ordinateur fonctionne à `http://<server>:8888`. La connexion par défaut Spotify utilise une session Web `sp_dc` collée, elle ne nécessite donc aucune application de développeur ni URL de rappel. Si vous utilisez intentionnellement l'ancienne application de développement OAuth de secours derrière Docker ou un proxy inverse, définissez l'URL de base visible par le navigateur dans `.env` : Compose écoute désormais uniquement sur localhost par défaut ; pour autoriser un réseau local de confiance, définissez `SONGMIRROR_BIND_ADDRESS=0.0.0.0` dans `.env`.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth
@@ -238,7 +240,7 @@ SongMirror annoncera alors `https://music.example.com/oauth/spotify/callback` ;
 | | |
 | --- | --- |
 | Images | `ghcr.io/ahnafnafee/songmirror:latest` prend en charge AMD64 et ARM64. Chaque build est également publié avec une balise `sha-...` spécifique au commit ; Les balises Git telles que `v1.2.3` publient également `1.2.3`, `1.2` et `1`. Utilisez le [guide d'image du conteneur](../docker-image.md) pour épingler un résumé immuable. |
-| Port | L'interface utilisateur est publiée sur l'hôte 8888 (le mappage `8888:8080` dans `docker-compose.yml` ; changez le côté hôte en cas de conflit). LAN uniquement — ne le transférez pas vers Internet ; l'interface utilisateur n'a pas encore d'authentification. |
+| Port | L'interface utilisateur est publiée sur l'hôte 8888 (le mappage `8888:8080` dans `docker-compose.yml` ; changez le côté hôte en cas de conflit). Gardez ce port HTTP privé. Utilisez un proxy inverse HTTPS pour l’accès à distance. |
 | Persistance | `./data` contient les informations d'identification, les jetons, les caches, les archives de chansons et les instantanés de playlist programmés sous `playlist_backups/`. Sauvegardez-le pour conserver votre configuration et vos archives lors des reconstructions. |
 | Téléchargements | Définissez `DOWNLOAD_DIR` (dans `.env` ou votre shell) sur le répertoire musical de votre hôte (par exemple `F:\Torrent\Music`) ; composer bind-le monte sur `/music`. De Docker, définissez `JELLYFIN_URL` sur `http://host.docker.internal:8096`. |
 | Sessions expirées | Les sessions renouvelables sont récupérées lors du prochain passage planifié ou manuel. TIDAL Les sessions du lecteur Web sont renouvelées à partir du jeton d'actualisation capturé ; Les jetons Qobuz et Apple Music doivent toujours être recollés lorsqu'ils sont rejetés. Aucun redémarrage n'est nécessaire. |

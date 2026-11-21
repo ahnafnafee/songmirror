@@ -1154,12 +1154,25 @@ class YTMusicBrowserTarget(YTMusicTarget):
         return out
 
     def list_playlists(self):
+        ownership = {row["playlistId"]: row.get("_owned") is True
+                     for row in self._youtube.playlists()} if hasattr(self, "_youtube") else {}
         out = {}
         for playlist in self._music_playlists():
-            out.setdefault(playlist["title"].casefold(), playlist)
+            playlist = {**playlist, "_owned": ownership.get(playlist["playlistId"], False)}
+            key = playlist["title"].casefold()
+            if key not in out or self.is_editable(playlist) and not self.is_editable(out[key]):
+                out[key] = playlist
         return out
 
+    def is_editable(self, playlist):
+        return playlist.get("_owned") is True
+
+    def _require_editable(self, playlist):
+        if not self.is_editable(playlist):
+            raise TargetCapabilityError("Only a verified owned YouTube playlist can be changed.")
+
     def update_details(self, playlist, changes):
+        self._require_editable(playlist)
         description = changes.get("description")
         result = self._api.edit_playlist(
             self.playlist_id(playlist),
@@ -1190,6 +1203,11 @@ class YTMusicBrowserTarget(YTMusicTarget):
             return self.playlist_tracks(playlist)
         return self._youtube.tracks(playlist["playlistId"])
 
+    def playlist_tracks_for_import(self, playlist, limit):
+        if hasattr(self, "_youtube"):
+            return self._youtube.tracks(playlist["playlistId"], limit=limit)
+        return super().playlist_tracks_for_import(playlist, limit)
+
     def create(self, sp_playlist):
         name, description = source_playlist_details(sp_playlist)
         privacy = _privacy(self._create_public(sp_playlist)).upper()
@@ -1215,7 +1233,7 @@ class YTMusicBrowserTarget(YTMusicTarget):
                 "reconnect that account in Accounts."
             )
         polite_sleep(2.0)
-        return {"playlistId": pid, "title": name, "count": 0}
+        return {"playlistId": pid, "title": name, "count": 0, "_owned": True}
 
     def fetch_playlist(self, playlist_id):
         """A playlist by id, public ones included. youtubei's get_playlist is not
@@ -1298,6 +1316,7 @@ class YTMusicBrowserTarget(YTMusicTarget):
     def add(self, playlist, target_ids):
         # YouTube may stamp a whole batch alike and reorder it. Singleton writes
         # make its append chronology match every other provider's contract.
+        self._require_editable(playlist)
         for target_id in target_ids:
             result = self._api.add_playlist_items(
                 playlist["playlistId"], [target_id], duplicates=True)
@@ -1309,6 +1328,7 @@ class YTMusicBrowserTarget(YTMusicTarget):
             polite_sleep(1.0)
 
     def remove(self, playlist, track):
+        self._require_editable(playlist)
         if not track.get("setVideoId"):
             return  # youtubei removal needs setVideoId (from playlist_tracks)
         self._api.remove_playlist_items(

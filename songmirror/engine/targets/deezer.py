@@ -6,6 +6,7 @@ import time
 from urllib.parse import parse_qs, urlsplit
 
 import requests
+from ...deezer_links import share_location
 
 from ...deezer_web import (
     DEFAULT_WEB_SESSION_FILE,
@@ -106,7 +107,7 @@ class DeezerTarget(MirrorTarget):
 
     def _request(self, method, path, *, params=None):
         url = path if str(path).startswith("http") else f"{API}/{str(path).lstrip('/')}"
-        short = url.removeprefix(API + "/")
+        short = url.split("?", 1)[0].removeprefix(API + "/")
         query = dict(params or {})
         query["access_token"] = self._token
         attempts = 4
@@ -118,8 +119,8 @@ class DeezerTarget(MirrorTarget):
                     time.sleep(min(2**attempt, 12) + random.uniform(0, 1))
                     continue
                 raise TargetTransientError(
-                    f"Deezer transport failure for {method} {short}: {exc}"
-                ) from exc
+                    f"Deezer transport failure for {method} {short}."
+                ) from None
             if response.status_code == 429:
                 if attempt < attempts - 1:
                     time.sleep(float(response.headers.get("Retry-After") or 2**attempt) + random.uniform(0.5, 1.5))
@@ -136,7 +137,8 @@ class DeezerTarget(MirrorTarget):
                 raise TargetTransientError(
                     f"Deezer kept returning HTTP {response.status_code} for {method} {short}"
                 )
-            response.raise_for_status()
+            if response.status_code >= 400:
+                raise RuntimeError(f"Deezer returned HTTP {response.status_code} for {method} {short}.")
             body = response.json()
             error = body.get("error") if isinstance(body, dict) else None
             if error:
@@ -154,7 +156,7 @@ class DeezerTarget(MirrorTarget):
         if self._web is None:
             return self._request("GET", path, params=params)
         url = path if str(path).startswith("http") else f"{API}/{str(path).lstrip('/')}"
-        short = url.removeprefix(API + "/")
+        short = url.split("?", 1)[0].removeprefix(API + "/")
         for attempt in range(4):
             try:
                 response = self._session.get(url, params=params, timeout=REQUEST_TIMEOUT)
@@ -163,8 +165,8 @@ class DeezerTarget(MirrorTarget):
                     time.sleep(min(2**attempt, 12) + random.uniform(0, 1))
                     continue
                 raise TargetTransientError(
-                    f"Deezer transport failure for GET {short}: {exc}"
-                ) from exc
+                    f"Deezer transport failure for GET {short}."
+                ) from None
             if response.status_code == 429 or response.status_code >= 500:
                 if attempt < 3:
                     time.sleep(float(response.headers.get("Retry-After") or 2**attempt) + random.uniform(0, 1))
@@ -413,17 +415,12 @@ class DeezerTarget(MirrorTarget):
         )
         if is_share_link:
             try:
-                response = requests.head(
-                    raw,
-                    allow_redirects=False,
-                    timeout=REQUEST_TIMEOUT,
-                )
-                response.raise_for_status()
-            except requests.RequestException as exc:
+                location = share_location(raw, timeout=REQUEST_TIMEOUT)
+            except (requests.RequestException, ValueError) as exc:
                 raise ValueError(
                     "Could not resolve that Deezer share link; paste its full track URL or numeric ID."
                 ) from exc
-            track_id = _track_id_from_reference(response.headers.get("Location", ""))
+            track_id = _track_id_from_reference(location)
             if track_id:
                 return track_id
             raise ValueError("That Deezer share link does not point to a track.")

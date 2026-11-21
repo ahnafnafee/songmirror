@@ -7,6 +7,7 @@ import { api, errorMessage } from '@/api'
 import { FeatureGuide } from '@/components/onboarding/FeatureGuide'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { LanguageSelector } from '@/components/layout/LanguageSelector'
+import { OwnerSignInSettings } from '@/components/settings/OwnerSignInSettings'
 import { ScheduledPlaylistBackups } from '@/components/settings/ScheduledPlaylistBackups'
 import { Button } from '@/components/ui/Button'
 import { FolderField } from '@/components/ui/FolderField'
@@ -157,6 +158,8 @@ export default function Settings() {
         </p>
       </SettingsGroup>
       )}
+
+      {section === 'general' && <OwnerSignInSettings />}
 
       {section === 'backups' && (
       <SettingsGroup label={t("PLAYLIST ARCHIVE")}>

@@ -266,7 +266,7 @@ def ensure_web_access_token(
         try:
             response = requests.post(TOKEN_URL, data=data, timeout=REQUEST_TIMEOUT)
         except requests.RequestException as exc:
-            raise TidalWebUnavailable(f"could not reach TIDAL's token service ({exc!r})") from exc
+            raise TidalWebUnavailable(f"could not reach TIDAL's token service ({type(exc).__name__})") from None
         if response.status_code == 429:
             raise TidalWebUnavailable("TIDAL rate limit reached while renewing; try again shortly (HTTP 429)")
         if response.status_code in (400, 401, 403):

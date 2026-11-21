@@ -138,6 +138,32 @@ class MirrorTarget:
         """Existing tracks as dicts with name/artist/duration_ms + an id."""
         raise NotImplementedError
 
+    def playlist_tracks_for_import(self, playlist, limit):
+        """Stop paged reads at the import budget instead of materializing a library."""
+        count = self.playlist_count(playlist)
+        if isinstance(count, int) and count > limit:
+            raise ValueError(f"too many tracks. Maximum is {limit} tracks per import")
+        page_reader = getattr(self, "playlist_tracks_page", None)
+        if page_reader is None:
+            from itertools import islice
+            rows = list(islice(self.playlist_tracks(playlist), limit + 1))
+            if len(rows) > limit:
+                raise ValueError(f"too many tracks. Maximum is {limit} tracks per import")
+            return rows
+        result, cursor, seen = [], None, set()
+        while True:
+            rows, next_cursor = page_reader(playlist, cursor=cursor)
+            for row in rows:
+                if len(result) >= limit:
+                    raise ValueError(f"too many tracks. Maximum is {limit} tracks per import")
+                result.append(row)
+            if next_cursor is None:
+                return result
+            if not rows or next_cursor in seen:
+                raise ValueError("Playlist pagination did not make progress")
+            seen.add(next_cursor)
+            cursor = next_cursor
+
     @staticmethod
     def is_favorite_tracks_resource(resource):
         return resource.get("_kind") == "liked_tracks"

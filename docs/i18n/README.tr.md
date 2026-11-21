@@ -50,6 +50,7 @@ Otomatik yeniden başlatmalarla kalıcı bir kurulum için:
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -61,7 +62,7 @@ Veya depoyu klonlamadan genel GHCR görüntüsünü doğrudan deneyin:
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-Ardından **`http://localhost:8888`** adresini açın ve servislerinizi tarayıcıdan bağlayın. Compose kurulumunun başlaması için **`.env` dosyasına gerek yoktur**; her şey arayüzden yapılandırılır ve `./data` dizinine kaydedilir.
+Ardından **`http://localhost:8888`** adresini açın ve servislerinizi tarayıcıdan bağlayın. Compose kurulumunun başlaması için **`.env` dosyasına gerek yoktur**. Web uygulamasında girdiğiniz müzik hizmeti ayarları `./data` dizinine kaydedilir.
 
 Doğrudan `docker run` seçeneği tek kullanımlıktır: `docker stop songmirror` komutu konteyneri ve yapılandırmasını kaldırır. Kalıcı kimlik bilgileri, önbellekler ve indirmelerle kalıcı bir kurulum için Compose kullanın veya etiketler ve özet sabitleme için **[konteyner görseli kılavuzu](../docker-image.md)** bölümüne bakın.
 
@@ -158,7 +159,7 @@ SongMirror; manuel olarak tek tek şarkı eklemeye, kopyalamaya ya da kitaplığ
 - 🐳 **Her yerde çalışır** — tarayıcı uygulaması için bir `docker compose up -d` veya doğrudan CLI + cron / Task Scheduler.
 
 > [!IMPORTANT]
-> **Kendi sunucunuzda barındırılır ve tasarım gereği gizlilik odaklıdır.** Dinleme verileriniz ve kimlik bilgileriniz makinenizden asla ayrılmaz. Web kullanıcı arayüzünün **giriş şifresi yoktur**; bu nedenle onu yerel ağınıza (LAN) bağlayın ve internete port yönlendirmesi yapmayın.
+> Web bağlantı noktasını güvenilir bir ağda tutun. Çalma listelerini, bağlı hesapları ve eşitleme ayarlarını korumak için [sahip oturumunu](../profile-auth.md) etkinleştirin.
 
 <div align="right">
 
@@ -215,8 +216,9 @@ SongMirror; manuel olarak tek tek şarkı eklemeye, kopyalamaya ya da kitaplığ
 Docker konteyneri önerilen dağıtım yöntemidir: web arayüzünü sunar, senkronizasyonlarınızı kendi zaman planlarına göre yürütür ve ana makineyle birlikte otomatik olarak yeniden başlar. Compose, **`ghcr.io/ahnafnafee/songmirror:latest`** imajını çeker, **`songmirror`** adıyla çalıştırır ve tüm kimlik doğrulama ile önbellekleri `./data` dizininde saklar.
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ Güncellemek için `docker compose up -d --pull always` komutunu çalıştırın
 
 **Başlamak için `.env` gerekmez** — her şey tarayıcıda yapılandırılır ve `./data` altına kaydedilir. OAuth, ortak belirteci ve API anahtarı kurulumunun tümü Hesaplar sayfasındadır; her sihirbaz servise özel önkoşulları ve tam geri arama URI'sini açıklar. Daha sonra senkronizasyonlarınızı Senkronizasyon sayfasında oluşturun.
 
-SongMirror'ı başka bir bilgisayardan açmak `http://<server>:8888` adresinde çalışır. Varsayılan Spotify bağlantısı, yapıştırılan `sp_dc` web oturumunu kullanır, dolayısıyla geliştirici uygulamasına veya geri arama URL'sine ihtiyaç duymaz. Kasıtlı olarak eski geliştirici uygulaması OAuth yöntemini Docker arkasında veya ters proxy ile kullanıyorsanız, tarayıcı tarafından görülebilen temel URL'yi `.env` olarak ayarlayın:
+SongMirror'ı başka bir bilgisayardan açmak `http://<server>:8888` adresinde çalışır. Varsayılan Spotify bağlantısı, yapıştırılan `sp_dc` web oturumunu kullanır, dolayısıyla geliştirici uygulamasına veya geri arama URL'sine ihtiyaç duymaz. Kasıtlı olarak eski geliştirici uygulaması OAuth yöntemini Docker arkasında veya ters proxy ile kullanıyorsanız, tarayıcı tarafından görülebilen temel URL'yi `.env` olarak ayarlayın: Compose artık varsayılan olarak yalnızca localhost üzerinde dinler; güvenilir LAN erişimi için `.env` içinde `SONGMIRROR_BIND_ADDRESS=0.0.0.0` ayarlayın.
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth
@@ -238,7 +240,7 @@ SongMirror daha sonra `https://music.example.com/oauth/spotify/callback` adresin
 | | |
 | --- | --- |
 | **İmaj** | `ghcr.io/ahnafnafee/songmirror:latest`, AMD64 ve ARM64'yi destekler. Her yapı aynı zamanda işleme özel bir `sha-...` etiketiyle yayınlanır; `v1.2.3` gibi Git etiketleri ayrıca `1.2.3`, `1.2` ve `1` yayınlar. Değişmez bir özeti sabitlemek için [konteyner görseli kılavuzu](../docker-image.md) bölümüne bakın. |
-| **Port** | Kullanıcı arayüzü ana makinede **8888** portunda yayınlanır (`8888:8080`'deki `docker-compose.yml` eşlemesi; çakışıyorsa ana bilgisayar tarafını değiştirin). **Yalnızca LAN** — onu internete port olarak iletmeyin; Kullanıcı arayüzünün henüz kimlik doğrulaması yok. |
+| **Port** | Kullanıcı arayüzü ana makinede **8888** portunda yayınlanır (`8888:8080`'deki `docker-compose.yml` eşlemesi; çakışıyorsa ana bilgisayar tarafını değiştirin). Bu HTTP bağlantı noktasını özel tutun. Uzaktan erişim için HTTPS ters vekil sunucusu kullanın. |
 | **Kalıcılık** | `./data` kimlik bilgilerini, belirteçleri, önbellekleri, şarkı arşivini ve planlanmış çalma listesi anlık görüntülerini `playlist_backups/` altında tutar. Yeniden yapılandırmalarda kurulumunuzu ve arşivlerinizi korumak için yedekleyin. |
 | **İndirmeler** | `DOWNLOAD_DIR`'yi (`.env`'de veya kabuğunuzda) ana müzik dizininize (örneğin `F:\Torrent\Music`) ayarlayın; compose bağlama onu `/music`'ye bağlar. Docker'den `JELLYFIN_URL`'yi `http://host.docker.internal:8096`'ye ayarlayın. |
 | **Süresi dolmuş oturumlar** | Yenilenebilir oturumlar bir sonraki planlı veya manuel geçişte kurtarılır. TIDAL web oynatıcı oturumları, yakalanan yenileme belirtecinden yenilenir; Qobuz ve Apple Music jetonları reddedildiklerinde yine de yeniden yapıştırılmalıdır. Yeniden başlatmaya gerek yoktur. |

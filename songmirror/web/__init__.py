@@ -12,11 +12,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..services.account_profiles import AccountProfileStore
 from ..services.events import EventBus
+from ..services.folders import FolderBrowser
 from ..services.imports import ImportService
 from ..services.playlist_backups import PlaylistBackupService, PlaylistBackupStore
 from ..services.playlists import LinkStore
@@ -26,6 +27,9 @@ from ..services.sync_service import SyncService
 from ..services.syncs import SyncStore
 from ..services.transfers import TransferService
 from .access_log import install_oauth_access_log_filter
+from .connection_attempts import ConnectionAttempts
+from .profile_auth import ProfileAuth, router as profile_auth_router
+from .security import RequestSecurity
 from .routers import (
     accounts, events, folders, imports as imports_router,
     playlist_backups as playlist_backups_router, playlists,
@@ -43,11 +47,17 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
                syncs=None, resolve_cache=None, account_profiles=None,
                playlist_backups=None, imports=None) -> FastAPI:
     install_oauth_access_log_filter()
+    configured_owner = ProfileAuth.owner_from_environment()
+    # Read trusted host configuration before freezing filesystem policy.
+    load_dotenv()
     settings = settings or SettingsStore()
+    settings.restrict_to(settings_router.MANAGED_KEYS)
+    folder_browser = FolderBrowser(settings)
+    profile_auth = ProfileAuth(settings.data_dir, configured_owner)
     bus = bus or EventBus()
     account_profiles = account_profiles or AccountProfileStore(settings)
     syncs = syncs or SyncStore(dir=Path(settings.env_path).parent, profiles=account_profiles)
-    sync_service = sync_service or SyncService(settings, bus, syncs, profiles=account_profiles)
+    sync_service = sync_service or SyncService(settings, bus, syncs, profiles=account_profiles, folders=folder_browser)
     links = links or LinkStore(dir=Path(settings.env_path).parent, profiles=account_profiles)
     transfers = transfers or TransferService(settings, bus, sync_service, profiles=account_profiles)
     resolve_cache = resolve_cache or ResolveCacheStore(
@@ -57,7 +67,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
         settings,
         sync_service,
         bus,
-        PlaylistBackupStore(settings.data_dir, profiles=account_profiles),
+        PlaylistBackupStore(settings.data_dir, profiles=account_profiles, folders=folder_browser),
         profiles=account_profiles,
     )
     imports = imports or ImportService(
@@ -69,12 +79,12 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        profile_auth.announce_setup()
         bus.bind_loop(asyncio.get_running_loop())
         bus.attach_to_logs()
         # Surface the gitignored config (.env / docker env_file) to os.getenv so
         # the settings API shows the actual running defaults; the managed env
         # file + settings.json then take precedence.
-        load_dotenv()
         os.environ["SONGMIRROR_ENV_FILE"] = settings.env_path
         settings.apply_to_env()
         account_profiles.capture_environment()
@@ -93,7 +103,11 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
             await sync_service.shutdown()
 
     app = FastAPI(title="SongMirror", lifespan=lifespan)
+    app.add_middleware(RequestSecurity, settings=settings, profile_auth=profile_auth)
+    app.state.connection_attempts = ConnectionAttempts()
+    app.state.profile_auth = profile_auth
     app.state.settings = settings
+    app.state.folders = folder_browser
     app.state.account_profiles = account_profiles
     app.state.bus = bus
     app.state.sync = sync_service
@@ -104,6 +118,7 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
     app.state.playlist_backups = playlist_backups
     app.state.imports = imports
 
+    app.include_router(profile_auth_router)
     app.include_router(accounts.router)
     app.include_router(settings_router.router)
     app.include_router(folders.router)
@@ -130,13 +145,19 @@ def create_app(settings=None, bus=None, sync_service=None, links=None, transfers
             return JSONResponse({"detail": "not found"}, status_code=404)
         # Serve real files sitting at the dist root (favicons, etc.) before the SPA
         # shell. The containment check blocks path traversal out of the dist dir.
+        dist = _DIST.resolve()
+        index = dist / "index.html"
         if full_path:
-            candidate = (_DIST / full_path).resolve()
-            if candidate.is_file() and _DIST.resolve() in candidate.parents:
+            candidate = (dist / full_path).resolve()
+            if candidate != index.resolve() and dist in candidate.parents and candidate.is_file():
                 return FileResponse(str(candidate))
-        index = _DIST / "index.html"
-        if index.is_file():
-            return FileResponse(str(index))
+        if index.is_file() and dist in index.resolve().parents:
+            if profile_auth.enabled:
+                html = index.read_text(encoding="utf-8").replace(
+                    "</head>", '<meta name="songmirror-auth" content="required">\n</head>', 1,
+                )
+                return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+            return FileResponse(str(index), headers={"Cache-Control": "no-cache"})
         return JSONResponse(
             {"detail": "frontend not built — run: pnpm -C frontend install && pnpm -C frontend build"},
             status_code=503,

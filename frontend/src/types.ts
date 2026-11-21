@@ -120,8 +120,8 @@ export interface PollResponse {
   capabilities?: AccountCapabilities
 }
 
-/** GET/PUT /api/settings — arbitrary KEY:value config; secrets are masked out
- * server-side and never round-tripped to the browser. */
+/** Public settings projection; PUT accepts only supported editable fields.
+ * Credentials are never round-tripped to the browser. */
 export type Settings = Record<string, string>
 
 export interface TargetSummary {
@@ -514,6 +514,7 @@ export interface PlaylistBackupJob {
   next_run_at: number | null
   snapshot_count: number
   storage_path: string
+  storage_error?: string | null
   storage_dir: string
   default_storage_dir: string
   last_success: PlaylistBackupSuccess | null

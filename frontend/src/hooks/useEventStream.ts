@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { browserDataCacheEnabled, LIVE_FEED_CACHE_KEY as STORAGE_KEY } from '../lib/browserDataCache'
 import type { SyncEvent } from '../types'
 
 // Mirrors the backend EventBus's own ring-buffer size (events.py) — plenty
@@ -12,7 +13,6 @@ const PASS_STARTED_RE = /pass started/i
 // persisted storage stays small regardless of how long a live session runs.
 // "v1" so a future change to SyncEvent's shape can invalidate old entries by
 // bumping the key rather than needing a migration.
-const STORAGE_KEY = 'songmirror-live-feed-v1'
 const PERSIST_MAX_EVENTS = 200
 
 export interface EventCounters {
@@ -59,6 +59,7 @@ function counterKey(event: SyncEvent): EventCounterKey | null {
  * storage), a missing key, or corrupted JSON all just mean "no history to
  * restore" rather than a render crash. */
 function loadPersistedEvents(): SyncEvent[] {
+  if (!browserDataCacheEnabled()) return []
   try {
     if (typeof window === 'undefined' || !window.localStorage) return []
     const raw = window.localStorage.getItem(STORAGE_KEY)
@@ -83,6 +84,7 @@ function loadPersistedEvents(): SyncEvent[] {
  * quota fills, and that should just mean "this reload won't be restored",
  * not a crash. */
 function persistEvents(events: SyncEvent[]) {
+  if (!browserDataCacheEnabled()) return
   try {
     if (typeof window === 'undefined' || !window.localStorage) return
     const capped = events.length > PERSIST_MAX_EVENTS ? events.slice(events.length - PERSIST_MAX_EVENTS) : events

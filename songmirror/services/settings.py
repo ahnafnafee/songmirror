@@ -13,9 +13,10 @@ wired in the app factory) makes wizard saves authoritative instead.
 
 import json
 import os
-import shlex
 import threading
 from pathlib import Path
+
+from .private_files import owner_only
 
 
 # Provider adapters still inherit part of their runtime configuration through
@@ -43,14 +44,14 @@ DEFAULT_SETTINGS = {
 
 def _open_private(path):
     """Open for writing with owner-only perms (0o600) from creation — these files
-    hold OAuth secrets and service tokens. POSIX modes are ignored on Windows,
-    but the deployment where at-rest exposure matters (Linux/Docker with a
-    bind-mounted data dir) honors them."""
+    hold OAuth secrets and service tokens. Windows also receives a protected
+    DACL for the current process user, SYSTEM and Administrators."""
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        os.chmod(path, 0o600)  # enforce on a pre-existing file too (best-effort)
-    except OSError:
-        pass
+        owner_only(path)
+    except BaseException:
+        os.close(fd)
+        raise
     return os.fdopen(fd, "w", encoding="utf-8")
 
 
@@ -61,14 +62,29 @@ class SettingsStore:
         # the container's ephemeral filesystem. Falls back to a local ./data.
         self._dir = Path(dir or os.getenv("SONGMIRROR_DATA_DIR") or "data")
         self._dir.mkdir(parents=True, exist_ok=True)
-        try:
-            os.chmod(self._dir, 0o700)  # keep the secrets dir owner-only (best-effort; POSIX)
-        except OSError:
-            pass
+        owner_only(self._dir, directory=True)
         self._json = self._dir / "settings.json"
         self.env_path = str(self._dir / "app.env")
         self._project_env = project_env
+        self._allowed_keys = None
         self._data = self._read()
+
+    @property
+    def allowed_keys(self):
+        return self._allowed_keys
+
+    def restrict_to(self, keys):
+        """Treat stored web settings as data, never arbitrary process options.
+
+        Keep unsupported legacy values in JSON for operator review, but do not
+        return, export or reactivate them. apply_to_env regenerates app.env
+        before the engine can reload an older, unsafe managed file.
+        """
+        self._allowed_keys = frozenset(keys)
+
+    def _values(self):
+        return {key: value for key, value in self._data.items()
+                if self._allowed_keys is None or key in self._allowed_keys}
 
     @property
     def data_dir(self):
@@ -84,7 +100,7 @@ class SettingsStore:
 
     def load(self):
         data = dict(DEFAULT_SETTINGS)
-        data.update(self._data)
+        data.update(self._values())
         return data
 
     def has_persisted_values(self):
@@ -94,10 +110,10 @@ class SettingsStore:
         distinguish "empty store" from "defaults only" must use this instead of
         truthiness of ``load()``.
         """
-        return bool(self._data)
+        return bool(self._values())
 
     def get(self, key, default=None):
-        if key in self._data:
+        if key in self._values():
             return self._data[key]
         if default is not None:
             return default
@@ -105,6 +121,8 @@ class SettingsStore:
 
     def save(self, values):
         """Merge non-None `values`, persist json + env file, apply to os.environ."""
+        if self._allowed_keys is not None and set(values) - self._allowed_keys:
+            raise ValueError("Unsupported managed setting.")
         self._data.update({k: v for k, v in values.items() if v is not None})
         with _open_private(self._json) as f:
             json.dump(self._data, f, indent=2)
@@ -113,13 +131,16 @@ class SettingsStore:
             self.apply_to_env()
 
     def _render_env(self):
-        lines = [f"{k}={shlex.quote(str(v))}" for k, v in self._data.items() if _scalar(v)]
+        # Shell quote concatenation is not dotenv syntax. JSON double-quoted
+        # strings keep embedded quotes/newlines within one physical assignment.
+        lines = [f"{k}={json.dumps(str(v), ensure_ascii=False)}" for k, v in self._values().items() if _scalar(v)]
         with _open_private(self.env_path) as f:
             f.write("\n".join(lines) + "\n")
 
     def apply_to_env(self):
         """Project scalar settings into the process env (engine reads os.getenv)."""
         with _ENV_LOCK:
-            for k, v in self._data.items():
+            self._render_env()
+            for k, v in self._values().items():
                 if _scalar(v):
                     os.environ[k] = str(v)

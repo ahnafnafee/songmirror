@@ -7,6 +7,7 @@ import {
   LuLayoutDashboard,
   LuLink2,
   LuListMusic,
+  LuLogOut,
   LuMenu,
   LuMilestone,
   LuPanelLeftClose,
@@ -42,11 +43,16 @@ const PROJECT_LINKS: Array<{ href: string; label: string; icon: IconType }> = [
   { href: KOFI_URL, get label() { return t("Support on Ko-fi") }, icon: SiKofi },
 ]
 
+export interface ProfileControls {
+  signOut: () => void
+  signingOut: boolean
+}
+
 /** 240px persistent rail from `lg` (1024px) up — collapsible to a 68px
  * icon-only rail (tooltip labels), state persisted to localStorage. Below
  * `lg`, the rail is replaced by a slim top bar whose hamburger opens the
  * same nav as a dropdown drawer. */
-export function Sidebar() {
+export function Sidebar({ profile }: { profile?: ProfileControls }) {
   useTranslation()
   const [collapsed, toggleCollapsed] = useSidebarCollapsed()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -156,6 +162,7 @@ export function Sidebar() {
 
         {/* The nav above takes flex-1, so this sits on the rail's bottom edge. */}
         <div className="shrink-0 border-t border-border p-3">
+          {profile && <SignOutButton {...profile} iconOnly={collapsed} />}
           <ProjectLinks stacked={collapsed} />
         </div>
         </div>
@@ -208,11 +215,31 @@ export function Sidebar() {
             </NavLink>
           ))}
           <div className="mt-2 border-t border-border pt-3">
+            {profile && <SignOutButton {...profile} />}
             <ProjectLinks />
           </div>
         </nav>
       )}
     </>
+  )
+}
+
+function SignOutButton({ signOut, signingOut, iconOnly = false }: ProfileControls & { iconOnly?: boolean }) {
+  return (
+    <button
+      type="button"
+      title={t("Sign out")}
+      aria-label={t("Sign out")}
+      disabled={signingOut}
+      onClick={signOut}
+      className={cn(
+        'mb-2 flex h-10 w-full items-center gap-3 rounded-control text-sm font-medium text-text-2 hover:bg-surface-2 hover:text-text disabled:opacity-50',
+        iconOnly ? 'justify-center' : 'px-3',
+      )}
+    >
+      <LuLogOut className="size-[18px] shrink-0" aria-hidden="true" />
+      {!iconOnly && t("Sign out")}
+    </button>
   )
 }
 

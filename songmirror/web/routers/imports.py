@@ -13,6 +13,7 @@ from ...services.import_models import (
     UpdateTrackDecisionRequest,
 )
 from ...services.imports import ImportServiceError
+from ...diagnostics import redact_text
 
 
 router = APIRouter()
@@ -27,12 +28,12 @@ def _imports(request: Request):
 
 def _http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, ImportServiceError):
-        detail = str(exc)
+        detail = redact_text(exc)
         if "too large" in detail.casefold() or "too many tracks" in detail.casefold():
             return HTTPException(status_code=413, detail=detail)
         status = 404 if "not found" in detail.casefold() else 422
         return HTTPException(status_code=status, detail=detail)
-    return HTTPException(status_code=422, detail=str(exc))
+    return HTTPException(status_code=422, detail=redact_text(exc))
 
 
 @router.get("/api/imports")
@@ -98,7 +99,10 @@ async def create_file_import(
         except ValueError:
             pass
 
-    content = await file.read()
+    try:
+        content = await file.read(MAX_UPLOAD_SIZE + 1)
+    finally:
+        await file.close()
     if not content:
         raise HTTPException(status_code=422, detail="uploaded file is empty")
     if len(content) > MAX_UPLOAD_SIZE:
@@ -192,7 +196,7 @@ async def bulk_update_decisions(
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=redact_text(exc)) from exc
     return result
 
 

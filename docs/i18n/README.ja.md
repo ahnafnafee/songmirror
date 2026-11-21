@@ -50,6 +50,7 @@ Spotify、TIDAL、Qobuz、Deezer、Amazon Music、Apple Music、YouTube Music �
 ```bash
 git clone https://github.com/ahnafnafee/songmirror.git
 cd songmirror
+mkdir -p data downloads
 docker compose up -d
 ```
 
@@ -61,7 +62,7 @@ docker compose up -d
 docker run --rm -d --name songmirror -p 127.0.0.1:8888:8080 ghcr.io/ahnafnafee/songmirror:latest
 ```
 
-次に、`http://localhost:8888` を開き、ブラウザでサービスに接続します。 Compose セットアップを開始するには、`.env` は必要ありません。すべては UI で設定され、`./data` に保存されます。
+次に、`http://localhost:8888` を開き、ブラウザでサービスに接続します。 Compose セットアップを開始するには、`.env` は必要ありません。Web アプリで入力した音楽サービスの設定は `./data` に保存されます。
 
 直接の `docker run` オプションは使い捨てです: `docker stop songmirror` はコンテナーとその構成を削除します。永続的な認証情報、キャッシュ、ダウンロードを使用した永続的なインストールには Compose を使用するか、タグとダイジェストの固定については [コンテナイメージガイド](../docker-image.md) を参照してください。
 
@@ -158,7 +159,7 @@ SongMirror は、手動で再追加したり、1 つずつコピーしたり、�
 - 🐳 **どこでも実行可能** — ブラウザー アプリの場合は 1 つの `docker compose up -d`、またはプレーンな CLI + cron / Task Scheduler。
 
 > [!IMPORTANT]
-> 設計により自己ホスト型でプライベートです。リスニング データと認証情報がマシンから流出することはありません。 Web UI には認証がありません。Web UI を LAN にバインドし、インターネットにポート転送しません。
+> Web ポートは信頼できるネットワーク内で公開してください。[所有者のログイン](../profile-auth.md)を有効にすると、プレイリスト、接続済みアカウント、同期設定へのアクセスを保護できます。
 
 <div align="right">
 
@@ -215,8 +216,9 @@ SongMirror は、手動で再追加したり、1 つずつコピーしたり、�
 Docker コンテナは推奨される展開です。Web UI を提供し、スケジュールに従って同期を実行し、ホストとともに再起動します。 Compose は `ghcr.io/ahnafnafee/songmirror:latest` をプルし、`songmirror` として実行し、すべての認証とキャッシュを `./data` に保持します。
 
 ```bash
+mkdir -p data downloads
 docker compose up -d             # pull the published image + start in the background
-# open http://<host>:8888 and connect your services + create syncs in the browser
+# open http://localhost:8888 and connect your services + create syncs in the browser
 docker compose logs -f           # watch it work
 ```
 
@@ -224,7 +226,7 @@ docker compose logs -f           # watch it work
 
 開始するのに `.env` は必要ありません。すべてはブラウザーで設定され、`./data` に保存されます。 OAuth、パートナー トークン、および API キーの設定はすべて [アカウント] ページに表示されます。各ウィザードでは、サービス固有の前提条件と正確なコールバック URI について説明します。次に、[同期] ページで同期を構築します。
 
-別のコンピューターから SongMirror を開くと、`http://<server>:8888` で動作します。デフォルトの Spotify 接続では、貼り付けられた `sp_dc` Web セッションが使用されるため、開発者アプリやコールバック URL は必要ありません。従来の開発者アプリ OAuth を Docker の背後にフォールバックするか、リバース プロキシを意図的に使用する場合は、ブラウザに表示されるベース URL を `.env` に設定します。
+別のコンピューターから SongMirror を開くと、`http://<server>:8888` で動作します。デフォルトの Spotify 接続では、貼り付けられた `sp_dc` Web セッションが使用されるため、開発者アプリやコールバック URL は必要ありません。従来の開発者アプリ OAuth を Docker の背後にフォールバックするか、リバース プロキシを意図的に使用する場合は、ブラウザに表示されるベース URL を `.env` に設定します。 Compose は既定で localhost のみを公開します。信頼できる LAN から接続するには、`.env` に `SONGMIRROR_BIND_ADDRESS=0.0.0.0` を設定してください。
 
 ```dotenv
 SPOTIFY_AUTH_MODE=oauth
@@ -238,7 +240,7 @@ SONGMIRROR_PUBLIC_URL=https://music.example.com
 | | |
 | --- | --- |
 |画像 | `ghcr.io/ahnafnafee/songmirror:latest` は、AMD64 および ARM64 をサポートします。各ビルドは、コミット固有の `sha-...` タグも付けて公開されます。 `v1.2.3` などの Git タグは、`1.2.3`、`1.2`、`1` を追加で公開します。不変ダイジェストを固定するには、[コンテナイメージガイド](../docker-image.md) を使用します。 |
-|ポート | UI はホスト 8888 で公開されます (`docker-compose.yml` の `8888:8080` マッピング。衝突する場合はホスト側を変更します)。 LAN のみ — インターネットにポート転送しないでください。 UI にはまだ認証がありません。 |
+|ポート | UI はホスト 8888 で公開されます (`docker-compose.yml` の `8888:8080` マッピング。衝突する場合はホスト側を変更します)。この HTTP ポートは外部に公開しないでください。リモートアクセスには HTTPS リバースプロキシを使用してください。 |
 |永続性 | `./data` は、認証情報、トークン、キャッシュ、曲のアーカイブ、およびスケジュールされたプレイリストのスナップショットを `playlist_backups/` に保持します。バックアップして、再構築後もセットアップとアーカイブを保持します。 |
 |ダウンロード | `DOWNLOAD_DIR` (`.env` またはシェル内) をホスト音楽ディレクトリ (例: `F:\Torrent\Music`) に設定します。 compose はそれを `/music` にバインドマウントします。 Docker から、`JELLYFIN_URL` を `http://host.docker.internal:8096` に設定します。 |
 |期限切れのセッション |更新可能なセッションは、次回のスケジュールされたパスまたは手動パスで回復します。 TIDAL Web プレーヤー セッションは、取得されたリフレッシュ トークンから更新されます。 Qobuz および Apple Music トークンは、拒否された場合でも再度貼り付ける必要があります。再起動は必要ありません。 |

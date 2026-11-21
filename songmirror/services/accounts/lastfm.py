@@ -154,7 +154,7 @@ class LastfmConnector(Connector):
                 API, timeout=REQUEST_TIMEOUT, headers={"User-Agent": USER_AGENT},
                 params=params)
         except requests.RequestException as exc:
-            return False, f"could not reach Last.fm ({exc!r})"
+            return False, "could not reach Last.fm"
         if not response.ok and response.status_code >= 500:
             return False, f"Last.fm returned HTTP {response.status_code}"
         try:

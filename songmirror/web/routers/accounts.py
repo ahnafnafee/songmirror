@@ -8,16 +8,20 @@ profile so existing clients and OAuth callbacks keep working.
 import html
 import os
 import re
+import secrets
 from dataclasses import asdict
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, Body, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from ...engine.targets import is_peer, target_class
 from ...engine.targets import supports_playlists as targets_supports_playlists
 from ...services.accounts import CONNECTORS
 from ...services.accounts.base import FULL_PEER_CAPABILITIES, ConnStatus, DeviceCode
+from ...diagnostics import redact_text
+from ..connection_attempts import COOKIE, TTL, with_query
+from ..profile_auth import COOKIE as OWNER_COOKIE
 
 router = APIRouter()
 
@@ -30,6 +34,10 @@ def _profile(request: Request, identity: str):
     if profile is None:
         raise HTTPException(status_code=404, detail="account profile not found")
     return profile
+
+
+def _owner_session(request: Request) -> str | None:
+    return request.cookies.get(OWNER_COOKIE, "") if request.app.state.profile_auth.enabled else None
 
 
 def _conn(request: Request, identity: str):
@@ -105,7 +113,7 @@ def _source_capable(provider):
 def _status_values(provider, status):
     return {
         "state": status.state,
-        "detail": status.detail,
+        "detail": redact_text(status.detail),
         "capabilities": _capabilities(provider, status),
     }
 
@@ -242,6 +250,14 @@ def rename_account(account_id: str, request: Request, body: dict = Body(...)):
 @router.post("/api/accounts/{account_id}/config")
 def save_config(account_id: str, request: Request, values: dict = Body(...)):
     profile = _profile(request, account_id)
+    allowed = {field.key for field in CONNECTORS[profile.provider].config_fields}
+    if profile.provider == "spotify":
+        allowed.add("SPOTIFY_AUTH_MODE")
+    if set(values) - allowed or any(not isinstance(value, str) for value in values.values()):
+        raise HTTPException(status_code=422, detail="Only this provider's connection fields can be updated.")
+    if "SPOTIFY_AUTH_MODE" in values and values["SPOTIFY_AUTH_MODE"] not in {"oauth", "cookie"}:
+        raise HTTPException(status_code=422, detail="Unsupported Spotify authentication mode.")
+    request.app.state.connection_attempts.invalidate(profile.id)
     try:
         values = _conn(request, profile.id).normalize_config(values)
     except ValueError as exc:
@@ -253,6 +269,7 @@ def save_config(account_id: str, request: Request, values: dict = Body(...)):
 @router.post("/api/accounts/{account_id}/connect")
 async def connect(account_id: str, request: Request, body: dict | None = Body(default=None)):
     profile = _profile(request, account_id)
+    request.app.state.connection_attempts.invalidate(profile.id)
     profiles = request.app.state.account_profiles
     connector = _conn(request, profile.id)
     with profiles.activate(profile.id):
@@ -266,15 +283,70 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
             # profile id. Additional profiles use isolated callback paths.
             callback_id = profile.provider if profile.is_default else profile.id
             uri = _redirect_uri(request, callback_id)
-            return {
+            owner_session = _owner_session(request)
+            callback = urlsplit(uri)
+            frontend = urlsplit(str(request.base_url))
+            if owner_session is not None and (
+                callback.scheme != frontend.scheme or callback.hostname != frontend.hostname
+                or (callback.port or (443 if callback.scheme == "https" else 80))
+                != (frontend.port or (443 if frontend.scheme == "https" else 80))
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Open SongMirror at {callback.scheme}://{callback.netloc} and sign in there before connecting this account.",
+                )
+            attempts = request.app.state.connection_attempts
+            nonce = attempts.begin(profile.id, "redirect", redirect_uri=uri, owner_session=owner_session)
+            try:
+                provider_uri = with_query(uri, state=nonce) if profile.provider == "lastfm" else uri
+                url = connector.begin_redirect(provider_uri)
+                if profile.provider != "lastfm":
+                    url = with_query(url, state=nonce)
+                attempts.configure(nonce, url=url)
+            except Exception:
+                attempts.invalidate(profile.id)
+                raise
+            # The start bridge sets the browser cookie on the callback origin,
+            # including when localhost UI callbacks use 127.0.0.1.
+            start_uri = uri.rsplit("/callback", 1)[0] + "/start"
+            return JSONResponse({
                 "kind": "redirect",
-                "url": connector.begin_redirect(uri),
+                "url": with_query(start_uri, attempt=nonce),
                 "redirect_uri": uri,
-            }
+            }, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
         if connector.auth_kind == "oauth_device":
-            return {"kind": "device", **asdict(connector.begin_device())}
+            code = connector.begin_device()
+            browser = request.cookies.get(COOKIE) or secrets.token_urlsafe(32)
+            request.app.state.connection_attempts.begin(
+                profile.id, "device", browser=browser, owner_session=_owner_session(request), **asdict(code))
+            response = JSONResponse({"kind": "device", **asdict(code)})
+            _browser_cookie(response, browser, request.url.scheme == "https")
+            return response
         status = connector.submit(body or {})
     return {"kind": connector.auth_kind, **_status_values(profile.provider, status)}
+
+
+def _browser_cookie(response, browser, secure):
+    response.set_cookie(COOKIE, browser, max_age=TTL, httponly=True,
+                        secure=secure, samesite="lax", path="/")
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+
+
+@router.get("/oauth/{account_id}/start")
+def oauth_start(account_id: str, request: Request, attempt: str):
+    profile = _profile(request, account_id)
+    browser = request.cookies.get(COOKIE) or secrets.token_urlsafe(32)
+    try:
+        pending = request.app.state.connection_attempts.bind(
+            attempt, profile.id, browser, owner_session=_owner_session(request))
+        if pending["kind"] != "redirect":
+            raise ValueError("Not a redirect authorization.")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    response = RedirectResponse(pending["url"], status_code=303)
+    _browser_cookie(response, browser, urlsplit(pending["redirect_uri"]).scheme == "https")
+    return response
 
 
 @router.get("/oauth/{account_id}/callback")
@@ -282,6 +354,13 @@ def oauth_callback(account_id: str, request: Request):
     profile = _profile(request, account_id)
     profiles = request.app.state.account_profiles
     connector = _conn(request, profile.id)
+    try:
+        request.app.state.connection_attempts.get(
+            request.query_params.get("state", ""), profile.id,
+            browser=request.cookies.get(COOKIE, ""), owner_session=_owner_session(request), consume=True)
+    except ValueError as exc:
+        return HTMLResponse(html.escape(str(exc)), status_code=400,
+                            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
     error = request.query_params.get("error")
     if error:
         status = ConnStatus(
@@ -292,29 +371,39 @@ def oauth_callback(account_id: str, request: Request):
             with profiles.activate(profile.id):
                 status = connector.complete_redirect({"url": str(request.url)})
         except Exception as exc:
-            status = ConnStatus("error", f"could not finish authorization ({exc})")
+            status = ConnStatus("error", f"could not finish authorization ({redact_text(exc)})")
     return HTMLResponse(
         f"<body style='font-family:system-ui;padding:2rem'>"
         f"<h2>{html.escape(profiles.display_name(profile.id, connector.name))}: "
         f"{html.escape(status.state)}</h2>"
-        f"<p>{html.escape(status.detail or '')}</p>"
-        f"<p>You can close this tab and return to the app.</p></body>"
+        f"<p>{html.escape(redact_text(status.detail or ''))}</p>"
+        f"<p>You can close this tab and return to the app.</p></body>",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
 
 
 @router.post("/api/accounts/{account_id}/poll")
-async def poll(account_id: str, request: Request):
+async def poll(account_id: str, request: Request, body: dict = Body(...)):
     profile = _profile(request, account_id)
-    body = await request.json()
-    code = DeviceCode("", "", body["device_code"], body.get("interval", 5))
+    try:
+        nonce, pending = request.app.state.connection_attempts.device(
+            profile.id, request.cookies.get(COOKIE, ""), str(body.get("device_code") or ""),
+            owner_session=_owner_session(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    code = DeviceCode(pending["user_code"], pending["verification_url"],
+                      pending["device_code"], pending["interval"])
     with request.app.state.account_profiles.activate(profile.id):
         status = _conn(request, profile.id).poll_device(code)
+    if status.state in {"connected", "error", "expired"}:
+        request.app.state.connection_attempts.invalidate(profile.id)
     return _status_values(profile.provider, status)
 
 
 @router.post("/api/accounts/{account_id}/disconnect")
 def disconnect_account(account_id: str, request: Request):
     profile = _profile(request, account_id)
+    request.app.state.connection_attempts.invalidate(profile.id)
     with request.app.state.account_profiles.activate(profile.id):
         _conn(request, profile.id).disconnect()
     return {"ok": True}
@@ -324,6 +413,7 @@ def disconnect_account(account_id: str, request: Request):
 def remove_account(account_id: str, request: Request):
     profiles = request.app.state.account_profiles
     profile = _profile(request, account_id)
+    request.app.state.connection_attempts.invalidate(profile.id)
     with profiles.activate(profile.id):
         _conn(request, profile.id).disconnect()
     if profile.is_default:
@@ -336,6 +426,7 @@ def _provider_connector(request, account_id, expected):
     profile = _profile(request, account_id)
     if profile.provider != expected:
         raise HTTPException(status_code=422, detail=f"that profile is not a {expected} account")
+    request.app.state.connection_attempts.invalidate(profile.id)
     return profile, _conn(request, profile.id)
 
 

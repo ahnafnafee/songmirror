@@ -11,16 +11,25 @@ services:
     # under ./data. Keep a .env only to preset things like DOWNLOAD_DIR or
     # credentials. (`required: false` needs Docker Compose v2.24+; on older
     # versions either create an empty `.env` or drop the `path:`/`required:` keys.)
-    # For redirect-based OAuth on a remote host, set SONGMIRROR_PUBLIC_URL in
-    # that file to the browser-visible HTTPS base URL.
+    # Set up owner sign-in in the browser or supply SONGMIRROR_AUTH_USERNAME and
+    # SONGMIRROR_AUTH_PASSWORD here for an unattended deployment. Set
+    # SONGMIRROR_PUBLIC_URL for redirect-based OAuth on a remote host.
     env_file:
       - path: .env
         required: false
     ports:
       # Web GUI at http://<host>:8888 (host 8888 -> container 8080).
-      # LAN-only — do NOT port-forward this to the internet (the UI has no login).
-      - "8888:8080"
+      # Keep the backend port private. Use an HTTPS proxy for remote access.
+      - "${SONGMIRROR_BIND_ADDRESS:-127.0.0.1}:8888:8080"
+    user: "${SONGMIRROR_UID:-1000}:${SONGMIRROR_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:size=256m,mode=1777
     environment:
+      SONGMIRROR_UID: "${SONGMIRROR_UID:-1000}"
+      SONGMIRROR_GID: "${SONGMIRROR_GID:-1000}"
       SONGMIRROR_DATA_DIR: /data           # persistent volume for settings, tokens, caches, syncs, links
       SONGMIRROR_ENV_FILE: /data/app.env   # SettingsStore's managed env; wizard saves win over any .env
       SPOTIFY_TOKEN_CACHE: /data/spotify_token_cache
@@ -58,6 +67,7 @@ services:
       SONGMIRROR_DOWNLOAD_DIR: /music
       # Display the host music path in the built-in folder picker.
       SONGMIRROR_HOST_DOWNLOAD_DIR: "${DOWNLOAD_DIR:-}"
+      SONGMIRROR_FOLDER_ROOTS: '${SONGMIRROR_FOLDER_ROOTS:-["/data","/music"]}'
     volumes:
       - ./data:/data
       - "${DOWNLOAD_DIR:-./downloads}:/music"

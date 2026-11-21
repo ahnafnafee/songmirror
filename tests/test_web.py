@@ -1,6 +1,7 @@
 """Web layer smoke tests (FastAPI TestClient)."""
 
 import pytest
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi.testclient import TestClient
 
@@ -11,6 +12,12 @@ from songmirror.web import create_app
 
 def _app(tmp_path):
     return create_app(settings=SettingsStore(dir=tmp_path))
+
+
+def _start_authorization(client, provider):
+    started = client.post(f"/api/accounts/{provider}/connect").json()
+    assert client.get(started["url"], follow_redirects=False).status_code == 303
+    return parse_qs(urlsplit(started["url"]).query)["attempt"][0]
 
 
 def test_health(tmp_path):
@@ -356,14 +363,18 @@ def test_spotify_connect_without_cookie_is_a_friendly_error(tmp_path):
     assert "sp_dc" in result["detail"]
 
 
-def test_oauth_callback_handles_provider_error(tmp_path):
+def test_oauth_callback_handles_provider_error(tmp_path, monkeypatch):
     # Spotify (or the user denying) can bounce back with ?error=... instead of a
     # code — the callback must render a friendly page, not a 500 with a raw
     # "Internal Server Error".
     store = SettingsStore(dir=tmp_path)
     store.save({"SPOTIFY_CLIENT_ID": "cid", "SPOTIFY_CLIENT_SECRET": "sec"})
+    store.save({"SPOTIFY_AUTH_MODE": "oauth"})
+    monkeypatch.setattr("songmirror.services.accounts.spotify.SpotifyConnector.begin_redirect",
+                        lambda self, uri: "https://provider.example/authorize")
     with TestClient(create_app(settings=store)) as client:
-        r = client.get("/oauth/spotify/callback?error=server_error")
+        state = _start_authorization(client, "spotify")
+        r = client.get("/oauth/spotify/callback", params={"state": state, "error": "server_error"})
         assert r.status_code == 200
         assert "server_error" in r.text and "Spotify" in r.text
 
@@ -934,7 +945,8 @@ def test_lastfm_oauth_callback_completes_the_session(tmp_path, monkeypatch):
         app.state.account_profiles.settings_for("profile_default_lastfm").save(
             {"LASTFM_API_KEY": "k", "LASTFM_API_SECRET": "s"})
 
-        response = client.get("/oauth/lastfm/callback", params={"token": "tok-xyz"})
+        state = _start_authorization(client, "lastfm")
+        response = client.get("/oauth/lastfm/callback", params={"state": state, "token": "tok-xyz"})
 
         assert response.status_code == 200
         assert "connected" in response.text
@@ -954,7 +966,8 @@ def test_lastfm_oauth_callback_reports_a_missing_token(tmp_path, monkeypatch):
         app.state.account_profiles.settings_for("profile_default_lastfm").save(
             {"LASTFM_API_KEY": "k", "LASTFM_API_SECRET": "s"})
 
-        response = client.get("/oauth/lastfm/callback")
+        state = _start_authorization(client, "lastfm")
+        response = client.get("/oauth/lastfm/callback", params={"state": state})
 
         assert response.status_code == 200
         assert "no token" in response.text
