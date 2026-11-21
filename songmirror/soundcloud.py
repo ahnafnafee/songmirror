@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import math
 import os
 import tempfile
 import time
@@ -30,7 +31,9 @@ class SoundCloudAuthError(SoundCloudError):
 
 
 class SoundCloudTransient(SoundCloudError):
-    pass
+    def __init__(self, message, *, retry_after=None):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class SoundCloudNotFound(SoundCloudError):
@@ -78,7 +81,34 @@ def _json(response):
         raise SoundCloudTransient("SoundCloud returned invalid JSON") from exc
 
 
+def api_result(status, headers, decode_json):
+    if status == 401:
+        raise SoundCloudAuthError("SoundCloud authorization has expired")
+    if status in (404, 410):
+        raise SoundCloudNotFound(f"SoundCloud returned HTTP {status}")
+    if status == 429:
+        try:
+            delay = float(headers.get("Retry-After", ""))
+        except (TypeError, ValueError):
+            delay = 30
+        if not math.isfinite(delay) or delay <= 0:
+            delay = 30
+        raise SoundCloudTransient("SoundCloud returned HTTP 429", retry_after=delay)
+    if status >= 500:
+        raise SoundCloudTransient(f"SoundCloud returned HTTP {status}")
+    if not 200 <= status < 300:
+        raise SoundCloudError(f"SoundCloud returned HTTP {status}")
+    if status == 204:
+        return None
+    try:
+        return decode_json()
+    except ValueError as exc:
+        raise SoundCloudTransient("SoundCloud returned invalid JSON") from exc
+
+
 class SoundCloud:
+    _linked_partitioning = "true"
+
     def __init__(self, token_file):
         self.token_file = Path(token_file)
         self.client_id = required_env("SOUNDCLOUD_CLIENT_ID")
@@ -135,16 +165,7 @@ class SoundCloud:
     def _api_request(method, url, access, **kwargs):
         response = _request(method, url, headers={**HEADERS, "Authorization": f"OAuth {access}"},
                             **kwargs)
-        status = response.status_code
-        if status == 401:
-            raise SoundCloudAuthError("SoundCloud authorization has expired")
-        if status in (404, 410):
-            raise SoundCloudNotFound(f"SoundCloud returned HTTP {status}")
-        if status == 429 or status >= 500:
-            raise SoundCloudTransient(f"SoundCloud returned HTTP {status}")
-        if not 200 <= status < 300:
-            raise SoundCloudError(f"SoundCloud returned HTTP {status}")
-        return None if status == 204 else _json(response)
+        return api_result(response.status_code, getattr(response, "headers", {}), response.json)
 
     def request(self, method, path, **kwargs):
         url = API + path if path.startswith("/") and not path.startswith("//") else path
@@ -158,7 +179,7 @@ class SoundCloud:
             return self._api_request(method, url, self._access_token(rejected=access), **kwargs)
 
     def collection(self, path, *, pages=True, **params):
-        params["linked_partitioning"] = "true"
+        params["linked_partitioning"] = self._linked_partitioning
         seen = set()
         while path:
             if path in seen:

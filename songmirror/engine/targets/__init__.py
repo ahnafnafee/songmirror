@@ -95,7 +95,8 @@ _REGISTRY = {
     "amazon": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(AmazonMusicTarget, "Amazon Music"),
     "apple": lambda opts, sp, sync_peer=False, songs=None: _apple(opts),
     "ytmusic": lambda opts, sp, sync_peer=False, songs=None: ytmusic.build(),
-    "soundcloud": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(SoundCloudTarget, "SoundCloud"),
+    "soundcloud": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(
+        SoundCloudTarget.account_target_class(), "SoundCloud"),
     "lastfm": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(
         LastfmTarget, "Last.fm"),
     "listenbrainz": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(

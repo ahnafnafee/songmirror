@@ -8,6 +8,34 @@ SongMirror to load them.
 
 ## SoundCloud
 
+### Browser session
+
+In **Accounts → SoundCloud → Connect**, expand **No-quota mode**. Open your
+[SoundCloud playlists](https://soundcloud.com/you/sets) in a signed-in browser.
+Open Developer Tools → **Network**, reload the page, then copy the request to
+`api-v2.soundcloud.com/me/library/all` using **Copy as cURL (bash)**. Paste it
+into SongMirror, then enable the mode. The pasted request contains your session
+credential. SongMirror saves the authorization header and client ID privately
+for that profile.
+
+This mode uses the browser session for playlist metadata and does not need a
+registered developer app. Paste a fresh request when SoundCloud expires the
+session. If you have already set up OAuth, **Switch back to OAuth** restores
+that connection.
+
+The web client uses these requests:
+
+| Operation | Web API request |
+| --- | --- |
+| Verify account | `GET /me` |
+| List library playlists | `GET /me/library/all` |
+| Read ordered playlist entries | `GET /playlists/{id}?representation=full` |
+| Read or search track metadata | `GET /tracks?ids=…`, `GET /tracks/{id}`, `GET /search/tracks` |
+| Create a playlist | `POST /playlists` |
+| Add or remove tracks | `PUT /playlists/{id}` with the complete ordered list of numeric track IDs |
+
+### OAuth application
+
 1. In SongMirror, open **Accounts → SoundCloud → Connect** and copy the
    callback URL. Set `SONGMIRROR_PUBLIC_URL` to the browser-visible base URL if
    SongMirror runs behind a reverse proxy.

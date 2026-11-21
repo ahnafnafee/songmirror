@@ -9,11 +9,12 @@ from threading import RLock
 from ...soundcloud import (
     TOKEN_FILENAME, SoundCloud, SoundCloudAuthError, SoundCloudNotFound, SoundCloudTransient,
 )
+from ...soundcloud_web import SoundCloudWeb, browser_mode
 from ..matching import normalize_isrc
 from .base import (
     MirrorTarget, TargetAuthError, TargetCapabilityError, TargetDirectoryIncompleteError, TargetTransientError,
 )
-from .provider_utils import _isrc_metadata_compatible, best_candidate, source_playlist_details
+from .provider_utils import _isrc_metadata_compatible, best_candidate, chunks, source_playlist_details
 
 _MEMBERSHIP_LOCK = RLock()
 _ALL_ACCESS = "playable,preview,blocked"
@@ -25,16 +26,19 @@ def _urn(value, kind):
 
 
 def _track(raw):
-    artist = raw.get("metadata_artist") or (raw.get("user") or {}).get("username") or ""
+    publisher = raw.get("publisher_metadata") or {}
+    artist = (raw.get("metadata_artist") or publisher.get("artist")
+              or (raw.get("user") or {}).get("username") or "")
     return {
         "id": _urn(raw.get("urn") or raw.get("id"), "tracks"),
         "name": raw.get("title") or "",
         "artist": artist,
         "artists": [artist] if artist else [],
         "duration_ms": raw.get("duration"),
-        "isrc": normalize_isrc(raw.get("isrc")),
+        "isrc": normalize_isrc(raw.get("isrc") or publisher.get("isrc")),
         "external_url": raw.get("permalink_url") or "",
         "streamable": raw.get("access") != "blocked",
+        "unavailable": not bool(raw.get("title")),
     }
 
 
@@ -45,7 +49,7 @@ def _target_errors():
     except SoundCloudAuthError as exc:
         raise TargetAuthError(str(exc)) from exc
     except SoundCloudTransient as exc:
-        raise TargetTransientError(str(exc)) from exc
+        raise TargetTransientError(str(exc), retry_after=exc.retry_after) from exc
 
 
 class SoundCloudTarget(MirrorTarget):
@@ -53,6 +57,11 @@ class SoundCloudTarget(MirrorTarget):
     tag = source = "soundcloud"
     supports_favorites = supports_favorite_writes = False
     replay_chronology = None
+    search_path = "/tracks"
+
+    @classmethod
+    def account_target_class(cls):
+        return SoundCloudWebTarget if browser_mode() else cls
 
     def __init__(self, client=None):
         data = Path(os.getenv("SONGMIRROR_DATA_DIR") or "data")
@@ -92,12 +101,16 @@ class SoundCloudTarget(MirrorTarget):
     def creates_public_playlists(cls):
         return True
 
+    def _playlist_row(self, playlist, owned):
+        playlist_id = self.playlist_id(playlist)
+        if not playlist_id or not self.playlist_name(playlist):
+            raise TargetDirectoryIncompleteError("SoundCloud returned an incomplete playlist")
+        return {**playlist, "id": playlist_id, "_owned": owned}
+
     def _directory(self, path, owned, **params):
         with _target_errors():
             for playlist in self._api.collection(path, limit=50, **params):
-                if not self.playlist_id(playlist) or not self.playlist_name(playlist):
-                    raise TargetDirectoryIncompleteError("SoundCloud returned an incomplete playlist")
-                yield {**playlist, "id": self.playlist_id(playlist), "_owned": owned}
+                yield self._playlist_row(playlist, owned)
 
     def list_playlists(self):
         return {
@@ -129,9 +142,13 @@ class SoundCloudTarget(MirrorTarget):
             raise TargetCapabilityError("Invalid SoundCloud playlist ID")
         return f"/playlists/{playlist_id}"
 
-    def _members(self, path):
+    def _read_members(self, path, *, hydrate):
         metadata = self._api.request("GET", path, params={"show_tracks": "false"})
-        rows = list(self._api.collection(f"{path}/tracks", access=_ALL_ACCESS))
+        rows = self._api.collection(f"{path}/tracks", access=_ALL_ACCESS)
+        return metadata, rows
+
+    def _members(self, path, *, hydrate=True):
+        metadata, rows = self._read_members(path, hydrate=hydrate)
         tracks = [_track(row) for row in rows]
         count = self.playlist_count(metadata) if isinstance(metadata, dict) else None
         # A tracks-only PUT replaces the entire list. Missing members must
@@ -147,9 +164,12 @@ class SoundCloudTarget(MirrorTarget):
     def track_id(self, track):
         return track.get("id")
 
+    def _track_reference(self, track_id):
+        return {"urn": track_id}
+
     def _replace(self, path, track_ids):
         result = self._api.request("PUT", path, json={"playlist": {
-            "tracks": [{"urn": track_id} for track_id in track_ids],
+            "tracks": [self._track_reference(track_id) for track_id in track_ids],
         }})
         reported = self.playlist_count(result) if isinstance(result, dict) else None
         if reported is not None and reported != len(track_ids):
@@ -168,7 +188,7 @@ class SoundCloudTarget(MirrorTarget):
         if "" in additions:
             raise TargetCapabilityError("Invalid SoundCloud track ID")
         with _MEMBERSHIP_LOCK, _target_errors():
-            existing = [track["id"] for track in self._members(path)]
+            existing = [track["id"] for track in self._members(path, hydrate=False)]
             # An add retry is idempotent. Existing duplicate entries stay intact.
             present = set(existing)
             new = [track_id for track_id in additions if track_id not in present]
@@ -181,7 +201,7 @@ class SoundCloudTarget(MirrorTarget):
         if not track_id:
             raise TargetCapabilityError("Invalid SoundCloud track ID")
         with _MEMBERSHIP_LOCK, _target_errors():
-            existing = [row["id"] for row in self._members(path)]
+            existing = [row["id"] for row in self._members(path, hydrate=False)]
             if track_id not in existing:
                 return False
             existing.remove(track_id)
@@ -193,7 +213,7 @@ class SoundCloudTarget(MirrorTarget):
         if not query or limit < 1:
             return []
         with _target_errors():
-            rows = self._api.collection("/tracks", pages=False, q=query, limit=limit)
+            rows = self._api.collection(self.search_path, pages=False, q=query, limit=limit)
             candidates = [_track(row) for row in rows]
         return [c for c in candidates if c["id"] and c["streamable"]][:limit]
 
@@ -227,3 +247,58 @@ class SoundCloudTarget(MirrorTarget):
         cache["search"][key] = result
         cache["dirty"] = True
         return result, "search"
+
+class SoundCloudWebTarget(SoundCloudTarget):
+    """Read and edit the same playlists through the signed-in web client."""
+
+    search_path = "/search/tracks"
+
+    def __init__(self, client=None):
+        super().__init__(client=client or SoundCloudWeb())
+
+    def _web_library(self, *, owned_only):
+        with _target_errors():
+            for row in self._api.collection("/me/library/all", limit=50):
+                kind = row.get("type")
+                if kind != "playlist" and (owned_only or kind != "playlist-like"):
+                    continue
+                playlist = row.get("playlist")
+                if not isinstance(playlist, dict):
+                    raise TargetDirectoryIncompleteError("SoundCloud returned an incomplete library playlist")
+                yield self._playlist_row(playlist, kind == "playlist")
+
+    def list_playlists(self):
+        return {self.playlist_name(pl).casefold(): pl for pl in self._web_library(owned_only=True)}
+
+    def browse_playlists(self):
+        playlists = {}
+        for row in self._web_library(owned_only=False):
+            identity = self.playlist_id(row)
+            if identity not in playlists or self.is_editable(row):
+                playlists[identity] = row
+        return list(playlists.values())
+
+    def _playlist_path(self, playlist):
+        urn_path = super()._playlist_path(playlist)
+        return "/playlists/" + urn_path.rsplit(":", 1)[1]
+
+    def _read_members(self, path, *, hydrate):
+        metadata = self._api.request("GET", path, params={"representation": "full"})
+        rows = metadata.get("tracks") if isinstance(metadata, dict) else None
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            raise TargetTransientError("SoundCloud returned incomplete playlist membership")
+        if not hydrate or self.playlist_count(metadata) != len(rows):
+            return metadata, rows
+        missing = list(dict.fromkeys(row["id"] for row in rows if not row.get("title") and row.get("id")))
+        hydrated = {}
+        for batch in chunks(missing, 50):
+            body = self._api.request("GET", "/tracks", params={"ids": ",".join(map(str, batch))})
+            if not isinstance(body, list) or any(not isinstance(row, dict) for row in body):
+                raise TargetTransientError("SoundCloud returned an invalid track batch")
+            hydrated.update((str(row.get("id")), row) for row in body)
+        return metadata, [
+            hydrated.get(str(row.get("id")), row) if not row.get("title") else row for row in rows
+        ]
+
+    def _track_reference(self, track_id):
+        return int(track_id.rsplit(":", 1)[1])

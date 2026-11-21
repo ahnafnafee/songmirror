@@ -9,8 +9,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from ...soundcloud import (
-    AUTHORIZE, TOKEN_FILENAME, SoundCloud, SoundCloudError, read_private, write_private,
+    AUTHORIZE, TOKEN_FILENAME, SoundCloud, SoundCloudAuthError, SoundCloudError, read_private, write_private,
 )
+from ...soundcloud_web import WEB_SESSION_FILENAME, SoundCloudWeb, browser_mode, parse_browser_request
 from .base import ConnStatus, Connector
 
 CAPABILITIES = frozenset({"library_read", "library_write"})
@@ -42,7 +43,52 @@ class SoundCloudConnector(Connector):
         # Application credentials and token paths are set by the deployment.
         return {}
 
+    @property
+    def browser_active(self):
+        return browser_mode(self._store.get)
+
+    @property
+    def _web_file(self):
+        return Path(self._store.get("SOUNDCLOUD_WEB_SESSION_FILE") or self._store.data_dir / WEB_SESSION_FILENAME)
+
+    def enable_browser(self, raw):
+        try:
+            session = parse_browser_request(raw)
+            profile = SoundCloudWeb(session).profile()
+            user_id = str(profile["id"])
+            current_id = read_private(self._web_file).get("user_id") if self.browser_active else None
+            if current_id and current_id != user_id:
+                return ConnStatus("error", "That browser request belongs to a different SoundCloud account")
+            write_private(self._web_file, {**session, "user_id": user_id})
+            self._store.save({"SOUNDCLOUD_PREFER_BROWSER": "1"})
+        except (SoundCloudError, ValueError) as exc:
+            return ConnStatus("error", str(exc))
+        except OSError:
+            return ConnStatus("error", "Could not save the SoundCloud browser session")
+        return self._web_status(profile)
+
+    def _clear_browser(self):
+        self._web_file.unlink(missing_ok=True)
+        if self.browser_active:
+            self._store.save({"SOUNDCLOUD_PREFER_BROWSER": "0"})
+
+    def disable_browser(self):
+        self._clear_browser()
+        return self.status()
+
+    @staticmethod
+    def _web_status(profile):
+        return ConnStatus("connected", profile["username"], capabilities=CAPABILITIES)
+
     def status(self):
+        if self.browser_active:
+            try:
+                session = read_private(self._web_file)
+                return self._web_status(SoundCloudWeb(session).profile())
+            except SoundCloudAuthError as exc:
+                return ConnStatus("expired", str(exc))
+            except SoundCloudError as exc:
+                return ConnStatus("error", str(exc))
         if not (os.getenv("SOUNDCLOUD_CLIENT_ID") and os.getenv("SOUNDCLOUD_CLIENT_SECRET")):
             return ConnStatus("unconfigured", "Configure the SoundCloud application on the server")
         try:
@@ -96,10 +142,13 @@ class SoundCloudConnector(Connector):
         except RuntimeError as exc:
             return ConnStatus("error", str(exc))
         self._pending_file.unlink(missing_ok=True)
+        if self.browser_active:
+            self._clear_browser()
         return ConnStatus("connected", profile["username"], capabilities=CAPABILITIES)
 
     def disconnect(self):
         self._pending_file.unlink(missing_ok=True)
+        self._clear_browser()
         if os.getenv("SOUNDCLOUD_CLIENT_ID") and os.getenv("SOUNDCLOUD_CLIENT_SECRET"):
             SoundCloud(self._token_file).disconnect()
         else:
