@@ -100,6 +100,71 @@ def test_metadata_enrichment_forwards_progress_for_missing_isrcs(monkeypatch):
     assert tracks[0]["isrc"] == "JPA301900123"
 
 
+def test_metadata_isrc_handles_delisted_or_hidden_tracks_without_error(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+    sc._metadata_isrc_cache.clear()
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "name": "",
+                "is_metadata_hidden": True,
+                "restriction": [{"countries_allowed": ""}],
+            }
+
+    monkeypatch.setattr(sc, "_headers", lambda: {"authorization": "Bearer test"})
+    monkeypatch.setattr(sc, "polite_sleep", lambda _: None)
+    monkeypatch.setattr(sc.requests, "get", lambda url, **kwargs: (calls.append(url), Response())[1])
+    tid = "5sGqchimtMV6qdVRo2avJu"
+    try:
+        assert sc.metadata_isrcs([tid]) == {tid: None}
+        assert len(calls) == 1
+        assert sc._metadata_isrc_cache[tid] is None
+    finally:
+        sc._metadata_isrc_cache.clear()
+
+
+def test_normalized_content_tracks_marks_country_restricted_or_empty_name_as_unavailable():
+    from songmirror.engine import spotify_cookie as sc
+
+    items = [
+        {
+            "itemV2": {
+                "data": {
+                    "uri": "spotify:track:5sGqchimtMV6qdVRo2avJu",
+                    "name": "",
+                    "trackDuration": {"totalMilliseconds": 0},
+                    "playability": {"playable": False, "reason": "COUNTRY_RESTRICTED"},
+                }
+            },
+            "uid": "item-1",
+        },
+        {
+            "itemV2": {
+                "data": {
+                    "uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
+                    "name": "Creep",
+                    "trackDuration": {"totalMilliseconds": 238000},
+                    "playability": {"playable": True},
+                }
+            },
+            "uid": "item-2",
+        },
+    ]
+    rows = sc._normalized_content_tracks(items)
+    assert len(rows) == 2
+    assert rows[0]["id"] == "5sGqchimtMV6qdVRo2avJu"
+    assert rows[0]["unavailable"] is True
+    assert rows[1]["id"] == "4uLU6hMCjMI75M1A2tKUQC"
+    assert rows[1].get("unavailable") is not True
+
+
 def _stub_cookie(monkeypatch):
     calls = []
     monkeypatch.setattr(st.spotify_cookie, "create",

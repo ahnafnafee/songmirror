@@ -593,14 +593,17 @@ def metadata_isrcs(ids, *, should_continue=None, on_progress=None):
                 raise RuntimeError(f"Spotify metadata rate limited; Retry-After: {retry}. Retry later.")
             response.raise_for_status()
             data = response.json()
-            if not isinstance(data, dict) or not data.get("name"):
+            if not isinstance(data, dict):
                 raise RuntimeError("Spotify returned incomplete track metadata")
-            external = data.get("external_id", [])
-            if not isinstance(external, list):
-                raise RuntimeError("Spotify returned invalid external identifiers")
-            isrc = next((normalize_isrc(item.get("id")) for item in external
-                         if isinstance(item, dict) and str(item.get("type", "")).lower() == "isrc"
-                         and re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", normalize_isrc(item.get("id")))), None)
+            if not data.get("name") or data.get("is_metadata_hidden"):
+                isrc = None
+            else:
+                external = data.get("external_id", [])
+                if not isinstance(external, list):
+                    raise RuntimeError("Spotify returned invalid external identifiers")
+                isrc = next((normalize_isrc(item.get("id")) for item in external
+                             if isinstance(item, dict) and str(item.get("type", "")).lower() == "isrc"
+                             and re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", normalize_isrc(item.get("id")))), None)
             _metadata_isrc_cache[tid] = isrc
             if index == 1 or index % 25 == 0 or index == len(ids):
                 log_note(f"Spotify recording metadata: {index}/{len(ids)}", tag="spotify")
@@ -717,7 +720,13 @@ def _normalized_content_tracks(items):
             sources,
             key=lambda candidate: abs(int(candidate.get("width") or 96) - 96),
         )["url"] if sources else ""
-        out.append({
+        playability = t.get("playability") or {}
+        unavailable = (
+            playability.get("playable") is False
+            or not t.get("name")
+            or (t.get("trackDuration") or {}).get("totalMilliseconds") == 0
+        )
+        row = {
             "id": uri.rsplit(":", 1)[-1],
             "isrc": None,
             "name": t.get("name", "") or "",
@@ -727,9 +736,12 @@ def _normalized_content_tracks(items):
             "duration_ms": (t.get("trackDuration") or {}).get("totalMilliseconds"),
             "added_at": (it.get("addedAt") or {}).get("isoString") or "",
             "image": image,
-        })
+        }
+        if unavailable:
+            row["unavailable"] = True
         if it.get("uid"):
-            out[-1]["playlistItemId"] = it["uid"]
+            row["playlistItemId"] = it["uid"]
+        out.append(row)
     return out
 
 
