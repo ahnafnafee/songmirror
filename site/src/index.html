@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SongMirror | Self-Hosted Playlist Sync and Transfer</title>
+  <meta name="description" content="Sync or transfer playlists between Spotify, Apple Music, YouTube Music, TIDAL and more. Run SongMirror with Docker and keep a local Jellyfin music mirror.">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#1a1513">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="SongMirror">
+  <meta property="og:title" content="SongMirror — Self-hosted playlist sync">
+  <meta property="og:description" content="Keep your playlists in sync across music services, on your own server.">
+  <meta property="og:url" content="https://songmirror.ahnafnafee.dev/">
+  <meta property="og:image" content="https://songmirror.ahnafnafee.dev/assets/social-preview.png?v=2">
+  <meta property="og:image:width" content="1774">
+  <meta property="og:image:height" content="887">
+  <meta property="og:image:alt" content="The SongMirror logo surrounded by copper reverb rings. Keep your playlists in sync. Self-hosted, scheduled sync, open source.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SongMirror | Self-Hosted Playlist Sync and Transfer">
+  <meta name="twitter:description" content="Schedule playlist syncs, transfer playlists once, or keep a local Jellyfin music mirror with SongMirror.">
+  <meta name="twitter:image" content="https://songmirror.ahnafnafee.dev/assets/social-preview.png?v=2">
+  <link rel="canonical" href="https://songmirror.ahnafnafee.dev/">
+  <link rel="icon" href="/assets/mark.png" type="image/png">
+  <link rel="preload" href="/assets/archivo.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/install.js" type="module"></script>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://songmirror.ahnafnafee.dev/#website",
+          "url": "https://songmirror.ahnafnafee.dev/",
+          "name": "SongMirror"
+        },
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://songmirror.ahnafnafee.dev/#songmirror",
+          "name": "SongMirror",
+          "url": "https://songmirror.ahnafnafee.dev/",
+          "description": "Open-source, self-hosted playlist synchronization and transfer between streaming services and music servers.",
+          "applicationCategory": "MultimediaApplication",
+          "operatingSystem": "Linux, macOS, Windows",
+          "isAccessibleForFree": true,
+          "offers": { "@type": "Offer", "price": 0, "priceCurrency": "USD" },
+          "downloadUrl": "https://github.com/ahnafnafee/songmirror/pkgs/container/songmirror",
+          "screenshot": "https://songmirror.ahnafnafee.dev/assets/songmirror-preview.webp",
+          "license": "https://github.com/ahnafnafee/songmirror/blob/main/LICENSE",
+          "sameAs": "https://github.com/ahnafnafee/songmirror"
+        }
+      ]
+    }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+  <header class="site-header frame">
+    <a class="brand" href="/" aria-label="SongMirror home"><img src="/assets/mark.png" width="23" height="27" alt="">SongMirror</a>
+    <nav aria-label="Main navigation">
+      <a href="#services">Services</a>
+      <a href="#install">Install</a>
+      <a class="nav-support" href="#support"><span aria-hidden="true">♡</span> Support</a>
+    </nav>
+  </header>
+  <main id="content">
+    <section class="hero frame" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <h1 id="hero-title">Keep your playlists <em>in sync.</em></h1>
+        <div>
+          <p>Sync or transfer playlists between Spotify, Apple Music, YouTube Music, TIDAL, and more. SongMirror is free, open source, and runs on your server.</p>
+          <div class="actions">
+            <a class="button primary" href="#install">Run with Docker <span aria-hidden="true">↓</span></a>
+            <a class="button outline" href="https://github.com/ahnafnafee/songmirror">View on GitHub <span aria-hidden="true">↗</span></a>
+          </div>
+        </div>
+      </div>
+      <figure class="product">
+        <a href="https://github.com/ahnafnafee/songmirror#screenshots">
+          <img src="/assets/songmirror-preview.webp" width="1440" height="684" alt="SongMirror dashboard and playlists from Spotify, YouTube Music, and Jellyfin">
+        </a>
+        <figcaption><a href="/trailer/">Watch the trailer <span aria-hidden="true">↗</span></a></figcaption>
+      </figure>
+      <div class="workflows">
+        <div><h2>Schedule syncs</h2><p>Choose one source, merge several playlists, or sync changes in both directions. Preview changes before they run.</p></div>
+        <div><h2>Transfer once</h2><p>Copy a playlist from a connected account or public link. Review unmatched tracks and check transfer history.</p></div>
+        <div><h2>Keep a local mirror</h2><p>Save audio and playlist files in a Jellyfin-ready layout. Reuse the tracks you already have on disk.</p></div>
+      </div>
+    </section>
+
+    <section class="light-section" id="services" aria-labelledby="services-title">
+      <div class="frame split">
+        <div>
+          <h2 id="services-title">Connect your libraries.</h2>
+          <p>Choose the accounts and servers you want to sync. The setup guides explain the connection for each service.</p>
+        </div>
+        <dl class="services">
+          <div>
+            <dt>Streaming</dt>
+            <dd>
+              <a href="https://github.com/ahnafnafee/songmirror#spotify"><!-- logo:spotify -->Spotify</a>
+              <a href="https://github.com/ahnafnafee/songmirror#apple-music"><!-- logo:apple -->Apple Music</a>
+              <a href="https://github.com/ahnafnafee/songmirror#youtube-music"><!-- logo:youtube -->YouTube Music</a>
+              <a href="https://github.com/ahnafnafee/songmirror#tidal"><!-- logo:tidal -->TIDAL</a>
+              <a href="https://github.com/ahnafnafee/songmirror#deezer"><!-- logo:deezer -->Deezer</a>
+              <a href="https://github.com/ahnafnafee/songmirror#qobuz"><!-- logo:qobuz -->Qobuz</a>
+              <a href="https://github.com/ahnafnafee/songmirror#amazon-music"><!-- logo:amazon -->Amazon Music</a>
+              <a href="https://github.com/ahnafnafee/songmirror#soundcloud"><!-- logo:soundcloud -->SoundCloud</a>
+            </dd>
+          </div>
+          <div>
+            <dt>Listening history</dt>
+            <dd>
+              <a href="https://github.com/ahnafnafee/songmirror#lastfm"><!-- logo:lastfm -->Last.fm</a>
+              <a href="https://github.com/ahnafnafee/songmirror/blob/main/docs/listenbrainz-subsonic.md#listenbrainz-loved-recordings"><!-- logo:listenbrainz -->ListenBrainz</a>
+            </dd>
+          </div>
+          <div>
+            <dt>Music servers</dt>
+            <dd>
+              <a href="https://github.com/ahnafnafee/songmirror/blob/main/docs/jellyfin-compatibility.md#playlist-sync-and-transfers"><!-- logo:jellyfin -->Jellyfin</a>
+              <a href="https://github.com/ahnafnafee/songmirror/blob/main/docs/listenbrainz-subsonic.md#navidrome-and-subsonic-compatible-servers"><!-- logo:navidrome -->Navidrome / Subsonic</a>
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="frame split install" id="install" aria-labelledby="install-title">
+      <div>
+        <h2 id="install-title">Run it with Docker.</h2>
+        <p>Start SongMirror, then open <a href="http://localhost:8888">localhost:8888</a> and connect your music accounts. Compose keeps your settings and downloads between restarts.</p>
+        <a class="text-link" href="https://github.com/ahnafnafee/songmirror/blob/main/docs/docker-image.md">Read the container guide <span aria-hidden="true">↗</span></a>
+      </div>
+      <div class="command-box">
+        <div class="command-header"><span>Docker Compose</span><button type="button" id="copy-command" hidden>Copy commands</button></div>
+        <pre><code id="compose-command"><!-- INSTALL_COMMANDS --></code></pre>
+        <div id="copy-status" class="visually-hidden" role="status"></div>
+      </div>
+      <details class="languages">
+        <summary>Installation guides in 15 languages</summary>
+        <ul>
+            <!-- LANGUAGE_GUIDES -->
+        </ul>
+      </details>
+      <section class="quick-deploy" aria-labelledby="deploy-title">
+        <h3 id="deploy-title">Install from a dashboard</h3>
+        <div class="deployment-options">
+          <div>
+            <h4><!-- logo:render -->Render</h4>
+            <p>Managed hosting with a persistent disk. Set an owner username and a password of at least 15 characters. Render bills for the server and storage.</p>
+            <a class="button outline" href="https://render.com/deploy?repo=https://github.com/ahnafnafee/songmirror">Deploy to Render <span aria-hidden="true">↗</span></a>
+          </div>
+          <div>
+            <h4><!-- logo:caprover -->CapRover</h4>
+            <p>Open <strong>One-Click Apps → Template</strong> on your CapRover server. Paste the template, set owner credentials, and enable HTTPS after deploying.</p>
+            <a class="button outline" href="/deploy/caprover.yml">Get the CapRover template <span aria-hidden="true">↓</span></a>
+          </div>
+          <div>
+            <h4><!-- logo:portainer -->Portainer</h4>
+            <p>On a Docker Standalone host, add a stack and upload the Compose file. It lists the owner and host settings to configure before deployment.</p>
+            <a class="button outline" href="/deploy/portainer.yml" download>Download the Portainer stack <span aria-hidden="true">↓</span></a>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="light-section" aria-labelledby="questions-title">
+      <div class="frame split questions">
+        <h2 id="questions-title">Before you install</h2>
+        <div>
+          <details><summary>Can I transfer Spotify playlists to Apple Music or YouTube Music?</summary><p>Yes. Connect your accounts, open Transfers, and choose the source and destination. SongMirror shows unmatched tracks so you can review them.</p></details>
+          <details><summary>Can I keep the same playlist updated across multiple services?</summary><p>Yes. Create a scheduled sync and choose one-way, multi-source merge, authoritative-group, or bidirectional sync. Preview planned additions and removals before enabling writes.</p></details>
+          <details><summary>Where does SongMirror store my account settings?</summary><p>Settings, tokens, match history, and playlist backups stay on the machine running SongMirror. The public website only serves the setup guides and trailer.</p></details>
+          <details><summary>Can I use my Jellyfin or Navidrome library?</summary><p>Yes. SongMirror syncs playlists with supported servers and matches incoming tracks against audio they already have. For a separate offline audio copy, use the local Jellyfin-ready download mirror.</p></details>
+        </div>
+      </div>
+    </section>
+
+    <section class="support-section" id="support" aria-labelledby="support-title">
+      <div class="frame split">
+        <div><h2 id="support-title">Support SongMirror.</h2><p>Donations help fund maintenance and testing across music services. A GitHub star also helps other listeners find the project.</p></div>
+        <div class="support-actions">
+          <a class="button support-primary" href="https://ko-fi.com/ahnafnafee">Donate on Ko-fi <span aria-hidden="true">↗</span></a>
+          <a class="button support-secondary" href="https://github.com/sponsors/ahnafnafee">Sponsor on GitHub <span aria-hidden="true">↗</span></a>
+          <a class="text-link" href="https://github.com/ahnafnafee/songmirror/stargazers">Star on GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer frame">
+    <a class="brand" href="/"><img src="/assets/mark.png" width="20" height="23" alt="">SongMirror</a>
+    <a href="https://github.com/ahnafnafee/songmirror/blob/main/LICENSE">MIT License</a>
+    <a href="https://github.com/ahnafnafee/songmirror/issues">Report an issue</a>
+  </footer>
+</body>
+</html>

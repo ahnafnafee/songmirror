@@ -1,0 +1,10 @@
+{
+  "name": "songmirror-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "deploy": "node build.mjs && pnpm dlx wrangler@4.167.0 deploy && node notify-search-engines.mjs",
+    "notify:search": "node notify-search-engines.mjs"
+  }
+}

@@ -4,6 +4,7 @@ import { Link, NavLink } from 'react-router-dom'
 import {
   LuArrowLeftRight,
   LuGithub,
+  LuHeart,
   LuLayoutDashboard,
   LuLink2,
   LuListMusic,
@@ -37,10 +38,9 @@ const NAV_ITEMS: Array<{ to: string; label: string; end: boolean; icon: IconType
   { to: '/settings', get label() { return t("Settings") }, end: false, icon: LuSettings2 },
 ]
 
-const PROJECT_LINKS: Array<{ href: string; label: string; icon: IconType }> = [
-  { href: REPO_URL, get label() { return t("SongMirror on GitHub") }, icon: LuGithub },
+const SECONDARY_PROJECT_LINKS: Array<{ href: string; label: string; icon: IconType }> = [
   { href: GITHUB_SPONSORS_URL, get label() { return t("Sponsor on GitHub") }, icon: SiGithubsponsors },
-  { href: KOFI_URL, get label() { return t("Support on Ko-fi") }, icon: SiKofi },
+  { href: REPO_URL, get label() { return t("SongMirror on GitHub") }, icon: LuGithub },
 ]
 
 export interface ProfileControls {
@@ -179,9 +179,19 @@ export function Sidebar({ profile }: { profile?: ProfileControls }) {
           <Logo />
           <span className="truncate text-[14.5px] font-extrabold tracking-tight text-text">SongMirror</span>
         </Link>
+        <a
+          href={KOFI_URL}
+          target="_blank"
+          rel="noreferrer"
+          title={t("Support on Ko-fi")}
+          className="ms-auto inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-control bg-accent-soft px-2.5 text-xs font-semibold text-accent hover:bg-surface-2"
+        >
+          <LuHeart className="size-4 shrink-0" aria-hidden="true" />
+          {t("Donate")}
+        </a>
         <button
           type="button"
-          className="ms-auto inline-flex size-11 shrink-0 items-center justify-center rounded-control border border-border bg-surface-2 text-text"
+          className="inline-flex size-11 shrink-0 items-center justify-center rounded-control border border-border bg-surface-2 text-text"
           aria-expanded={menuOpen}
           aria-controls="mobile-nav"
           aria-label={menuOpen ? t("Close menu") : t("Open menu")}
@@ -216,7 +226,7 @@ export function Sidebar({ profile }: { profile?: ProfileControls }) {
           ))}
           <div className="mt-2 border-t border-border pt-3">
             {profile && <SignOutButton {...profile} />}
-            <ProjectLinks />
+            <ProjectLinks showKofi={false} />
           </div>
         </nav>
       )}
@@ -243,29 +253,52 @@ function SignOutButton({ signOut, signingOut, iconOnly = false }: ProfileControl
   )
 }
 
-/** Project and support links share a quiet footer dock. The collapsed rail
- * stacks them so each action keeps a full-size keyboard and pointer target. */
-function ProjectLinks({ stacked = false }: { stacked?: boolean }) {
+function ProjectLinks({ stacked = false, showKofi = true }: { stacked?: boolean; showKofi?: boolean }) {
   useTranslation()
   return (
     <div
       role="group"
       aria-label={t("Project links")}
-      className={cn('flex items-center justify-center gap-1', stacked && 'flex-col')}
+      className="grid gap-2"
     >
-      {PROJECT_LINKS.map((item) => (
+      {showKofi && (
         <a
-          key={item.href}
-          href={item.href}
+          href={KOFI_URL}
           target="_blank"
           rel="noreferrer"
-          title={item.label}
-          aria-label={item.label}
-          className="flex size-9 items-center justify-center rounded-control text-text-3 transition-colors duration-fast hover:bg-accent-soft hover:text-accent"
+          title={t("Support on Ko-fi")}
+          aria-label={stacked ? t("Support on Ko-fi") : undefined}
+          className={cn(
+            'flex min-h-10 items-center justify-center gap-2 rounded-control bg-accent text-sm font-semibold text-on-accent transition-colors duration-fast hover:bg-accent-hover',
+            stacked ? 'px-0' : 'px-2 py-2',
+          )}
         >
-          <item.icon className="size-[18px]" aria-hidden="true" />
+          <SiKofi className="size-[18px] shrink-0" aria-hidden="true" />
+          {!stacked && t("Support on Ko-fi")}
         </a>
-      ))}
+      )}
+      <div className={cn('flex gap-1', stacked && 'flex-col')}>
+        {SECONDARY_PROJECT_LINKS.map((item) => {
+          const showLabel = !stacked && item.href === GITHUB_SPONSORS_URL
+          return (
+            <a
+              key={item.href}
+              href={item.href}
+              target="_blank"
+              rel="noreferrer"
+              title={item.label}
+              aria-label={showLabel ? undefined : item.label}
+              className={cn(
+                'flex min-h-11 items-center gap-2 rounded-control text-xs font-medium text-text-2 transition-colors duration-fast hover:bg-accent-soft hover:text-accent md:min-h-9',
+                showLabel ? 'min-w-0 flex-1 px-2' : 'min-w-11 justify-center md:min-w-9',
+              )}
+            >
+              <item.icon className="size-4 shrink-0" aria-hidden="true" />
+              {showLabel && <span className="break-words">{item.label}</span>}
+            </a>
+          )
+        })}
+      </div>
     </div>
   )
 }

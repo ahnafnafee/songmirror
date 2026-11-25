@@ -1,43 +1,69 @@
 <div align="center"><a name="readme-top"></a>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../../.github/assets/lockup-dark.png">
-  <img src="../../.github/assets/lockup-light.png" alt="SongMirror" width="440">
-</picture>
+<img src="../../.github/assets/mark.png" alt="" height="72">
 
 # SongMirror
+
+**Jaga playlist Anda tetap sinkron.**<br>
+Jalankan sinkronisasi terjadwal di server sendiri, salin playlist sekali saja, atau simpan salinan musik lokal untuk Jellyfin. Gratis dan bersumber terbuka.
+
+[![Jalankan dengan Docker][docker-start-badge]](#quick-start)
+[![GHCR][registry-badge]][registry-link]
+[![Dukung di Ko-fi][kofi-badge]][kofi-link]
+
+[Instalasi terpandu](#guided-install) · [Layanan yang didukung](#supported-services) · [Fitur](#features) · [Tangkapan layar](#screenshots) · [Dukung SongMirror](#support) · [Situs web][website-link]
 
 <!-- LANGUAGE NAVIGATION -->
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Sinkronisasi playlist yang dihosting sendiri dan selalu aktif untuk Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, dan YouTube Music, SoundCloud — ditambah cermin audio lokal yang siap digunakan Jellyfin.<br/>
-Alternatif gratis, sumber terbuka, dan dihosting sendiri untuk Soundiiz, TuneMyMusic, dan FreeYourMusic yang Anda miliki dan jalankan.
-
-**Sinkronisasi satu arah, penggabungan multi-sumber, grup otoritatif, atau dua arah penuh (N-arah) · transfer daftar putar satu kali · pencocokan akurat sebesar ISRC · semuanya dari browser Anda**
-
-[Mulai Cepat](#quick-start) · [Fitur](#features) · [Tangkapan layar](#screenshots) · [Selalu berjalan: Docker](#always-running-docker) · [Cara kerjanya](#how-it-works) · [Laporkan masalah][github-issues-link] · [Usulkan fitur][github-issues-link]
-
-<!-- SHIELD GROUP -->
+<a href="#screenshots"><img src="../../.github/assets/songmirror-preview.webp" alt="SongMirror — Dasbor · Daftar putar" width="100%"></a>
 
 [![CI][ci-shield]][ci-link]
-[![License][license-shield]][license-link]
-[![Python][python-shield]][python-link]
-[![Docker][docker-shield]][docker-link]<br/>
-[![Stars][stars-shield]][stars-link]
-[![Forks][forks-shield]][forks-link]
-[![Issues][issues-shield]][issues-link]
-[![Last commit][last-commit-shield]][last-commit-link]
-
-**Bagikan proyek ini**
-
-[![][share-x-shield]][share-x-link]
-[![][share-reddit-shield]][share-reddit-link]
-[![][share-linkedin-shield]][share-linkedin-link]
-
-<sup>Atur sekali — setiap playlist yang Anda buat akan tetap ditampilkan di setiap layanan, sesuai urutan tanggal yang ditambahkan.</sup>
+[![MIT][license-shield]](../../LICENSE)
+[![Beri bintang di GitHub][stars-shield]][stars-link]
 
 </div>
+
+<details>
+<summary><kbd>Daftar isi</kbd></summary>
+
+- [🚀 Mulai Cepat](#quick-start)
+  - [Instalasi terpandu](#guided-install)
+  - [Bahasa aplikasi](#app-language)
+- [Layanan yang didukung](#supported-services)
+- [✨ Fitur](#features)
+- [📸 Tangkapan layar](#screenshots)
+- [🐳 Selalu berjalan: Docker](#always-running-docker)
+- [⚙️ Cara kerjanya](#how-it-works)
+  - [Cocok](#matching)
+  - [Sinkronisasi penggabungan multi-sumber](#multi-source-merge-sync)
+  - [Kelompok yang berwenang](#authoritative-groups)
+  - [Sinkronisasi dua arah (N-arah).](#bidirectional-n-way-sync)
+- [📦 Cadangan metadata daftar putar](#playlist-metadata-backups)
+- [💿 Cermin unduhan lokal (Jellyfin)](#local-download-mirror-jellyfin)
+- [🔌 Menghubungkan setiap layanan](#connecting-each-service)
+  - [Pembaruan kredensial](#credential-renewal)
+  - [Spotify](#spotify)
+  - [TIDAL](#tidal)
+  - [Qobuz](#qobuz)
+  - [Deezer](#deezer)
+  - [Amazon Music](#amazon-music)
+  - [Apple Music](#apple-music)
+  - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
+  - [Last.fm](#lastfm)
+- [🖥️ tanpa antarmuka grafis CLI](#headless-cli)
+- [🛡️ Perlindungan keamanan](#safety-rails)
+- [🗃️ Caching & arsip lagu](#caching-song-archive)
+  - [Selesaikan pemetaan](#resolve-mappings)
+- [🧱 Tata letak proyek](#project-layout)
+- [🩺 Pemecahan masalah](#troubleshooting)
+- [📄 Lisensi](#license)
+
+- [Dukung SongMirror](#support)
+
+</details>
 
 <a id="quick-start"></a>
 
@@ -77,62 +103,43 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 Untuk mewajibkan nama pengguna dan kata sandi, buka **Pengaturan → Umum → LOGIN PEMILIK** lalu pilih **Siapkan login**. Gunakan kode sekali pakai dari log awal server.
 
+<a id="guided-install"></a>
+
+### Instalasi terpandu
+
+| | |
+| --- | --- |
+| [Render](https://render.com/deploy?repo=https://github.com/ahnafnafee/songmirror) | Hosting terkelola dengan disk persisten. Tentukan nama pengguna dan kata sandi pemilik di penginstal. Render mengenakan biaya untuk server dan penyimpanan. |
+| [CapRover](https://songmirror.ahnafnafee.dev/deploy/caprover.yml) | Di One-Click Apps → Template, tempel templat, atur kredensial pemilik, dan aktifkan HTTPS setelah penerapan. |
+| [Portainer](https://songmirror.ahnafnafee.dev/deploy/portainer.yml) | Pada Docker Standalone, tambahkan stack, unggah berkas, lalu atur kredensial pemilik dan alamat host di variabel lingkungannya. |
+
 <a id="app-language"></a>
 
 ### Bahasa aplikasi
 
 SongMirror mendukung bahasa Inggris, Arab, Turki, Spanyol, Cina Sederhana, Perancis, Portugis, Jerman, Jepang, Hindi, Bengali, Indonesia, Korea, Italia, dan Vietnam. Saat pertama kali dibuka, preferensi bahasa peramban diperiksa secara berurutan, termasuk varian regional, lalu bahasa pertama yang didukung digunakan. Jika tidak ada yang didukung, bahasa Inggris digunakan. Ubah bahasa melalui **Pengaturan → Umum → Bahasa**. Pilihan disimpan di peramban ini dan tetap berlaku setelah halaman dimuat ulang. Pilih **Otomatis (browser)** untuk kembali mengikuti preferensi peramban. Antarmuka bahasa Arab ditampilkan dari kanan ke kiri. Nama daftar putar, artis dan penyedia, kredensial, serta log diagnostik tetap mempertahankan nilai aslinya.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 > [!NOTE]
 > Aplikasi web + tanpa antarmuka grafis CLI, satu mesin. Klik melalui UI browser untuk menghubungkan layanan, membuat sinkronisasi, dan mentransfer daftar putar — atau menjalankannya `.env` + gaya cron. Keduanya menggerakkan inti sinkronisasi yang sama.
 
-<details>
-<summary><kbd>Daftar isi</kbd></summary>
+<a id="supported-services"></a>
 
-#### Daftar Isi
+## Layanan yang didukung
 
-- [🚀 Mulai Cepat](#quick-start)
-  - [Bahasa aplikasi](#app-language)
-- [✨ Fitur](#features)
-- [📸 Tangkapan layar](#screenshots)
-- [🐳 Selalu berjalan: Docker](#always-running-docker)
-- [⚙️ Cara kerjanya](#how-it-works)
-  - [Cocok](#matching)
-  - [Sinkronisasi penggabungan multi-sumber](#multi-source-merge-sync)
-  - [Kelompok yang berwenang](#authoritative-groups)
-  - [Sinkronisasi dua arah (N-arah).](#bidirectional-n-way-sync)
-- [📦 Cadangan metadata daftar putar](#playlist-metadata-backups)
-- [💿 Cermin unduhan lokal (Jellyfin)](#local-download-mirror-jellyfin)
-- [🔌 Menghubungkan setiap layanan](#connecting-each-service)
-  - [Pembaruan kredensial](#credential-renewal)
-  - [Spotify](#spotify)
-  - [TIDAL](#tidal)
-  - [Qobuz](#qobuz)
-  - [Deezer](#deezer)
-  - [Amazon Music](#amazon-music)
-  - [Apple Music](#apple-music)
-  - [YouTube Music](#youtube-music)
-  - [SoundCloud](#soundcloud)
-  - [Last.fm](#lastfm)
-- [🖥️ tanpa antarmuka grafis CLI](#headless-cli)
-- [🛡️ Perlindungan keamanan](#safety-rails)
-- [🗃️ Caching & arsip lagu](#caching-song-archive)
-  - [Selesaikan pemetaan](#resolve-mappings)
-- [🧱 Tata letak proyek](#project-layout)
-- [🩺 Pemecahan masalah](#troubleshooting)
-- [📄 Lisensi](#license)
-
-####
-
-<br/>
-
-</details>
+| Layanan | Dukungan sinkronisasi dan transfer |
+| --- | --- |
+| [Spotify](#spotify) | Playlist dan lagu favorit |
+| [TIDAL](#tidal) | Playlist dan lagu favorit |
+| [Qobuz](#qobuz) | Playlist dan lagu favorit |
+| [Deezer](#deezer) | Playlist dan lagu favorit |
+| [Amazon Music](#amazon-music) | Playlist dan lagu favorit |
+| [Apple Music](#apple-music) | Playlist dan lagu favorit |
+| [YouTube Music](#youtube-music) | Playlist dan lagu favorit |
+| [SoundCloud](#soundcloud) | Playlist |
+| [Last.fm](#lastfm) | Lagu favorit, lagu teratas, serta riwayat pemutaran. Beri izin untuk mengubah lagu favorit. |
+| [ListenBrainz](../listenbrainz-subsonic.md) | Playlist dan rekaman favorit. Token pengguna mengaktifkan penulisan. |
+| [Navidrome / Subsonic](../listenbrainz-subsonic.md) | Playlist dan lagu favorit |
+| [Jellyfin](../jellyfin-compatibility.md) | Playlist server. Masukkan ID pengguna untuk menyinkronkan atau mentransfer. |
 
 <a id="features"></a>
 
@@ -164,53 +171,33 @@ SongMirror menjaga daftar putar Anda tetap sama di mana saja tanpa menambahkan u
 > [!IMPORTANT]
 > Tempatkan port web di jaringan tepercaya. Aktifkan [login pemilik](../profile-auth.md) untuk melindungi daftar putar, akun yang terhubung, dan pengaturan sinkronisasi.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="screenshots"></a>
 
-## 📸 Tangkapan layar
+## Tangkapan layar
 
-<div align="center">
+<table>
+  <tr>
+    <td width="50%" valign="top"><strong>Dasbor</strong><br><a href="../../.github/assets/dashboard.png"><img src="../../.github/assets/dashboard.png" alt="Dasbor" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Akun</strong><br><a href="../../.github/assets/accounts.png"><img src="../../.github/assets/accounts.png" alt="Akun" width="680"></a></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><strong>Sinkronisasi</strong><br><a href="../../.github/assets/sync-wizard.png"><img src="../../.github/assets/sync-wizard.png" alt="Sinkronisasi" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Daftar putar</strong><br><a href="../../.github/assets/playlists.png"><img src="../../.github/assets/playlists.png" alt="Daftar putar" width="680"></a></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><strong>Transfer</strong><br><a href="../../.github/assets/transfers.png"><img src="../../.github/assets/transfers.png" alt="Transfer" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Riwayat transfer</strong><br><a href="../../.github/assets/transfer-history.png"><img src="../../.github/assets/transfer-history.png" alt="Riwayat transfer" width="680"></a></td>
+  </tr>
+</table>
 
-<a href="../../.github/assets/songmirror-demo.mp4"><img src="../../.github/assets/songmirror-demo.gif" alt="SongMirror demo — pengungkapan logo, dasbor, pengaturan sinkronisasi satu arah dan dua arah, transfer playlist langsung, dan pencocokan akurat dengan ISRC di tujuh layanan musik" width="88%"></a>
+<details>
+<summary>Lihat demo</summary>
 
-<sup>▶ <a href="../../.github/assets/songmirror-demo.mp4">Tonton versi 1080p</a></sup>
+<a href="../../.github/assets/songmirror-demo.mp4"><img src="../../.github/assets/songmirror-demo.gif" alt="Lihat demo" width="100%"></a>
 
-**Satu dasbor untuk setiap perpustakaan — sinkronisasi status, pekerjaan, aktivitas langsung, dan kesehatan layanan**
+[Tonton dalam 1080p](../../.github/assets/songmirror-demo.mp4)
 
-<img src="../../.github/assets/dashboard.png" alt="SongMirror dasbor menampilkan status sinkronisasi, pekerjaan yang dikonfigurasi, aktivitas langsung, dan kesehatan untuk Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, YouTube Music, dan Jellyfin" width="82%">
-
-**Siapkan sejumlah sinkronisasi — satu arah, penggabungan multi-sumber, grup otoritatif, atau dua arah — dalam panduan singkat**
-
-<img src="../../.github/assets/sync-wizard.png" alt="Wizard pengaturan SongMirror memilih layanan untuk sinkronisasi dua arah di Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, dan YouTube Music" width="82%">
-
-**Hubungkan setiap layanan di browser Anda — sekali klik OAuth, tempel token terpandu, atau kunci API**
-
-<img src="../../.github/assets/accounts.png" alt="Halaman Akun untuk menghubungkan Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, YouTube Music, dan Jellyfin" width="82%">
-
-**Jelajahi dan pasangkan daftar putar di seluruh layanan**
-
-<img src="../../.github/assets/playlists.png" alt="Menelusuri daftar putar di seluruh layanan yang terhubung dengan sampul dan jumlah lagu" width="82%">
-
-**Salin daftar antar akun, termasuk pada layanan yang sama**
-
-<img src="../../.github/assets/transfers.png" alt="Salin daftar antar akun, termasuk pada layanan yang sama" width="82%">
-
-**Tinjau setiap percobaan transfer dengan filter dan jejak audit**
-
-<img src="../../.github/assets/transfer-history.png" alt="Tinjau setiap percobaan transfer dengan filter dan jejak audit" width="82%">
-
-</div>
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
+</details>
 
 <a id="always-running-docker"></a>
 
@@ -247,12 +234,6 @@ SongMirror kemudian akan mengiklankan `https://music.example.com/oauth/spotify/c
 | Kegigihan | `./data` menyimpan kredensial, token, cache, arsip lagu, dan cuplikan daftar putar terjadwal di bawah `playlist_backups/`. Cadangkan untuk menyimpan pengaturan dan arsip Anda selama pembangunan kembali. |
 | Unduhan | Setel `DOWNLOAD_DIR` (dalam `.env` atau shell Anda) ke direktori musik host Anda (misalnya `F:\Torrent\Music`); composer bind-pasang ke `/music`. Dari Docker, setel `JELLYFIN_URL` ke `http://host.docker.internal:8096`. |
 | Sesi kedaluwarsa | Sesi yang dapat diperbarui dipulihkan pada pass terjadwal atau manual berikutnya. TIDAL sesi pemutar web diperbarui dari token penyegaran yang diambil; Token Qobuz dan Apple Music masih harus ditempel ulang ketika ditolak. Tidak perlu memulai ulang. |
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="how-it-works"></a>
 
@@ -341,12 +322,6 @@ Hibah pemutar web yang masuk dari TIDAL menangani daftar putar biasa dan Lagu Fa
 
 Beberapa dari integrasi ini menggunakan antarmuka web pihak pertama penyedia dan dapat berubah tanpa pemberitahuan; [penilaian kelayakan](../design/2026-09-01-liked-tracks-sync-feasibility.md) mencatat API dan batasan distribusi untuk setiap penyedia.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="playlist-metadata-backups"></a>
 
 ## 📦 Cadangan metadata daftar putar
@@ -371,12 +346,6 @@ Ekspor manual diunduh oleh browser ke perangkat yang menjalankan UI. Ekspor terj
 Klik bidang folder atau Telusuri… untuk membuka alat pilih bawaan. Gunakan Lokasi, remah roti yang dapat diklik, Mundur, Maju, dan Atas satu folder untuk bernavigasi. Klik folder untuk memilihnya; klik dua kali, tekan Enter, atau gunakan panahnya untuk membukanya. Pencarian memfilter folder saat ini. Masukkan jalur folder menerima alamat lengkap. Pilih folder pembaruan draf; simpan pengaturan atau jadwal untuk menerapkannya. Batal membuat draf tidak berubah. Tidak diperlukan bantuan desktop atau proses tambahan.
 
 Folder baru membuat subfolder bernama di lokasi yang sedang dibuka, lalu membukanya. Item yang ada tidak pernah ditimpa. Membatalkan entri nama tidak menghasilkan apa-apa; membatalkan pemilih setelah pembuatan akan meninggalkan folder baru di disk. Lokasi cadangan atau unduhan yang Anda simpan hanya berubah setelah memilih dan menyimpan. Di Docker, pemilih menjelaskan jalur mana yang dibagikan dan menampilkan jalur kontainer dan jalur komputer yang dikonfigurasi jika tersedia.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="local-download-mirror-jellyfin"></a>
 
@@ -410,12 +379,6 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - Kualitas audio — sumbernya adalah YouTube, jadi tanpa cookie YT Music Premium, batas maksimumnya adalah ~128–160 kbps. `LOCAL_MIRROR_FORMAT=opus` menyimpan aliran asli YouTube tanpa pengkodean ulang mp3; cookie Premium (`LOCAL_MIRROR_COOKIE_FILE`) membuka 256 kbps AAC. Memilih `flac` akan mengubah wadah keluaran tetapi tidak dapat mengubah sumber lossy menjadi audio lossless. Untuk audio tanpa kompresi yang sebenarnya, gunakan `LOCAL_LIBRARY_DIR`.
 
 SongMirror tidak mengotomatiskan ekstraksi FLAC dari katalog streaming. Setiap sumber audio baru harus lebih dulu memenuhi syarat di `docs/monochrome-flac-assessment.md`: titik akhir unduh atau ekspor yang diterbitkan penyedia dan berversi, otorisasi per pengguna, hak salinan permanen yang tegas, aturan wilayah, masa berlaku, dan penggunaan luring yang terdokumentasi, serta tanpa pengelakan DRM atau kontrol akses. Gunakan cermin lokal hanya untuk konten milik Anda atau yang Anda berhak salin.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="connecting-each-service"></a>
 
@@ -521,12 +484,6 @@ Berbicara dengan [YouTube Data API v3](https://developers.google.com/youtube/v3)
 
 Untuk memindahkan daftar pribadi antar akun Google, hubungkan keduanya; untuk daftar publik cukup hubungkan akun tujuan dan tempel tautannya. Mode browser menyertakan daftar video YouTube biasa dan membaca semua halaman. Gunakan **Mode tanpa kuota** untuk salinan panjang; koneksi Data API tetap memiliki kuota harian. Jika YouTube meminta saluran, selesaikan penyiapannya pada akun tujuan, lalu coba lagi. Ikuti [panduan transfer akun](../youtube-account-transfers.md).
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="soundcloud"></a>
 
 ### SoundCloud
@@ -571,12 +528,6 @@ Tiga batas yang perlu diketahui sebelum Anda mengandalkannya:
 
 Tanpa rahasia bersama, profil yang Anda tunjuk harus menjadikan Loved Tracks dan Top Tracks miliknya publik.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="headless-cli"></a>
 
 ## 🖥️ tanpa antarmuka grafis CLI
@@ -602,12 +553,6 @@ uv run main.py --execute --sync-mode group --sync-source spotify \
 
 Vars env kunci (lihat `.env.example`): kredensial untuk penyedia mana pun yang Anda gunakan, `PLAYLISTS`, `SYNC_INTERVAL`, `MAX_ADDS` / `MAX_REMOVALS`, `DOWNLOAD_DIR`, `SYNC_MODE`, `SYNC_SOURCE`, `SYNC_AUTHORITIES`, dan `PROVIDERS`.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="safety-rails"></a>
 
 ## 🛡️ Perlindungan keamanan
@@ -623,12 +568,6 @@ Penghapusan bersifat merusak, sehingga dijaga:
 - Perlindungan kerugian bersih — jalur sisi target yang menyerupai jalur sumber yang tidak cocok dengan layanan tersebut ditahan, tidak dihapus.
 - Kegagalan autentikasi penyedia apa pun akan segera membatalkan pass penyedia tersebut — tidak ada penghapusan sebagian pada token yang kedaluwarsa.
 - Pekerjaan penggabungan harus menyelesaikan setiap sumber konstituen yang dibaca sebelum dihapus dari tujuannya; kekuatan snapshot sumber sebagian/gagal yang diteruskan ke perilaku hanya penambahan.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="caching-song-archive"></a>
 
@@ -665,12 +604,6 @@ Pesanan baru ditambahkan. Koleksi asli yang disukai/disukai tetap menjadi milik 
 Pengeditan ditolak dengan pesan yang jelas saat sinkronisasi berjalan, karena sebuah pass menyimpan cache di memorinya
 seluruh durasi dan akan menimpanya setelah selesai.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="project-layout"></a>
 
 ## 🧱 Tata letak proyek
@@ -687,12 +620,6 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 
 Menambahkan layanan lain: subkelas `MirrorTarget`, implementasikan metode ~8, tambahkan pembuatnya ke `engine/targets`' `_REGISTRY` dan kelasnya ke `_CLASSES`, dan tambahkan `Connector` yang cocok di bawah `services/accounts`. Semua rekonsiliasi — perbedaan, pengurutan, Perlindungan keamanan, logging, lompatan snapshot — diwariskan.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="troubleshooting"></a>
 
 ## 🩺 Pemecahan masalah
@@ -708,12 +635,6 @@ Menambahkan layanan lain: subkelas `MirrorTarget`, implementasikan metode ~8, ta
 - Spotify laporan Kedaluwarsa — masuk lagi di `open.spotify.com` dan tempelkan cookie `sp_dc` baru di Akun.
 - Daftar putar tidak disinkronkan — pastikan daftar putar tersebut ada dalam cakupan daftar putar sinkronisasi dan ada di sumbernya (target dibuat secara otomatis dengan pass nyata).
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="license"></a>
 
 ## 📄 Lisensi
@@ -721,29 +642,29 @@ Menambahkan layanan lain: subkelas `MirrorTarget`, implementasikan metode ~8, ta
 Hak Cipta © 2026 [Ahnaf An Nafee](https://github.com/ahnafnafee).<br/>
 Proyek ini [MIT](../../LICENSE) berlisensi.
 
+<a id="support"></a>
+
+## Dukung SongMirror
+
+Dukungan Anda membantu membiayai pemeliharaan dan pengujian di berbagai layanan musik.
+
+[![Dukung di Ko-fi][kofi-badge]][kofi-link]
+[![Jadi sponsor di GitHub][sponsor-badge]][sponsor-link]
+
+[Beri bintang di GitHub][stars-link] · [Kembali ke atas](#readme-top)
+
 <!-- LINK GROUP -->
 
-[back-to-top]: https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square
-[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/songmirror/ci.yml?branch=main&label=CI&labelColor=black&logo=githubactions&logoColor=white&style=flat-square
+[docker-start-badge]: https://img.shields.io/badge/Docker-CE4512?logo=docker&logoColor=white&style=for-the-badge
+[registry-badge]: https://img.shields.io/badge/GHCR-27221F?logo=github&logoColor=white&style=for-the-badge
+[registry-link]: https://github.com/ahnafnafee/songmirror/pkgs/container/songmirror
+[kofi-badge]: https://img.shields.io/badge/Ko--fi-8F3B25?logo=ko-fi&logoColor=white&style=for-the-badge
+[kofi-link]: https://ko-fi.com/ahnafnafee
+[sponsor-badge]: https://img.shields.io/badge/GitHub_Sponsors-27221F?logo=githubsponsors&logoColor=white&style=for-the-badge
+[sponsor-link]: https://github.com/sponsors/ahnafnafee
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/songmirror/ci.yml?branch=main&label=CI&style=flat-square
 [ci-link]: https://github.com/ahnafnafee/songmirror/actions/workflows/ci.yml
-[license-shield]: https://img.shields.io/github/license/ahnafnafee/songmirror?color=F2601A&labelColor=black&style=flat-square
-[license-link]: https://github.com/ahnafnafee/songmirror/blob/main/LICENSE
-[python-shield]: https://img.shields.io/badge/python-3.13%2B-F2601A?labelColor=black&logo=python&logoColor=white&style=flat-square
-[python-link]: https://www.python.org/
-[docker-shield]: https://img.shields.io/badge/docker-ready-F2601A?labelColor=black&logo=docker&logoColor=white&style=flat-square
-[docker-link]: https://github.com/ahnafnafee/songmirror/pkgs/container/songmirror
-[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
+[license-shield]: https://img.shields.io/badge/license-MIT-CE4512?style=flat-square
+[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/songmirror?style=flat-square
 [stars-link]: https://github.com/ahnafnafee/songmirror/stargazers
-[forks-shield]: https://img.shields.io/github/forks/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[forks-link]: https://github.com/ahnafnafee/songmirror/network/members
-[issues-shield]: https://img.shields.io/github/issues/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[issues-link]: https://github.com/ahnafnafee/songmirror/issues
-[last-commit-shield]: https://img.shields.io/github/last-commit/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[last-commit-link]: https://github.com/ahnafnafee/songmirror/commits/main
-[github-issues-link]: https://github.com/ahnafnafee/songmirror/issues
-[share-x-shield]: https://img.shields.io/badge/-share%20on%20x-black?labelColor=black&logo=x&logoColor=white&style=flat-square
-[share-x-link]: https://x.com/intent/tweet?text=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20seven%20music%20services&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
-[share-reddit-shield]: https://img.shields.io/badge/-share%20on%20reddit-black?labelColor=black&logo=reddit&logoColor=white&style=flat-square
-[share-reddit-link]: https://www.reddit.com/submit?title=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20seven%20music%20services&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
-[share-linkedin-shield]: https://img.shields.io/badge/-share%20on%20linkedin-black?labelColor=black&logo=linkedin&logoColor=white&style=flat-square
-[share-linkedin-link]: https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
+[website-link]: https://songmirror.ahnafnafee.dev/

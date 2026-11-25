@@ -1,43 +1,69 @@
 <div align="center"><a name="readme-top"></a>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../../.github/assets/lockup-dark.png">
-  <img src="../../.github/assets/lockup-light.png" alt="SongMirror" width="440">
-</picture>
+<img src="../../.github/assets/mark.png" alt="" height="72">
 
 # SongMirror
+
+**Çalma listelerin eşzamanlı kalsın.**<br>
+Zamanlanmış eşitlemeyi kendi sunucunda çalıştır, bir çalma listesini tek seferlik kopyala veya Jellyfin için yerel bir müzik kopyası tut. Ücretsiz ve açık kaynaklı.
+
+[![Docker ile çalıştır][docker-start-badge]](#quick-start)
+[![GHCR][registry-badge]][registry-link]
+[![Ko-fi’de destek ol][kofi-badge]][kofi-link]
+
+[Rehberli kurulum](#guided-install) · [Desteklenen hizmetler](#supported-services) · [Özellikler](#features) · [Ekran görüntüleri](#screenshots) · [SongMirror projesini destekle](#support) · [Web sitesi][website-link]
 
 <!-- LANGUAGE NAVIGATION -->
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music ve YouTube Music, SoundCloud için kendi kendine barındırılan, kesintisiz çalışan çalma listesi senkronizasyonu — artı Jellyfin ile uyumlu yerel bir çevrimdışı ses kopyası.<br/>
-Soundiiz, TuneMyMusic ve FreeYourMusic servislerine ücretsiz, açık kaynaklı, tamamen kendi sunucunuzda çalışan ve kontrolü sizde olan bir alternatif.
-
-**Tek yönlü, çok kaynaklı birleştirme, yetkili grup veya tam çift yönlü (N yönlü) senkronizasyon · tek seferlik çalma listesi aktarımları · ISRC düzeyinde kesin eşleştirme · hepsi tarayıcınızdan**
-
-[Hızlı Başlangıç](#quick-start) · [Özellikler](#features) · [Ekran görüntüleri](#screenshots) · [Docker](#always-running-docker) · [Nasıl çalışır?](#how-it-works) · [Hata bildir][github-issues-link] · [Özellik iste][github-issues-link]
-
-<!-- SHIELD GROUP -->
+<a href="#screenshots"><img src="../../.github/assets/songmirror-preview.webp" alt="SongMirror — Genel bakış · Çalma listeleri" width="100%"></a>
 
 [![CI][ci-shield]][ci-link]
-[![License][license-shield]][license-link]
-[![Python][python-shield]][python-link]
-[![Docker][docker-shield]][docker-link]<br/>
-[![Stars][stars-shield]][stars-link]
-[![Forks][forks-shield]][forks-link]
-[![Issues][issues-shield]][issues-link]
-[![Last commit][last-commit-shield]][last-commit-link]
-
-**Bu projeyi paylaş**
-
-[![][share-x-shield]][share-x-link]
-[![][share-reddit-shield]][share-reddit-link]
-[![][share-linkedin-shield]][share-linkedin-link]
-
-<sup>Bir kez kurun — düzenlediğiniz her çalma listesi, eklenme tarihine göre tüm servislerde senkron kalsın.</sup>
+[![MIT][license-shield]](../../LICENSE)
+[![GitHub’da yıldız ver][stars-shield]][stars-link]
 
 </div>
+
+<details>
+<summary><kbd>İçindekiler</kbd></summary>
+
+- [🚀 Hızlı Başlangıç](#quick-start)
+  - [Rehberli kurulum](#guided-install)
+  - [Uygulama dili](#app-language)
+- [Desteklenen hizmetler](#supported-services)
+- [✨ Özellikler](#features)
+- [📸 Ekran görüntüleri](#screenshots)
+- [🐳 Kesintisiz çalışma: Docker](#always-running-docker)
+- [⚙️ Nasıl çalışır?](#how-it-works)
+  - [Eşleştirme](#matching)
+  - [Çok kaynaklı birleştirme senkronizasyonu](#multi-source-merge-sync)
+  - [Yetkili gruplar](#authoritative-groups)
+  - [Çift yönlü (N yönlü) senkronizasyon](#bidirectional-n-way-sync)
+- [📦 Çalma listesi meta veri yedeklemeleri](#playlist-metadata-backups)
+- [💿 Yerel indirme aynası (Jellyfin)](#local-download-mirror-jellyfin)
+- [🔌 Her servisi bağlama](#connecting-each-service)
+  - [Kimlik bilgilerinin yenilenmesi](#credential-renewal)
+  - [Spotify](#spotify)
+  - [TIDAL](#tidal)
+  - [Qobuz](#qobuz)
+  - [Deezer](#deezer)
+  - [Amazon Music](#amazon-music)
+  - [Apple Music](#apple-music)
+  - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
+  - [Last.fm](#lastfm)
+- [🖥️ Arayüzsüz CLI (Headless)](#headless-cli)
+- [🛡️ Güvenlik önlemleri](#safety-rails)
+- [🗃️ Önbellek ve şarkı arşivi](#caching-song-archive)
+  - [Eşlemeleri çözümle](#resolve-mappings)
+- [🧱 Proje düzeni](#project-layout)
+- [🩺 Sorun giderme](#troubleshooting)
+- [📄 Lisans](#license)
+
+- [SongMirror projesini destekle](#support)
+
+</details>
 
 <a id="quick-start"></a>
 
@@ -77,62 +103,43 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 Kullanıcı adı ve parola istemek için **Ayarlar → Genel → SAHİP OTURUMU** bölümünden **Oturum açmayı ayarla** seçeneğini seçin. Sunucu başlangıç günlüğündeki tek kullanımlık kodu girin.
 
+<a id="guided-install"></a>
+
+### Rehberli kurulum
+
+| | |
+| --- | --- |
+| [Render](https://render.com/deploy?repo=https://github.com/ahnafnafee/songmirror) | Kalıcı diskli yönetilen barındırma. Kurulum sihirbazında bir sahip kullanıcı adı ve parola belirle. Render, sunucu ve depolama için ücret alır. |
+| [CapRover](https://songmirror.ahnafnafee.dev/deploy/caprover.yml) | One-Click Apps → Template bölümünde şablonu yapıştır, sahip bilgilerini gir ve dağıtımdan sonra HTTPS’yi aç. |
+| [Portainer](https://songmirror.ahnafnafee.dev/deploy/portainer.yml) | Docker Standalone’da bir yığın ekle, dosyayı yükle ve ortam değişkenlerinde sahip bilgileriyle sunucu adresini belirle. |
+
 <a id="app-language"></a>
 
 ### Uygulama dili
 
 SongMirror İngilizce, Arapça, Türkçe, İspanyolca, Basitleştirilmiş Çince, Fransızca, Portekizce, Almanca, Japonca, Hintçe, Bengalce, Endonezce, Korece, İtalyanca ve Vietnamca'yı destekler. İlk açılışta, bölgesel varyantlar da dahil olmak üzere tarayıcınızın dil tercihleri sırayla değerlendirilir ve desteklenen ilk dil kullanılır. Hiçbiri desteklenmiyorsa İngilizce kullanılır. Dili **Ayarlar → Genel → Dil** bölümünden değiştirebilirsiniz; seçiminiz bu tarayıcıda saklanır ve sayfa yeniden yüklendiğinde korunur. Tarayıcı tercihlerini yeniden izlemek için **Otomatik (tarayıcı)** seçeneğini seçin. Arapça arayüz sağdan sola yazılır. Çalma listesi, sanatçı ve sağlayıcı adları, kimlik bilgileri ve tanılama günlükleri özgün değerlerini korur.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 > [!NOTE]
 > **Web uygulaması + arayüzsüz CLI, tek bir motor.** Servisleri bağlamak, senkronizasyon kurmak ve çalma listelerini aktarmak için tarayıcı arayüzünü kullanın veya doğrudan `.env` + cron yaklaşımıyla çalıştırın. Her ikisi de aynı senkronizasyon çekirdeğini kullanır.
 
-<details>
-<summary><kbd>İçindekiler</kbd></summary>
+<a id="supported-services"></a>
 
-#### İçindekiler
+## Desteklenen hizmetler
 
-- [🚀 Hızlı Başlangıç](#quick-start)
-  - [Uygulama dili](#app-language)
-- [✨ Özellikler](#features)
-- [📸 Ekran görüntüleri](#screenshots)
-- [🐳 Kesintisiz çalışma: Docker](#always-running-docker)
-- [⚙️ Nasıl çalışır?](#how-it-works)
-  - [Eşleştirme](#matching)
-  - [Çok kaynaklı birleştirme senkronizasyonu](#multi-source-merge-sync)
-  - [Yetkili gruplar](#authoritative-groups)
-  - [Çift yönlü (N yönlü) senkronizasyon](#bidirectional-n-way-sync)
-- [📦 Çalma listesi meta veri yedeklemeleri](#playlist-metadata-backups)
-- [💿 Yerel indirme aynası (Jellyfin)](#local-download-mirror-jellyfin)
-- [🔌 Her servisi bağlama](#connecting-each-service)
-  - [Kimlik bilgilerinin yenilenmesi](#credential-renewal)
-  - [Spotify](#spotify)
-  - [TIDAL](#tidal)
-  - [Qobuz](#qobuz)
-  - [Deezer](#deezer)
-  - [Amazon Music](#amazon-music)
-  - [Apple Music](#apple-music)
-  - [YouTube Music](#youtube-music)
-  - [SoundCloud](#soundcloud)
-  - [Last.fm](#lastfm)
-- [🖥️ Arayüzsüz CLI (Headless)](#headless-cli)
-- [🛡️ Güvenlik önlemleri](#safety-rails)
-- [🗃️ Önbellek ve şarkı arşivi](#caching-song-archive)
-  - [Eşlemeleri çözümle](#resolve-mappings)
-- [🧱 Proje düzeni](#project-layout)
-- [🩺 Sorun giderme](#troubleshooting)
-- [📄 Lisans](#license)
-
-####
-
-<br/>
-
-</details>
+| Hizmet | Eşitleme ve aktarım desteği |
+| --- | --- |
+| [Spotify](#spotify) | Çalma listeleri ve favoriler |
+| [TIDAL](#tidal) | Çalma listeleri ve favoriler |
+| [Qobuz](#qobuz) | Çalma listeleri ve favoriler |
+| [Deezer](#deezer) | Çalma listeleri ve favoriler |
+| [Amazon Music](#amazon-music) | Çalma listeleri ve favoriler |
+| [Apple Music](#apple-music) | Çalma listeleri ve favoriler |
+| [YouTube Music](#youtube-music) | Çalma listeleri ve favoriler |
+| [SoundCloud](#soundcloud) | Çalma listeleri |
+| [Last.fm](#lastfm) | Sevilen ve en çok dinlenen parçalar ile dinleme geçmişi. Sevilen parçaları düzenlemek için yetki ver. |
+| [ListenBrainz](../listenbrainz-subsonic.md) | Çalma listeleri ve sevilen kayıtlar. Kullanıcı belirteci yazma erişimi sağlar. |
+| [Navidrome / Subsonic](../listenbrainz-subsonic.md) | Çalma listeleri ve favoriler |
+| [Jellyfin](../jellyfin-compatibility.md) | Sunucu çalma listeleri. Eşitlemek veya aktarmak için kullanıcı kimliği gir. |
 
 <a id="features"></a>
 
@@ -164,53 +171,33 @@ SongMirror; manuel olarak tek tek şarkı eklemeye, kopyalamaya ya da kitaplığ
 > [!IMPORTANT]
 > Web bağlantı noktasını güvenilir bir ağda tutun. Çalma listelerini, bağlı hesapları ve eşitleme ayarlarını korumak için [sahip oturumunu](../profile-auth.md) etkinleştirin.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="screenshots"></a>
 
-## 📸 Ekran görüntüleri
+## Ekran görüntüleri
 
-<div align="center">
+<table>
+  <tr>
+    <td width="50%" valign="top"><strong>Genel bakış</strong><br><a href="../../.github/assets/dashboard.png"><img src="../../.github/assets/dashboard.png" alt="Genel bakış" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Hesaplar</strong><br><a href="../../.github/assets/accounts.png"><img src="../../.github/assets/accounts.png" alt="Hesaplar" width="680"></a></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><strong>Senkronizasyon</strong><br><a href="../../.github/assets/sync-wizard.png"><img src="../../.github/assets/sync-wizard.png" alt="Senkronizasyon" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Çalma listeleri</strong><br><a href="../../.github/assets/playlists.png"><img src="../../.github/assets/playlists.png" alt="Çalma listeleri" width="680"></a></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><strong>Aktarımlar</strong><br><a href="../../.github/assets/transfers.png"><img src="../../.github/assets/transfers.png" alt="Aktarımlar" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Aktarım geçmişi</strong><br><a href="../../.github/assets/transfer-history.png"><img src="../../.github/assets/transfer-history.png" alt="Aktarım geçmişi" width="680"></a></td>
+  </tr>
+</table>
 
-<a href="../../.github/assets/songmirror-demo.mp4"><img src="../../.github/assets/songmirror-demo.gif" alt="SongMirror demo — logo tanıtımı, gösterge paneli, tek yönlü ve çift yönlü senkronizasyon kurulumu, canlı çalma listesi aktarımları ve yedi müzik servisinde ISRC ile kesin eşleştirme" width="88%"></a>
+<details>
+<summary>Demoyu izle</summary>
 
-<sup>▶ <a href="../../.github/assets/songmirror-demo.mp4">1080p versiyonunu izleyin</a></sup>
+<a href="../../.github/assets/songmirror-demo.mp4"><img src="../../.github/assets/songmirror-demo.gif" alt="Demoyu izle" width="100%"></a>
 
-**Her kitaplık için bir kontrol paneli — senkronizasyon durumu, işler, canlı etkinlik ve servis durumu**
+[1080p izle](../../.github/assets/songmirror-demo.mp4)
 
-<img src="../../.github/assets/dashboard.png" alt="SongMirror Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music için senkronizasyon durumunu, yapılandırılmış işleri, canlı etkinliği ve sağlığı gösteren kontrol paneli, YouTube Music ve Jellyfin" width="82%">
-
-**Kısa bir sihirbazla istediğiniz sayıda senkronizasyonu (tek yönlü, çok kaynaklı birleştirme, yetkili grup veya çift yönlü) ayarlayın**
-
-<img src="../../.github/assets/sync-wizard.png" alt="SongMirror kurulum sihirbazı, Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music ve YouTube Music arasında çift yönlü senkronizasyon için hizmetleri seçiyor" width="82%">
-
-**Tarayıcınızdaki her servisi bağlayın; tek tıklamayla OAuth, yönlendirmeli belirteç yapıştırma veya API anahtarı**
-
-<img src="../../.github/assets/accounts.png" alt="Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, YouTube Music ve Jellyfin'yi bağlamak için Hesaplar sayfası" width="82%">
-
-**Servisler genelinde çalma listelerine göz atın ve eşleştirin**
-
-<img src="../../.github/assets/playlists.png" alt="Kapak resmi ve parça sayılarıyla birlikte bağlı hizmetlerdeki çalma listelerine göz atma" width="82%">
-
-**Aynı hizmettekiler dahil hesaplar arasında liste kopyalayın**
-
-<img src="../../.github/assets/transfers.png" alt="Aynı hizmettekiler dahil hesaplar arasında liste kopyalayın" width="82%">
-
-**Filtreler ve denetim iziyle her aktarım denemesini inceleyin**
-
-<img src="../../.github/assets/transfer-history.png" alt="Filtreler ve denetim iziyle her aktarım denemesini inceleyin" width="82%">
-
-</div>
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
+</details>
 
 <a id="always-running-docker"></a>
 
@@ -247,12 +234,6 @@ SongMirror daha sonra `https://music.example.com/oauth/spotify/callback` adresin
 | **Kalıcılık** | `./data` kimlik bilgilerini, belirteçleri, önbellekleri, şarkı arşivini ve planlanmış çalma listesi anlık görüntülerini `playlist_backups/` altında tutar. Yeniden yapılandırmalarda kurulumunuzu ve arşivlerinizi korumak için yedekleyin. |
 | **İndirmeler** | `DOWNLOAD_DIR`'yi (`.env`'de veya kabuğunuzda) ana müzik dizininize (örneğin `F:\Torrent\Music`) ayarlayın; compose bağlama onu `/music`'ye bağlar. Docker'den `JELLYFIN_URL`'yi `http://host.docker.internal:8096`'ye ayarlayın. |
 | **Süresi dolmuş oturumlar** | Yenilenebilir oturumlar bir sonraki planlı veya manuel geçişte kurtarılır. TIDAL web oynatıcı oturumları, yakalanan yenileme belirtecinden yenilenir; Qobuz ve Apple Music jetonları reddedildiklerinde yine de yeniden yapıştırılmalıdır. Yeniden başlatmaya gerek yoktur. |
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="how-it-works"></a>
 
@@ -341,12 +322,6 @@ TIDAL'nin oturum açtığı web oynatıcısı izni, `r_usr` ve `w_usr` taşıdı
 
 Bu entegrasyonlardan bazıları sağlayıcıların birinci taraf web arayüzlerini kullanır ve önceden bildirimde bulunulmadan değiştirilebilir; [fizibilite değerlendirmesi](../design/2026-09-01-liked-tracks-sync-feasibility.md), her sağlayıcı için API ve dağıtım kısıtlamalarını kaydeder.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="playlist-metadata-backups"></a>
 
 ## 📦 Çalma listesi meta veri yedeklemeleri
@@ -371,12 +346,6 @@ Manuel dışa aktarmalar tarayıcı tarafından kullanıcı arayüzünü çalı�
 Yerleşik seçiciyi açmak için bir klasör alanına veya **Gözat…** öğesine tıklayın. Gezinmek için **Konumlar**, tıklanabilir içerik kırıntıları, **Geri**, **İleri** ve **Yukarı bir klasör** kullanın. Seçmek için bir klasörü tıklayın; açmak için çift tıklayın, Enter tuşuna basın veya okunu kullanın. Arama geçerli klasörü filtreler. **Bir klasör yolu girin** tam adresi doğrudan kabul eder. **Klasörü seç** taslağı günceller; uygulamak için ayarları veya programı kaydedin. İptal taslağı değiştirmeden bırakır. Hiçbir masaüstü yardımcısı veya ek işlem gerekmez.
 
 **Yeni klasör**, o anda açık olan konumda adlandırılmış bir alt klasör oluşturur ve ardından onu açar. Mevcut öğelerin üzerine asla yazılmaz. Ad girişinin iptal edilmesi hiçbir şey yaratmaz; Oluşturma sonrasında seçiciyi iptal etmek, yeni klasörü diskte bırakır. Kaydedilen yedekleme veya indirme konumunuz yalnızca seçip kaydettikten sonra değişir. Docker'de seçici hangi yolların paylaşıldığını açıklar ve mümkün olduğunda hem kapsayıcı yolunu hem de yapılandırılmış bilgisayar yolunu gösterir.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="local-download-mirror-jellyfin"></a>
 
@@ -410,12 +379,6 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - **Ses kalitesi** — kaynak YouTube'dur, yani YT Music **Premium** çerezi olmadan tavan ~128–160 kbps'dir. `LOCAL_MIRROR_FORMAT=opus`, YouTube'un yerel akışını mp3 yeniden kodlaması olmadan tutar; bir Premium çerez (`LOCAL_MIRROR_COOKIE_FILE`), 256 kbps AAC'nin kilidini açar. `flac` seçeneğinin seçilmesi çıkış kabını değiştirir ancak kayıplı bir kaynağı kayıpsız sese dönüştüremez. Gerçek kayıpsız ses için `LOCAL_LIBRARY_DIR` kullanın.
 
 SongMirror, bir akış kataloğundan FLAC çıkarmayı otomatikleştirmez. Yeni her ses kaynağı önce `docs/monochrome-flac-assessment.md` belgesindeki koşulları karşılamalıdır: sağlayıcının yayımladığı, sürümlenmiş bir indirme veya dışa aktarma uç noktası, kullanıcıya bağlı yetkilendirme, kalıcı kopya için açık haklar, bölge, son kullanma ve çevrimdışı kullanım kurallarının belgelenmiş olması ve DRM ile erişim denetiminin aşılmaması. Yerel aynayı yalnızca size ait olan veya kopyalamaya yetkili olduğunuz içerik için kullanın.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="connecting-each-service"></a>
 
@@ -521,12 +484,6 @@ OAuth yenileme belirteci dayanıklı olan ve yeniden başlatmalarda korunan resm
 
 Google hesapları arasında özel listeleri taşımak için iki hesabı da bağlayın; herkese açık bir liste için yalnızca hedef hesabı bağlayıp bağlantıyı yapıştırabilirsiniz. Tarayıcı modu normal YouTube video listelerini içerir ve tüm sayfaları okur. Uzun kopyalamalarda **Kotasız mod** kullanın; Data API bağlantısının günlük kotası devam eder. YouTube kanal isterse hedef hesapta kanal kurulumunu tamamlayıp yeniden deneyin. [Hesap aktarım rehberini](../youtube-account-transfers.md) izleyin.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="soundcloud"></a>
 
 ### SoundCloud
@@ -571,12 +528,6 @@ Buna güvenmeden önce bilinmesi gereken üç sınır:
 
 Paylaşılan gizli anahtar olmadan, belirttiğiniz profilin Loved Tracks ve Top Tracks koleksiyonları herkese açık olmalıdır.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="headless-cli"></a>
 
 ## 🖥️ Arayüzsüz CLI (Headless)
@@ -602,12 +553,6 @@ uv run main.py --execute --sync-mode group --sync-source spotify \
 
 Anahtar env değişkenleri (bkz. `.env.example`): kullandığınız sağlayıcılara ait kimlik bilgileri, `PLAYLISTS`, `SYNC_INTERVAL`, `MAX_ADDS` / `MAX_REMOVALS`, `DOWNLOAD_DIR`, `SYNC_MODE`, `SYNC_SOURCE`, `SYNC_AUTHORITIES` ve `PROVIDERS`.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="safety-rails"></a>
 
 ## 🛡️ Güvenlik önlemleri
@@ -623,12 +568,6 @@ Kaldırma işlemleri yıkıcıdır, bu nedenle korunurlar:
 - **Net kayıp koruması** — söz konusu serviste eşleşmesi olmayan, kaynak parçaya benzeyen hedef taraftaki parça silinmez, bekletilir.
 - Herhangi bir sağlayıcı kimlik doğrulama hatası, sağlayıcının geçişini anında iptal eder; süresi dolmuş belirteçlerde kısmi silme işlemi yapılmaz.
 - Bir birleştirme işi, hedefinden silmeden önce her bileşen kaynağının okunmasını bitirmelidir; salt ekleme davranışına geçen herhangi bir kısmi/başarısız kaynak anlık görüntüsü kuvveti.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="caching-song-archive"></a>
 
@@ -659,12 +598,6 @@ Giderilen bir eksiklik daha sonra çözümlendiğinde, bunun eklenmesi eski şar
 
 Senkronizasyon çalışırken önbellek bellekte tutulduğundan ve tamamlandığında üzerine yazılacağından, bu sırada yapılan düzenlemeler açıklayıcı bir mesajla reddedilir.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="project-layout"></a>
 
 ## 🧱 Proje düzeni
@@ -681,12 +614,6 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 
 **Başka bir servis ekleme**: `MirrorTarget` alt sınıfı oluşturun, ~8 yöntemi uygulayın, oluşturucusunu `engine/targets`' `_REGISTRY`'ye ve sınıfını `_CLASSES`'ye ekleyin ve `services/accounts` altına eşleşen bir `Connector` ekleyin. Tüm uzlaştırma mantığı (fark, sıralama, Güvenlik önlemleri, günlük kaydı, anlık görüntü atlama) otomatik olarak devralınır.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="troubleshooting"></a>
 
 ## 🩺 Sorun giderme
@@ -702,12 +629,6 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 - **Spotify raporların Süresi Doldu** — `open.spotify.com` adresinden tekrar oturum açın ve Hesaplar'a yeni bir `sp_dc` çerezi yapıştırın.
 - **Bir çalma listesi senkronize edilmiyor** — listenin senkronizasyon kapsamında olduğunu ve kaynakta mevcut olduğunu doğrulayın (hedefler gerçek bir geçişte otomatik olarak oluşturulur).
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="license"></a>
 
 ## 📄 Lisans
@@ -715,29 +636,29 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 Telif Hakkı © 2026 [Ahnaf An Nafee](https://github.com/ahnafnafee).<br/>
 Bu proje [MIT](../../LICENSE) lisanslıdır.
 
+<a id="support"></a>
+
+## SongMirror projesini destekle
+
+Desteğin, müzik hizmetlerinde bakım ve test çalışmalarını finanse etmeye yardımcı olur.
+
+[![Ko-fi’de destek ol][kofi-badge]][kofi-link]
+[![GitHub’da sponsor ol][sponsor-badge]][sponsor-link]
+
+[GitHub’da yıldız ver][stars-link] · [Başa dön](#readme-top)
+
 <!-- LINK GROUP -->
 
-[back-to-top]: https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square
-[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/songmirror/ci.yml?branch=main&label=CI&labelColor=black&logo=githubactions&logoColor=white&style=flat-square
+[docker-start-badge]: https://img.shields.io/badge/Docker-CE4512?logo=docker&logoColor=white&style=for-the-badge
+[registry-badge]: https://img.shields.io/badge/GHCR-27221F?logo=github&logoColor=white&style=for-the-badge
+[registry-link]: https://github.com/ahnafnafee/songmirror/pkgs/container/songmirror
+[kofi-badge]: https://img.shields.io/badge/Ko--fi-8F3B25?logo=ko-fi&logoColor=white&style=for-the-badge
+[kofi-link]: https://ko-fi.com/ahnafnafee
+[sponsor-badge]: https://img.shields.io/badge/GitHub_Sponsors-27221F?logo=githubsponsors&logoColor=white&style=for-the-badge
+[sponsor-link]: https://github.com/sponsors/ahnafnafee
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/songmirror/ci.yml?branch=main&label=CI&style=flat-square
 [ci-link]: https://github.com/ahnafnafee/songmirror/actions/workflows/ci.yml
-[license-shield]: https://img.shields.io/github/license/ahnafnafee/songmirror?color=F2601A&labelColor=black&style=flat-square
-[license-link]: https://github.com/ahnafnafee/songmirror/blob/main/LICENSE
-[python-shield]: https://img.shields.io/badge/python-3.13%2B-F2601A?labelColor=black&logo=python&logoColor=white&style=flat-square
-[python-link]: https://www.python.org/
-[docker-shield]: https://img.shields.io/badge/docker-ready-F2601A?labelColor=black&logo=docker&logoColor=white&style=flat-square
-[docker-link]: https://github.com/ahnafnafee/songmirror/pkgs/container/songmirror
-[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
+[license-shield]: https://img.shields.io/badge/license-MIT-CE4512?style=flat-square
+[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/songmirror?style=flat-square
 [stars-link]: https://github.com/ahnafnafee/songmirror/stargazers
-[forks-shield]: https://img.shields.io/github/forks/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[forks-link]: https://github.com/ahnafnafee/songmirror/network/members
-[issues-shield]: https://img.shields.io/github/issues/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[issues-link]: https://github.com/ahnafnafee/songmirror/issues
-[last-commit-shield]: https://img.shields.io/github/last-commit/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[last-commit-link]: https://github.com/ahnafnafee/songmirror/commits/main
-[github-issues-link]: https://github.com/ahnafnafee/songmirror/issues
-[share-x-shield]: https://img.shields.io/badge/-share%20on%20x-black?labelColor=black&logo=x&logoColor=white&style=flat-square
-[share-x-link]: https://x.com/intent/tweet?text=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20seven%20music%20services&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
-[share-reddit-shield]: https://img.shields.io/badge/-share%20on%20reddit-black?labelColor=black&logo=reddit&logoColor=white&style=flat-square
-[share-reddit-link]: https://www.reddit.com/submit?title=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20seven%20music%20services&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
-[share-linkedin-shield]: https://img.shields.io/badge/-share%20on%20linkedin-black?labelColor=black&logo=linkedin&logoColor=white&style=flat-square
-[share-linkedin-link]: https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
+[website-link]: https://songmirror.ahnafnafee.dev/

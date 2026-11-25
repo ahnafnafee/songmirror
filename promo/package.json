@@ -4,11 +4,12 @@
   "private": true,
   "description": "Remotion promo video for SongMirror",
   "scripts": {
-    "start": "remotion studio",
+    "start": "pnpm run prepare:film && remotion studio",
+    "prepare:film": "node scripts/capture-product.cjs && node scripts/build-soundtrack.mjs",
     "build:assets": "node scripts/build-assets.mjs",
-    "render:mp4": "remotion render SongMirrorPromo out/songmirror-demo.mp4 --codec=h264 --crf=18",
-    "render:lite": "remotion render SongMirrorPromoLite out/songmirror-lite.mp4 --codec=h264 --crf=16",
-    "still": "remotion still SongMirrorPromo out/still.png",
+    "render:mp4": "pnpm run prepare:film && remotion render SongMirrorPromo out/songmirror-demo.mp4 --codec=h264 --crf=18",
+    "render:lite": "pnpm run prepare:film && remotion render SongMirrorPromoLite out/songmirror-lite.mp4 --codec=h264 --crf=16",
+    "still": "pnpm run prepare:film && remotion still SongMirrorPromo out/still.png",
     "upgrade": "remotion upgrade"
   },
   "dependencies": {

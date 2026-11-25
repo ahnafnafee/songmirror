@@ -1,43 +1,69 @@
 <div align="center"><a name="readme-top"></a>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../../.github/assets/lockup-dark.png">
-  <img src="../../.github/assets/lockup-light.png" alt="SongMirror" width="440">
-</picture>
+<img src="../../.github/assets/mark.png" alt="" height="72">
 
 # SongMirror
+
+**अपनी प्लेलिस्ट सिंक रखें।**<br>
+अपने सर्वर पर शेड्यूल के अनुसार सिंक करें, किसी प्लेलिस्ट को एक बार कॉपी करें या Jellyfin के लिए संगीत की स्थानीय प्रति रखें। मुफ़्त और ओपन सोर्स।
+
+[![Docker से चलाएँ][docker-start-badge]](#quick-start)
+[![GHCR][registry-badge]][registry-link]
+[![Ko-fi पर समर्थन करें][kofi-badge]][kofi-link]
+
+[निर्देशित इंस्टॉलेशन](#guided-install) · [समर्थित सेवाएँ](#supported-services) · [विशेषताएँ](#features) · [स्क्रीनशॉट](#screenshots) · [SongMirror का समर्थन करें](#support) · [वेबसाइट][website-link]
 
 <!-- LANGUAGE NAVIGATION -->
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, और YouTube Music, SoundCloud के लिए स्व-होस्टेड, हमेशा ऑन प्लेलिस्ट सिंक - साथ ही एक स्थानीय ऑडियो मिरर Jellyfin.<br/> के लिए तैयार
-Soundiiz, TuneMyMusic, और FreeYourMusic का एक मुफ़्त, ओपन-सोर्स, स्व-होस्ट किया गया विकल्प, जिसे आप अपनाते हैं और चलाते हैं।
-
-**वन-वे, मल्टी-सोर्स मर्ज, आधिकारिक-समूह, या पूर्ण द्विदिश (एन-वे) सिंक · एक-बार प्लेलिस्ट स्थानांतरण · ISRC द्वारा सटीक मिलान · सभी आपके ब्राउज़र से**
-
-[त्वरित शुरुआत](#quick-start) · [विशेषताएँ](#features) · [स्क्रीनशॉट](#screenshots) · [हमेशा चालू: Docker](#always-running-docker) · [यह कैसे काम करता है](#how-it-works) · [समस्या की रिपोर्ट करें][github-issues-link] · [नई सुविधा सुझाएँ][github-issues-link]
-
-<!-- SHIELD GROUP -->
+<a href="#screenshots"><img src="../../.github/assets/songmirror-preview.webp" alt="SongMirror — डैशबोर्ड · प्लेलिस्ट" width="100%"></a>
 
 [![CI][ci-shield]][ci-link]
-[![License][license-shield]][license-link]
-[![Python][python-shield]][python-link]
-[![Docker][docker-shield]][docker-link]<br/>
-[![Stars][stars-shield]][stars-link]
-[![Forks][forks-shield]][forks-link]
-[![Issues][issues-shield]][issues-link]
-[![Last commit][last-commit-shield]][last-commit-link]
-
-**इस प्रोजेक्ट को साझा करें**
-
-[![][share-x-shield]][share-x-link]
-[![][share-reddit-shield]][share-reddit-link]
-[![][share-linkedin-shield]][share-linkedin-link]
-
-<sup>इसे एक बार सेट करें - आपके द्वारा क्यूरेट की गई प्रत्येक प्लेलिस्ट, दिनांक-जोड़े गए क्रम में, प्रत्येक सेवा में प्रतिबिंबित रहती है।</sup>
+[![MIT][license-shield]](../../LICENSE)
+[![GitHub पर स्टार दें][stars-shield]][stars-link]
 
 </div>
+
+<details>
+<summary><kbd>सामग्री तालिका</kbd></summary>
+
+- [🚀 त्वरित शुरुआत](#quick-start)
+  - [निर्देशित इंस्टॉलेशन](#guided-install)
+  - [ऐप भाषा](#app-language)
+- [समर्थित सेवाएँ](#supported-services)
+- [✨ विशेषताएँ](#features)
+- [📸 स्क्रीनशॉट](#screenshots)
+- [🐳 हमेशा चालू: Docker](#always-running-docker)
+- [⚙️ यह कैसे काम करता है](#how-it-works)
+  - [मिलान](#matching)
+  - [मल्टी-सोर्स मर्ज सिंक](#multi-source-merge-sync)
+  - [आधिकारिक समूह](#authoritative-groups)
+  - [द्विदिश (एन-वे) सिंक](#bidirectional-n-way-sync)
+- [📦 प्लेलिस्ट मेटाडेटा बैकअप](#playlist-metadata-backups)
+- [💿स्थानीय डाउनलोड मिरर (Jellyfin)](#local-download-mirror-jellyfin)
+- [🔌प्रत्येक सेवा को जोड़ना](#connecting-each-service)
+  - [क्रेडेंशियल नवीनीकरण](#credential-renewal)
+  - [Spotify](#spotify)
+  - [TIDAL](#tidal)
+  - [Qobuz](#qobuz)
+  - [Deezer](#deezer)
+  - [Amazon Music](#amazon-music)
+  - [Apple Music](#apple-music)
+  - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
+  - [Last.fm](#lastfm)
+- [🖥️ ग्राफिकल इंटरफ़ेस सीएलआई के बिना](#headless-cli)
+- [🛡️ सुरक्षा उपाय](#safety-rails)
+- [🗃️ कैशिंग और गीत संग्रह](#caching-song-archive)
+  - [मैपिंग का समाधान करें](#resolve-mappings)
+- [🧱प्रोजेक्ट लेआउट](#project-layout)
+- [🩺समस्या निवारण](#troubleshooting)
+- [📄लाइसेंस](#license)
+
+- [SongMirror का समर्थन करें](#support)
+
+</details>
 
 <a id="quick-start"></a>
 
@@ -77,62 +103,43 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 उपयोगकर्ता नाम और पासवर्ड ज़रूरी करने के लिए **सेटिंग्स → सामान्य → मालिक का साइन-इन** खोलें और **साइन-इन सेट अप करें** चुनें। सर्वर के स्टार्टअप लॉग से एक बार इस्तेमाल होने वाला सेटअप कोड लें।
 
+<a id="guided-install"></a>
+
+### निर्देशित इंस्टॉलेशन
+
+| | |
+| --- | --- |
+| [Render](https://render.com/deploy?repo=https://github.com/ahnafnafee/songmirror) | स्थायी डिस्क वाली प्रबंधित होस्टिंग। इंस्टॉलर में मालिक का यूज़रनेम और पासवर्ड सेट करें। Render सर्वर और स्टोरेज का शुल्क लेता है। |
+| [CapRover](https://songmirror.ahnafnafee.dev/deploy/caprover.yml) | One-Click Apps → Template में टेम्पलेट चिपकाएँ, मालिक की लॉगिन जानकारी सेट करें और डिप्लॉय करने के बाद HTTPS चालू करें। |
+| [Portainer](https://songmirror.ahnafnafee.dev/deploy/portainer.yml) | Docker Standalone में स्टैक जोड़ें, फ़ाइल अपलोड करें और एनवायरनमेंट वेरिएबल में मालिक की लॉगिन जानकारी तथा होस्ट का पता डालें। |
+
 <a id="app-language"></a>
 
 ### ऐप भाषा
 
 SongMirror अंग्रेजी, अरबी, तुर्की, स्पेनिश, सरलीकृत चीनी, फ्रेंच, पुर्तगाली, जर्मन, जापानी, हिंदी, बंगाली, इंडोनेशियाई, कोरियाई, इतालवी और वियतनामी का समर्थन करता है। पहली बार खुलने पर ब्राउज़र की भाषा प्राथमिकताएँ क्रम से जाँची जाती हैं, जिनमें क्षेत्रीय रूप भी शामिल हैं, और पहली समर्थित भाषा चुनी जाती है। कोई भाषा समर्थित न होने पर अंग्रेज़ी इस्तेमाल होती है। **सेटिंग्स → सामान्य → भाषा** में भाषा बदलें। चुनाव इसी ब्राउज़र में सहेजा जाता है और पेज दोबारा लोड करने पर भी बना रहता है। ब्राउज़र की प्राथमिकताएँ फिर से अपनाने के लिए **स्वचालित (ब्राउज़र)** चुनें। अरबी इंटरफ़ेस दाएँ से बाएँ दिखाई देता है। प्लेलिस्ट, कलाकार और सेवा के नाम, क्रेडेंशियल तथा निदान लॉग अपने मूल रूप में रहते हैं।
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 > [!NOTE]
 > वेब ऐप + बिना ग्राफिकल इंटरफ़ेस सीएलआई, एक इंजन। सेवाओं को कनेक्ट करने, सिंक बनाने और प्लेलिस्ट स्थानांतरित करने के लिए ब्राउज़र यूआई पर क्लिक करें - या इसे `.env` + क्रॉन शैली में चलाएं। दोनों समान सिंक कोर चलाते हैं।
 
-<details>
-<summary><kbd>सामग्री तालिका</kbd></summary>
+<a id="supported-services"></a>
 
-#### टीओसी
+## समर्थित सेवाएँ
 
-- [🚀 त्वरित शुरुआत](#quick-start)
-  - [ऐप भाषा](#app-language)
-- [✨ विशेषताएँ](#features)
-- [📸 स्क्रीनशॉट](#screenshots)
-- [🐳 हमेशा चालू: Docker](#always-running-docker)
-- [⚙️ यह कैसे काम करता है](#how-it-works)
-  - [मिलान](#matching)
-  - [मल्टी-सोर्स मर्ज सिंक](#multi-source-merge-sync)
-  - [आधिकारिक समूह](#authoritative-groups)
-  - [द्विदिश (एन-वे) सिंक](#bidirectional-n-way-sync)
-- [📦 प्लेलिस्ट मेटाडेटा बैकअप](#playlist-metadata-backups)
-- [💿स्थानीय डाउनलोड मिरर (Jellyfin)](#local-download-mirror-jellyfin)
-- [🔌प्रत्येक सेवा को जोड़ना](#connecting-each-service)
-  - [क्रेडेंशियल नवीनीकरण](#credential-renewal)
-  - [Spotify](#spotify)
-  - [TIDAL](#tidal)
-  - [Qobuz](#qobuz)
-  - [Deezer](#deezer)
-  - [Amazon Music](#amazon-music)
-  - [Apple Music](#apple-music)
-  - [YouTube Music](#youtube-music)
-  - [SoundCloud](#soundcloud)
-  - [Last.fm](#lastfm)
-- [🖥️ ग्राफिकल इंटरफ़ेस सीएलआई के बिना](#headless-cli)
-- [🛡️ सुरक्षा उपाय](#safety-rails)
-- [🗃️ कैशिंग और गीत संग्रह](#caching-song-archive)
-  - [मैपिंग का समाधान करें](#resolve-mappings)
-- [🧱प्रोजेक्ट लेआउट](#project-layout)
-- [🩺समस्या निवारण](#troubleshooting)
-- [📄लाइसेंस](#license)
-
-####
-
-<br/>
-
-</details>
+| सेवा | सिंक और ट्रांसफ़र का समर्थन |
+| --- | --- |
+| [Spotify](#spotify) | प्लेलिस्ट और पसंदीदा ट्रैक |
+| [TIDAL](#tidal) | प्लेलिस्ट और पसंदीदा ट्रैक |
+| [Qobuz](#qobuz) | प्लेलिस्ट और पसंदीदा ट्रैक |
+| [Deezer](#deezer) | प्लेलिस्ट और पसंदीदा ट्रैक |
+| [Amazon Music](#amazon-music) | प्लेलिस्ट और पसंदीदा ट्रैक |
+| [Apple Music](#apple-music) | प्लेलिस्ट और पसंदीदा ट्रैक |
+| [YouTube Music](#youtube-music) | प्लेलिस्ट और पसंदीदा ट्रैक |
+| [SoundCloud](#soundcloud) | प्लेलिस्ट |
+| [Last.fm](#lastfm) | पसंदीदा और सबसे ज़्यादा सुने गए ट्रैक तथा सुनने का इतिहास। पसंदीदा ट्रैक बदलने के लिए अनुमति दें। |
+| [ListenBrainz](../listenbrainz-subsonic.md) | प्लेलिस्ट और पसंदीदा रिकॉर्डिंग। बदलाव करने के लिए यूज़र टोकन चाहिए। |
+| [Navidrome / Subsonic](../listenbrainz-subsonic.md) | प्लेलिस्ट और पसंदीदा ट्रैक |
+| [Jellyfin](../jellyfin-compatibility.md) | सर्वर की प्लेलिस्ट। सिंक या ट्रांसफ़र के लिए यूज़र आईडी दें। |
 
 <a id="features"></a>
 
@@ -164,53 +171,33 @@ SongMirror आपकी प्लेलिस्ट को मैन्युअ
 > [!IMPORTANT]
 > वेब पोर्ट को भरोसेमंद नेटवर्क पर रखें। प्लेलिस्ट, जुड़े खातों और सिंक सेटिंग की सुरक्षा के लिए [मालिक का साइन-इन](../profile-auth.md) चालू करें।
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="screenshots"></a>
 
-## 📸 स्क्रीनशॉट
+## स्क्रीनशॉट
 
-<div align="center">
+<table>
+  <tr>
+    <td width="50%" valign="top"><strong>डैशबोर्ड</strong><br><a href="../../.github/assets/dashboard.png"><img src="../../.github/assets/dashboard.png" alt="डैशबोर्ड" width="680"></a></td>
+    <td width="50%" valign="top"><strong>खाते</strong><br><a href="../../.github/assets/accounts.png"><img src="../../.github/assets/accounts.png" alt="खाते" width="680"></a></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><strong>सिंक</strong><br><a href="../../.github/assets/sync-wizard.png"><img src="../../.github/assets/sync-wizard.png" alt="सिंक" width="680"></a></td>
+    <td width="50%" valign="top"><strong>प्लेलिस्ट</strong><br><a href="../../.github/assets/playlists.png"><img src="../../.github/assets/playlists.png" alt="प्लेलिस्ट" width="680"></a></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><strong>स्थानांतरण</strong><br><a href="../../.github/assets/transfers.png"><img src="../../.github/assets/transfers.png" alt="स्थानांतरण" width="680"></a></td>
+    <td width="50%" valign="top"><strong>ट्रांसफ़र इतिहास</strong><br><a href="../../.github/assets/transfer-history.png"><img src="../../.github/assets/transfer-history.png" alt="ट्रांसफ़र इतिहास" width="680"></a></td>
+  </tr>
+</table>
 
-<a href="../../.github/assets/songmirror-demo.mp4"><img src="../../.github/assets/songmirror-demo.gif" alt="SongMirror डेमो - सात संगीत सेवाओं में ISRC द्वारा लोगो प्रकटीकरण, डैशबोर्ड, वन-वे और द्विदिशात्मक सिंक सेटअप, लाइव प्लेलिस्ट स्थानांतरण और सटीक मिलान" width="88%"></a>
+<details>
+<summary>डेमो देखें</summary>
 
-<sup>▶ <a href="../../.github/assets/songmirror-demo.mp4">1080p संस्करण देखें</a></sup>
+<a href="../../.github/assets/songmirror-demo.mp4"><img src="../../.github/assets/songmirror-demo.gif" alt="डेमो देखें" width="100%"></a>
 
-**प्रत्येक लाइब्रेरी के लिए एक डैशबोर्ड - सिंक स्थिति, नौकरियां, लाइव गतिविधि और सेवा स्वास्थ्य**
+[1080p में देखें](../../.github/assets/songmirror-demo.mp4)
 
-<img src="../../.github/assets/dashboard.png" alt="SongMirror डैशबोर्ड Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, के लिए सिंक स्थिति, कॉन्फ़िगर की गई नौकरियां, लाइव गतिविधि और स्वास्थ्य दिखा रहा है। YouTube Music, और Jellyfin" width="82%">
-
-**किसी भी संख्या में सिंक सेट करें - एक-तरफ़ा, बहु-स्रोत मर्ज, आधिकारिक-समूह, या द्विदिश - एक संक्षिप्त विज़ार्ड में**
-
-<img src="../../.github/assets/sync-wizard.png" alt="SongMirror सेटअप विज़ार्ड Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, और में एक द्विदिश सिंक के लिए सेवाओं का चयन करता है। YouTube Music" width="82%">
-
-**अपने ब्राउज़र में प्रत्येक सेवा को कनेक्ट करें - एक-क्लिक OAuth, निर्देशित टोकन पेस्ट, या एक API कुंजी**
-
-<img src="../../.github/assets/accounts.png" alt="Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, YouTube Music, तथा Jellyfin" width="82%">
-
-**सभी सेवाओं में प्लेलिस्ट ब्राउज़ करें और युग्मित करें**
-
-<img src="../../.github/assets/playlists.png" alt="कवर आर्ट और ट्रैक संख्या के साथ कनेक्टेड सेवाओं में प्लेलिस्ट ब्राउज़ करना" width="82%">
-
-**एक ही सेवा सहित खातों के बीच प्लेलिस्ट कॉपी करें**
-
-<img src="../../.github/assets/transfers.png" alt="एक ही सेवा सहित खातों के बीच प्लेलिस्ट कॉपी करें" width="82%">
-
-**फ़िल्टर और ऑडिट क्रम के साथ हर ट्रांसफ़र प्रयास देखें**
-
-<img src="../../.github/assets/transfer-history.png" alt="फ़िल्टर और ऑडिट क्रम के साथ हर ट्रांसफ़र प्रयास देखें" width="82%">
-
-</div>
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
+</details>
 
 <a id="always-running-docker"></a>
 
@@ -247,12 +234,6 @@ SongMirror फिर विज्ञापन देगा `https://music.exampl
 | दृढ़ता | `./data` `playlist_backups/` के अंतर्गत क्रेडेंशियल, टोकन, कैश, गीत संग्रह और शेड्यूल किए गए प्लेलिस्ट स्नैपशॉट रखता है। पुनर्निर्माण के दौरान अपने सेटअप और अभिलेखों को बनाए रखने के लिए इसका बैकअप लें। |
 | डाउनलोड | अपने होस्ट संगीत निर्देशिका (जैसे `F:\Torrent\Music`) पर `DOWNLOAD_DIR` (`.env` या अपने शेल में) सेट करें; कंपोज बाइंड-इसे `/music` पर माउंट करें। Docker से, `JELLYFIN_URL` को `http://host.docker.internal:8096` पर सेट करें। |
 | समाप्त सत्र | नवीकरणीय सत्र अगले निर्धारित या मैन्युअल पास पर ठीक हो जाते हैं। TIDAL वेब-प्लेयर सत्र कैप्चर किए गए ताज़ा टोकन से नवीनीकृत होते हैं; अस्वीकार किए जाने पर Qobuz और Apple Music टोकन को फिर से चिपकाया जाना चाहिए। पुनः आरंभ की आवश्यकता नहीं है. |
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="how-it-works"></a>
 
@@ -341,12 +322,6 @@ TIDAL का साइन-इन वेब-प्लेयर अनुदान
 
 इनमें से कुछ एकीकरण प्रदाताओं के प्रथम-पक्ष वेब इंटरफेस का उपयोग करते हैं और बिना किसी सूचना के बदल सकते हैं; [व्यवहार्यता मूल्यांकन](../design/2026-09-01-liked-tracks-sync-feasibility.md) प्रत्येक प्रदाता के लिए API और वितरण बाधाओं को रिकॉर्ड करता है।
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="playlist-metadata-backups"></a>
 
 ## 📦 प्लेलिस्ट मेटाडेटा बैकअप
@@ -371,12 +346,6 @@ TIDAL का साइन-इन वेब-प्लेयर अनुदान
 अंतर्निहित पिकर खोलने के लिए फ़ोल्डर फ़ील्ड या ब्राउज़ करें... पर क्लिक करें। नेविगेट करने के लिए स्थान, क्लिक करने योग्य ब्रेडक्रंब, पीछे, आगे और एक फ़ोल्डर ऊपर का उपयोग करें। किसी फ़ोल्डर को चुनने के लिए उस पर क्लिक करें; इसे खोलने के लिए डबल-क्लिक करें, Enter दबाएँ, या इसके तीर का उपयोग करें। खोज वर्तमान फ़ोल्डर को फ़िल्टर करती है. एक फ़ोल्डर पथ दर्ज करें जो पूरा पता स्वीकार करता है। फ़ोल्डर का चयन करें ड्राफ्ट अपडेट करता है; इसे लागू करने के लिए सेटिंग्स सहेजें या शेड्यूल करें। रद्द करने से ड्राफ्ट अपरिवर्तित रह जाता है। किसी डेस्कटॉप सहायक या अतिरिक्त प्रक्रिया की आवश्यकता नहीं है.
 
 नया फ़ोल्डर वर्तमान में खुले स्थान पर एक नामित सबफ़ोल्डर बनाता है, फिर उसे खोलता है। मौजूदा वस्तुओं को कभी भी अधिलेखित नहीं किया जाता है। नाम प्रविष्टि रद्द करने से कुछ नहीं बनता; निर्माण के बाद पिकर को रद्द करने से डिस्क पर नया फ़ोल्डर निकल जाता है। चयन करने और सहेजने के बाद ही आपका सहेजा गया बैकअप या डाउनलोड स्थान बदलता है। Docker में, पिकर बताता है कि कौन से पथ साझा किए गए हैं और उपलब्ध होने पर कंटेनर पथ और उसके कॉन्फ़िगर किए गए कंप्यूटर पथ दोनों को दिखाता है।
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="local-download-mirror-jellyfin"></a>
 
@@ -410,12 +379,6 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - ऑडियो गुणवत्ता - स्रोत YouTube है, इसलिए YT Music Premium कुकी के बिना अधिकतम सीमा ~128–160 kbps है। `LOCAL_MIRROR_FORMAT=opus` YouTube की मूल स्ट्रीम को एमपी3 री-एन्कोड के बिना रखता है; एक Premium कुकी (`LOCAL_MIRROR_COOKIE_FILE`) 256 केबीपीएस एएसी को अनलॉक करती है। `flac` का चयन करने से आउटपुट कंटेनर बदल जाता है लेकिन हानिपूर्ण स्रोत को दोषरहित ऑडियो में नहीं बदला जा सकता है। वास्तव में हानिरहित ऑडियो के लिए `LOCAL_LIBRARY_DIR` उपयोग करें।
 
 SongMirror किसी स्ट्रीमिंग कैटलॉग से FLAC निकालने को स्वचालित नहीं करता। किसी भी नए ऑडियो स्रोत को पहले `docs/monochrome-flac-assessment.md` की शर्तें पूरी करनी होंगी: सेवा द्वारा प्रकाशित और संस्करणबद्ध डाउनलोड या निर्यात अंतबिंदु, उपयोगकर्ता-आधारित अनुमति, स्थायी प्रति के स्पष्ट अधिकार, क्षेत्र, समाप्ति और ऑफ़लाइन उपयोग के लिखित नियम, और DRM या पहुँच नियंत्रण को न लांघना। स्थानीय मिरर केवल उसी सामग्री के लिए उपयोग करें जो आपकी है या जिसकी प्रति बनाने की अनुमति आपके पास है।
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="connecting-each-service"></a>
 
@@ -521,12 +484,6 @@ SongMirror स्थानीय स्तर पर समान `AmznMusic` �
 
 Google खातों के बीच निजी सूचियाँ ले जाने के लिए दोनों खाते जोड़ें, या सार्वजनिक सूची का लिंक चिपकाने के लिए केवल गंतव्य खाता जोड़ें। ब्राउज़र मोड सामान्य YouTube वीडियो प्लेलिस्ट शामिल करता है और सभी पृष्ठ पढ़ता है। लंबी कॉपी के लिए **नो-कोटा मोड** इस्तेमाल करें; Data API कनेक्शन पर दैनिक सीमा बनी रहती है। यदि YouTube चैनल माँगे, तो गंतव्य खाते में चैनल सेटअप पूरा करके दोबारा कोशिश करें। [खाता ट्रांसफ़र गाइड](../youtube-account-transfers.md) देखें।
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="soundcloud"></a>
 
 ### SoundCloud
@@ -571,12 +528,6 @@ API ऐक्सेस के लिए सर्वर के साझा ऐ�
 
 साझा गुप्त कुंजी के बिना, आप जिस प्रोफ़ाइल की ओर संकेत करते हैं उसके Loved Tracks और Top Tracks सार्वजनिक होने चाहिए।
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="headless-cli"></a>
 
 ## 🖥️ ग्राफिकल इंटरफ़ेस सीएलआई के बिना
@@ -602,12 +553,6 @@ uv run main.py --execute --sync-mode group --sync-source spotify \
 
 मुख्य पर्यावरण संस्करण (देखें `.env.example`): आप जिस भी प्रदाता का उपयोग करते हैं उसके लिए क्रेडेंशियल, `PLAYLISTS`, `SYNC_INTERVAL`, `MAX_ADDS` / `MAX_REMOVALS`, `DOWNLOAD_DIR`, `SYNC_MODE`, `SYNC_SOURCE`, `SYNC_AUTHORITIES`, और `PROVIDERS`.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="safety-rails"></a>
 
 ## 🛡️ सुरक्षा उपाय
@@ -623,12 +568,6 @@ uv run main.py --execute --sync-mode group --sync-source spotify \
 - नेट-लॉस सुरक्षा - एक लक्ष्य-साइड ट्रैक जो स्रोत ट्रैक जैसा दिखता है, जिसका उस सेवा से कोई मेल नहीं है, को रोका जाता है, हटाया नहीं जाता है।
 - कोई भी प्रदाता प्रमाणीकरण विफलता उस प्रदाता के पास को तुरंत निरस्त कर देती है - समाप्त हो चुके टोकन पर कोई आंशिक विलोपन नहीं होता है।
 - मर्ज कार्य को अपने गंतव्य से हटाने से पहले पढ़े गए प्रत्येक घटक स्रोत को पूरा करना होगा; कोई भी आंशिक/विफल स्रोत स्नैपशॉट बल जो केवल-संलग्न व्यवहार में बदल जाता है।
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="caching-song-archive"></a>
 
@@ -665,12 +604,6 @@ sqlite3 song_cache.db "SELECT name, artist, album, first_seen FROM songs ORDER B
 जब सिंक चल रहा हो तो संपादन को स्पष्ट संदेश के साथ अस्वीकार कर दिया जाता है, क्योंकि पास इसके लिए मेमोरी में कैश रखता है
 पूरी अवधि और पूरा होने पर उन्हें अधिलेखित कर दिया जाएगा।
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="project-layout"></a>
 
 ## 🧱प्रोजेक्ट लेआउट
@@ -687,12 +620,6 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 
 एक और सेवा जोड़ना: उपवर्ग `MirrorTarget`, ~8 तरीकों को लागू करें, इसके बिल्डर को `engine/targets`' `_REGISTRY` और इसके वर्ग को `_CLASSES` में जोड़ें, और `services/accounts` के अंतर्गत एक मिलान `Connector` जोड़ें। सभी सामंजस्य - अंतर, ऑर्डरिंग, सुरक्षा सुरक्षा उपाय, लॉगिंग, स्नैपशॉट-स्किप - विरासत में मिला है।
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="troubleshooting"></a>
 
 ## 🩺समस्या निवारण
@@ -708,12 +635,6 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 - Spotify रिपोर्ट समाप्त हो गई है - `open.spotify.com` पर फिर से साइन इन करें और अकाउंट्स में एक ताज़ा `sp_dc` कुकी पेस्ट करें।
 - एक प्लेलिस्ट सिंक नहीं हो रही है - पुष्टि करें कि यह सिंक के प्लेलिस्ट दायरे में है और स्रोत पर मौजूद है (लक्ष्य वास्तविक पास पर स्वतः निर्मित होते हैं)।
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="license"></a>
 
 ## 📄लाइसेंस
@@ -721,29 +642,29 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 कॉपीराइट © 2026 [Ahnaf An Nafee](https://github.com/ahnafnafee).<br/>
 यह प्रोजेक्ट [MIT](../../LICENSE) लाइसेंस प्राप्त है।
 
+<a id="support"></a>
+
+## SongMirror का समर्थन करें
+
+आपकी मदद से अलग-अलग संगीत सेवाओं पर रखरखाव और परीक्षण का खर्च पूरा होता है।
+
+[![Ko-fi पर समर्थन करें][kofi-badge]][kofi-link]
+[![GitHub पर प्रायोजित करें][sponsor-badge]][sponsor-link]
+
+[GitHub पर स्टार दें][stars-link] · [ऊपर जाएँ](#readme-top)
+
 <!-- LINK GROUP -->
 
-[back-to-top]: https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square
-[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/songmirror/ci.yml?branch=main&label=CI&labelColor=black&logo=githubactions&logoColor=white&style=flat-square
+[docker-start-badge]: https://img.shields.io/badge/Docker-CE4512?logo=docker&logoColor=white&style=for-the-badge
+[registry-badge]: https://img.shields.io/badge/GHCR-27221F?logo=github&logoColor=white&style=for-the-badge
+[registry-link]: https://github.com/ahnafnafee/songmirror/pkgs/container/songmirror
+[kofi-badge]: https://img.shields.io/badge/Ko--fi-8F3B25?logo=ko-fi&logoColor=white&style=for-the-badge
+[kofi-link]: https://ko-fi.com/ahnafnafee
+[sponsor-badge]: https://img.shields.io/badge/GitHub_Sponsors-27221F?logo=githubsponsors&logoColor=white&style=for-the-badge
+[sponsor-link]: https://github.com/sponsors/ahnafnafee
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/songmirror/ci.yml?branch=main&label=CI&style=flat-square
 [ci-link]: https://github.com/ahnafnafee/songmirror/actions/workflows/ci.yml
-[license-shield]: https://img.shields.io/github/license/ahnafnafee/songmirror?color=F2601A&labelColor=black&style=flat-square
-[license-link]: https://github.com/ahnafnafee/songmirror/blob/main/LICENSE
-[python-shield]: https://img.shields.io/badge/python-3.13%2B-F2601A?labelColor=black&logo=python&logoColor=white&style=flat-square
-[python-link]: https://www.python.org/
-[docker-shield]: https://img.shields.io/badge/docker-ready-F2601A?labelColor=black&logo=docker&logoColor=white&style=flat-square
-[docker-link]: https://github.com/ahnafnafee/songmirror/pkgs/container/songmirror
-[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
+[license-shield]: https://img.shields.io/badge/license-MIT-CE4512?style=flat-square
+[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/songmirror?style=flat-square
 [stars-link]: https://github.com/ahnafnafee/songmirror/stargazers
-[forks-shield]: https://img.shields.io/github/forks/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[forks-link]: https://github.com/ahnafnafee/songmirror/network/members
-[issues-shield]: https://img.shields.io/github/issues/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[issues-link]: https://github.com/ahnafnafee/songmirror/issues
-[last-commit-shield]: https://img.shields.io/github/last-commit/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[last-commit-link]: https://github.com/ahnafnafee/songmirror/commits/main
-[github-issues-link]: https://github.com/ahnafnafee/songmirror/issues
-[share-x-shield]: https://img.shields.io/badge/-share%20on%20x-black?labelColor=black&logo=x&logoColor=white&style=flat-square
-[share-x-link]: https://x.com/intent/tweet?text=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20seven%20music%20services&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
-[share-reddit-shield]: https://img.shields.io/badge/-share%20on%20reddit-black?labelColor=black&logo=reddit&logoColor=white&style=flat-square
-[share-reddit-link]: https://www.reddit.com/submit?title=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20seven%20music%20services&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
-[share-linkedin-shield]: https://img.shields.io/badge/-share%20on%20linkedin-black?labelColor=black&logo=linkedin&logoColor=white&style=flat-square
-[share-linkedin-link]: https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
+[website-link]: https://songmirror.ahnafnafee.dev/

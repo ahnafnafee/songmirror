@@ -6,6 +6,9 @@ dist/
 wheels/
 *.egg-info
 
+# Local Cloudflare tooling
+.wrangler/
+
 # Virtual environments
 .venv
 
@@ -35,6 +38,8 @@ apple_spotify_uri_cache.json
 # Remotion promo project
 promo/node_modules
 promo/out
+promo/public/audio/
+promo/public/footage/
 
 # Local task verification state
 .unlazy/

@@ -1,43 +1,69 @@
 <div align="center"><a name="readme-top"></a>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../../.github/assets/lockup-dark.png">
-  <img src="../../.github/assets/lockup-light.png" alt="SongMirror" width="440">
-</picture>
+<img src="../../.github/assets/mark.png" alt="" height="72">
 
 # SongMirror
+
+**Giữ danh sách phát luôn đồng bộ.**<br>
+Tự lưu trữ để đồng bộ theo lịch, sao chép danh sách phát một lần hoặc lưu bản sao nhạc cục bộ cho Jellyfin. Miễn phí và mã nguồn mở.
+
+[![Chạy bằng Docker][docker-start-badge]](#quick-start)
+[![GHCR][registry-badge]][registry-link]
+[![Ủng hộ trên Ko-fi][kofi-badge]][kofi-link]
+
+[Cài đặt có hướng dẫn](#guided-install) · [Dịch vụ được hỗ trợ](#supported-services) · [Tính năng](#features) · [Ảnh chụp màn hình](#screenshots) · [Ủng hộ SongMirror](#support) · [Trang web][website-link]
 
 <!-- LANGUAGE NAVIGATION -->
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Đồng bộ hóa danh sách phát tự lưu trữ, luôn bật cho Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music và YouTube Music, SoundCloud — cùng với một máy nhân bản âm thanh cục bộ sẵn sàng cho Jellyfin.<br/>
-Một giải pháp thay thế miễn phí, mã nguồn mở, tự lưu trữ cho Soundiiz, TuneMyMusic và FreeYourMusic mà bạn sở hữu và điều hành.
-
-**Hợp nhất một chiều, nhiều nguồn, nhóm có thẩm quyền hoặc đồng bộ hóa hai chiều hoàn toàn (N-way) · chuyển danh sách phát một lần · khớp chính xác tới ISRC · tất cả từ trình duyệt của bạn**
-
-[Bắt đầu nhanh](#quick-start) · [Tính năng](#features) · [Ảnh chụp màn hình](#screenshots) · [Luôn chạy: Docker](#always-running-docker) · [Cách thức hoạt động](#how-it-works) · [Báo lỗi][github-issues-link] · [Đề xuất tính năng][github-issues-link]
-
-<!-- SHIELD GROUP -->
+<a href="#screenshots"><img src="../../.github/assets/songmirror-preview.webp" alt="SongMirror — Tổng quan · Danh sách phát" width="100%"></a>
 
 [![CI][ci-shield]][ci-link]
-[![License][license-shield]][license-link]
-[![Python][python-shield]][python-link]
-[![Docker][docker-shield]][docker-link]<br/>
-[![Stars][stars-shield]][stars-link]
-[![Forks][forks-shield]][forks-link]
-[![Issues][issues-shield]][issues-link]
-[![Last commit][last-commit-shield]][last-commit-link]
-
-**Chia sẻ dự án này**
-
-[![][share-x-shield]][share-x-link]
-[![][share-reddit-shield]][share-reddit-link]
-[![][share-linkedin-shield]][share-linkedin-link]
-
-<sup>Thiết lập một lần — mọi danh sách phát mà bạn tuyển chọn vẫn được phản ánh trên mọi dịch vụ, theo thứ tự ngày thêm.</sup>
+[![MIT][license-shield]](../../LICENSE)
+[![Gắn sao trên GitHub][stars-shield]][stars-link]
 
 </div>
+
+<details>
+<summary><kbd>Mục lục</kbd></summary>
+
+- [🚀 Bắt đầu nhanh](#quick-start)
+  - [Cài đặt có hướng dẫn](#guided-install)
+  - [Ngôn ngữ ứng dụng](#app-language)
+- [Dịch vụ được hỗ trợ](#supported-services)
+- [✨ Tính năng](#features)
+- [📸 Ảnh chụp màn hình](#screenshots)
+- [🐳 Luôn chạy: Docker](#always-running-docker)
+- [⚙️ Cách thức hoạt động](#how-it-works)
+  - [Kết hợp](#matching)
+  - [Đồng bộ hóa hợp nhất nhiều nguồn](#multi-source-merge-sync)
+  - [Nhóm có thẩm quyền](#authoritative-groups)
+  - [Đồng bộ hai chiều (N-way)](#bidirectional-n-way-sync)
+- [📦 Sao lưu siêu dữ liệu danh sách phát](#playlist-metadata-backups)
+- [💿 Nhân bản tải xuống cục bộ (Jellyfin)](#local-download-mirror-jellyfin)
+- [🔌 Kết nối từng dịch vụ](#connecting-each-service)
+  - [Gia hạn thông tin xác thực](#credential-renewal)
+  - [Spotify](#spotify)
+  - [TIDAL](#tidal)
+  - [Qobuz](#qobuz)
+  - [Deezer](#deezer)
+  - [Amazon Music](#amazon-music)
+  - [Apple Music](#apple-music)
+  - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
+  - [Last.fm](#lastfm)
+- [🖥️ không có giao diện đồ họa CLI](#headless-cli)
+- [🛡️ Biện pháp đảm bảo an toàn](#safety-rails)
+- [🗃️ Bộ nhớ đệm và lưu trữ bài hát](#caching-song-archive)
+  - [Giải quyết ánh xạ](#resolve-mappings)
+- [🧱 Bố cục dự án](#project-layout)
+- [🩺 Khắc phục sự cố](#troubleshooting)
+- [📄 Giấy phép](#license)
+
+- [Ủng hộ SongMirror](#support)
+
+</details>
 
 <a id="quick-start"></a>
 
@@ -77,62 +103,43 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 Để yêu cầu tên người dùng và mật khẩu, mở **Cài đặt → Chung → ĐĂNG NHẬP CỦA CHỦ SỞ HỮU** rồi chọn **Thiết lập đăng nhập**. Dùng mã thiết lập một lần trong nhật ký khởi động máy chủ.
 
+<a id="guided-install"></a>
+
+### Cài đặt có hướng dẫn
+
+| | |
+| --- | --- |
+| [Render](https://render.com/deploy?repo=https://github.com/ahnafnafee/songmirror) | Dịch vụ lưu trữ được quản lý với ổ đĩa bền vững. Đặt tên người dùng và mật khẩu chủ sở hữu trong trình cài đặt. Render tính phí máy chủ và lưu trữ. |
+| [CapRover](https://songmirror.ahnafnafee.dev/deploy/caprover.yml) | Trong One-Click Apps → Template, dán mẫu, đặt thông tin đăng nhập chủ sở hữu và bật HTTPS sau khi triển khai. |
+| [Portainer](https://songmirror.ahnafnafee.dev/deploy/portainer.yml) | Trên Docker Standalone, thêm một stack, tải tệp lên và đặt thông tin đăng nhập chủ sở hữu cùng địa chỉ máy chủ trong biến môi trường. |
+
 <a id="app-language"></a>
 
 ### Ngôn ngữ ứng dụng
 
 SongMirror hỗ trợ tiếng Anh, tiếng Ả Rập, tiếng Thổ Nhĩ Kỳ, tiếng Tây Ban Nha, tiếng Trung giản thể, tiếng Pháp, tiếng Bồ Đào Nha, tiếng Đức, tiếng Nhật, tiếng Hindi, tiếng Bengali, tiếng Indonesia, tiếng Hàn, tiếng Ý và tiếng Việt. Khi mở lần đầu, ứng dụng kiểm tra các tùy chọn ngôn ngữ của trình duyệt theo thứ tự, kể cả biến thể theo khu vực, rồi dùng ngôn ngữ đầu tiên được hỗ trợ. Nếu không có ngôn ngữ phù hợp, ứng dụng dùng tiếng Anh. Đổi ngôn ngữ tại **Cài đặt → Chung → Ngôn ngữ**. Lựa chọn được lưu trong trình duyệt này và vẫn giữ nguyên sau khi tải lại trang. Chọn **Tự động (trình duyệt)** để tiếp tục theo tùy chọn của trình duyệt. Giao diện tiếng Ả Rập hiển thị từ phải sang trái. Tên danh sách phát, nghệ sĩ và dịch vụ, thông tin xác thực cùng nhật ký chẩn đoán giữ nguyên giá trị gốc.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 > [!NOTE]
 > Ứng dụng web + không có giao diện đồ họa CLI, một công cụ. Nhấp qua giao diện người dùng trình duyệt để kết nối các dịch vụ, xây dựng đồng bộ hóa và chuyển danh sách phát — hoặc chạy nó `.env` + kiểu cron. Cả hai đều điều khiển cùng một lõi đồng bộ.
 
-<details>
-<summary><kbd>Mục lục</kbd></summary>
+<a id="supported-services"></a>
 
-#### TOC
+## Dịch vụ được hỗ trợ
 
-- [🚀 Bắt đầu nhanh](#quick-start)
-  - [Ngôn ngữ ứng dụng](#app-language)
-- [✨ Tính năng](#features)
-- [📸 Ảnh chụp màn hình](#screenshots)
-- [🐳 Luôn chạy: Docker](#always-running-docker)
-- [⚙️ Cách thức hoạt động](#how-it-works)
-  - [Kết hợp](#matching)
-  - [Đồng bộ hóa hợp nhất nhiều nguồn](#multi-source-merge-sync)
-  - [Nhóm có thẩm quyền](#authoritative-groups)
-  - [Đồng bộ hai chiều (N-way)](#bidirectional-n-way-sync)
-- [📦 Sao lưu siêu dữ liệu danh sách phát](#playlist-metadata-backups)
-- [💿 Nhân bản tải xuống cục bộ (Jellyfin)](#local-download-mirror-jellyfin)
-- [🔌 Kết nối từng dịch vụ](#connecting-each-service)
-  - [Gia hạn thông tin xác thực](#credential-renewal)
-  - [Spotify](#spotify)
-  - [TIDAL](#tidal)
-  - [Qobuz](#qobuz)
-  - [Deezer](#deezer)
-  - [Amazon Music](#amazon-music)
-  - [Apple Music](#apple-music)
-  - [YouTube Music](#youtube-music)
-  - [SoundCloud](#soundcloud)
-  - [Last.fm](#lastfm)
-- [🖥️ không có giao diện đồ họa CLI](#headless-cli)
-- [🛡️ Biện pháp đảm bảo an toàn](#safety-rails)
-- [🗃️ Bộ nhớ đệm và lưu trữ bài hát](#caching-song-archive)
-  - [Giải quyết ánh xạ](#resolve-mappings)
-- [🧱 Bố cục dự án](#project-layout)
-- [🩺 Khắc phục sự cố](#troubleshooting)
-- [📄 Giấy phép](#license)
-
-####
-
-<br/>
-
-</details>
+| Dịch vụ | Hỗ trợ đồng bộ và chuyển |
+| --- | --- |
+| [Spotify](#spotify) | Danh sách phát và bài hát yêu thích |
+| [TIDAL](#tidal) | Danh sách phát và bài hát yêu thích |
+| [Qobuz](#qobuz) | Danh sách phát và bài hát yêu thích |
+| [Deezer](#deezer) | Danh sách phát và bài hát yêu thích |
+| [Amazon Music](#amazon-music) | Danh sách phát và bài hát yêu thích |
+| [Apple Music](#apple-music) | Danh sách phát và bài hát yêu thích |
+| [YouTube Music](#youtube-music) | Danh sách phát và bài hát yêu thích |
+| [SoundCloud](#soundcloud) | Danh sách phát |
+| [Last.fm](#lastfm) | Bài hát yêu thích, bài hát nghe nhiều nhất và lịch sử nghe. Cấp quyền để sửa bài hát yêu thích. |
+| [ListenBrainz](../listenbrainz-subsonic.md) | Danh sách phát và bản thu yêu thích. Mã thông báo người dùng cho phép chỉnh sửa. |
+| [Navidrome / Subsonic](../listenbrainz-subsonic.md) | Danh sách phát và bài hát yêu thích |
+| [Jellyfin](../jellyfin-compatibility.md) | Danh sách phát trên máy chủ. Nhập ID người dùng để đồng bộ hoặc chuyển. |
 
 <a id="features"></a>
 
@@ -164,53 +171,33 @@ SongMirror giữ cho danh sách phát của bạn giống hệt nhau ở mọi n
 > [!IMPORTANT]
 > Giữ cổng web trong mạng đáng tin cậy. Bật [đăng nhập dành cho chủ sở hữu](../profile-auth.md) để bảo vệ danh sách phát, tài khoản đã kết nối và cài đặt đồng bộ.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="screenshots"></a>
 
-## 📸 Ảnh chụp màn hình
+## Ảnh chụp màn hình
 
-<div align="center">
+<table>
+  <tr>
+    <td width="50%" valign="top"><strong>Tổng quan</strong><br><a href="../../.github/assets/dashboard.png"><img src="../../.github/assets/dashboard.png" alt="Tổng quan" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Tài khoản</strong><br><a href="../../.github/assets/accounts.png"><img src="../../.github/assets/accounts.png" alt="Tài khoản" width="680"></a></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><strong>Đồng bộ</strong><br><a href="../../.github/assets/sync-wizard.png"><img src="../../.github/assets/sync-wizard.png" alt="Đồng bộ" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Danh sách phát</strong><br><a href="../../.github/assets/playlists.png"><img src="../../.github/assets/playlists.png" alt="Danh sách phát" width="680"></a></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><strong>Chuyển danh sách</strong><br><a href="../../.github/assets/transfers.png"><img src="../../.github/assets/transfers.png" alt="Chuyển danh sách" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Lịch sử chuyển</strong><br><a href="../../.github/assets/transfer-history.png"><img src="../../.github/assets/transfer-history.png" alt="Lịch sử chuyển" width="680"></a></td>
+  </tr>
+</table>
 
-<a href="../../.github/assets/songmirror-demo.mp4"><img src="../../.github/assets/songmirror-demo.gif" alt="SongMirror bản demo — hiển thị logo, trang tổng quan, thiết lập đồng bộ hóa một chiều và hai chiều, chuyển danh sách phát trực tiếp và kết hợp chính xác theo ISRC trên bảy dịch vụ âm nhạc" width="88%"></a>
+<details>
+<summary>Xem bản minh họa</summary>
 
-<sup>± <a href="../../.github/assets/songmirror-demo.mp4">Xem phiên bản 1080p</a></sup>
+<a href="../../.github/assets/songmirror-demo.mp4"><img src="../../.github/assets/songmirror-demo.gif" alt="Xem bản minh họa" width="100%"></a>
 
-**Một bảng thông tin cho mọi thư viện — trạng thái đồng bộ hóa, công việc, hoạt động trực tiếp và tình trạng dịch vụ**
+[Xem ở độ phân giải 1080p](../../.github/assets/songmirror-demo.mp4)
 
-<img src="../../.github/assets/dashboard.png" alt="Trang tổng quan SongMirror hiển thị trạng thái đồng bộ hóa, công việc đã định cấu hình, hoạt động trực tiếp và tình trạng cho Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, YouTube Music và Jellyfin" width="82%">
-
-**Thiết lập bất kỳ số lượng đồng bộ hóa nào — hợp nhất một chiều, nhiều nguồn, nhóm có thẩm quyền hoặc hai chiều — trong một trình hướng dẫn ngắn**
-
-<img src="../../.github/assets/sync-wizard.png" alt="Trình hướng dẫn thiết lập SongMirror chọn các dịch vụ để đồng bộ hóa hai chiều trên Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music và YouTube Music" width="82%">
-
-**Kết nối mọi dịch vụ trong trình duyệt của bạn — chỉ bằng một cú nhấp chuột OAuth, dán mã thông báo được hướng dẫn hoặc phím API**
-
-<img src="../../.github/assets/accounts.png" alt="Trang Tài khoản để kết nối Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, YouTube Music và Jellyfin" width="82%">
-
-**Duyệt và ghép danh sách phát trên các dịch vụ**
-
-<img src="../../.github/assets/playlists.png" alt="Duyệt danh sách phát trên các dịch vụ được kết nối với ảnh bìa và số lượng bản nhạc" width="82%">
-
-**Sao chép danh sách giữa các tài khoản, kể cả cùng dịch vụ**
-
-<img src="../../.github/assets/transfers.png" alt="Sao chép danh sách giữa các tài khoản, kể cả cùng dịch vụ" width="82%">
-
-**Xem mọi lần chuyển với bộ lọc và nhật ký kiểm tra**
-
-<img src="../../.github/assets/transfer-history.png" alt="Xem mọi lần chuyển với bộ lọc và nhật ký kiểm tra" width="82%">
-
-</div>
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
+</details>
 
 <a id="always-running-docker"></a>
 
@@ -247,12 +234,6 @@ SongMirror sau đó sẽ quảng cáo `https://music.example.com/oauth/spotify/c
 | Kiên trì | `./data` chứa thông tin xác thực, mã thông báo, bộ nhớ đệm, kho lưu trữ bài hát và ảnh chụp nhanh danh sách phát theo lịch trong `playlist_backups/`. Sao lưu nó để duy trì thiết lập và lưu trữ của bạn trong quá trình xây dựng lại. |
 | Tải xuống | Đặt `DOWNLOAD_DIR` (trong `.env` hoặc shell của bạn) vào thư mục nhạc chủ của bạn (ví dụ: `F:\Torrent\Music`); soạn liên kết gắn kết nó với `/music`. Từ Docker, đặt `JELLYFIN_URL` thành `http://host.docker.internal:8096`. |
 | Phiên hết hạn | Các phiên có thể gia hạn sẽ phục hồi ở lần vượt qua theo lịch trình hoặc thủ công tiếp theo. TIDAL phiên trình phát trên web được gia hạn từ mã thông báo làm mới đã ghi lại; Mã thông báo Qobuz và Apple Music vẫn phải được dán lại khi bị từ chối. Không cần khởi động lại. |
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="how-it-works"></a>
 
@@ -341,12 +322,6 @@ Quyền cấp phép trình phát web đã đăng nhập của TIDAL xử lý c�
 
 Một số tiện ích tích hợp này sử dụng giao diện web bên thứ nhất của nhà cung cấp và có thể thay đổi mà không cần thông báo trước; [đánh giá tính khả thi](../design/2026-09-01-liked-tracks-sync-feasibility.md) ghi lại API và các ràng buộc phân phối cho mỗi nhà cung cấp.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="playlist-metadata-backups"></a>
 
 ## 📦 Sao lưu siêu dữ liệu danh sách phát
@@ -371,12 +346,6 @@ Xuất thủ công được trình duyệt tải xuống thiết bị chạy gia
 Nhấp vào trường thư mục hoặc Duyệt qua… để mở bộ chọn tích hợp. Sử dụng Vị trí, đường dẫn có thể nhấp, Quay lại, Chuyển tiếp và Lên trong một thư mục để điều hướng. Bấm vào một thư mục để chọn nó; bấm đúp, nhấn Enter hoặc sử dụng mũi tên của nó để mở nó. Tìm kiếm lọc thư mục hiện tại. Nhập đường dẫn thư mục chấp nhận địa chỉ đầy đủ. Chọn thư mục cập nhật bản nháp; lưu cài đặt hoặc lên lịch để áp dụng nó. Việc hủy giữ nguyên bản nháp. Không cần có trình trợ giúp máy tính để bàn hoặc quy trình bổ sung.
 
 Thư mục mới tạo một thư mục con có tên ở vị trí hiện đang mở, sau đó mở nó ra. Các mục hiện có không bao giờ bị ghi đè. Việc hủy mục nhập tên không tạo ra gì; việc hủy bộ chọn sau khi tạo sẽ để lại thư mục mới trên đĩa. Vị trí tải xuống hoặc sao lưu đã lưu của bạn chỉ thay đổi sau khi chọn và lưu. Trong Docker, bộ chọn giải thích những đường dẫn nào được chia sẻ và hiển thị cả đường dẫn vùng chứa cũng như đường dẫn máy tính được định cấu hình của nó khi có sẵn.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="local-download-mirror-jellyfin"></a>
 
@@ -410,12 +379,6 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - Chất lượng âm thanh - nguồn là YouTube, vì vậy nếu không có cookie YT Music Premium thì mức trần là ~128–160 kbps. `LOCAL_MIRROR_FORMAT=opus` giữ luồng gốc của YouTube mà không cần mã hóa lại mp3; cookie Premium (`LOCAL_MIRROR_COOKIE_FILE`) mở khóa 256 kbps AAC. Chọn `flac` chỉ thay đổi vùng chứa đầu ra; nguồn âm thanh nén mất dữ liệu không thể trở thành âm thanh không mất dữ liệu. Muốn âm thanh không mất dữ liệu thật sự, hãy dùng `LOCAL_LIBRARY_DIR`.
 
 SongMirror không tự động trích xuất FLAC từ danh mục phát trực tuyến. Mọi nguồn âm thanh mới phải đáp ứng trước các yêu cầu trong `docs/monochrome-flac-assessment.md`: một điểm cuối tải về hoặc xuất dữ liệu do nhà cung cấp công bố và có phiên bản, sự cấp quyền theo người dùng, quyền sao chép lâu dài rõ ràng, quy định được ghi rõ về vùng, thời hạn và việc dùng ngoại tuyến, cùng với việc không vượt qua DRM hay kiểm soát truy cập. Chỉ dùng bản sao cục bộ cho nội dung thuộc về bạn hoặc bạn được phép sao chép.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="connecting-each-service"></a>
 
@@ -521,12 +484,6 @@ Nói chuyện với [YouTube Data API v3](https://developers.google.com/youtube/
 
 Để chuyển danh sách riêng tư giữa các tài khoản Google, hãy kết nối cả hai; với danh sách công khai, chỉ cần kết nối tài khoản đích và dán liên kết. Chế độ trình duyệt bao gồm danh sách video YouTube thông thường và đọc mọi trang. Dùng **Chế độ không hạn ngạch** cho bản sao dài; kết nối Data API vẫn có hạn mức hằng ngày. Nếu YouTube yêu cầu kênh, hoàn tất thiết lập bằng tài khoản đích rồi thử lại. Xem [hướng dẫn chuyển tài khoản](../youtube-account-transfers.md).
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="soundcloud"></a>
 
 ### SoundCloud
@@ -571,12 +528,6 @@ Ba giới hạn nên biết trước khi dựa vào nó:
 
 Nếu không có khóa bí mật chia sẻ, trang cá nhân bạn trỏ tới phải công khai Loved Tracks và Top Tracks của nó.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="headless-cli"></a>
 
 ## 🖥️ không có giao diện đồ họa CLI
@@ -602,12 +553,6 @@ uv run main.py --execute --sync-mode group --sync-source spotify \
 
 Các biến env chính (xem `.env.example`): thông tin xác thực cho bất kỳ nhà cung cấp nào bạn sử dụng, `PLAYLISTS`, `SYNC_INTERVAL`, `MAX_ADDS` / `MAX_REMOVALS`, `DOWNLOAD_DIR`, `SYNC_MODE`, `SYNC_SOURCE`, `SYNC_AUTHORITIES` và `PROVIDERS`.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="safety-rails"></a>
 
 ## 🛡️ Biện pháp đảm bảo an toàn
@@ -623,12 +568,6 @@ Việc xóa có tính chất phá hoại nên chúng được bảo vệ:
 - Bảo vệ chống mất mát ròng - một bản nhạc phía mục tiêu giống như bản nhạc nguồn không khớp với dịch vụ đó sẽ được giữ lại chứ không bị xóa.
 - Bất kỳ lỗi xác thực nhà cung cấp nào đều hủy bỏ thẻ của nhà cung cấp đó ngay lập tức — không xóa một phần mã thông báo đã hết hạn.
 - Công việc hợp nhất phải hoàn thành mọi nguồn cấu thành được đọc trước khi xóa khỏi đích của nó; bất kỳ ảnh chụp nhanh nguồn một phần/không thành công nào sẽ chuyển sang hành vi chỉ bổ sung.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="caching-song-archive"></a>
 
@@ -665,12 +604,6 @@ các bản sao cũ hơn. Các nhà cung cấp không cho phép khách hàng khô
 Các chỉnh sửa bị từ chối kèm theo thông báo rõ ràng trong khi quá trình đồng bộ hóa đang chạy vì thẻ giữ bộ đệm trong bộ nhớ cho nó.
 toàn bộ thời gian và sẽ ghi đè lên chúng khi hoàn thành.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="project-layout"></a>
 
 ## 🧱 Bố cục dự án
@@ -687,12 +620,6 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 
 Thêm một dịch vụ khác: lớp con `MirrorTarget`, triển khai ~8 phương thức, thêm trình tạo của nó vào `engine/targets`' `_REGISTRY` và lớp của nó vào `_CLASSES`, đồng thời thêm một `Connector` phù hợp trong `services/accounts`. Tất cả sự đối chiếu — khác biệt, thứ tự, biện pháp bảo vệ an toàn, ghi nhật ký, bỏ qua ảnh chụp nhanh — đều được kế thừa.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="troubleshooting"></a>
 
 ## 🩺 Khắc phục sự cố
@@ -708,12 +635,6 @@ Thêm một dịch vụ khác: lớp con `MirrorTarget`, triển khai ~8 phươn
 - Spotify báo cáo Đã hết hạn — đăng nhập lại tại `open.spotify.com` và dán cookie `sp_dc` mới vào Tài khoản.
 - Danh sách phát không được đồng bộ hóa — hãy xác nhận danh sách phát đó nằm trong phạm vi danh sách phát của đồng bộ hóa và tồn tại trên nguồn (mục tiêu được tạo tự động trên thẻ thực).
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="license"></a>
 
 ## 📄 Giấy phép
@@ -721,29 +642,29 @@ Thêm một dịch vụ khác: lớp con `MirrorTarget`, triển khai ~8 phươn
 Bản quyền © 2026 [Ahnaf An Nafee](https://github.com/ahnafnafee).<br/>
 Dự án này đã được cấp phép [MIT](../../LICENSE).
 
+<a id="support"></a>
+
+## Ủng hộ SongMirror
+
+Sự ủng hộ của bạn giúp trang trải chi phí bảo trì và kiểm thử trên các dịch vụ nhạc.
+
+[![Ủng hộ trên Ko-fi][kofi-badge]][kofi-link]
+[![Tài trợ trên GitHub][sponsor-badge]][sponsor-link]
+
+[Gắn sao trên GitHub][stars-link] · [Về đầu trang](#readme-top)
+
 <!-- LINK GROUP -->
 
-[back-to-top]: https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square
-[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/songmirror/ci.yml?branch=main&label=CI&labelColor=black&logo=githubactions&logoColor=white&style=flat-square
+[docker-start-badge]: https://img.shields.io/badge/Docker-CE4512?logo=docker&logoColor=white&style=for-the-badge
+[registry-badge]: https://img.shields.io/badge/GHCR-27221F?logo=github&logoColor=white&style=for-the-badge
+[registry-link]: https://github.com/ahnafnafee/songmirror/pkgs/container/songmirror
+[kofi-badge]: https://img.shields.io/badge/Ko--fi-8F3B25?logo=ko-fi&logoColor=white&style=for-the-badge
+[kofi-link]: https://ko-fi.com/ahnafnafee
+[sponsor-badge]: https://img.shields.io/badge/GitHub_Sponsors-27221F?logo=githubsponsors&logoColor=white&style=for-the-badge
+[sponsor-link]: https://github.com/sponsors/ahnafnafee
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/songmirror/ci.yml?branch=main&label=CI&style=flat-square
 [ci-link]: https://github.com/ahnafnafee/songmirror/actions/workflows/ci.yml
-[license-shield]: https://img.shields.io/github/license/ahnafnafee/songmirror?color=F2601A&labelColor=black&style=flat-square
-[license-link]: https://github.com/ahnafnafee/songmirror/blob/main/LICENSE
-[python-shield]: https://img.shields.io/badge/python-3.13%2B-F2601A?labelColor=black&logo=python&logoColor=white&style=flat-square
-[python-link]: https://www.python.org/
-[docker-shield]: https://img.shields.io/badge/docker-ready-F2601A?labelColor=black&logo=docker&logoColor=white&style=flat-square
-[docker-link]: https://github.com/ahnafnafee/songmirror/pkgs/container/songmirror
-[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
+[license-shield]: https://img.shields.io/badge/license-MIT-CE4512?style=flat-square
+[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/songmirror?style=flat-square
 [stars-link]: https://github.com/ahnafnafee/songmirror/stargazers
-[forks-shield]: https://img.shields.io/github/forks/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[forks-link]: https://github.com/ahnafnafee/songmirror/network/members
-[issues-shield]: https://img.shields.io/github/issues/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[issues-link]: https://github.com/ahnafnafee/songmirror/issues
-[last-commit-shield]: https://img.shields.io/github/last-commit/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[last-commit-link]: https://github.com/ahnafnafee/songmirror/commits/main
-[github-issues-link]: https://github.com/ahnafnafee/songmirror/issues
-[share-x-shield]: https://img.shields.io/badge/-share%20on%20x-black?labelColor=black&logo=x&logoColor=white&style=flat-square
-[share-x-link]: https://x.com/intent/tweet?text=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20seven%20music%20services&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
-[share-reddit-shield]: https://img.shields.io/badge/-share%20on%20reddit-black?labelColor=black&logo=reddit&logoColor=white&style=flat-square
-[share-reddit-link]: https://www.reddit.com/submit?title=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20seven%20music%20services&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
-[share-linkedin-shield]: https://img.shields.io/badge/-share%20on%20linkedin-black?labelColor=black&logo=linkedin&logoColor=white&style=flat-square
-[share-linkedin-link]: https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
+[website-link]: https://songmirror.ahnafnafee.dev/

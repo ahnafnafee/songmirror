@@ -1,0 +1,13 @@
+{
+  "name": "songmirror-website",
+  "main": "./src/worker.mjs",
+  "compatibility_date": "2026-11-24",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "songmirror.ahnafnafee.dev", "custom_domain": true }],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/assets/songmirror-demo.mp4"]
+  }
+}

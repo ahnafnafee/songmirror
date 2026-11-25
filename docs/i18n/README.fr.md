@@ -1,43 +1,69 @@
 <div align="center"><a name="readme-top"></a>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../../.github/assets/lockup-dark.png">
-  <img src="../../.github/assets/lockup-light.png" alt="SongMirror" width="440">
-</picture>
+<img src="../../.github/assets/mark.png" alt="" height="72">
 
 # SongMirror
+
+**Gardez vos playlists synchronisées.**<br>
+Hébergez vos synchronisations planifiées, copiez une playlist une seule fois ou conservez une copie locale de votre musique pour Jellyfin. Gratuit et open source.
+
+[![Lancer avec Docker][docker-start-badge]](#quick-start)
+[![GHCR][registry-badge]][registry-link]
+[![Soutenir sur Ko-fi][kofi-badge]][kofi-link]
+
+[Installation guidée](#guided-install) · [Services compatibles](#supported-services) · [Caractéristiques](#features) · [Captures d'écran](#screenshots) · [Soutenir SongMirror](#support) · [Site web][website-link]
 
 <!-- LANGUAGE NAVIGATION -->
 <p align="center"><a href="../../README.md" lang="en">English</a> · <a href="README.ar.md" lang="ar" dir="rtl">العربية</a> · <a href="README.tr.md" lang="tr">Türkçe</a> · <a href="README.es.md" lang="es">Español</a> · <a href="README.zh.md" lang="zh">简体中文</a> · <a href="README.fr.md" lang="fr">Français</a> · <a href="README.pt.md" lang="pt">Português</a> · <a href="README.de.md" lang="de">Deutsch</a> · <a href="README.ja.md" lang="ja">日本語</a> · <a href="README.hi.md" lang="hi">हिन्दी</a> · <a href="README.bn.md" lang="bn">বাংলা</a> · <a href="README.id.md" lang="id">Bahasa Indonesia</a> · <a href="README.ko.md" lang="ko">한국어</a> · <a href="README.it.md" lang="it">Italiano</a> · <a href="README.vi.md" lang="vi">Tiếng Việt</a></p>
 <!-- /LANGUAGE NAVIGATION -->
 
-Synchronisation de playlist auto-hébergée et toujours active pour Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music et YouTube Music, SoundCloud — plus un miroir audio local prêt pour Jellyfin.<br/>
-Une alternative gratuite, open source et auto-hébergée à Soundiiz, TuneMyMusic et FreeYourMusic que vous possédez et exécutez.
-
-**Fusion unidirectionnelle, multi-sources, synchronisation de groupe faisant autorité ou bidirectionnelle complète (N-way) · transferts de listes de lecture uniques · correspondance précise par ISRC · le tout depuis votre navigateur**
-
-[Démarrage rapide](#quick-start) · [Caractéristiques](#features) · [Captures d'écran](#screenshots) · [Toujours en cours d'exécution : Docker](#always-running-docker) · [Comment ça marche](#how-it-works) · [Signaler un bug][github-issues-link] · [Proposer une fonctionnalité][github-issues-link]
-
-<!-- SHIELD GROUP -->
+<a href="#screenshots"><img src="../../.github/assets/songmirror-preview.webp" alt="SongMirror — Tableau de bord · Listes de lecture" width="100%"></a>
 
 [![CI][ci-shield]][ci-link]
-[![License][license-shield]][license-link]
-[![Python][python-shield]][python-link]
-[![Docker][docker-shield]][docker-link]<br/>
-[![Stars][stars-shield]][stars-link]
-[![Forks][forks-shield]][forks-link]
-[![Issues][issues-shield]][issues-link]
-[![Last commit][last-commit-shield]][last-commit-link]
-
-**Partager ce projet**
-
-[![][share-x-shield]][share-x-link]
-[![][share-reddit-shield]][share-reddit-link]
-[![][share-linkedin-shield]][share-linkedin-link]
-
-<sup>Configurez-le une fois : chaque liste de lecture que vous organisez reste reflétée sur chaque service, par ordre de date d'ajout.</sup>
+[![MIT][license-shield]](../../LICENSE)
+[![Ajouter une étoile sur GitHub][stars-shield]][stars-link]
 
 </div>
+
+<details>
+<summary><kbd>Table des matières</kbd></summary>
+
+- [🚀 Démarrage rapide](#quick-start)
+  - [Installation guidée](#guided-install)
+  - [Langue de l'application](#app-language)
+- [Services compatibles](#supported-services)
+- [✨ Caractéristiques](#features)
+- [📸 Captures d'écran](#screenshots)
+- [🐳 Toujours en cours d'exécution : Docker](#always-running-docker)
+- [⚙️ Comment ça marche](#how-it-works)
+  - [Correspondance](#matching)
+  - [Synchronisation de fusion multi-sources](#multi-source-merge-sync)
+  - [Groupes faisant autorité](#authoritative-groups)
+  - [Synchronisation bidirectionnelle (N-way)](#bidirectional-n-way-sync)
+- [📦 Sauvegardes des métadonnées de la playlist](#playlist-metadata-backups)
+- [💿 Miroir de téléchargement local (Jellyfin)](#local-download-mirror-jellyfin)
+- [🔌 Connexion de chaque service](#connecting-each-service)
+  - [Renouvellement des informations d'identification](#credential-renewal)
+  - [Spotify](#spotify)
+  - [TIDAL](#tidal)
+  - [Qobuz](#qobuz)
+  - [Deezer](#deezer)
+  - [Amazon Music](#amazon-music)
+  - [Apple Music](#apple-music)
+  - [YouTube Music](#youtube-music)
+  - [SoundCloud](#soundcloud)
+  - [Last.fm](#lastfm)
+- [🖥️ sans interface graphique CLI](#headless-cli)
+- [🛡️ Mesures de sécurité](#safety-rails)
+- [🗃️ Mise en cache et archives de chansons](#caching-song-archive)
+  - [Résoudre les mappages](#resolve-mappings)
+- [🧱 Disposition du projet](#project-layout)
+- [🩺 Dépannage](#troubleshooting)
+- [📄 Licence](#license)
+
+- [Soutenir SongMirror](#support)
+
+</details>
 
 <a id="quick-start"></a>
 
@@ -77,62 +103,43 @@ uv run uvicorn songmirror.web:app --host 0.0.0.0 --port 8080   # then open http:
 
 Pour exiger un nom d’utilisateur et un mot de passe, ouvrez **Paramètres → Général → CONNEXION DU PROPRIÉTAIRE**, puis choisissez **Configurer la connexion**. Utilisez le code à usage unique indiqué dans le journal de démarrage du serveur.
 
+<a id="guided-install"></a>
+
+### Installation guidée
+
+| | |
+| --- | --- |
+| [Render](https://render.com/deploy?repo=https://github.com/ahnafnafee/songmirror) | Hébergement géré avec disque persistant. Renseignez le nom d’utilisateur et le mot de passe du propriétaire dans l’assistant. Render facture le serveur et le stockage. |
+| [CapRover](https://songmirror.ahnafnafee.dev/deploy/caprover.yml) | Dans One-Click Apps → Template, collez le modèle, définissez les identifiants du propriétaire et activez HTTPS après le déploiement. |
+| [Portainer](https://songmirror.ahnafnafee.dev/deploy/portainer.yml) | Sur Docker Standalone, ajoutez une pile, téléversez le fichier et configurez les identifiants du propriétaire et l’adresse de l’hôte dans ses variables d’environnement. |
+
 <a id="app-language"></a>
 
 ### Langue de l'application
 
 SongMirror prend en charge l'anglais, l'arabe, le turc, l'espagnol, le chinois simplifié, le français, le portugais, l'allemand, le japonais, l'hindi, le bengali, l'indonésien, le coréen, l'italien et le vietnamien. Au premier lancement, les préférences linguistiques du navigateur sont examinées dans l’ordre, y compris les variantes régionales, et la première langue prise en charge est utilisée. Si aucune ne convient, l’anglais est utilisé. Changez la langue dans **Paramètres → Général → Langue** ; votre choix est enregistré dans ce navigateur et conservé après rechargement. Sélectionnez **Automatique (navigateur)** pour suivre à nouveau les préférences du navigateur. L’interface arabe s’affiche de droite à gauche. Les noms de playlists, d’artistes et de services, les identifiants de connexion et les journaux de diagnostic conservent leurs valeurs d’origine.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 > [!NOTE]
 > Application Web + sans interface graphique CLI, un seul moteur. Cliquez sur l'interface utilisateur d'un navigateur pour connecter des services, créer des synchronisations et transférer des listes de lecture – ou exécutez-le `.env` + style cron. Les deux pilotent le même noyau de synchronisation.
 
-<details>
-<summary><kbd>Table des matières</kbd></summary>
+<a id="supported-services"></a>
 
-#### Table des matières
+## Services compatibles
 
-- [🚀 Démarrage rapide](#quick-start)
-  - [Langue de l'application](#app-language)
-- [✨ Caractéristiques](#features)
-- [📸 Captures d'écran](#screenshots)
-- [🐳 Toujours en cours d'exécution : Docker](#always-running-docker)
-- [⚙️ Comment ça marche](#how-it-works)
-  - [Correspondance](#matching)
-  - [Synchronisation de fusion multi-sources](#multi-source-merge-sync)
-  - [Groupes faisant autorité](#authoritative-groups)
-  - [Synchronisation bidirectionnelle (N-way)](#bidirectional-n-way-sync)
-- [📦 Sauvegardes des métadonnées de la playlist](#playlist-metadata-backups)
-- [💿 Miroir de téléchargement local (Jellyfin)](#local-download-mirror-jellyfin)
-- [🔌 Connexion de chaque service](#connecting-each-service)
-  - [Renouvellement des informations d'identification](#credential-renewal)
-  - [Spotify](#spotify)
-  - [TIDAL](#tidal)
-  - [Qobuz](#qobuz)
-  - [Deezer](#deezer)
-  - [Amazon Music](#amazon-music)
-  - [Apple Music](#apple-music)
-  - [YouTube Music](#youtube-music)
-  - [SoundCloud](#soundcloud)
-  - [Last.fm](#lastfm)
-- [🖥️ sans interface graphique CLI](#headless-cli)
-- [🛡️ Mesures de sécurité](#safety-rails)
-- [🗃️ Mise en cache et archives de chansons](#caching-song-archive)
-  - [Résoudre les mappages](#resolve-mappings)
-- [🧱 Disposition du projet](#project-layout)
-- [🩺 Dépannage](#troubleshooting)
-- [📄 Licence](#license)
-
-####
-
-<br/>
-
-</details>
+| Service | Synchronisation et transfert |
+| --- | --- |
+| [Spotify](#spotify) | Playlists et favoris |
+| [TIDAL](#tidal) | Playlists et favoris |
+| [Qobuz](#qobuz) | Playlists et favoris |
+| [Deezer](#deezer) | Playlists et favoris |
+| [Amazon Music](#amazon-music) | Playlists et favoris |
+| [Apple Music](#apple-music) | Playlists et favoris |
+| [YouTube Music](#youtube-music) | Playlists et favoris |
+| [SoundCloud](#soundcloud) | Playlists |
+| [Last.fm](#lastfm) | Titres aimés, titres les plus écoutés et historique. Autorisez la modification des titres aimés. |
+| [ListenBrainz](../listenbrainz-subsonic.md) | Playlists et enregistrements aimés. Un jeton utilisateur permet les modifications. |
+| [Navidrome / Subsonic](../listenbrainz-subsonic.md) | Playlists et favoris |
+| [Jellyfin](../jellyfin-compatibility.md) | Playlists du serveur. Renseignez un identifiant utilisateur pour synchroniser ou transférer. |
 
 <a id="features"></a>
 
@@ -164,53 +171,33 @@ SongMirror conserve vos listes de lecture identiques partout sans ré-ajout manu
 > [!IMPORTANT]
 > Gardez le port web sur un réseau de confiance. Activez la [connexion du propriétaire](../profile-auth.md) pour protéger les listes de lecture, les comptes associés et les paramètres de synchronisation.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="screenshots"></a>
 
-## 📸 Captures d'écran
+## Captures d'écran
 
-<div align="center">
+<table>
+  <tr>
+    <td width="50%" valign="top"><strong>Tableau de bord</strong><br><a href="../../.github/assets/dashboard.png"><img src="../../.github/assets/dashboard.png" alt="Tableau de bord" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Comptes</strong><br><a href="../../.github/assets/accounts.png"><img src="../../.github/assets/accounts.png" alt="Comptes" width="680"></a></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><strong>Synchronisation</strong><br><a href="../../.github/assets/sync-wizard.png"><img src="../../.github/assets/sync-wizard.png" alt="Synchronisation" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Listes de lecture</strong><br><a href="../../.github/assets/playlists.png"><img src="../../.github/assets/playlists.png" alt="Listes de lecture" width="680"></a></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><strong>Transferts</strong><br><a href="../../.github/assets/transfers.png"><img src="../../.github/assets/transfers.png" alt="Transferts" width="680"></a></td>
+    <td width="50%" valign="top"><strong>Historique des transferts</strong><br><a href="../../.github/assets/transfer-history.png"><img src="../../.github/assets/transfer-history.png" alt="Historique des transferts" width="680"></a></td>
+  </tr>
+</table>
 
-<a href="../../.github/assets/songmirror-demo.mp4"><img src="../../.github/assets/songmirror-demo.gif" alt="Démo SongMirror — révélation du logo, tableau de bord, configuration de synchronisation unidirectionnelle et bidirectionnelle, transferts de listes de lecture en direct et correspondance précise par ISRC sur sept services musicaux" width="88%"></a>
+<details>
+<summary>Voir la démo</summary>
 
-<sup>▶ <a href="../../.github/assets/songmirror-demo.mp4">Regardez la version 1080p</a></sup>
+<a href="../../.github/assets/songmirror-demo.mp4"><img src="../../.github/assets/songmirror-demo.gif" alt="Voir la démo" width="100%"></a>
 
-**Un tableau de bord pour chaque bibliothèque : état de synchronisation, tâches, activité en direct et état du service**
+[Regarder en 1080p](../../.github/assets/songmirror-demo.mp4)
 
-<img src="../../.github/assets/dashboard.png" alt="SongMirror tableau de bord affichant l'état de synchronisation, les tâches configurées, l'activité en direct et l'état de santé pour Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, YouTube Music et Jellyfin" width="82%">
-
-**Configurez un nombre illimité de synchronisations (unidirectionnelles, fusion multi-sources, groupe faisant autorité ou bidirectionnelles) dans un court assistant.**
-
-<img src="../../.github/assets/sync-wizard.png" alt="L'assistant de configuration SongMirror sélectionnant les services pour une synchronisation bidirectionnelle entre Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music et YouTube Music" width="82%">
-
-**Connectez tous les services de votre navigateur : OAuth en un clic, collage guidé du jeton ou touche API**
-
-<img src="../../.github/assets/accounts.png" alt="La page Comptes pour connecter Spotify, TIDAL, Qobuz, Deezer, Amazon Music, Apple Music, YouTube Music et Jellyfin" width="82%">
-
-**Parcourez et associez des listes de lecture sur tous les services**
-
-<img src="../../.github/assets/playlists.png" alt="Parcourir les listes de lecture sur les services connectés avec les pochettes et le nombre de pistes" width="82%">
-
-**Copiez une liste entre comptes, y compris sur le même service**
-
-<img src="../../.github/assets/transfers.png" alt="Copiez une liste entre comptes, y compris sur le même service" width="82%">
-
-**Consultez chaque tentative de transfert avec des filtres et une piste d’audit**
-
-<img src="../../.github/assets/transfer-history.png" alt="Consultez chaque tentative de transfert avec des filtres et une piste d’audit" width="82%">
-
-</div>
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
+</details>
 
 <a id="always-running-docker"></a>
 
@@ -247,12 +234,6 @@ SongMirror annoncera alors `https://music.example.com/oauth/spotify/callback` ;
 | Persistance | `./data` contient les informations d'identification, les jetons, les caches, les archives de chansons et les instantanés de playlist programmés sous `playlist_backups/`. Sauvegardez-le pour conserver votre configuration et vos archives lors des reconstructions. |
 | Téléchargements | Définissez `DOWNLOAD_DIR` (dans `.env` ou votre shell) sur le répertoire musical de votre hôte (par exemple `F:\Torrent\Music`) ; composer bind-le monte sur `/music`. De Docker, définissez `JELLYFIN_URL` sur `http://host.docker.internal:8096`. |
 | Sessions expirées | Les sessions renouvelables sont récupérées lors du prochain passage planifié ou manuel. TIDAL Les sessions du lecteur Web sont renouvelées à partir du jeton d'actualisation capturé ; Les jetons Qobuz et Apple Music doivent toujours être recollés lorsqu'ils sont rejetés. Aucun redémarrage n'est nécessaire. |
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="how-it-works"></a>
 
@@ -341,12 +322,6 @@ La subvention de lecteur Web connecté de TIDAL gère à la fois les listes de l
 
 Certaines de ces intégrations utilisent les interfaces Web propriétaires des fournisseurs et peuvent changer sans préavis ; le [évaluation de faisabilité](../design/2026-09-01-liked-tracks-sync-feasibility.md) enregistre le API et les contraintes de distribution pour chaque fournisseur.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="playlist-metadata-backups"></a>
 
 ## 📦 Sauvegardes des métadonnées de la playlist
@@ -371,12 +346,6 @@ Les exportations manuelles sont téléchargées par le navigateur sur l'appareil
 Cliquez sur un champ de dossier ou Parcourir… pour ouvrir le sélecteur intégré. Utilisez Emplacements, fil d'Ariane cliquable, Précédent, Suivant et Haut d'un dossier pour naviguer. Cliquez sur un dossier pour le sélectionner ; double-cliquez, appuyez sur Entrée ou utilisez sa flèche pour l'ouvrir. La recherche filtre le dossier actuel. Entrez un chemin de dossier et accepte une adresse complète. Le dossier sélectionné met à jour le brouillon ; enregistrez les paramètres ou le calendrier pour l'appliquer. Annuler laisse le brouillon inchangé. Aucune aide de bureau ou processus supplémentaire n'est requis.
 
 Nouveau dossier crée un sous-dossier nommé à l'emplacement actuellement ouvert, puis l'ouvre. Les éléments existants ne sont jamais écrasés. L'annulation de la saisie d'un nom ne crée rien ; l'annulation du sélecteur après la création laisse le nouveau dossier sur le disque. Votre emplacement de sauvegarde ou de téléchargement enregistré ne change qu'après la sélection et l'enregistrement. Dans Docker, le sélecteur explique quels chemins sont partagés et affiche à la fois le chemin du conteneur et son chemin d'ordinateur configuré lorsqu'il est disponible.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="local-download-mirror-jellyfin"></a>
 
@@ -410,12 +379,6 @@ uv tool install spotdl       # isolated CLI; or: pipx install spotdl
 - Qualité audio : la source est YouTube, donc sans cookie YT Music Premium, le plafond est d'environ 128 à 160 kbps. `LOCAL_MIRROR_FORMAT=opus` conserve le flux natif de YouTube sans réencodage mp3 ; un cookie Premium (`LOCAL_MIRROR_COOKIE_FILE`) déverrouille 256 kbps AAC. La sélection de `flac` modifie le conteneur de sortie mais ne peut pas transformer une source avec perte en audio sans perte. Pour de l'audio réellement sans perte, utilisez `LOCAL_LIBRARY_DIR`.
 
 SongMirror n'automatise aucune extraction FLAC depuis un catalogue de streaming. Toute nouvelle source audio doit d'abord satisfaire les exigences de `docs/monochrome-flac-assessment.md`: un point d'accès de téléchargement ou d'export publié par le fournisseur et versionné, une autorisation liée à l'utilisateur, des droits explicites de copie permanente, des règles documentées de territoire, d'expiration et d'usage hors connexion, et aucun contournement de DRM ni de contrôle d'accès. N'utilisez le miroir local que pour du contenu qui vous appartient ou que vous avez le droit de copier.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="connecting-each-service"></a>
 
@@ -521,12 +484,6 @@ Parle au officiel [YouTube Data API v3](https://developers.google.com/youtube/v3
 
 Pour déplacer des listes entre comptes Google, connectez les deux comptes pour les listes privées ou collez un lien public avec seulement le compte destinataire connecté. Le mode navigateur inclut les listes vidéo YouTube ordinaires et lit toutes les pages. Utilisez le **Mode sans quota** pour les longues copies ; la connexion Data API conserve son quota quotidien. Si YouTube demande une chaîne, terminez sa création avec le compte destinataire, puis réessayez. Consultez le [guide de transfert entre comptes](../youtube-account-transfers.md).
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="soundcloud"></a>
 
 ### SoundCloud
@@ -571,12 +528,6 @@ Trois limites à connaître avant de vous y fier:
 
 Sans le secret partagé, le profil que vous indiquez doit rendre publics ses Loved Tracks et ses Top Tracks.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="headless-cli"></a>
 
 ## 🖥️ sans interface graphique CLI
@@ -602,12 +553,6 @@ uv run main.py --execute --sync-mode group --sync-source spotify \
 
 Vars d'environnement clés (voir `.env.example`) : les informations d'identification des fournisseurs que vous utilisez, `PLAYLISTS`, `SYNC_INTERVAL`, `MAX_ADDS` / `MAX_REMOVALS`, `DOWNLOAD_DIR`, `SYNC_MODE`, `SYNC_SOURCE`, `SYNC_AUTHORITIES` et `PROVIDERS`.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="safety-rails"></a>
 
 ## 🛡️ Mesures de sécurité
@@ -623,12 +568,6 @@ Les déménagements sont destructeurs, ils sont donc gardés :
 - Protection contre les pertes nettes : une piste côté cible ressemblant à une piste source qui n'a aucune correspondance sur ce service est conservée et non supprimée.
 - Tout échec d'authentification du fournisseur annule immédiatement le laissez-passer de ce fournisseur – aucune suppression partielle sur les jetons expirés.
 - Une tâche de fusion doit terminer la lecture de chaque source constitutive avant de la supprimer de sa destination ; toute force d'instantané source partiel/échoué qui passe en comportement d'ajout uniquement.
-
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
 
 <a id="caching-song-archive"></a>
 
@@ -665,12 +604,6 @@ Commande récemment ajoutée. Les collections natives aimées/favorites restent 
 Les modifications sont refusées avec un message clair pendant qu'une synchronisation est en cours, car une passe conserve le cache en mémoire pour son
 toute la durée et les écraserait à la fin.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="project-layout"></a>
 
 ## 🧱 Disposition du projet
@@ -687,12 +620,6 @@ frontend/       # React + Vite SPA (built and served by the API in production)
 
 Ajout d'un autre service : sous-classe `MirrorTarget`, implémentez ~8 méthodes, ajoutez son constructeur à `engine/targets`' `_REGISTRY` et sa classe à `_CLASSES`, et ajoutez un `Connector` correspondant sous `services/accounts`. Tous les rapprochements (diff, classement, mesures de sécurité, journalisation, saut d'instantané) sont hérités.
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="troubleshooting"></a>
 
 ## 🩺 Dépannage
@@ -708,12 +635,6 @@ Ajout d'un autre service : sous-classe `MirrorTarget`, implémentez ~8 méthode
 - Spotify rapports expirés — reconnectez-vous à `open.spotify.com` et collez un nouveau cookie `sp_dc` dans Comptes.
 - Une playlist ne se synchronise pas : confirmez qu'elle se trouve dans la portée de la playlist de synchronisation et qu'elle existe sur la source (les cibles sont créées automatiquement lors d'une passe réelle).
 
-<div align="right">
-
-[![][back-to-top]](#readme-top)
-
-</div>
-
 <a id="license"></a>
 
 ## 📄 Licence
@@ -721,29 +642,29 @@ Ajout d'un autre service : sous-classe `MirrorTarget`, implémentez ~8 méthode
 Droits d'auteur © 2026 [Ahnaf An Nafee](https://github.com/ahnafnafee).<br/>
 Ce projet est sous licence [MIT](../../LICENSE).
 
+<a id="support"></a>
+
+## Soutenir SongMirror
+
+Votre soutien aide à financer la maintenance et les tests sur les services de musique.
+
+[![Soutenir sur Ko-fi][kofi-badge]][kofi-link]
+[![Parrainer sur GitHub][sponsor-badge]][sponsor-link]
+
+[Ajouter une étoile sur GitHub][stars-link] · [Retour en haut](#readme-top)
+
 <!-- LINK GROUP -->
 
-[back-to-top]: https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square
-[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/songmirror/ci.yml?branch=main&label=CI&labelColor=black&logo=githubactions&logoColor=white&style=flat-square
+[docker-start-badge]: https://img.shields.io/badge/Docker-CE4512?logo=docker&logoColor=white&style=for-the-badge
+[registry-badge]: https://img.shields.io/badge/GHCR-27221F?logo=github&logoColor=white&style=for-the-badge
+[registry-link]: https://github.com/ahnafnafee/songmirror/pkgs/container/songmirror
+[kofi-badge]: https://img.shields.io/badge/Ko--fi-8F3B25?logo=ko-fi&logoColor=white&style=for-the-badge
+[kofi-link]: https://ko-fi.com/ahnafnafee
+[sponsor-badge]: https://img.shields.io/badge/GitHub_Sponsors-27221F?logo=githubsponsors&logoColor=white&style=for-the-badge
+[sponsor-link]: https://github.com/sponsors/ahnafnafee
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/ahnafnafee/songmirror/ci.yml?branch=main&label=CI&style=flat-square
 [ci-link]: https://github.com/ahnafnafee/songmirror/actions/workflows/ci.yml
-[license-shield]: https://img.shields.io/github/license/ahnafnafee/songmirror?color=F2601A&labelColor=black&style=flat-square
-[license-link]: https://github.com/ahnafnafee/songmirror/blob/main/LICENSE
-[python-shield]: https://img.shields.io/badge/python-3.13%2B-F2601A?labelColor=black&logo=python&logoColor=white&style=flat-square
-[python-link]: https://www.python.org/
-[docker-shield]: https://img.shields.io/badge/docker-ready-F2601A?labelColor=black&logo=docker&logoColor=white&style=flat-square
-[docker-link]: https://github.com/ahnafnafee/songmirror/pkgs/container/songmirror
-[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
+[license-shield]: https://img.shields.io/badge/license-MIT-CE4512?style=flat-square
+[stars-shield]: https://img.shields.io/github/stars/ahnafnafee/songmirror?style=flat-square
 [stars-link]: https://github.com/ahnafnafee/songmirror/stargazers
-[forks-shield]: https://img.shields.io/github/forks/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[forks-link]: https://github.com/ahnafnafee/songmirror/network/members
-[issues-shield]: https://img.shields.io/github/issues/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[issues-link]: https://github.com/ahnafnafee/songmirror/issues
-[last-commit-shield]: https://img.shields.io/github/last-commit/ahnafnafee/songmirror?color=F2601A&labelColor=black&logo=github&logoColor=white&style=flat-square
-[last-commit-link]: https://github.com/ahnafnafee/songmirror/commits/main
-[github-issues-link]: https://github.com/ahnafnafee/songmirror/issues
-[share-x-shield]: https://img.shields.io/badge/-share%20on%20x-black?labelColor=black&logo=x&logoColor=white&style=flat-square
-[share-x-link]: https://x.com/intent/tweet?text=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20seven%20music%20services&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
-[share-reddit-shield]: https://img.shields.io/badge/-share%20on%20reddit-black?labelColor=black&logo=reddit&logoColor=white&style=flat-square
-[share-reddit-link]: https://www.reddit.com/submit?title=SongMirror%20%E2%80%94%20self-hosted%20playlist%20sync%20across%20seven%20music%20services&url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
-[share-linkedin-shield]: https://img.shields.io/badge/-share%20on%20linkedin-black?labelColor=black&logo=linkedin&logoColor=white&style=flat-square
-[share-linkedin-link]: https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2Fahnafnafee%2Fsongmirror
+[website-link]: https://songmirror.ahnafnafee.dev/

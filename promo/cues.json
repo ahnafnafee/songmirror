@@ -1,0 +1,16 @@
+{
+  "bpm": 120,
+  "fps": 60,
+  "beats": 56,
+  "breakBeat": 47,
+  "posterBeat": 13,
+  "scenes": [
+    { "id": "hook", "beat": 0, "caption": "[A muted musical pulse]\nOne playlist across different libraries." },
+    { "id": "sync", "beat": 8, "eyebrow": "SCHEDULED SYNC", "headline": ["Change it", "once."], "detail": "Mirror one source or sync changes both ways.", "caption": "Choose which services sync and how changes travel." },
+    { "id": "transfer", "beat": 16, "eyebrow": "ONE-TIME TRANSFER", "headline": ["Take it", "with you."], "detail": "Copy a playlist to another music account.", "caption": "Choose a source playlist and copy it to another service." },
+    { "id": "history", "beat": 24, "eyebrow": "TRANSFER HISTORY", "headline": ["See what", "made it."], "detail": "Review the result of each playlist transfer.", "caption": "Review completed transfers and the number of tracks added." },
+    { "id": "local", "beat": 32, "eyebrow": "LOCAL MUSIC MIRROR", "headline": ["Keep a copy", "at home."], "detail": "Save audio and playlists for your Jellyfin library.", "caption": "Set up an offline music mirror for Jellyfin." },
+    { "id": "host", "beat": 40, "caption": "Run SongMirror on your own server with Docker." },
+    { "id": "outro", "beat": 48, "caption": "SongMirror. Free, open-source playlist sync.\nsongmirror.ahnafnafee.dev" }
+  ]
+}

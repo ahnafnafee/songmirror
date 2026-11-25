@@ -1,28 +1,30 @@
 import React from "react";
 import { Composition } from "remotion";
-import { Promo } from "./Promo";
-import { FPS, HEIGHT, TOTAL_FRAMES, WIDTH } from "./theme";
+import { Film } from "./Film";
+import cues from "../cues.json";
+
+const frames = Math.round(cues.beats * cues.fps * 60 / cues.bpm);
 
 export const RemotionRoot: React.FC = () => {
   return (
     <>
       <Composition
         id="SongMirrorPromo"
-        component={Promo}
-        durationInFrames={TOTAL_FRAMES}
-        fps={FPS}
-        width={WIDTH}
-        height={HEIGHT}
+        component={Film}
+        durationInFrames={frames}
+        fps={cues.fps}
+        width={1920}
+        height={1080}
         defaultProps={{ lite: false }}
       />
-      {/* Same film with a static background — the GIF-optimized source. */}
+      {/* The GIF cut skips the soundtrack and the moving signal texture. */}
       <Composition
         id="SongMirrorPromoLite"
-        component={Promo}
-        durationInFrames={TOTAL_FRAMES}
-        fps={FPS}
-        width={WIDTH}
-        height={HEIGHT}
+        component={Film}
+        durationInFrames={frames}
+        fps={cues.fps}
+        width={1920}
+        height={1080}
         defaultProps={{ lite: true }}
       />
     </>
