@@ -823,6 +823,24 @@ def test_anghami_web_playlist_writes_exclude_recommendations_and_require_ownersh
         target.add(playlist, ["104"])
 
 
+def test_anghami_search_keeps_top_matches_when_secondary_results_are_null():
+    from songmirror.engine.targets.anghami_web import AnghamiWebTarget
+
+    row = {"id": "101", "title": "Take It Or Leave It", "artist": "Cage The Elephant",
+           "duration": 200, "albumID": "1"}
+
+    class Player:
+        def request(self, operation, *, params=None):
+            assert operation == "search"
+            return {"sections": [
+                {"type": "genericitem", "group": "tops", "data": [row, {**row, "id": None}]},
+                {"type": "genericitem", "group": "search_top", "data": None},
+            ]}
+
+    target = AnghamiWebTarget(Player())
+    assert [row["id"] for row in target.search_candidates("Take It Or Leave It Cage The Elephant")] == ["101"]
+
+
 def test_read_only_providers_are_available_for_transfers_but_excluded_as_targets(monkeypatch):
     opts = SimpleNamespace(providers="anghami,qqmusic,mopidy", sync_source="spotify")
     node = SimpleNamespace(supports_playlist_writes=False, name="Mopidy", tag="mopidy")

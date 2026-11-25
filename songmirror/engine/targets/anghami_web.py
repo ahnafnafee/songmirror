@@ -25,6 +25,7 @@ PLAYER_URL = "https://play.anghami.com/playlists"
 GATEWAY_URL = "https://coussa.anghami.com/gateway.php"
 ID = re.compile(r"[1-9][0-9]{0,24}")
 _INCOMPLETE = "Anghami returned an incomplete playlist. Sync was stopped."
+_INVALID_SEARCH = "Anghami returned invalid catalog search results."
 _TOKEN = re.compile(r"[A-Za-z0-9_~.+:/=-]{16,4096}")
 _OPERATIONS = {"GETplaylists", "GETplaylistdata", "search", "PUTplaylist", "UPDATEplaylist"}
 
@@ -380,9 +381,17 @@ class AnghamiWebTarget(MirrorTarget):
         result = self._api.request("search", params={"query": query, "page": "0", "filter_type": "top",
                                                      "simple_results": "false"})
         found = {}
-        for section in rows(result.get("sections"), _INCOMPLETE):
-            for item in rows(section.get("data"), _INCOMPLETE):
+        for section in rows(result.get("sections"), _INVALID_SEARCH):
+            data = section.get("data")
+            if section.get("group") == "search_top" and data is None:
+                # An empty secondary section can follow valid matches in "tops".
+                continue
+            for item in rows(data, _INVALID_SEARCH):
                 if "duration" in item and "albumID" in item and "artist" in item:
+                    if not ID.fullmatch(str(item.get("id") or "")):
+                        continue
+                    if not all(isinstance(item.get(field), str) and item[field].strip() for field in ("title", "artist")):
+                        continue
                     candidate = self._track(item)
                     found.setdefault(candidate["id"], candidate)
         return list(found.values())[:limit]
