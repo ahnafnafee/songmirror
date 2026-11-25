@@ -127,7 +127,8 @@ class PlexTarget(MusicServerTarget):
     def create(self, sp_playlist):
         self._create_public(sp_playlist)
         name, _ = source_playlist_details(sp_playlist)
-        body = self._api.request("POST", "/playlists", params={"title": name, "type": "audio", "smart": 0})
+        body = self._api.request("POST", "/playlists",
+                                 params={"title": name, "type": "audio", "smart": 0, "uri": ""})
         playlist = self._one(body)
         self._require_editable(playlist)
         return playlist

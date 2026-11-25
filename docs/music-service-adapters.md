@@ -17,7 +17,7 @@ Mopidy replaces the M3U playlist contents when saving, and Lyrion removes by pos
 
 Emby may omit the media type in an account's playlist directory. SongMirror checks those playlist entries before offering them as audio playlists. It sends track additions in batches and verifies the entries Emby reports adding against a fresh playlist read.
 
-The disposable Emby, Mopidy, and Lyrion run passed 46 checks covering one-way and bidirectional sync, aggregate sync, removal propagation, catalog holds, and cleanup. Plex passed the playlist protocol fixtures. Its disposable server repeatedly stalled during music-library setup, so a cloned playlist run against Plex still needs a working music library. Anghami and QQ Music passed fixture checks for opening playlist links through Transfers and reading paginated tracks. They need connected accounts for live verification.
+The disposable Emby, Mopidy, and Lyrion run passed 46 checks covering one-way and bidirectional sync, aggregate sync, removal propagation, catalog holds, and cleanup. On Plex Media Server 1.43.3, SongMirror listed, created, read, and cleaned up a blank audio playlist. Creating it required an explicit empty `uri`. Append and track removal passed protocol fixtures. The disposable Plex server stalled during music-library setup, so the populated clone check needs a working music library. Anghami and QQ Music passed fixture checks for opening playlist links through Transfers and reading paginated tracks. They need connected accounts for live verification.
 
 ## Providers pending a playlist API contract
 

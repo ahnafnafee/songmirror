@@ -130,6 +130,7 @@ def test_plex_creates_appends_and_deletes_static_audio_entries_only():
         target.add(read_only, ["24"])
     assert wire.calls[2][2]["headers"]["X-Plex-Container-Start"] == "1"
     assert wire.calls[4][0] == "POST"
+    assert wire.calls[4][2]["params"]["uri"] == ""
     assert wire.calls[7][2]["params"]["uri"] == "server://abc123/com.plexapp.plugins.library/library/metadata/24"
     assert wire.calls[9][:2] == ("DELETE", "/playlists/1/items/92")
     assert wire.calls[-1][:2] == ("GET", "/playlists/2")
