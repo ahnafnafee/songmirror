@@ -473,7 +473,8 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, acco
   })
   if (form.liked_tracks) lockedProviderIds.add(syncSource)
 
-  const availablePeers = syncPeers.filter((account) => canUseSyncAccount(form, account))
+  const availablePeers = syncPeers.filter((account) => canUseSyncAccount(form, account) ||
+    (form.saved_albums && !hasPlaylists(account) && canReceiveLikedTracks(account)))
   const enabledProviders = enabledProvidersOf(form, availablePeers)
   const availableIds = new Set(availablePeers.map((account) => account.id))
   const configuredIds = new Set([...parseCsv(form.providers), ...(job ? lockedProviderIds : [])])
