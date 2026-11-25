@@ -46,6 +46,28 @@ def test_legacy_provider_settings_migrate_to_a_stable_default_profile(tmp_path, 
     assert reopened.canonical_id("spotify") == default_id
 
 
+def test_sync_keeps_surviving_destinations_when_profiles_are_removed(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from songmirror.engine import targets
+
+    profiles = AccountProfileStore(SettingsStore(dir=tmp_path))
+    profiles.set_accounts_visibility(profiles.resolve("lastfm"), False)
+    removed = profiles.create("deezer", "Old Deezer")
+    profiles.remove(removed.id)
+    tidal = SimpleNamespace(name="TIDAL", source="tidal", cache_file=None)
+    monkeypatch.setitem(targets._REGISTRY, "tidal", lambda *args, **kwargs: tidal)
+    warnings = []
+    monkeypatch.setattr("songmirror.engine.logs.log_warn", lambda message, **kw: warnings.append(message))
+    opts = SimpleNamespace(account_profiles=profiles, sync_source="spotify",
+                           providers=f"spotify,lastfm,{removed.id},tidal", liked_tracks=False)
+
+    destinations = targets.build_targets(opts)
+    assert [target.source for target in destinations] == [profiles.default_id("tidal")]
+    assert targets.build_one("lastfm", opts) is None
+    assert targets.build_one(removed.id, opts) is None
+    assert warnings == []
+
+
 def test_custom_profiles_have_disjoint_secrets_sessions_and_cache_paths(tmp_path, monkeypatch):
     monkeypatch.setenv("SPOTIFY_CLIENT_SECRET", "legacy-secret")
     monkeypatch.setenv("SPOTIFY_TOKEN_CACHE", "legacy-token-cache")

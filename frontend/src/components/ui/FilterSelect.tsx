@@ -1,8 +1,8 @@
-import { useTranslation } from '@/i18n'
+import { t, useTranslation } from '@/i18n'
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { LuCheck, LuChevronDown } from 'react-icons/lu'
+import { LuCheck, LuChevronDown, LuSearch } from 'react-icons/lu'
 
 import { cn } from '@/lib/cn'
 import { FIELD_INPUT_CLASSES } from './fieldStyles'
@@ -24,6 +24,9 @@ interface FilterSelectProps<T extends string> {
   icon: ReactNode
   className?: string
   variant?: 'filter' | 'field'
+  placeholder?: string
+  searchable?: boolean
+  busy?: boolean
 }
 
 interface PanelPosition {
@@ -52,19 +55,32 @@ export function FilterSelect<T extends string>({
   icon,
   className,
   variant = 'filter',
+  placeholder,
+  searchable = false,
+  busy = false,
 }: FilterSelectProps<T>) {
   useTranslation()
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
+  const [query, setQuery] = useState('')
   const [panelPosition, setPanelPosition] = useState<PanelPosition | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const typeaheadRef = useRef('')
   const typeaheadTimerRef = useRef<number | null>(null)
   const selectId = useId()
   const listboxId = `${selectId}-listbox`
-  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value))
-  const selected = options[selectedIndex] ?? options[0]
+  const match = options.findIndex((option) => option.value === value)
+  const selectedIndex = Math.max(0, match)
+  const selected = options[match] ?? (placeholder ? undefined : options[0])
+  const search = query.trim().toLocaleLowerCase()
+  const visibleOptions = searchable && search
+    ? options.filter(option => option.label.toLocaleLowerCase().includes(search) ||
+        option.value.toLocaleLowerCase().includes(search))
+    : options
+  const activeId = visibleOptions[activeIndex] ? `${selectId}-option-${activeIndex}` : undefined
 
   function measurePanel() {
     const trigger = triggerRef.current
@@ -91,6 +107,8 @@ export function FilterSelect<T extends string>({
   }
 
   function openMenu(index = selectedIndex) {
+    if (busy) return
+    setQuery('')
     setActiveIndex(index)
     setOpen(true)
   }
@@ -102,7 +120,7 @@ export function FilterSelect<T extends string>({
   }
 
   function choose(index: number) {
-    const option = options[index]
+    const option = visibleOptions[index]
     if (!option) return
     onChange(option.value)
     closeMenu(true)
@@ -114,26 +132,30 @@ export function FilterSelect<T extends string>({
       closeMenu(true)
       return
     }
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    if ((event.key !== 'ArrowDown' && event.key !== 'ArrowUp') || !options.length) return
     event.preventDefault()
     const direction = event.key === 'ArrowDown' ? 1 : -1
-    const next = (selectedIndex + direction + options.length) % options.length
+    const next = match < 0
+      ? (direction > 0 ? 0 : options.length - 1)
+      : (selectedIndex + direction + options.length) % options.length
     openMenu(next)
   }
 
   function onListboxKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.nativeEvent.isComposing) return
+    const inSearch = event.target === searchRef.current
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       const direction = event.key === 'ArrowDown' ? 1 : -1
-      setActiveIndex((index) => (index + direction + options.length) % options.length)
+      if (visibleOptions.length) setActiveIndex((index) => (index + direction + visibleOptions.length) % visibleOptions.length)
       return
     }
-    if (event.key === 'Home' || event.key === 'End') {
+    if (!inSearch && (event.key === 'Home' || event.key === 'End')) {
       event.preventDefault()
-      setActiveIndex(event.key === 'Home' ? 0 : options.length - 1)
+      setActiveIndex(event.key === 'Home' ? 0 : visibleOptions.length - 1)
       return
     }
-    if (event.key === 'Enter' || event.key === ' ') {
+    if (event.key === 'Enter' || (event.key === ' ' && !inSearch)) {
       event.preventDefault()
       choose(activeIndex)
       return
@@ -144,10 +166,10 @@ export function FilterSelect<T extends string>({
       return
     }
     if (event.key === 'Tab') {
-      closeMenu(false)
+      closeMenu(searchable)
       return
     }
-    if (event.key.length === 1 && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (!searchable && event.key.length === 1 && !event.altKey && !event.ctrlKey && !event.metaKey) {
       typeaheadRef.current += event.key.toLocaleLowerCase()
       const match = options.findIndex((option) => (
         option.label.toLocaleLowerCase().startsWith(typeaheadRef.current)
@@ -163,10 +185,15 @@ export function FilterSelect<T extends string>({
     measurePanel()
     const frame = window.requestAnimationFrame(() => {
       measurePanel()
-      panelRef.current?.focus()
+      const target = searchRef.current ?? listRef.current
+      target?.focus()
     })
     return () => window.cancelAnimationFrame(frame)
   }, [open])
+
+  useLayoutEffect(() => {
+    if (open && searchable) measurePanel()
+  }, [open, query, searchable])
 
   useEffect(() => {
     if (!open) return
@@ -193,8 +220,8 @@ export function FilterSelect<T extends string>({
   }, [])
 
   useEffect(() => {
-    if (open) document.getElementById(`${selectId}-option-${activeIndex}`)?.scrollIntoView({ block: 'nearest' })
-  }, [open, activeIndex, selectId])
+    if (open && activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' })
+  }, [open, activeId, query])
 
   return (
     <div className={cn('min-w-0', className)}>
@@ -211,6 +238,8 @@ export function FilterSelect<T extends string>({
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-busy={busy || undefined}
+        aria-disabled={busy || undefined}
         aria-controls={open ? listboxId : undefined}
         onClick={() => (open ? closeMenu(true) : openMenu())}
         onKeyDown={onTriggerKeyDown}
@@ -226,7 +255,7 @@ export function FilterSelect<T extends string>({
           {icon}
         </span>
         {variant === 'field' ? (
-          <span className="min-w-0 flex-1 truncate">{selected?.label}</span>
+          <span className="min-w-0 flex-1 truncate">{selected?.label ?? placeholder}</span>
         ) : (
           <span className="min-w-0 flex-1">
             <span className="block truncate font-mono text-[8.5px] font-bold uppercase leading-none tracking-[0.12em] text-text-3">
@@ -244,11 +273,6 @@ export function FilterSelect<T extends string>({
       {open && createPortal(
         <div
           ref={panelRef}
-          id={listboxId}
-          role="listbox"
-          tabIndex={-1}
-          aria-label={ariaLabel}
-          aria-activedescendant={`${selectId}-option-${activeIndex}`}
           data-activity-filter-menu={variant === 'filter' ? '' : undefined}
           onKeyDown={onListboxKeyDown}
           style={panelPosition ? {
@@ -258,12 +282,34 @@ export function FilterSelect<T extends string>({
             width: panelPosition.width,
             maxHeight: panelPosition.maxHeight,
           } : { position: 'fixed', visibility: 'hidden' }}
-          className="thin-scrollbar z-[80] flex max-h-72 flex-col gap-0.5 overflow-y-auto rounded-card border border-border-strong bg-surface p-1.5 shadow-lg focus:outline-none"
+          className="z-[80] flex max-h-72 flex-col rounded-card border border-border-strong bg-surface shadow-lg"
         >
-          {options.map((option, index) => {
+          {searchable && (
+            <div className="relative shrink-0 border-b border-border p-1.5">
+              <LuSearch aria-hidden="true" className="pointer-events-none absolute start-4 top-1/2 size-4 -translate-y-1/2 text-text-3" />
+              <input
+                ref={searchRef}
+                role="combobox"
+                aria-expanded="true"
+                aria-controls={listboxId}
+                aria-autocomplete="list"
+                aria-activedescendant={activeId}
+                aria-label={t("Search")}
+                placeholder={t("Search")}
+                autoComplete="off"
+                className={cn(FIELD_INPUT_CLASSES, 'ps-9')}
+                value={query}
+                onChange={event => { setQuery(event.target.value); setActiveIndex(0) }}
+              />
+            </div>
+          )}
+          <div ref={listRef} id={listboxId} role="listbox" tabIndex={-1} aria-label={ariaLabel}
+            aria-activedescendant={activeId}
+            className="thin-scrollbar flex min-h-0 flex-col gap-0.5 overflow-y-auto p-1.5 focus:outline-none">
+          {visibleOptions.map((option, index) => {
             const isSelected = option.value === value
             const isActive = index === activeIndex
-            const showGroup = option.group && option.group !== options[index - 1]?.group
+            const showGroup = option.group && option.group !== visibleOptions[index - 1]?.group
             return (
               <Fragment key={option.value}>
                 {showGroup ? (
@@ -310,6 +356,8 @@ export function FilterSelect<T extends string>({
               </Fragment>
             )
           })}
+          </div>
+          {searchable && visibleOptions.length === 0 && <p role="status" className="px-3 pb-3 text-sm text-text-3">{t("No matching services")}</p>}
         </div>,
         document.body,
       )}

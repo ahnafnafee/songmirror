@@ -126,6 +126,8 @@ SongMirror İngilizce, Arapça, Türkçe, İspanyolca, Basitleştirilmiş Çince
 
 ## Desteklenen hizmetler
 
+**Hesaplar → Hesap ekle** bölümünü açıp bir hizmet arayın. Hizmeti seçerek kurulumu açın, hesap profiline ad verin ve bağlantı kılavuzunu izleyin.
+
 | Hizmet | Eşitleme ve aktarım desteği |
 | --- | --- |
 | [Spotify](#spotify) | Çalma listeleri ve favoriler |
@@ -140,6 +142,11 @@ SongMirror İngilizce, Arapça, Türkçe, İspanyolca, Basitleştirilmiş Çince
 | [ListenBrainz](../listenbrainz-subsonic.md) | Çalma listeleri ve sevilen kayıtlar. Kullanıcı belirteci yazma erişimi sağlar. |
 | [Navidrome / Subsonic](../listenbrainz-subsonic.md) | Çalma listeleri ve favoriler |
 | [Jellyfin](../jellyfin-compatibility.md) | Sunucu çalma listeleri. Eşitlemek veya aktarmak için kullanıcı kimliği gir. |
+| Anghami, Audiomack, Gaana, JioSaavn | Oturum açılmış bir hesapta özel çalma listelerini okuyabilir ve oluşturabilirsiniz. Sahibi olduğunuz listelere parça ekleyebilir veya listelerden parça kaldırabilirsiniz. |
+| Emby, Plex, Mopidy, Lyrion Music Server | Sunucunuzun dizine eklediği müziklerle çalma listelerini okuyun ve düzenleyin. Plex akıllı çalma listeleri yalnızca kaynak olabilir. Mopidy için yazılabilir bir çalma listesi arka ucu, Lyrion için yapılandırılmış bir çalma listesi klasörü gerekir. |
+| QQ Music, LINE MUSIC, Pandora, Naver Vibe ve NetEase Cloud Music | Herkese açık çalma listesi bağlantılarını veya oturum açtığınız hesabın kitaplığını kaynak olarak kullanın. Herkese açık bağlantılar aktarmalarda ve birden çok kaynağı birleştiren eşitlemelerde çalışır. |
+
+LiveOne, MOOV ve Yandex Music henüz doğrulanıyor. Kurulum ayrıntıları ve test sonuçları için [çalma listesi bağdaştırıcısı kılavuzuna](../music-service-adapters.md) bakın.
 
 <a id="features"></a>
 
@@ -449,7 +456,7 @@ Varsayılan bağlayıcı için geliştirici onayı gerekmez. Amazon Music web oy
 1. bölgenizdeki Amazon Music sitesinde oturum açın ve DevTools → **Network** sekmesini açın.
 2. Sayfayı yenileyin, `config.json` için filtreleyin ve oturum açma isteğini seçin. (`pandaToken` göründüğünde de çalışır, ancak zorunlu değildir.)
 3. **Copy request headers** veya **Copy as cURL** seçeneğini belirleyin ve ardından bunu yenileme alanına yapıştırın. `User-Agent`, `Referer` ve `Cookie` başlıklarını eksiksiz tutun, böylece SongMirror aynı tarayıcı bağlamını yeniden oynatabilir.
-4. İsteğe bağlı olarak, oturum açılmış olan `config.json` yanıtını başlangıç alanına kopyalayın; SongMirror normalde yenileme oturumunu kullanarak bu cihaz bağlamını kendisi alabilir.
+4. İsteğe bağlı olarak, oturum açılmış olan `config.json` yanıtını başlangıç alanına kopyalayın; SongMirror normalde yenileme oturumunu kullanarak bu cihaz bağlamını kendisi alabilir. Yanıtta cihaz bilgileri olup `accessToken` yoksa isteğe bağlı başlangıç alanını boş bırakın.
 
 SongMirror aynı `AmznMusic` yetkilendirme değerini yerel olarak türetir ve süre dolmadan önce veya kimlik doğrulama reddinden sonra bunu `/pandaToken` aracılığıyla yeniler. Bağlantı sırasında cihaz bağlamı gerektiğinde tarayıcı tarzı yapılandırma isteğini kullanır, bir erişim belirteci oluşturmak için `/pandaToken` rotasını çağırır ve Amazon yenileme çerezini iptal ederse bağlantıyı reddeder. Yalnızca tarayıcı kullanıcı aracısını, dili, Müzik yönlendirenini, Amazon kimlik doğrulama/oturum çerezlerinin izin verilenler listesini ve sınırlı istemci cihazı bağlamını saklar; analizler, denemeler, AWS konsolu, CSRF ve diğer ilgisiz veriler atılır. Saklanan çerezler hassas olduğundan SongMirror'yi yerel ağınızda gizli tutun. Oturum kapatma, parola/güvenlik değişikliği veya sunucu tarafı iptali yeni bir yakalama gerektirebilir.
 
@@ -489,6 +496,8 @@ Google hesapları arasında özel listeleri taşımak için iki hesabı da bağl
 ### SoundCloud
 
 **Hesaplar → SoundCloud** bölümünden bağlanın. Oturum açık tarayıcıyla **Kotasız mod** seçeneğini veya sunucuda yapılandırılmış bir uygulamayla OAuth kullanın. Çalma listelerine göz atabilir, listeleri kopyalayabilir ve kendi listelerinizi eşitleyebilirsiniz. [Bağlantı kılavuzu](../provider-application-credentials.md)
+
+`soundcloud.com/you/sets` sayfasında Ağ panelinden `/me/library/all` isteğini ve `you/sets` sayfa isteğini cURL (bash) olarak kopyalayın. Tarayıcı sayfa isteğini Doc veya Document olarak gösterebilir. SongMirror bu istekle oturumu yenilemeyi deneyebilir. SoundCloud doğrulama isterse tarayıcıda tamamlayıp hesabı tekrar bağlayın. SoundCloud yetkili grupta bir ayna hedefiyse diğer hedefler eşitlemeye devam edebilir.
 
 <a id="lastfm"></a>
 

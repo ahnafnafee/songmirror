@@ -126,6 +126,8 @@ SongMirror는 영어, 아랍어, 터키어, 스페인어, 중국어 간체, 프�
 
 ## 지원 서비스
 
+**계정 → 계정 추가**를 열고 서비스를 검색하세요. 서비스를 선택해 설정을 열고 계정 프로필 이름을 지정한 다음 연결 안내를 따르세요.
+
 | 서비스 | 동기화 및 전송 지원 |
 | --- | --- |
 | [Spotify](#spotify) | 플레이리스트 및 즐겨찾기 |
@@ -140,6 +142,11 @@ SongMirror는 영어, 아랍어, 터키어, 스페인어, 중국어 간체, 프�
 | [ListenBrainz](../listenbrainz-subsonic.md) | 플레이리스트 및 좋아하는 녹음. 사용자 토큰이 있으면 수정할 수 있습니다. |
 | [Navidrome / Subsonic](../listenbrainz-subsonic.md) | 플레이리스트 및 즐겨찾기 |
 | [Jellyfin](../jellyfin-compatibility.md) | 서버 플레이리스트. 동기화 또는 전송하려면 사용자 ID를 입력하세요. |
+| Anghami, Audiomack, Gaana, JioSaavn | 로그인한 계정에서 비공개 재생목록을 읽고 만들 수 있습니다. 내가 소유한 재생목록의 곡을 추가하거나 삭제할 수도 있습니다. |
+| Emby, Plex, Mopidy, Lyrion Music Server | 서버가 이미 색인한 음악을 사용해 재생목록을 읽고 편집합니다. Plex 스마트 재생목록은 소스로만 사용할 수 있습니다. Mopidy에는 쓰기 가능한 재생목록 백엔드가, Lyrion에는 설정한 재생목록 폴더가 필요합니다. |
+| QQ Music, LINE MUSIC, Pandora, Naver Vibe 및 NetEase Cloud Music | 공개 재생목록 링크나 로그인한 계정의 보관함을 소스로 사용하세요. 공개 링크는 전송과 여러 소스를 합치는 동기화에서 사용할 수 있습니다. |
+
+LiveOne, MOOV, Yandex Music은 검증이 진행 중입니다. 설정과 테스트 결과는 [재생목록 어댑터 가이드](../music-service-adapters.md)를 참고하세요.
 
 <a id="features"></a>
 
@@ -449,7 +456,7 @@ OAuth 클라이언트 ID는 요청 메타데이터이며 TIDAL 액세스 토큰�
 1. 거주 지역의 Amazon Music 사이트에 로그인하고 DevTools → 네트워크를 엽니다.
 2. 페이지를 다시 로드하고 `config.json`로 필터링한 후 로그인된 요청을 선택하세요. (`pandaToken`가 나타날 때도 작동하지만 필수는 아닙니다.)
 3. 요청 헤더 복사 또는 cURL로 복사를 선택한 다음 갱신 필드에 붙여넣습니다. `User-Agent`, `Referer`, `Cookie` 헤더 전체를 유지하여 SongMirror이 동일한 브라우저 컨텍스트를 재생할 수 있도록 하세요.
-4. 선택적으로 로그인된 `config.json` 응답을 부트스트랩 필드에 복사합니다. SongMirror는 일반적으로 갱신 세션을 사용하여 해당 장치 컨텍스트를 가져올 수 있습니다.
+4. 선택적으로 로그인된 `config.json` 응답을 부트스트랩 필드에 복사합니다. SongMirror는 일반적으로 갱신 세션을 사용하여 해당 장치 컨텍스트를 가져올 수 있습니다. 응답에 기기 정보가 있고 `accessToken`이 없으면 선택 사항인 초기 설정 입력란을 비워 두세요.
 
 SongMirror는 동일한 `AmznMusic` 인증 값을 로컬에서 파생하고 만료 전 또는 인증 거부 후 한 번 `/pandaToken`을 통해 새로 고칩니다. 연결하는 동안 장치 컨텍스트가 필요할 때 현재 브라우저 스타일 구성 요청을 사용하고 액세스 토큰을 생성하기 위해 `/pandaToken`를 요구하며 Amazon이 음악 갱신 쿠키를 취소하면 연결을 거부합니다. 브라우저 사용자 에이전트, 언어, 음악 참조자, Amazon 인증/세션 쿠키의 명명된 허용 목록 및 제한된 음악 클라이언트 장치 컨텍스트만 저장합니다. 분석, 실험, AWS 콘솔, CSRF 및 기타 관련 없는 브라우저 데이터는 삭제됩니다. 보관된 쿠키는 여전히 민감하므로 LAN에서 SongMirror를 비공개로 유지하세요. 로그아웃, 비밀번호/보안 변경 또는 Amazon 측 취소에는 여전히 한 번의 새로운 캡처가 필요할 수 있습니다.
 
@@ -489,6 +496,8 @@ Google 계정 간 비공개 목록을 옮기려면 두 계정을 연결하고, �
 ### SoundCloud
 
 **계정 → SoundCloud**에서 서비스를 연결하세요. 로그인된 브라우저 세션으로 **할당량 없음 모드**를 사용하거나 서버에 구성한 앱으로 OAuth를 사용할 수 있습니다. 재생 목록을 살펴보고 복사할 수 있으며 소유한 재생 목록은 동기화할 수 있습니다. [연결 가이드](../provider-application-credentials.md)
+
+`soundcloud.com/you/sets`의 네트워크 패널에서 `/me/library/all` 요청과 `you/sets` 페이지 요청을 모두 cURL (bash)로 복사하세요. 브라우저에 따라 페이지 요청의 유형이 Doc 또는 Document로 표시됩니다. SongMirror는 페이지 요청으로 세션 갱신을 시도할 수 있습니다. SoundCloud가 확인을 요구하면 브라우저에서 완료한 뒤 계정을 다시 연결하세요. SoundCloud가 기준 그룹의 미러이면 다른 대상은 동기화를 계속할 수 있습니다.
 
 <a id="lastfm"></a>
 

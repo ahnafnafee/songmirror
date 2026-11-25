@@ -394,16 +394,16 @@ def save_cover(playlist, folder):
     if not url:
         return
     marker = folder / ".cover_url"
-    if (folder / "cover.jpg").exists() and marker.exists() and marker.read_text(encoding="utf-8").strip() == url:
-        return
     try:
+        if (folder / "cover.jpg").exists() and marker.exists() and marker.read_text(encoding="utf-8").strip() == url:
+            return
         content = media.fetch_image(url)
         for fname in ("cover.jpg", "folder.jpg"):
             (folder / fname).write_bytes(content)
         marker.write_text(url, encoding="utf-8")
         log_download(f"cover art saved ({len(content) // 1024} KB)", tag="local")
     except Exception as e:
-        log_warn(f"cover art failed: {e!r}", tag="local")
+        log_warn(f"cover art failed: {e}", tag="local")
 
 
 def _chunks(seq, size):
@@ -472,11 +472,12 @@ def _kill_tree(proc):
 
 def _stream_spotdl(cmd, folder, timeout_s):
     """Run spotDL, streaming meaningful lines live. Returns (downloaded, skipped,
-    return_code). A watchdog kills a hung run after timeout_s; because the read
+    status). A watchdog kills a hung run after timeout_s; because the read
     loop ends when the pipe closes, completed downloads are preserved and the
     next pass resumes."""
     verbose = os.getenv("LOCAL_MIRROR_VERBOSE") == "1"
     counts = {"downloaded": 0, "skipped": 0}
+    permission_denied = False
     # PYTHONUNBUFFERED so spotDL's lines reach us promptly (a piped child
     # block-buffers otherwise); PYTHONUTF8/IOENCODING so its own logging doesn't
     # crash (cp1252) on non-Latin track names.
@@ -537,6 +538,9 @@ def _stream_spotdl(cmd, folder, timeout_s):
                 continue  # spotDL child logging noise (defused by the UTF-8 env above)
             elif "reinitializing song" in line or "Could not get artist by ID" in line:
                 continue  # spotDL's transient metadata re-fetch (Spotify API blips); it retries, so not a real failure
+            elif "PermissionError" in line or "[Errno 13] Permission denied" in line:
+                permission_denied = True
+                log_warn(f"Download folder {folder}: {line[:200]}", tag="local")
             elif "rror" in line or "Exception" in line:  # Error / *Error
                 log_warn(line[:200], tag="local")
         proc.wait()
@@ -547,7 +551,8 @@ def _stream_spotdl(cmd, folder, timeout_s):
         stop.set()
         killer.cancel()
         _kill_tree(proc)
-    return counts["downloaded"], counts["skipped"], proc.returncode
+    # spotDL can report a per-track write failure while the process exits zero.
+    return counts["downloaded"], counts["skipped"], proc.returncode or int(permission_denied)
 
 
 def _diff_ids(current_ids, prev_files, unavailable):
@@ -674,7 +679,7 @@ def _download_one(source, playlist, folder, timeout_s, tracks, new_ids, removed_
                 downloaded += d
                 code = c or code
         if code != 0:
-            log_warn(f"'{name}': spotdl exited {code} (partial progress kept; resumes next pass)", tag="local")
+            log_warn(f"'{name}': spotDL reported a failure (partial progress kept; retries next pass)", tag="local")
 
     stamped, _, tagged, id_to_file, missing = finalize_folder(folder, tracks, newest_first)
     order = "newest-first" if newest_first else "oldest-first"

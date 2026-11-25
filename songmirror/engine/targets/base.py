@@ -78,6 +78,8 @@ class MirrorTarget:
     # a target is excluded from playlist mirroring and from N-way, but its
     # native favorites collection stays usable.
     supports_playlists = True
+    supports_playlist_library = True
+    supports_playlist_writes = True
     supports_favorites = True
     supports_saved_albums = True
     favorite_tracks_name = "Liked Tracks"
@@ -547,6 +549,20 @@ class MirrorTarget:
             if self.remove(playlist, raw) is not False:
                 removed += 1
         return removed
+
+
+class ReadOnlyPlaylistTarget(MirrorTarget):
+    supports_playlist_writes = False
+    supports_favorites = supports_favorite_writes = supports_saved_albums = False
+    replay_chronology = None
+
+    def is_editable(self, playlist):
+        return False
+
+    def _reject_write(self, *_args):
+        raise TargetCapabilityError(f"{self.name} only supports playlist reads.")
+
+    create = add = remove = _reject_write
 
 
 def _resource_call(target, method_name, playlist_method_name, resource, *args):
@@ -1764,8 +1780,6 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             )
             if enrich := getattr(p, "enrich_isrcs", None):
                 enrich(provider_rows, should_continue=should_continue)
-        except TargetAuthError:
-            raise
         except Exception as e:
             # Only a mirror can be skipped. Every N-way peer contributes
             # membership, as does an authority, so losing one of those reads
@@ -2206,6 +2220,17 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     rejected_link_ids = {p.source: set() for p in peers}
     new_state = {}   # source -> canonical membership to persist (only when the baseline is safe)
     applied_removals = {}  # source -> canonical ids this pass itself removed successfully
+
+    def record_mirror_auth_failure(peer, exc):
+        if authorities is None or peer.source in authorities:
+            raise exc
+        collapsed.add(peer.source)  # retain baseline evidence until the mirror can rejoin
+        stats["clean"] = False
+        stats["failed"] += 1
+        reason = f"{peer.name} mirror session unavailable: {exc}"
+        stats["failures"].append({"playlist": name, "error": reason})
+        log_warn(f"{name}: {reason}", tag=peer.tag)
+
     for p in peers:
         if should_continue and should_continue() != "run":
             interrupted = True  # Pause/Stop — skip the remaining providers this pass
@@ -2244,6 +2269,9 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                      "deferring them", tag=p.tag)
         try:
             p.prefetch([norm for _, norm in add_items], cache)
+        except TargetAuthError as e:
+            record_mirror_auth_failure(p, e)
+            continue
         except Exception as e:
             log_warn(f"{p.name} prefetch failed: {e!r}", tag=p.tag)
         additions, not_found = [], []
@@ -2300,8 +2328,9 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 continue  # same audio under a remaster/clean/release-decorated catalog entry
             try:
                 tid, method = p.resolve(norm, cache)
-            except TargetAuthError:
-                raise
+            except TargetAuthError as e:
+                record_mirror_auth_failure(p, e)
+                break
             except TargetTransientError as e:
                 deferred += len(add_items) - add_index + 1
                 add_blockers.add("the provider temporarily blocked ordered resolution")
@@ -2371,6 +2400,9 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 queued_by_key.setdefault(match_key, []).append((cid, norm))
             present_recordings[p.source].setdefault(catalog_name(norm["name"]), []).append((None, norm))
             additions.append((cid, tid, method or "search", norm))
+
+        if p.source in collapsed:
+            continue
 
         order_evidence = {
             cid: addition_order.get(
@@ -2468,16 +2500,20 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 tag=p.tag,
             )
         if execute and additions:
-            if chronology_replay:
-                result = p.replay_chronology(playlists[p.source], chronology_replay)
-            else:
-                result = _resource_call(
-                    p,
-                    "resource_add",
-                    "add",
-                    playlists[p.source],
-                    [target_id for _cid, target_id, _method, _norm in additions],
-                )
+            try:
+                if chronology_replay:
+                    result = p.replay_chronology(playlists[p.source], chronology_replay)
+                else:
+                    result = _resource_call(
+                        p,
+                        "resource_add",
+                        "add",
+                        playlists[p.source],
+                        [target_id for _cid, target_id, _method, _norm in additions],
+                    )
+            except TargetAuthError as e:
+                record_mirror_auth_failure(p, e)
+                continue
             additions, rejected = _split_add_results(additions, result, lambda item: item[1])
             if rejected:
                 rejected_norms = [norm for _cid, _tid, _method, norm in rejected]
@@ -2641,13 +2677,17 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 if id(norm) in safe_ids:
                     norm_cids.setdefault(id(norm), []).append(cid)
             for norm in safe:
-                outcome = _resource_call(
-                    p,
-                    "resource_remove",
-                    "remove",
-                    playlists[p.source],
-                    norm["_raw"],
-                )
+                try:
+                    outcome = _resource_call(
+                        p,
+                        "resource_remove",
+                        "remove",
+                        playlists[p.source],
+                        norm["_raw"],
+                    )
+                except TargetAuthError as e:
+                    record_mirror_auth_failure(p, e)
+                    break
                 if outcome is not False:
                     actually_removed_cids.update(norm_cids.get(id(norm), []))
                     actually_removed_count += 1

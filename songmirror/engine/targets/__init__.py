@@ -9,8 +9,12 @@ Everything else — one-way mirroring, N-way reconcile, canonical identity,
 caching, safety rails — is provider-agnostic and needs no change.
 """
 
-from .apple import AppleMusicTarget
+import os
+
 from .amazon_music import AmazonMusicTarget
+from .anghami import AnghamiTarget
+from .anghami_web import AnghamiBrowserClient, AnghamiSessionClient, AnghamiWebTarget
+from .apple import AppleMusicTarget
 from .base import (
     MirrorTarget,
     TargetAuthError,
@@ -21,13 +25,19 @@ from .base import (
     reconcile,
 )
 from .deezer import DeezerTarget
+from .emby import EmbyTarget
 from .jellyfin import JellyfinTarget
 from .lastfm import LastfmTarget
 from .listenbrainz import ListenBrainzTarget
-from .subsonic import SubsonicTarget
+from .lyrion import LyrionTarget
+from .mopidy import MopidyTarget
+from .plex import PlexTarget
+from .public_playlists import PUBLIC_PLAYLIST_TARGETS
 from .qobuz import QobuzTarget
+from .qqmusic import QQMusicTarget
 from .soundcloud import SoundCloudTarget
 from .spotify_target import SpotifyTarget
+from .subsonic import SubsonicTarget
 from .tidal import TidalTarget
 from . import ytmusic
 
@@ -59,9 +69,21 @@ def _rest_provider(target_cls, label, **kwargs):
     from ..logs import log_note
     try:
         return target_cls(**kwargs)
-    except RuntimeError as e:
+    except (RuntimeError, ValueError) as e:
         log_note(f"{label} skipped: {e}", tag=target_cls.tag)
         return None
+
+
+def _anghami():
+    token = os.getenv("ANGHAMI_SESSION_TOKEN")
+    endpoint = os.getenv("ANGHAMI_BROWSER_ENDPOINT")
+    if token or endpoint:
+        try:
+            client = AnghamiSessionClient(token) if token else AnghamiBrowserClient(endpoint)
+            return AnghamiWebTarget(client)
+        except ValueError:
+            return None
+    return _rest_provider(AnghamiTarget, "Anghami")
 
 
 def _spotify(opts, sp, *, sync_peer=False, songs=None):
@@ -105,12 +127,21 @@ _REGISTRY = {
         SubsonicTarget, "Navidrome / Subsonic"),
     "jellyfin": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(
         JellyfinTarget, "Jellyfin"),
+    "emby": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(EmbyTarget, "Emby"),
+    "plex": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(PlexTarget, "Plex"),
+    "mopidy": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(MopidyTarget, "Mopidy"),
+    "lyrion": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(LyrionTarget, "Lyrion Music Server"),
+    "anghami": lambda opts, sp, sync_peer=False, songs=None: _anghami(),
+    "qqmusic": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(QQMusicTarget, "QQ Music"),
+    **{provider: (lambda opts, sp, sync_peer=False, songs=None, cls=target: cls())
+       for provider, target in PUBLIC_PLAYLIST_TARGETS.items()},
 }
 # ISRC-rich providers first: they seed cross-provider identity for the rest.
 # History sources come last because their reads may carry no ISRC, so their
 # metadata matching must not pre-empt a provider with catalog identity.
 _SOURCE_ORDER = ["spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
-                 "soundcloud", "subsonic", "jellyfin", "lastfm", "listenbrainz"]
+                 "soundcloud", "anghami", "qqmusic", "subsonic", "jellyfin", "emby", "plex",
+                 "mopidy", "lyrion", *PUBLIC_PLAYLIST_TARGETS, "lastfm", "listenbrainz"]
 
 # The same providers as _REGISTRY, by class rather than by builder, for the
 # class-level facts a caller needs WITHOUT credentials (where the resolution
@@ -130,6 +161,13 @@ _CLASSES = {
     "listenbrainz": ListenBrainzTarget,
     "subsonic": SubsonicTarget,
     "jellyfin": JellyfinTarget,
+    "emby": EmbyTarget,
+    "plex": PlexTarget,
+    "mopidy": MopidyTarget,
+    "lyrion": LyrionTarget,
+    "anghami": AnghamiWebTarget,
+    "qqmusic": QQMusicTarget,
+    **PUBLIC_PLAYLIST_TARGETS,
 }
 
 
@@ -175,14 +213,50 @@ def _writable(identity, opts):
     liked-tracks job, because its native favorites collection is writable and
     that sync runs through the same per-target loop.
     """
-    if playlists_for(identity, opts):
-        return True
     profiles = _profiles(opts)
     provider = profiles.provider_of(identity) if profiles is not None else identity
     cls = _CLASSES.get(provider)
+    if playlists_for(identity, opts) and playlist_writes_for(identity, profiles):
+        return True
     return bool(getattr(opts, "liked_tracks", False)) and bool(
         getattr(cls, "supports_favorite_writes", True)
     )
+
+
+def supports_playlist_writes(provider_id):
+    """Whether the provider has a playlist write protocol, independent of its connection."""
+    return getattr(_CLASSES.get(provider_id), "supports_playlist_writes", True) is not False
+
+
+def playlist_writes_for(identity, profiles=None):
+    provider = profiles.provider_of(identity) if profiles is not None else identity
+    configured = getattr(_CLASSES.get(provider), "playlist_writes_configured", None)
+    if configured is None:
+        return supports_playlist_writes(provider)
+    if profiles is not None and profiles.resolve(identity) is not None:
+        with profiles.activate(identity):
+            return configured()
+    return configured()
+
+
+def writable_target(target):
+    """Check the configured target, including server features discovered at runtime."""
+    return bool(getattr(target, "supports_playlist_writes", True))
+
+
+def _writable_peer(target, identity, opts, loved_tracks):
+    from ..logs import log_warn
+
+    if target is None:
+        return False
+    try:
+        if writable_target(target):
+            return True
+    except RuntimeError as exc:
+        log_warn(f"{target.name} could not check playlist writes: {exc}", tag=target.tag)
+        return False
+    _announce_playlistless(identity, opts, loved_tracks)
+    return False
 
 
 def _announce_playlistless(identity, opts, loved_tracks):
@@ -200,9 +274,9 @@ def _announce_playlistless(identity, opts, loved_tracks):
     note = getattr(cls, "no_playlists_note", None)
     label = (profiles.display_name(identity, cls.name)
              if profiles is not None else cls.name)
-    still = (" Its loved tracks still sync." if loved_tracks else "")
+    still = " Its loved tracks still sync." if loved_tracks and cls.supports_favorite_writes else ""
     log_warn(
-        f"{label} was left out of this pass: {note or 'it has no playlists to write.'}{still}",
+        f"{label} was left out of this pass: {note or 'playlist writes are unavailable.'}{still}",
         tag=provider,
     )
 
@@ -266,12 +340,21 @@ def _profiles(opts):
     return getattr(opts, "account_profiles", None)
 
 
+def profile_removed(identity, opts):
+    """A saved profile reference can outlive the account it belonged to."""
+    profiles = _profiles(opts)
+    if profiles is None or not identity:
+        return False
+    profile = profiles.resolve(identity)
+    return profile is None or profile.show_in_accounts is False
+
+
 def _identity_parts(identity, opts):
     profiles = _profiles(opts)
     if profiles is None:
         return identity, None, None
     profile = profiles.resolve(identity)
-    if profile is None:
+    if profile is None or profile.show_in_accounts is False:
         return None, None, profiles
     return profile.provider, profile, profiles
 
@@ -282,8 +365,10 @@ def _participant_ids(opts):
     if profiles is None:
         return raw or list(_SOURCE_ORDER)
     if raw:
-        return list(dict.fromkeys(profiles.canonical_id(part) for part in raw))
-    return [profile.id for profile in profiles.list() if profile.provider in _REGISTRY]
+        return list(dict.fromkeys(profiles.canonical_id(part) for part in raw
+                                  if not profile_removed(part, opts)))
+    return [profile.id for profile in profiles.list()
+            if profile.provider in _REGISTRY and profile.show_in_accounts is not False]
 
 
 def target_class(provider_id):
@@ -336,11 +421,11 @@ def build_targets(opts, sp=None):
         if identity == source:
             continue
         if not _writable(identity, opts):
-            if not playlists_for(identity, opts):
+            if getattr(opts, "providers", None):
                 _announce_playlistless(identity, opts, loved_tracks)
             continue
         target = build_one(identity, opts, sp, sync_peer=True)
-        if target:
+        if _writable_peer(target, identity, opts, loved_tracks):
             targets.append(target)
     return targets
 
@@ -378,9 +463,7 @@ def build_one(provider_id, opts, sp=None, *, sync_peer=False, songs=None):
 
 
 def is_peer(provider_id, opts=None):
-    """Whether a provider is a sync/transfer peer — i.e. has a MirrorTarget that
-    can read and write playlist tracks. False for a service with no playlists
-    (Last.fm) and for an unknown provider id."""
+    """Whether a registered provider exposes playlists for sync or transfer reads."""
     profiles = _profiles(opts) if opts is not None else None
     provider = profiles.provider_of(provider_id) if profiles is not None else provider_id
     return provider in _REGISTRY and playlists_for(provider_id, opts)
@@ -397,10 +480,10 @@ def build_peers(opts, sp, songs=None):
     peers = []
     for identity in _participant_ids(opts):
         if not _writable(identity, opts):
-            if not playlists_for(identity, opts):
+            if getattr(opts, "providers", None):
                 _announce_playlistless(identity, opts, loved_tracks)
             continue
         peer = build_one(identity, opts, sp, sync_peer=True, songs=songs)
-        if peer:
+        if _writable_peer(peer, identity, opts, loved_tracks):
             peers.append(peer)
     return peers

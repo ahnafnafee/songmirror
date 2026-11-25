@@ -11,7 +11,10 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from ...soundcloud import (
     AUTHORIZE, TOKEN_FILENAME, SoundCloud, SoundCloudAuthError, SoundCloudError, read_private, write_private,
 )
-from ...soundcloud_web import WEB_SESSION_FILENAME, SoundCloudWeb, browser_mode, parse_browser_request
+from ...soundcloud_renewal import parse_page_request
+from ...soundcloud_web import (
+    BROWSER_SESSION_LOCK, WEB_SESSION_FILENAME, SoundCloudWeb, browser_mode, parse_browser_request,
+)
 from .base import ConnStatus, Connector
 
 CAPABILITIES = frozenset({"library_read", "library_write"})
@@ -51,16 +54,25 @@ class SoundCloudConnector(Connector):
     def _web_file(self):
         return Path(self._store.get("SOUNDCLOUD_WEB_SESSION_FILE") or self._store.data_dir / WEB_SESSION_FILENAME)
 
-    def enable_browser(self, raw):
+    @property
+    def browser_renewable(self):
+        try:
+            return self.browser_active and bool(read_private(self._web_file).get("renewal_cookies"))
+        except SoundCloudError:
+            return False
+
+    def enable_browser(self, raw, page_request=""):
         try:
             session = parse_browser_request(raw)
+            session["renewal_cookies"] = parse_page_request(page_request)
             profile = SoundCloudWeb(session).profile()
             user_id = str(profile["id"])
-            current_id = read_private(self._web_file).get("user_id") if self.browser_active else None
-            if current_id and current_id != user_id:
-                return ConnStatus("error", "That browser request belongs to a different SoundCloud account")
-            write_private(self._web_file, {**session, "user_id": user_id})
-            self._store.save({"SOUNDCLOUD_PREFER_BROWSER": "1"})
+            with BROWSER_SESSION_LOCK:
+                current_id = read_private(self._web_file).get("user_id") if self.browser_active else None
+                if current_id and current_id != user_id:
+                    return ConnStatus("error", "That browser request belongs to a different SoundCloud account")
+                write_private(self._web_file, {**session, "user_id": user_id, "captured_at": time.time()})
+                self._store.save({"SOUNDCLOUD_PREFER_BROWSER": "1"})
         except (SoundCloudError, ValueError) as exc:
             return ConnStatus("error", str(exc))
         except OSError:
@@ -68,9 +80,10 @@ class SoundCloudConnector(Connector):
         return self._web_status(profile)
 
     def _clear_browser(self):
-        self._web_file.unlink(missing_ok=True)
-        if self.browser_active:
-            self._store.save({"SOUNDCLOUD_PREFER_BROWSER": "0"})
+        with BROWSER_SESSION_LOCK:
+            self._web_file.unlink(missing_ok=True)
+            if self.browser_active:
+                self._store.save({"SOUNDCLOUD_PREFER_BROWSER": "0"})
 
     def disable_browser(self):
         self._clear_browser()
@@ -83,8 +96,7 @@ class SoundCloudConnector(Connector):
     def status(self):
         if self.browser_active:
             try:
-                session = read_private(self._web_file)
-                return self._web_status(SoundCloudWeb(session).profile())
+                return self._web_status(SoundCloudWeb(session_file=self._web_file).profile())
             except SoundCloudAuthError as exc:
                 return ConnStatus("expired", str(exc))
             except SoundCloudError as exc:

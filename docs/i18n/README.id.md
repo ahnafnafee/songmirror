@@ -126,6 +126,8 @@ SongMirror mendukung bahasa Inggris, Arab, Turki, Spanyol, Cina Sederhana, Peran
 
 ## Layanan yang didukung
 
+Buka **Akun → Tambah akun** dan cari layanan. Pilih layanan untuk membuka pengaturan, beri nama profil akun, lalu ikuti panduan koneksi.
+
 | Layanan | Dukungan sinkronisasi dan transfer |
 | --- | --- |
 | [Spotify](#spotify) | Playlist dan lagu favorit |
@@ -140,6 +142,11 @@ SongMirror mendukung bahasa Inggris, Arab, Turki, Spanyol, Cina Sederhana, Peran
 | [ListenBrainz](../listenbrainz-subsonic.md) | Playlist dan rekaman favorit. Token pengguna mengaktifkan penulisan. |
 | [Navidrome / Subsonic](../listenbrainz-subsonic.md) | Playlist dan lagu favorit |
 | [Jellyfin](../jellyfin-compatibility.md) | Playlist server. Masukkan ID pengguna untuk menyinkronkan atau mentransfer. |
+| Anghami, Audiomack, Gaana, JioSaavn | Akun yang sudah masuk dapat membaca dan membuat playlist privat serta menambah atau menghapus lagu pada playlist milik sendiri. |
+| Emby, Plex, Mopidy, Lyrion Music Server | Baca dan edit playlist menggunakan musik yang sudah diindeks server. Smart playlist Plex hanya bisa menjadi sumber. Mopidy membutuhkan backend playlist yang dapat ditulis, dan Lyrion membutuhkan folder playlist yang sudah ditentukan. |
+| QQ Music, LINE MUSIC, Pandora, Naver Vibe, dan NetEase Cloud Music | Gunakan tautan playlist publik atau pustaka akun yang sudah masuk sebagai sumber. Tautan publik dapat dipakai dalam transfer dan sinkronisasi gabungan dari beberapa sumber. |
+
+LiveOne, MOOV, dan Yandex Music masih menunggu verifikasi. Lihat [panduan adaptor playlist](../music-service-adapters.md) untuk langkah penyiapan dan hasil pengujian.
 
 <a id="features"></a>
 
@@ -449,7 +456,7 @@ Tidak diperlukan persetujuan pengembang untuk konektor default. Ia menggunakan r
 1. Masuk ke situs Amazon Music di wilayah Anda dan buka DevTools → Jaringan.
 2. Muat ulang halaman, filter `config.json`, dan pilih permintaan masuk. (`pandaToken` juga berfungsi saat muncul, tetapi tidak diperlukan.)
 3. Pilih Salin header permintaan atau Salin sebagai cURL, lalu tempelkan ke bidang pembaruan. Simpan header lengkap `User-Agent`, `Referer`, dan `Cookie` sehingga SongMirror dapat memutar ulang konteks browser yang sama.
-4. Secara opsional, salin Respons `config.json` yang sudah masuk ke kolom bootstrap; SongMirror biasanya dapat mengambil konteks perangkat tersebut menggunakan sesi pembaruan.
+4. Secara opsional, salin Respons `config.json` yang sudah masuk ke kolom bootstrap; SongMirror biasanya dapat mengambil konteks perangkat tersebut menggunakan sesi pembaruan. Kosongkan kolom inisialisasi opsional jika respons berisi detail perangkat tanpa `accessToken`.
 
 SongMirror memperoleh nilai otorisasi `AmznMusic` yang sama secara lokal dan menyegarkannya melalui `/pandaToken` sebelum habis masa berlakunya atau satu kali setelah penolakan autentikasi. Selama koneksi, Amazon menggunakan permintaan konfigurasi gaya browser saat ini ketika konteks perangkat diperlukan, memerlukan `/pandaToken` untuk membuat token akses, dan menolak koneksi jika Amazon mencabut cookie pembaruan Musik. Ini hanya menyimpan agen pengguna browser, bahasa, referensi Musik, daftar cookie autentikasi/sesi Amazon yang diizinkan, dan konteks perangkat klien Musik yang terbatas; analitik, eksperimen, konsol AWS, CSRF, dan data browser lain yang tidak terkait akan dibuang. Cookie yang disimpan tersebut masih bersifat sensitif, jadi jaga kerahasiaan SongMirror di LAN Anda. Logout, perubahan kata sandi/keamanan, atau pencabutan pihak Amazon masih memerlukan satu pengambilan baru.
 
@@ -489,6 +496,8 @@ Untuk memindahkan daftar pribadi antar akun Google, hubungkan keduanya; untuk da
 ### SoundCloud
 
 Sambungkan layanan melalui **Akun → SoundCloud**. Gunakan **Mode tanpa kuota** dengan sesi browser yang sudah masuk, atau OAuth dengan aplikasi yang disiapkan di server. Anda dapat menelusuri dan menyalin daftar putar serta menyinkronkan daftar putar milik Anda. [Panduan koneksi](../provider-application-credentials.md)
+
+Di `soundcloud.com/you/sets`, salin permintaan `/me/library/all` dan permintaan halaman `you/sets` dari panel Network sebagai cURL (bash). Peramban mungkin menandai permintaan halaman sebagai Doc atau Document. SongMirror dapat memakai permintaan halaman untuk mencoba memperbarui sesi. Jika SoundCloud meminta verifikasi, selesaikan di peramban lalu hubungkan ulang. Jika SoundCloud menjadi tujuan cermin dalam grup otoritatif, tujuan lain dapat melanjutkan sinkronisasi.
 
 <a id="lastfm"></a>
 

@@ -23,7 +23,9 @@ from ..engine.config import parse_args, spotify_write_backend
 from ..engine.logs import Event, log_note, log_warn
 from ..engine.runner import save_cache
 from ..engine.resolve_cache import load_target_cache
-from ..engine.targets import build_one, is_peer, target_class, target_provider
+from ..engine.targets import (
+    build_one, is_peer, supports_playlist_writes, target_class, target_provider, writable_target,
+)
 from ..engine.targets.base import TargetAuthError, TargetTransientError, _normalize
 from .import_matching import ImportMatcher
 from .import_models import (
@@ -288,7 +290,7 @@ class ImportService:
     ) -> ImportJob:
         account_id = self._account(destination_account)
         provider = self._provider_of(account_id)
-        if not is_peer(provider):
+        if not is_peer(provider) or not supports_playlist_writes(provider):
             raise ImportServiceError(
                 f"{provider_label(provider)} cannot be a playlist destination"
             )
@@ -800,7 +802,7 @@ class ImportService:
         """Search a destination account's catalog for manual track assignment."""
         account_id = self._account(account)
         provider = self._provider_of(account_id)
-        if not is_peer(provider):
+        if not is_peer(provider) or not supports_playlist_writes(provider):
             raise ImportServiceError(
                 f"{provider_label(provider)} cannot be a playlist destination"
             )
@@ -816,6 +818,8 @@ class ImportService:
         dest = self._build_target(account_id, opts)
         if dest is None:
             raise ImportServiceError("destination account is not connected")
+        if not writable_target(dest):
+            raise ImportServiceError(f"{dest.name} cannot be a playlist destination")
         search = getattr(dest, "search_candidates", None)
         if not callable(search):
             raise ImportServiceError("destination provider does not support catalog search")
@@ -1392,6 +1396,8 @@ class ImportService:
         dest = self._build_target(job["destination_account"], opts)
         if dest is None:
             raise RuntimeError("destination account is not connected")
+        if not writable_target(dest):
+            raise RuntimeError(f"{dest.name} cannot be a playlist destination")
 
         mode = job.get("destination_mode") or "create"
         tracks = self._with_conn(

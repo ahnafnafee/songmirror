@@ -126,6 +126,8 @@ SongMirror supports English, Arabic, Turkish, Spanish, Simplified Chinese, Frenc
 
 ## Supported services
 
+Open **Accounts → Add account** and search for a service. Select it to open setup, name the account profile, and follow the connection guide.
+
 | Service | Sync and transfer support |
 | --- | --- |
 | [Spotify](#spotify) | Playlists and favorites |
@@ -140,6 +142,11 @@ SongMirror supports English, Arabic, Turkish, Spanish, Simplified Chinese, Frenc
 | [ListenBrainz](docs/listenbrainz-subsonic.md) | Playlists and loved recordings. A user token enables writes. |
 | [Navidrome / Subsonic](docs/listenbrainz-subsonic.md) | Playlists and favorites |
 | [Jellyfin](docs/jellyfin-compatibility.md) | Server playlists. Provide a user ID to sync or transfer. |
+| Anghami, Audiomack, Gaana, JioSaavn | Signed-in profiles read private playlists, create private playlists, and add or remove tracks in playlists you own. |
+| Emby, Plex, Mopidy, Lyrion Music Server | Read and edit playlists using music already indexed by your server. Plex smart playlists are sources only. Mopidy needs a writable playlist backend, and Lyrion needs a configured playlist folder. |
+| QQ Music, LINE MUSIC, Pandora, Naver Vibe, and NetEase Cloud Music | Use public playlist links or the signed-in library as a source. Public links work in Transfers and multi-source merge sync. |
+
+LiveOne, MOOV, and Yandex Music are pending verification. See the [playlist adapter guide](docs/music-service-adapters.md) for setup details and test results.
 
 <a id="features"></a>
 
@@ -449,7 +456,7 @@ No developer approval is required for the default connector. It uses the same au
 1. Sign in at the Amazon Music site for your account's marketplace and open DevTools → **Network**.
 2. Reload the page, filter for `config.json`, and select the signed-in request. (`pandaToken` works too when it appears, but it is not required.)
 3. Choose **Copy request headers** or **Copy as cURL**, then paste it into the renewal field. Keep the complete `User-Agent`, `Referer`, and `Cookie` headers so SongMirror can replay the same browser context.
-4. Optionally copy the signed-in `config.json` **Response** into the bootstrap field; SongMirror can normally fetch that device context using the renewal session.
+4. If the signed-in `config.json` **Response** contains an `accessToken`, you can paste it into the optional bootstrap field. Leave the field blank when the response only contains device details. SongMirror can fetch device context using the renewal request.
 
 SongMirror derives the same `AmznMusic` authorization value locally and refreshes it through the captured marketplace's `/pandaToken` before expiry or once after an authentication rejection. During connection it uses the current browser-style config request when device context is needed, requires `/pandaToken` to mint an access token, and rejects the connection if Amazon revokes the renewal authentication cookie. It stores only the browser user agent, language, Music referer, the Amazon authentication/session cookies present in the captured request, and limited Music-client device context; analytics, experiment, AWS-console, CSRF, and other unrelated browser data are discarded. Those retained cookies are still sensitive, so keep SongMirror private on your LAN. A logout, password/security change, or Amazon-side revocation can still require one fresh capture.
 
@@ -489,6 +496,8 @@ To move playlists between Google accounts, connect both accounts for private lis
 ### SoundCloud
 
 Connect in **Accounts → SoundCloud**. Use **No-quota mode** to connect a signed-in browser session, or use OAuth with a server-configured application. You can browse and copy playlists, and sync changes to playlists you own. [Connection guide](docs/provider-application-credentials.md)
+
+On `soundcloud.com/you/sets`, copy both the `/me/library/all` Network request and the `you/sets` page request as cURL (bash). The browser may label the page request Doc or Document. The page request lets SongMirror attempt to renew the session. If SoundCloud asks for browser verification, complete it in the browser and reconnect. Other destinations in an authoritative group can continue when SoundCloud is a mirror.
 
 <a id="lastfm"></a>
 

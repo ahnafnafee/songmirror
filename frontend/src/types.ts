@@ -2,7 +2,7 @@
 // (omni_sync/web/routers/*.py + omni_sync/accounts/*.py). Keep this
 // file in sync with the backend if the contract ever changes shape.
 
-export type AuthKind = 'oauth_redirect' | 'oauth_device' | 'token_paste' | 'api_key'
+export type AuthKind = 'oauth_redirect' | 'oauth_device' | 'token_paste' | 'api_key' | 'public_link'
 
 export type AccountState = 'connected' | 'expired' | 'unconfigured' | 'error'
 
@@ -40,9 +40,12 @@ export interface Account {
   label: string
   is_default: boolean
   removable: boolean
+  /** Whether the profile has a tile on Accounts. Older snapshots omit this. */
+  show_in_accounts?: boolean
   name: string
   auth_kind: AuthKind
   fields: AccountField[]
+  playlist_browser?: { login_url: string; request_hint: string; active: boolean }
   state: AccountState
   detail: string | null
   /** Whether this service can be a sync/transfer peer (reads and writes tracks).
@@ -67,6 +70,7 @@ export interface Account {
   authorization_pending?: boolean
   /** A browser session is selected, even if it needs to be renewed. */
   browser_mode?: boolean
+  browser_renewable?: boolean
   /** Whether this service can replay date-added order into an existing playlist.
    * False where the provider's writes can't express the repair safely (Deezer),
    * which greys out the transfer form's "preserve order" switch. */
@@ -105,10 +109,10 @@ export interface ConnectDeviceResponse {
   interval: number
 }
 
-/** token_paste / api_key connect responses submit values directly and get a
+/** Direct connect responses submit values immediately and get a
  * status back instead of a redirect/device hand-off. */
 export interface ConnectDirectResponse {
-  kind: 'token_paste' | 'api_key'
+  kind: 'token_paste' | 'api_key' | 'public_link'
   state: AccountState
   detail: string | null
   capabilities?: AccountCapabilities

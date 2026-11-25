@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { LuCheck, LuChevronDown, LuCircleAlert, LuCircleHelp, LuClipboardPaste, LuExternalLink, LuInfinity } from 'react-icons/lu'
 
-import { api, errorMessage } from '@/api'
+import { api, ApiError, errorMessage } from '@/api'
 import { linkify } from '@/lib/linkify'
 import type { Account, AccountField, AccountState, ConnectDeviceResponse, ConnectRedirectResponse } from '@/types'
 
@@ -16,6 +16,7 @@ import { TextField } from '../ui/TextField'
 
 interface Props {
   account: Account
+  editName?: boolean
   open: boolean
   onClose: () => void
   /** Fired after a brief confirmation once the account reaches
@@ -45,6 +46,7 @@ const AUTH_KIND_TITLES: Record<Account['auth_kind'], string> = {
   get oauth_device() { return t("Connect with a device code") },
   get token_paste() { return t("Connect from a signed-in browser session") },
   get api_key() { return t("Connect with a server URL and API key") },
+  get public_link() { return t("Connect with a public playlist link") },
 }
 
 /** Inline monospace token for header names / literal values inside the guides. */
@@ -54,7 +56,7 @@ function Code({ children }: { children: ReactNode }) {
 
 /** Inline hyperlink for a guide step's own reference (e.g. "open
  * music.apple.com") — new tab, styled like the guide's standalone CTA link. */
-function GuideLink({ href, children }: { href: string; children: ReactNode }) {
+function GuideLink({ href, children }: { href: string; children?: ReactNode }) {
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
       {children}
@@ -67,6 +69,14 @@ interface ConnectGuideContent {
   steps: ReactNode[]
   note?: string
   link?: { href: string; label: string }
+}
+
+function ServerAddressStep({ port }: { port: number }) {
+  return <Trans i18nKey={"Enter your <strong1>Server URL</strong1>. On the same machine, use <code2/>. If SongMirror runs in Docker and the server runs on the host, use <code3/>."} components={{
+    strong1: <strong />,
+    code2: <Code>{`http://localhost:${port}`}</Code>,
+    code3: <Code>{`http://host.docker.internal:${port}`}</Code>,
+  }} />
 }
 
 // Per-provider "how do I actually get these values" walkthroughs, shown as an
@@ -144,7 +154,7 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
     intro: t("Use a signed-in Amazon Music request to keep its short-lived web-player token current automatically."),
     steps: [
       <>
-        <Trans i18nKey={"Open <link1/>, sign in, and open your browser’s dev tools (<code2/>, or <code3/> on Mac)."} components={{ link1: <strong>{'Amazon Music'}</strong>, code2: <Code>F12</Code>, code3: <Code>⌥⌘I</Code> }} />
+        <Trans i18nKey={"Open <link1/>, sign in, and open your browser’s dev tools (<code2/>, or <code3/> on Mac)."} components={{ link1: <GuideLink href="https://music.amazon.com/">music.amazon.com</GuideLink>, code2: <Code>F12</Code>, code3: <Code>⌥⌘I</Code> }} />
       </>,
       <>
         <Trans i18nKey={"In <strong1>Network</strong1>, reload the page, filter for <code2/>, and select that request."} components={{ strong1: <strong />, code2: <Code>config.json</Code> }} />
@@ -152,9 +162,7 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
       <>
         <Trans i18nKey={"Choose <strong1>Copy request headers</strong1> or <strong2>Copy as cURL</strong2>, then paste it into the renewal field below. Keep the complete <code3/>, <code4/>, and <code5/> headers."} components={{ strong1: <strong />, strong2: <strong />, code3: <Code>User-Agent</Code>, code4: <Code>Referer</Code>, code5: <Code>Cookie</Code> }} />
       </>,
-      <>
-        <Trans i18nKey={"Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field."} components={{ strong1: <strong />, strong2: <strong /> }} />
-      </>,
+      t("Leave the optional config.json response field blank if Amazon returns device details without an access token."),
     ],
     note: t("SongMirror replays the captured browser context against /pandaToken and rejects a connection if Amazon revokes its Music renewal cookie. Only three safe request headers and a named allowlist of authentication cookies are retained."),
   },
@@ -250,6 +258,45 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
       </>,
     ],
   },
+  emby: {
+    intro: t("Connect to your server’s web API. You do not need to register a developer app."),
+    steps: [
+      <ServerAddressStep key="address" port={8096} />,
+      <>{t("Open Emby Web. In your browser’s Network tab, enable Preserve log, then sign in to Emby.")}</>,
+      <Trans key="step-1" i18nKey={"Filter for <code1/> and open the response. Copy <code2/> into Access token and <code3/> into User ID."} components={{ code1: <Code>AuthenticateByName</Code>, code2: <Code>AccessToken</Code>, code3: <Code>User.Id</Code> }} />,
+    ],
+  },
+  plex: {
+    intro: t("Connect to your server’s web API. You do not need to register a developer app."),
+    steps: [
+      <ServerAddressStep key="address" port={32400} />,
+      <>{t("In Plex Web, choose a track from your server. Open its menu, select Get Info, then select View XML.")}</>,
+      <Trans key="step-2" i18nKey={"Copy the value of <code1/> from the XML page’s address into Access token."} components={{ code1: <Code>X-Plex-Token</Code> }} />,
+    ],
+  },
+  mopidy: {
+    intro: t("Connect to your server’s web API. You do not need to register a developer app."),
+    steps: [
+      <Trans key="step-3" i18nKey={"In <code1/>, enable <code2/> and make its HTTP address reachable from SongMirror."} components={{ code1: <Code>mopidy.conf</Code>, code2: <Code>[http]</Code> }} />,
+      <ServerAddressStep key="address" port={6680} />,
+      <Trans key="step-4" i18nKey={"To create or edit playlists, also enable <code1/> and set <code2/>."} components={{ code1: <Code>[m3u]</Code>, code2: <Code>playlists_dir</Code> }} />,
+    ],
+  },
+  lyrion: {
+    intro: t("Connect to your server’s web API. You do not need to register a developer app."),
+    steps: [
+      <ServerAddressStep key="address" port={9000} />,
+      <>{t("If your server asks you to sign in, enter its username and password below.")}</>,
+      <>{t("To create or edit playlists, set the Playlist Folder in Lyrion’s Basic Settings.")}</>,
+    ],
+  },
+  qqmusic: {
+    intro: t("Paste a QQ Music playlist link to use it as a source."),
+    steps: [
+      <Trans key="step-6" i18nKey={"Open <link1>QQ Music Skills</link1>, sign in, and create an API key."} components={{ link1: <GuideLink href="https://y.qq.com/n/ryqq_v2/qqmusic_skills" /> }} />,
+      <Trans key="step-7" i18nKey={"Paste the key starting with <code1/> below and select Connect. Then paste a QQ Music playlist link into Transfers."} components={{ code1: <Code>qmk-</Code> }} />,
+    ],
+  },
 }
 
 }
@@ -305,7 +352,7 @@ const SUCCESS_CLOSE_DELAY_MS = 1100
 const REDIRECT_POLL_INTERVAL_MS = 2500
 const REDIRECT_POLL_TIMEOUT_MS = 5 * 60 * 1000
 
-export function ConnectWizardModal({ account, open, onClose, onConnected, onChanged }: Props) {
+export function ConnectWizardModal({ account, editName = false, open, onClose, onConnected, onChanged }: Props) {
   useTranslation()
   const [values, setValues] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
@@ -315,7 +362,19 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
   const [directResult, setDirectResult] = useState<DirectResult | null>(null)
   const [showSuccess, setShowSuccess] = useState(false)
   const [lastfmMode, setLastfmMode] = useState<'api' | 'public'>('api')
+  const [profileLabel, setProfileLabel] = useState(account.label)
+  const [savedName, setSavedName] = useState({ name: account.name, label: account.label })
+  const [nameError, setNameError] = useState<string | null>(null)
+  const [savingName, setSavingName] = useState(false)
+  const label = profileLabel.trim().replace(/\s+/g, ' ')
   const isLastfm = account.provider === 'lastfm'
+  const isDirectServer = ['emby', 'plex', 'mopidy', 'lyrion'].includes(account.provider)
+  const description = isLastfm ? t("Choose what to connect")
+    : account.provider === 'listenbrainz' ? t("Read loved recordings and playlists by username; add a user token to receive them.")
+    : account.playlist_browser ? t("Connect your account or open a public playlist")
+    : account.provider === 'qqmusic' ? t("Connect with a QQ Music API key")
+    : isDirectServer ? t("Connect directly to your server")
+    : AUTH_KIND_TITLES[account.auth_kind]
   const usesLastfmApp = isLastfm && !account.fields.some((field) => field.key === 'LASTFM_API_KEY')
   const setupAccount = useMemo(() => {
     if (!isLastfm) return account
@@ -348,6 +407,9 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     setDirectResult(null)
     setShowSuccess(false)
     setLastfmMode('api')
+    setProfileLabel(account.label)
+    setSavedName({ name: account.name, label: account.label })
+    setNameError(null)
     // account.fields intentionally omitted — this snapshots the stored values on open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, account.id])
@@ -355,7 +417,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
   // OAuth credentials and ListenBrainz's optional token can be reused on
   // reconnect. Other direct-submit providers require the actual values.
   const canKeepBlank = account.auth_kind === 'oauth_redirect' || account.auth_kind === 'oauth_device'
-    || account.provider === 'listenbrainz'
+    || account.provider === 'listenbrainz' || account.provider === 'anghami'
 
   // Briefly confirm success before handing control back to the parent, which
   // closes the wizard — so "Connected!" is actually visible for a beat
@@ -440,12 +502,36 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     setValues((prev) => ({ ...prev, [key]: value }))
   }
 
+  async function saveName() {
+    if (!editName || label === savedName.label) return true
+    if (savingName) return false
+    if (!label) {
+      setNameError(t("Enter a profile name."))
+      return false
+    }
+    setSavingName(true)
+    setNameError(null)
+    try {
+      const updated = await api.renameAccount(account.id, label)
+      setSavedName({ name: updated.name, label: updated.label })
+      setProfileLabel(updated.label)
+      onChanged()
+      return true
+    } catch (err) {
+      setNameError(err instanceof ApiError && err.status === 409 ? t("That profile name is already in use.") : errorMessage(err))
+      return false
+    } finally {
+      setSavingName(false)
+    }
+  }
+
   // oauth_redirect / oauth_device: save app config, then begin the connect
   // handshake to get either an authorize URL or a device code.
   async function saveAndConnect() {
     setSaving(true)
     setError(null)
     try {
+      if (!await saveName()) return
       if (setupAccount.fields.length > 0) {
         // Don't overwrite a stored secret with a blank the user left in place to keep it.
         const payload = Object.fromEntries(
@@ -466,11 +552,12 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     }
   }
 
-  // token_paste / api_key: submit field values directly to /connect.
+  // Direct connections send their fields to /connect in one request.
   async function submitDirect() {
     setSaving(true)
     setError(null)
     try {
+      if (!await saveName()) return
       const payload = (isLastfm || canKeepBlank) ? Object.fromEntries(setupAccount.fields
         .filter((f) => !(f.secret && f.configured && !values[f.key]?.trim()))
         .map((f) => [f.key, values[f.key] ?? ''])) : values
@@ -492,15 +579,29 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     <Modal
       open={open}
       onClose={onClose}
-      title={t("Connect {{accountName}}", { accountName: account.name })}
-      description={isLastfm ? t("Choose what to connect") : account.provider === 'listenbrainz'
-        ? t("Read loved recordings and playlists by username; add a user token to receive them.") : AUTH_KIND_TITLES[account.auth_kind]}
+      title={t("Connect {{accountName}}", { accountName: editName ? savedName.name : account.name })}
+      description={description}
     >
       <div className="flex flex-col gap-5">
         {showSuccess ? (
-          <SuccessStep accountName={account.name} />
+          <SuccessStep accountName={editName ? savedName.name : account.name} />
         ) : (
           <>
+            {editName && (
+              <form className="flex flex-col gap-2" onSubmit={event => { event.preventDefault(); void saveName() }}>
+                <div className="flex items-end gap-2">
+                  <TextField label={t("Profile label")} value={profileLabel} maxLength={80}
+                    disabled={saving || savingName || Boolean(redirectInfo || deviceInfo)}
+                    aria-invalid={Boolean(nameError)} aria-describedby={nameError ? 'profile-name-error' : undefined}
+                    onChange={event => { setProfileLabel(event.target.value); setNameError(null) }} />
+                  <Button type="submit" variant="secondary" loading={savingName}
+                    disabled={saving || !label || label === savedName.label || Boolean(redirectInfo || deviceInfo)}>
+                    {t("Save")}
+                  </Button>
+                </div>
+                {nameError && <p id="profile-name-error" role="alert" className="text-xs text-danger">{nameError}</p>}
+              </form>
+            )}
             {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
             {isLastfm && (
@@ -566,7 +667,13 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
                 />
               ))}
 
-            {(account.auth_kind === 'token_paste' || account.auth_kind === 'api_key') && (
+            {account.provider === 'qqmusic' && <NoQuotaModeSection account={account} onChanged={onChanged} beforeConnect={saveName} />}
+            {account.playlist_browser && (
+              <PlaylistBrowserSection account={account} session={account.playlist_browser}
+                onChanged={onChanged} onConnected={() => setShowSuccess(true)} beforeConnect={saveName} />
+            )}
+
+            {(account.auth_kind === 'token_paste' || account.auth_kind === 'api_key' || account.auth_kind === 'public_link') && (
               <>
                 {directResult && directResult.state !== 'connected' && (
                   <p className="rounded-control bg-warning-soft px-3 py-2 text-sm text-warning">
@@ -586,11 +693,90 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
             )}
 
             {['ytmusic', 'soundcloud', 'lastfm'].includes(account.provider) &&
-              <NoQuotaModeSection account={account} onChanged={onChanged} />}
+              <NoQuotaModeSection account={account} onChanged={onChanged} beforeConnect={saveName} />}
           </>
         )}
       </div>
     </Modal>
+  )
+}
+
+function PlaylistBrowserSection({ account, session, onChanged, onConnected, beforeConnect }: {
+  account: Account
+  session: NonNullable<Account['playlist_browser']>
+  onChanged: () => void
+  onConnected: () => void
+  beforeConnect: () => Promise<boolean>
+}) {
+  useTranslation()
+  const [browserRequest, setBrowserRequest] = useState('')
+  const [signingCookie, setSigningCookie] = useState('')
+  const audiomack = account.provider === 'audiomack'
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function changeSession(disconnect = false) {
+    setBusy(true)
+    setError(null)
+    try {
+      if (!disconnect && !await beforeConnect()) return
+      const response = disconnect ? await api.disablePlaylistBrowser(account.id)
+        : await api.enablePlaylistBrowser(account.id, browserRequest, audiomack ? signingCookie : undefined)
+      if (disconnect) onChanged()
+      else if (response.state === 'connected') {
+        setBrowserRequest('')
+        setSigningCookie('')
+        onConnected()
+      } else setError(response.detail || t("Could not connect with those values. Double-check them and try again."))
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <details open={!session.active || account.state === 'expired'} className="rounded-control border border-border bg-surface-2">
+      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-text">
+        {t("Sign in for private playlists")}
+      </summary>
+      <div className="flex flex-col gap-3 border-t border-border px-4 py-3">
+        <ol className="ms-5 list-decimal space-y-2 text-sm leading-relaxed text-text-2">
+          <li><Trans i18nKey={"Open the <player>web player</player> and sign in to your account."}
+            components={{ player: <GuideLink href={session.login_url} /> }} /></li>
+          <li>{audiomack
+            ? <Trans i18nKey={"In Developer Tools → Network, filter for <request/>. Copy the request as cURL (bash)."}
+                components={{ request: <Code>{session.request_hint}</Code> }} />
+            : <Trans i18nKey={"Open Developer Tools → Network, then open your playlist library. Find <request/> and choose Copy → Copy as cURL (bash)."}
+                components={{ request: <Code>{session.request_hint}</Code> }} />}</li>
+          {audiomack && (
+            <li><Trans i18nKey={"In Developer Tools → Application or Storage → Cookies, copy the <cookie/> value from <site/>."}
+              components={{ cookie: <Code>osecret</Code>, site: <Code>audiomack.com</Code> }} /></li>
+          )}
+          <li>{t("Paste the copied request below and connect your account.")}</li>
+        </ol>
+        <label htmlFor="playlist-browser-request" className="text-xs font-semibold text-text-2">
+          {t("Signed-in playlist request")}
+        </label>
+        <textarea id="playlist-browser-request" rows={4} maxLength={64_000} autoComplete="off" spellCheck={false} dir="ltr"
+          className="w-full rounded-control border border-border bg-inset px-3 py-2 font-mono text-xs text-text"
+          value={browserRequest} onChange={event => setBrowserRequest(event.target.value)} />
+        {audiomack && (
+          <TextField label={t("Signing cookie")} type="password" autoComplete="off" maxLength={600}
+            value={signingCookie} onChange={event => setSigningCookie(event.target.value)} />
+        )}
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+        <div className="flex flex-wrap justify-end gap-2">
+          {session.active && <Button variant="ghost" size="sm" disabled={busy} onClick={() => void changeSession(true)}>
+            {t("Disconnect browser session")}
+          </Button>}
+          <Button size="sm" loading={busy} disabled={!browserRequest.trim() || (audiomack && !signingCookie.trim())}
+            onClick={() => void changeSession()}>
+            {t("Connect account")}
+          </Button>
+        </div>
+      </div>
+    </details>
   )
 }
 
@@ -614,9 +800,25 @@ function FieldsStep({
   guideOverride?: ConnectGuideContent
 }) {
   useTranslation()
-  const guide = guideOverride ?? connectGuides()[account.provider]
+  const anghamiBrowser = account.provider === 'anghami' && account.auth_kind === 'token_paste'
+  const guide = guideOverride ?? (anghamiBrowser ? {
+    intro: t("Sync playlists through the signed-in Anghami web player."),
+    steps: [
+      <Trans key="player" i18nKey="Sign in to <player>Anghami</player> and open Your Library."
+        components={{ player: <GuideLink href="https://play.anghami.com/playlists" /> }} />,
+      <Trans key="request" i18nKey="Open Developer Tools → Network, reload the page, and filter for <request/>. Choose Copy → Copy as cURL (bash)."
+        components={{ request: <Code>GETplaylists</Code> }} />,
+      t("Paste the copied request or its sid value below."),
+    ],
+  } : account.auth_kind === 'public_link' ? {
+    intro: t("Use public playlists as sources for sync and transfers. No developer key or sign-in is needed."),
+    steps: [
+      t("Open a public playlist in your browser and copy its full address."),
+      t("Paste the link below and select Connect. Then use the link in an aggregate sync or in Transfers."),
+    ],
+  } : connectGuides()[account.provider])
   const canKeepBlank = account.auth_kind === 'oauth_redirect' || account.auth_kind === 'oauth_device'
-    || account.provider === 'listenbrainz'
+    || account.provider === 'listenbrainz' || anghamiBrowser
   return (
     <form
       className="flex flex-col gap-4"
@@ -806,13 +1008,20 @@ function HeaderPasteBox({ fields, onFilled }: { fields: AccountField[]; onFilled
 }
 
 /** Browser session setup sits below the provider's OAuth setup. */
-function NoQuotaModeSection({ account, onChanged }: { account: Account; onChanged: () => void }) {
+function NoQuotaModeSection({ account, onChanged, beforeConnect }: {
+  account: Account
+  onChanged: () => void
+  beforeConnect: () => Promise<boolean>
+}) {
   useTranslation()
   const soundcloud = account.provider === 'soundcloud'
   const lastfm = account.provider === 'lastfm'
-  const selected = soundcloud || lastfm ? Boolean(account.browser_mode) : account.detail === YTMUSIC_BROWSER_MODE_DETAIL
-  const active = selected && account.state === 'connected'
+  const qqmusic = account.provider === 'qqmusic'
+  const selected = soundcloud || lastfm || qqmusic ? Boolean(account.browser_mode) : account.detail === YTMUSIC_BROWSER_MODE_DETAIL
+  const active = selected && account.state === 'connected' && (!soundcloud || account.browser_renewable !== false)
   const [headers, setHeaders] = useState('')
+  const [pageRequest, setPageRequest] = useState('')
+  const [playlistLink, setPlaylistLink] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -820,6 +1029,8 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
   // itself flips, whichever side triggered it.
   useEffect(() => {
     setHeaders('')
+    setPageRequest('')
+    setPlaylistLink('')
     setError(null)
   }, [active])
 
@@ -827,11 +1038,13 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     setSaving(true)
     setError(null)
     try {
-      const enableMode = lastfm ? api.enableLastfmBrowserMode
-        : soundcloud ? api.enableSoundcloudBrowserMode : api.enableYtmusicBrowserMode
-      const res = await enableMode(account.id, headers)
+      if (!await beforeConnect()) return
+      const res = await (qqmusic ? api.enableQQMusicBrowserMode(account.id, playlistLink) : soundcloud
+        ? api.enableSoundcloudBrowserMode(account.id, headers, pageRequest)
+        : lastfm ? api.enableLastfmBrowserMode(account.id, headers) : api.enableYtmusicBrowserMode(account.id, headers))
       if (res.state === 'connected') onChanged()
-      else setError(res.detail || t("Could not enable no-quota mode with those headers."))
+      else setError(res.detail || (qqmusic ? t("Could not enable no-quota mode.")
+        : t("Could not enable no-quota mode with those headers.")))
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -843,7 +1056,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     setSaving(true)
     setError(null)
     try {
-      const disableMode = lastfm ? api.disableLastfmBrowserMode
+      const disableMode = qqmusic ? api.disableQQMusicBrowserMode : lastfm ? api.disableLastfmBrowserMode
         : soundcloud ? api.disableSoundcloudBrowserMode : api.disableYtmusicBrowserMode
       await disableMode(account.id)
       onChanged()
@@ -871,7 +1084,9 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
       </summary>
       <div className="flex flex-col gap-3 border-t border-border px-3.5 py-3">
         <p className="text-xs leading-relaxed text-text-3">
-          {lastfm
+          {qqmusic
+            ? t("Use the QQ Music web player to read public playlists without a developer key.")
+            : lastfm
             ? t("Use your Last.fm browser session without an API key. SongMirror can read your history and love or unlove tracks. Paste fresh headers when the session expires.")
             : soundcloud
             ? t("Use your SoundCloud browser session without a developer API key. Paste a fresh request if the session expires.")
@@ -897,6 +1112,17 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
               {t("No-quota mode is on.")}
             </p>
           </>
+        ) : qqmusic ? (
+          <>
+            <p className="text-xs text-text-2">
+              <Trans i18nKey={"Open a public playlist in <link1>QQ Music</link1>, copy its address, and paste it below to check the connection."}
+                components={{ link1: <GuideLink href="https://y.qq.com" /> }} />
+            </p>
+            <TextField label={t("Playlist link")} value={playlistLink} onChange={(event) => setPlaylistLink(event.target.value)} />
+            <Button size="sm" onClick={() => void enable()} loading={saving} disabled={!playlistLink.trim()} className="w-fit">
+              {t("Enable no-quota mode")}
+            </Button>
+          </>
         ) : (
           <>
             <ol className="flex list-decimal flex-col gap-1.5 ps-5 text-[13px] leading-relaxed text-text-2 marker:font-mono marker:text-xs marker:text-text-3">
@@ -914,9 +1140,14 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
                   <Trans i18nKey={"Reload the page. Right-click the <code1/> document request and choose Copy as cURL (bash), or copy its request headers. Paste the result below."} components={{ code1: <Code>home</Code> }} />
                 </li>
               ) : soundcloud ? (
-                <li className="ps-1">
-                  <Trans i18nKey={"Reload the page, then right-click <code1/> and choose Copy as cURL (bash). Paste the request below."} components={{ code1: <Code>/me/library/all</Code> }} />
-                </li>
+                <>
+                  <li className="ps-1">
+                    <Trans i18nKey={"Reload the page, then right-click <code1/> and choose Copy as cURL (bash). Paste the request below."} components={{ code1: <Code>/me/library/all</Code> }} />
+                  </li>
+                  <li className="ps-1">
+                    <Trans i18nKey={"Filter Network for <code1/>. Copy the <code2/> page request as cURL (bash) and paste it into SoundCloud playlist page request."} components={{ code1: <Code>you/sets</Code>, code2: <Code>soundcloud.com/you/sets</Code> }} />
+                  </li>
+                </>
               ) : (
                 <>
                   <li className="ps-1">
@@ -936,14 +1167,26 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
               aria-label={t("Raw request headers")}
               className="w-full resize-y rounded-control border border-border-strong bg-field px-3 py-2 font-mono text-xs text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
             />
-            <Button size="sm" onClick={() => void enable()} loading={saving} disabled={!headers.trim()} className="w-fit">
+            {soundcloud && (
+              <label className="flex flex-col gap-1.5 text-xs text-text-2">
+                {t("SoundCloud playlist page request")}
+                <textarea
+                  value={pageRequest}
+                  onChange={(event) => setPageRequest(event.target.value)}
+                  rows={3}
+                  className="w-full resize-y rounded-control border border-border-strong bg-field px-3 py-2 font-mono text-xs text-text focus:border-accent focus:outline-none"
+                />
+              </label>
+            )}
+            <Button size="sm" onClick={() => void enable()} loading={saving}
+              disabled={!headers.trim() || (soundcloud && !pageRequest.trim())} className="w-fit">
               {t("Enable no-quota mode")}
             </Button>
           </>
         )}
         {selected && (
           <Button variant="secondary" size="sm" onClick={() => void disable()} loading={saving} className="w-fit">
-            {lastfm ? t("Switch back to API access") : t("Switch back to OAuth")}
+            {lastfm || qqmusic ? t("Switch back to API access") : t("Switch back to OAuth")}
           </Button>
         )}
       </div>

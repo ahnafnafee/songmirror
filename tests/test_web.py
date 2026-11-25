@@ -1,5 +1,7 @@
 """Web layer smoke tests (FastAPI TestClient)."""
 
+import base64
+import hashlib
 import pytest
 from urllib.parse import parse_qs, urlsplit
 
@@ -23,6 +25,58 @@ def _start_authorization(client, provider):
 def test_health(tmp_path):
     with TestClient(_app(tmp_path)) as client:
         assert client.get("/health").json() == {"ok": True}
+
+
+def test_anghami_pkce_is_bound_to_the_account_authorization_attempt(tmp_path, monkeypatch):
+    from songmirror.engine.targets.anghami import AnghamiApi
+
+    exchanged = {}
+
+    def authorize(self, code, verifier, redirect_uri):
+        exchanged.update(code=code, verifier=verifier, redirect_uri=redirect_uri)
+
+    monkeypatch.setattr(AnghamiApi, "authorize", authorize)
+    with TestClient(_app(tmp_path)) as client:
+        assert client.post("/api/accounts/anghami/config", json={"ANGHAMI_CLIENT_ID": "fixture-app"}).status_code == 200
+        started = client.post("/api/accounts/anghami/connect").json()
+        redirect = client.get(started["url"], follow_redirects=False)
+        params = parse_qs(urlsplit(redirect.headers["Location"]).query)
+        assert params["scope"] == ["read"]
+        assert params["code_challenge_method"] == ["S256"]
+        callback = started["redirect_uri"] + f"?code=fixture-code&state={params['state'][0]}"
+        assert client.get(callback).status_code == 200
+        assert client.get(callback).status_code == 400
+    digest = hashlib.sha256(exchanged["verifier"].encode()).digest()
+    assert params["code_challenge"] == [base64.urlsafe_b64encode(digest).decode().rstrip("=")]
+    assert exchanged["code"] == "fixture-code"
+    assert exchanged["redirect_uri"] == started["redirect_uri"]
+
+
+def test_anghami_wizard_imports_only_the_session_token_even_for_legacy_profiles(tmp_path, monkeypatch):
+    from songmirror.engine.targets.anghami_web import AnghamiSessionClient
+
+    def request(self, operation):
+        assert operation == "GETplaylists"
+        return {"sections": []}
+
+    monkeypatch.setattr(AnghamiSessionClient, "request", request)
+    with TestClient(_app(tmp_path)) as client:
+        client.post("/api/accounts/anghami/config", json={"ANGHAMI_CLIENT_ID": "fixture-legacy-app"})
+        account = next(row for row in client.get("/api/accounts").json() if row["provider"] == "anghami")
+        assert account["auth_kind"] == "token_paste" and account["callback_url"] is None
+        assert [field["key"] for field in account["fields"]] == ["ANGHAMI_SESSION_TOKEN"]
+        endpoint = "/api/accounts/anghami/connect"
+        bad = client.post(endpoint, json={"ANGHAMI_SESSION_TOKEN": "http://remote.example/gateway.php?type=GETplaylists"})
+        assert bad.json()["state"] == "error"
+        token = "fixture-session-token-0123456"
+        copied = (f"curl 'https://coussa.anghami.com/gateway.php?type=GETplaylists&sid={token}' "
+                  "-H 'Origin: https://play.anghami.com' -H 'Cookie: example=unused'")
+        good = client.post(endpoint, json={"ANGHAMI_SESSION_TOKEN": copied})
+        assert good.json()["capabilities"]["library_write"]
+        settings = client.app.state.account_profiles.settings_for("anghami")
+        assert settings.get("ANGHAMI_SESSION_TOKEN") == token
+        account = next(row for row in client.get("/api/accounts").json() if row["provider"] == "anghami")
+        assert account["fields"][0]["configured"] and not account["fields"][0]["value"]
 
 
 def test_transfer_conflict_resolution_returns_manual_id_validation_error(tmp_path):
@@ -122,12 +176,15 @@ def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
         accounts = client.get("/api/accounts").json()
         assert {a["provider"] for a in accounts} == {
             "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
-            "lastfm", "jellyfin", "listenbrainz", "soundcloud", "subsonic"
+            "lastfm", "jellyfin", "listenbrainz", "soundcloud", "subsonic",
+            "emby", "plex", "mopidy", "lyrion", "anghami", "qqmusic",
+            "audiomack", "gaana", "jiosaavn", "linemusic", "netease", "pandora", "vibe",
         }
         assert all(a["id"].startswith("profile_default_") for a in accounts)
         assert all(a["id"] != a["provider"] for a in accounts)
         assert all(a["is_default"] is True and a["removable"] is False for a in accounts)
         assert all(a["state"] == "unconfigured" for a in accounts)
+        assert all(not a["show_in_accounts"] for a in accounts)
         # The transfer form greys out its "preserve order" switch on a service
         # whose writes can't replay date-added order.
         by_provider = {a["provider"]: a for a in accounts}
@@ -205,6 +262,34 @@ def test_account_profile_api_adds_labels_isolates_secrets_and_removes(tmp_path):
         assert client.delete(f"/api/accounts/{profile['id']}").json() == {"ok": True}
         assert not profile_dir.exists()
         assert profile["id"] not in {a["id"] for a in client.get("/api/accounts").json()}
+
+
+def test_accounts_can_add_and_remove_a_default_tile_without_changing_its_id(tmp_path, monkeypatch):
+    monkeypatch.setattr("songmirror.web.load_dotenv", lambda: False)
+    monkeypatch.delenv("GAANA_PUBLIC_PLAYLIST", raising=False)
+    monkeypatch.delenv("GAANA_PLAYLIST_WEB_SESSION", raising=False)
+    store = SettingsStore(dir=tmp_path)
+    body = {"provider": "gaana", "label": "", "reuse_default": True}
+    with TestClient(create_app(settings=store)) as client:
+        added = client.post("/api/accounts", json=body).json()
+        assert added["id"] == "profile_default_gaana" and added["show_in_accounts"] is True
+        endpoint = f"/api/accounts/{added['id']}"
+        assert client.patch(endpoint, json={"label": "Home"}).json()["show_in_accounts"] is True
+        extra = client.post("/api/accounts", json={**body, "label": "Work"}).json()
+        assert extra["id"] != added["id"] and extra["name"] == "Gaana · Work"
+        assert client.post("/api/accounts", json={"provider": "spotify", "label": "  wOrK "}).status_code == 409
+        assert client.patch(endpoint, json={"label": " WORK "}).status_code == 409
+        assert client.post(f"{endpoint}/config", json={"GAANA_PUBLIC_PLAYLIST": "https://gaana.com/playlist/fixture"}).status_code == 200
+        assert client.delete(endpoint).json() == {"ok": True}
+        assert not store.get("GAANA_PUBLIC_PLAYLIST")
+
+    with TestClient(create_app(settings=store)) as client:
+        accounts = {account["id"]: account for account in client.get("/api/accounts").json()}
+        assert accounts[added["id"]]["show_in_accounts"] is False
+        assert accounts[extra["id"]]["show_in_accounts"] is True
+        restored = client.post("/api/accounts", json=body).json()
+        assert restored["id"] == added["id"] and restored["show_in_accounts"] is True
+        assert restored["state"] == "unconfigured"
 
 
 def test_accounts_report_catalog_only_apple_capabilities(tmp_path, monkeypatch):

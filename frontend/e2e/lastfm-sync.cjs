@@ -21,7 +21,7 @@ async function main() {
   const account = {
     id: 'lastfm-test', provider: 'lastfm', provider_name: 'Last.fm', name: 'Last.fm', label: 'Last.fm',
     auth_kind: 'oauth_redirect', state: 'unconfigured', transferable: false, source_capable: true,
-    is_default: true, removable: false, preserves_order: false, detail: '',
+    is_default: true, removable: false, show_in_accounts: true, preserves_order: false, detail: '',
     supports_playlists: false, callback_url: base + '/oauth/lastfm/callback',
     capabilities: { library_read: false, library_write: false, favorites_write: false, public_playlist_read: false },
     fields: [ ['LASTFM_API_KEY', 'API key', true], ['LASTFM_API_SECRET', 'Shared secret', true],

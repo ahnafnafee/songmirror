@@ -4,7 +4,6 @@ import hashlib
 import json
 import math
 import os
-import tempfile
 import time
 from pathlib import Path
 from threading import RLock
@@ -13,7 +12,7 @@ from urllib.parse import urlsplit
 import requests
 
 from .engine.config import REQUEST_TIMEOUT, required_env
-from .services.private_files import owner_only
+from .services.private_files import write_private
 
 API = "https://api.soundcloud.com"
 AUTHORIZE = "https://secure.soundcloud.com/authorize"
@@ -51,21 +50,6 @@ def read_private(path):
     if not isinstance(payload, dict):
         raise SoundCloudError("Invalid stored SoundCloud authorization")
     return payload
-
-
-def write_private(path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                     delete=False) as handle:
-        temporary = Path(handle.name)
-        try:
-            owner_only(temporary)
-            json.dump(payload, handle)
-            handle.close()
-            os.replace(temporary, path)
-        finally:
-            handle.close()
-            temporary.unlink(missing_ok=True)
 
 
 def _request(method, url, **kwargs):

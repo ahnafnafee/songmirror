@@ -21,7 +21,7 @@ from ..engine.config import (
     DEFAULT_INTERVAL, DEFAULT_MAX_ADDS, DEFAULT_MAX_REMOVALS, DEFAULT_PROVIDERS,
     DEFAULT_SYNC_MODE, DEFAULT_SYNC_SOURCE,
 )
-from ..engine.targets import provider_ids, target_class
+from ..engine.targets import playlist_writes_for, provider_ids, target_class
 from .playlist_links import PLAYLIST_LINK_HINT, PlaylistLinkError, parse_playlist_link
 from .settings import _open_private
 
@@ -90,6 +90,18 @@ VALID_SYNC_MODES = {"oneway", "group", "nway", "merge"}
 VALID_SOURCE_KINDS = {"library", "public"}
 VALID_REMOVAL_STRATEGIES = {"append_only", "mirror"}
 _PROVIDER_IDS = frozenset(provider_ids())
+
+
+def _library_allowed(cls, identity, profiles):
+    if not cls.supports_playlist_library:
+        return False
+    configured = getattr(cls, "library_configured", None)
+    if configured is None:
+        return True
+    if profiles is None:
+        return configured()
+    profile = profiles.resolve(identity)
+    return profile is not None and configured(profiles.settings_for(profile.id).get)
 
 
 def source_from_value(value, profiles=None):
@@ -226,6 +238,9 @@ def validate_sync_job(job, profiles=None):
                 raise ValueError("every merge source needs a playlist id or public playlist URL")
             if source.kind not in VALID_SOURCE_KINDS:
                 raise ValueError("merge source kind must be library or public")
+            cls = target_class(provider_type)
+            if source.kind == "library" and not _library_allowed(cls, source.provider, profiles):
+                raise ValueError(f"{cls.name} requires a public playlist link")
             identity = (source.provider, source.playlist_id)
             if identity in seen:
                 raise ValueError("the same source playlist cannot be added twice")
@@ -238,6 +253,8 @@ def validate_sync_job(job, profiles=None):
         )
         if destination is None or destination_provider not in _PROVIDER_IDS:
             raise ValueError("a merge sync needs a destination provider")
+        if not playlist_writes_for(destination.provider, profiles):
+            raise ValueError("the merge destination must support playlist writes")
         if not destination.playlist_id and not destination.name:
             raise ValueError("a merge destination needs an existing playlist or a new playlist name")
         if (destination.provider, destination.playlist_id) in seen:
@@ -253,6 +270,11 @@ def validate_sync_job(job, profiles=None):
         return job
     if not job.sync_playlists and not job.liked_tracks:
         raise ValueError("select regular playlists, liked tracks, or both")
+    if job.mode == "oneway" and job.sync_playlists:
+        provider = profiles.provider_of(job.source) if profiles is not None else job.source
+        source_class = target_class(provider)
+        if source_class is not None and not _library_allowed(source_class, job.source, profiles):
+            raise ValueError(f"{source_class.name} requires a public playlist link in an aggregate sync")
     if job.liked_tracks:
         source_provider = profiles.provider_of(job.source) if profiles is not None else job.source
         source_class = target_class(source_provider)

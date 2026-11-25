@@ -53,7 +53,7 @@ export function YourServices({ accounts, status }: { accounts: Account[] | null;
         </ul>
       ) : (
         <div className="px-4 pb-4">
-          <EmptyState title={t("No connectors available")} description={t("This installation has no configured services.")} />
+          <EmptyState title={t("No accounts added")} />
         </div>
       )}
     </Card>

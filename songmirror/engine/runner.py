@@ -26,8 +26,10 @@ from .targets import (
     build_targets,
     mirror_pair,
     nway_order_candidates,
+    profile_removed,
     reconcile,
     target_provider,
+    writable_target,
 )
 from .targets.base import _normalize, reconcile_state_key
 from ..services.settings import _ENV_LOCK
@@ -188,10 +190,17 @@ def _run_merge(opts, sp, should_continue=None):
     # the catalogs of the sources it came from before it is removed.
     catalog_peers = {}
     incomplete = False
+    if profile_removed(destination_identity, opts):
+        error = "The aggregate destination account was removed. Choose a destination to resume this sync."
+        aggregate["removals_guarded"] = True
+        return [_summary_entry(destination_label, agg)], aggregate, False, error
     for descriptor in descriptors:
         if ctrl() != "run":
             incomplete = True
             break
+        if profile_removed(descriptor.get("provider"), opts):
+            incomplete = True
+            continue
         try:
             source = provider(descriptor.get("provider"))
         except Exception as exc:
@@ -335,6 +344,8 @@ def _run_merge(opts, sp, should_continue=None):
     destination_playlist = None
     destination_id = str(destination_spec.get("playlist_id") or "")
     try:
+        if not writable_target(destination):
+            raise RuntimeError(f"{destination.name} cannot be a playlist destination.")
         if destination_id:
             # A destination must remain a library playlist so its ownership and
             # editability flags are available. Public fetch fallback is source-only.
@@ -700,8 +711,34 @@ def _build_nway_order_authority(opts, sp):
     for provider_id in nway_order_candidates(opts):
         authority = build_one(provider_id, opts, sp)
         if authority is not None:
-            return authority
+            try:
+                if writable_target(authority):
+                    return authority
+            except RuntimeError as exc:
+                log_warn(f"{authority.name} could not check playlist writes: {exc}", tag=authority.tag)
     return None
+
+
+def _keep_available_authorities(opts):
+    """Keep the saved job intact while executing with surviving contributors."""
+    if opts.sync_mode == "nway":
+        lost_contributor = any(profile_removed(identity, opts) for identity in _wanted_providers(opts))
+    elif opts.sync_mode == "group":
+        authorities = list(dict.fromkeys(part.strip() for part in opts.authorities.split(",") if part.strip()))
+        retained = [identity for identity in authorities if not profile_removed(identity, opts)]
+        lost_contributor = len(retained) != len(authorities)
+        if lost_contributor and retained:
+            opts.authorities = ",".join(retained)
+            if opts.sync_source not in retained:
+                opts.sync_source = retained[0]
+            if len(retained) == 1:
+                opts.sync_mode = "oneway"
+    else:
+        lost_contributor = False
+    if lost_contributor:
+        opts.max_removals = 0
+        opts.apply_large_removals = False
+        log_note("Track removals are paused because a contributing account was removed.", tag="sync")
 
 
 def run_pass(opts, should_continue=None):
@@ -753,6 +790,7 @@ def run_pass(opts, should_continue=None):
             }
         wanted_providers = set(participant_ids)
         opts.providers = ",".join(participant_ids)
+        _keep_available_authorities(opts)
         spotify_requested = not wanted_providers or any(
             profiles.provider_of(identity) == "spotify" for identity in wanted_providers
         )
@@ -815,12 +853,22 @@ def run_pass(opts, should_continue=None):
 
     # The library whose playlists drive this pass: a configured participant for
     # N-way; the chosen source/order authority for one-way and group modes.
+    if opts.sync_mode in {"nway", "group"} and wanted_providers:
+        remaining = [identity for identity in wanted_providers if not profile_removed(identity, opts)]
+        if len(remaining) < 2 and len(remaining) != len(wanted_providers):
+            error = "This sync needs at least two remaining provider accounts."
+            log_warn(error, indent="  ")
+            return _summary(opts, [], pass_started, ok=False, error=error)
     if opts.sync_mode == "nway":
         source = _build_nway_order_authority(opts, sp)
         source_provider = source.source if source is not None else None
     else:
         source = build_one(source_provider, opts, sp)
     if source is None:
+        if profile_removed(source_provider, opts):
+            error = "The sync source account was removed. Choose a source to resume this sync."
+            log_warn(error, indent="  ")
+            return _summary(opts, [], pass_started, ok=False, error=error)
         if opts.sync_mode == "nway":
             log_warn("no configured N-way provider can supply playlist names and ordering", indent="  ")
         else:
@@ -886,6 +934,12 @@ def run_pass(opts, should_continue=None):
 
     targets = build_targets(opts, sp)
     if not targets:
+        if wanted_providers - {source_provider} and all(
+            profile_removed(identity, opts) for identity in wanted_providers - {source_provider}
+        ):
+            error = "The sync has no remaining destination accounts."
+            log_warn(error, indent="  ")
+            return _summary(opts, [], pass_started, ok=False, error=error)
         log_warn("no mirror targets configured — connect another provider and include it in the sync", indent="  ")
         return _summary(opts, [], pass_started)
     log(f"  targets: {paint(', '.join(t.name for t in targets), 'cyan')}"
@@ -1175,6 +1229,12 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
 
     spotify_cookie.take_singles_used()   # drop any residue from a pass that died mid-read
     liked_routes = getattr(opts, "liked_routes", None) or {}
+    total = {"added": 0, "removed": 0, "missing": 0, "held": 0,
+             "uncertain_matches": 0, "deferred": 0,
+             "removals_skipped": 0, "chronology_replayed": 0,
+             "failed": 0, "identity_changes": 0,
+             "unconfirmed_absences": 0, "confirmed_absences": 0, "read_anomalies": 0}
+    failures = []
     dirs = {}
     for peer in peers:
         liked_route = (
@@ -1187,17 +1247,21 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
             and liked_route
             and liked_route.get("kind") == "playlist"
         )
-        dirs[peer.source] = peer.list_playlists() if needs_playlist_directory else {}
+        try:
+            dirs[peer.source] = peer.list_playlists() if needs_playlist_directory else {}
+        except TargetAuthError as exc:
+            if authority_sources is None or peer.source in authority_sources:
+                raise
+            error = f"{peer.name} mirror playlist directory unavailable: {exc}"
+            _collect_failure(total, failures, "Playlist directory", error)
+            log_warn(error, tag=peer.tag)
+    # An unreadable directory is different from an empty one. Leaving that
+    # mirror out prevents creation of duplicates or changes to its baseline.
+    peers = [peer for peer in peers if peer.source in dirs]
     caches = {p.source: load_target_cache(p) for p in peers}
-    total = {"added": 0, "removed": 0, "missing": 0, "held": 0,
-             "uncertain_matches": 0, "deferred": 0,
-             "removals_skipped": 0, "chronology_replayed": 0,
-             "failed": 0, "identity_changes": 0,
-             "unconfirmed_absences": 0, "confirmed_absences": 0, "read_anomalies": 0}
     # Both lists stay out of `total` so the scalar accumulate loop stays scalar.
     held_detail = []
     change_diagnostics = []
-    failures = []
     try:
         for order_playlist in selected:
             if should_continue and should_continue() != "run":
@@ -1223,9 +1287,9 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                         # a bootstrap peer rather than a collapsed old playlist.
                         archive.reset_playlist_peer_state(songs, state_key, p.source)
                         log_note(f"created {p.name} playlist '{name}'", tag=p.tag)
-                    except TargetAuthError:
-                        raise
                     except Exception as e:
+                        if isinstance(e, TargetAuthError) and (authority_sources is None or p.source in authority_sources):
+                            raise
                         _collect_failure(total, failures, name, e)
                         if authority_sources is not None and p.source in authority_sources:
                             authority_failure_recorded = True
@@ -1324,9 +1388,9 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                     if not editable_fn(resource):
                         raise RuntimeError(f"{peer.name} liked-track destination is not editable")
                     resources[peer.source] = resource
-                except TargetAuthError:
-                    raise
                 except Exception as exc:
+                    if isinstance(exc, TargetAuthError) and (authority_sources is None or peer.source in authority_sources):
+                        raise
                     _collect_failure(total, failures, name, exc)
                     if authority_sources is None or peer.source in authority_sources:
                         authority_failure_recorded = True

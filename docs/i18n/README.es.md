@@ -126,6 +126,8 @@ SongMirror admite inglés, árabe, turco, español, chino simplificado, francés
 
 ## Servicios compatibles
 
+Abre **Cuentas → Añadir cuenta** y busca un servicio. Selecciónalo para abrir la configuración, nombrar el perfil de la cuenta y seguir la guía de conexión.
+
 | Servicio | Compatibilidad de sincronización y transferencia |
 | --- | --- |
 | [Spotify](#spotify) | Listas de reproducción y favoritos |
@@ -140,6 +142,11 @@ SongMirror admite inglés, árabe, turco, español, chino simplificado, francés
 | [ListenBrainz](../listenbrainz-subsonic.md) | Listas de reproducción y grabaciones favoritas. El token de usuario permite escribir. |
 | [Navidrome / Subsonic](../listenbrainz-subsonic.md) | Listas de reproducción y favoritos |
 | [Jellyfin](../jellyfin-compatibility.md) | Listas del servidor. Introduce un ID de usuario para sincronizar o transferir. |
+| Anghami, Audiomack, Gaana, JioSaavn | Con una sesión iniciada puedes leer y crear listas privadas, y añadir o quitar canciones de las listas que te pertenecen. |
+| Emby, Plex, Mopidy, Lyrion Music Server | Lee y edita listas con la música que tu servidor ya indexó. Las listas inteligentes de Plex sirven solo como origen. Mopidy necesita un sistema de listas con escritura y Lyrion una carpeta de listas configurada. |
+| QQ Music, LINE MUSIC, Pandora, Naver Vibe y NetEase Cloud Music | Usa enlaces de listas públicas o la biblioteca de tu cuenta como origen. Los enlaces públicos funcionan en Transferencias y al combinar varios orígenes. |
+
+LiveOne, MOOV y Yandex Music están pendientes de verificación. Consulta la [guía de adaptadores de listas](../music-service-adapters.md) para ver la configuración y los resultados de las pruebas.
 
 <a id="features"></a>
 
@@ -449,7 +456,7 @@ No se requiere la aprobación del desarrollador para el conector predeterminado.
 1. Inicie sesión en el sitio de Amazon Music de su región y abra DevTools → Red.
 2. Vuelva a cargar la página, filtre por `config.json` y seleccione la solicitud iniciada. (`pandaToken` también funciona cuando aparece, pero no es obligatorio).
 3. Elija Copiar encabezados de solicitud o Copiar como cURL y luego péguelo en el campo de renovación. Mantenga los encabezados `User-Agent`, `Referer` y `Cookie` completos para que SongMirror pueda reproducir el mismo contexto del navegador.
-4. Opcionalmente, copie la respuesta `config.json` iniciada en el campo de arranque; SongMirror normalmente puede recuperar el contexto de ese dispositivo mediante la sesión de renovación.
+4. Opcionalmente, copie la respuesta `config.json` iniciada en el campo de arranque; SongMirror normalmente puede recuperar el contexto de ese dispositivo mediante la sesión de renovación. Deja vacío el campo opcional de inicio si la respuesta contiene datos del dispositivo y ningún `accessToken`.
 
 SongMirror deriva el mismo valor de autorización `AmznMusic` localmente y lo actualiza mediante `/pandaToken` antes de que expire o una vez después de un rechazo de autenticación. Durante la conexión, utiliza la solicitud de configuración de estilo de navegador actual cuando se necesita el contexto del dispositivo, requiere `/pandaToken` para generar un token de acceso y rechaza la conexión si Amazon revoca la cookie de renovación de Música. Almacena solo el agente de usuario del navegador, el idioma, la referencia de música, una lista permitida de cookies de sesión/autenticación de Amazon y un contexto limitado del dispositivo cliente de música; Se descartan análisis, experimentos, consola AWS, CSRF y otros datos del navegador no relacionados. Esas cookies retenidas siguen siendo confidenciales, así que mantenga SongMirror en privado en su LAN. Un cierre de sesión, un cambio de contraseña/seguridad o una revocación por parte de Amazon aún pueden requerir una nueva captura.
 
@@ -489,6 +496,8 @@ Para mover listas entre cuentas de Google, conecta ambas para listas privadas o 
 ### SoundCloud
 
 Conéctate desde **Cuentas → SoundCloud**. Usa **Modo sin cuota** con una sesión iniciada en el navegador, u OAuth con una aplicación configurada en el servidor. Puedes explorar y copiar listas de reproducción y sincronizar las que te pertenecen. [Guía de conexión](../provider-application-credentials.md)
+
+En `soundcloud.com/you/sets`, copia en Red la solicitud `/me/library/all` y la solicitud de página `you/sets` como cURL (bash). El navegador puede marcar la solicitud de página como Doc o Document. Con ella, SongMirror puede intentar renovar la sesión. Si SoundCloud pide una verificación, complétala en el navegador y vuelve a conectar la cuenta. Cuando SoundCloud actúa como espejo en un grupo de autoridad, los demás destinos pueden continuar.
 
 <a id="lastfm"></a>
 

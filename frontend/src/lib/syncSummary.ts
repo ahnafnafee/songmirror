@@ -1,4 +1,5 @@
 import { t } from '@/i18n'
+import { canBeSyncSource, canReceiveLikedTracks, canSyncAccount, isListedAccount } from '@/lib/accountCapabilities'
 import { providerLikedTracksLabel } from '@/lib/likedTracks'
 import { describeInterval } from '@/lib/format'
 import type { Account, SyncJob } from '@/types'
@@ -37,6 +38,16 @@ export function lockedProvidersOf(
 export function enabledProvidersOf(job: Pick<SyncJob, 'providers'>, peers: Account[]): Set<string> {
   const explicit = parseCsv(job.providers)
   return new Set(explicit.filter((id) => peers.some((peer) => peer.id === id)))
+}
+
+export function canUseSyncAccount(
+  job: Pick<SyncJob, 'mode' | 'source' | 'authorities' | 'liked_tracks'>,
+  account: Account,
+): boolean {
+  if (!isListedAccount(account)) return false
+  if (account.id === lockedSourceOf(job)) return canBeSyncSource(account)
+  if (authorityProvidersOf(job).has(account.id)) return canSyncAccount(account)
+  return canSyncAccount(account) || Boolean(job.liked_tracks && canReceiveLikedTracks(account))
 }
 
 export interface SyncSummaryRow {
@@ -90,30 +101,33 @@ export function buildSyncSummaryRows(job: SyncJob, peers: Account[], downloadDir
     return rows
   }
 
-  const enabled = enabledProvidersOf(job, peers)
+  const available = peers.filter((account) => canUseSyncAccount(job, account))
+  const enabled = enabledProvidersOf(job, available)
   const lockedId = lockedSourceOf(job)
   const authorities = authorityProvidersOf(job)
   const included = new Set([...enabled, ...(lockedId ? [lockedId] : []), ...authorities])
-  const enabledNames = peers.filter((a) => included.has(a.id)).map((a) => a.name)
+  const enabledAccounts = available.filter((account) => included.has(account.id))
   if (job.mode === 'nway') {
     // No single source in N-way — just list who's included.
-    const who = enabledNames.length > 0 ? enabledNames.join(' ⇄ ') : t("no services selected")
+    const who = enabledAccounts.length > 0 ? enabledAccounts.map((account) => account.name).join(' ⇄ ') : t("no services selected")
     rows.push({ id: 'direction', label: t("Direction"), value: t('Bidirectional (N-way) · {{services}}', { services: who }) })
   } else if (job.mode === 'group') {
     const sourceId = job.source || 'spotify'
     const orderedAuthorities = [
-      ...peers.filter((a) => a.id === sourceId && authorities.has(a.id)),
-      ...peers.filter((a) => a.id !== sourceId && authorities.has(a.id)),
+      ...enabledAccounts.filter((a) => a.id === sourceId && authorities.has(a.id)),
+      ...enabledAccounts.filter((a) => a.id !== sourceId && authorities.has(a.id)),
     ]
     const authorityNames = orderedAuthorities.map((a) => a.name)
-    const mirrorNames = peers.filter((a) => included.has(a.id) && !authorities.has(a.id)).map((a) => a.name)
+    const mirrorNames = enabledAccounts.filter((a) => !authorities.has(a.id)).map((a) => a.name)
     const authorityLabel = authorityNames.length > 0 ? authorityNames.join(' + ') : t("no authorities selected")
     const who = mirrorNames.length > 0 ? `${authorityLabel} → ${mirrorNames.join(', ')}` : t("{{authorityLabel}} only", { authorityLabel: authorityLabel })
     rows.push({ id: 'direction', label: t("Direction"), value: t('Authoritative group · {{services}}', { services: who }) })
   } else {
-    const sourceName = peers.find((a) => a.id === (job.source || 'spotify'))?.name ?? 'Spotify'
-    const others = enabledNames.filter((n) => n !== sourceName)
-    const who = others.length > 0 ? `${sourceName} → ${others.join(', ')}` : t("{{sourceName}} only", { sourceName: sourceName })
+    const source = enabledAccounts.find((account) => account.id === lockedId)
+    const others = enabledAccounts.filter((account) => account.id !== lockedId).map((account) => account.name)
+    const sourceName = source?.name ?? t("no sources selected")
+    const who = others.length > 0 ? `${sourceName} → ${others.join(', ')}` :
+      source ? t("{{sourceName}} only", { sourceName }) : sourceName
     rows.push({ id: 'direction', label: t("Direction"), value: t('One-way · {{services}}', { services: who }) })
   }
 
@@ -131,12 +145,12 @@ export function buildSyncSummaryRows(job: SyncJob, peers: Account[], downloadDir
   else playlistsValue = t("{{playlistNamesSliceJoin}} +{{playlistNamesLength}} more", { playlistNamesSliceJoin: playlistNames.slice(0, 3).join(', '), playlistNamesLength: playlistNames.length - 3 })
   rows.push({ id: 'playlists', label: t("Playlists"), value: playlistsValue })
 
-  if (job.liked_tracks) {
+  if (job.liked_tracks && available.some((account) => account.id === (job.source || 'spotify'))) {
     const sourceId = job.source || 'spotify'
     const sourcePeer = peers.find((peer) => peer.id === sourceId)
     const sourceName = sourcePeer?.name ?? sourceId
     const sourceLabel = providerLikedTracksLabel(sourcePeer?.provider, sourceName)
-    const destinations = peers
+    const destinations = available
       .filter((peer) => enabled.has(peer.id) && peer.id !== sourceId)
       .map((peer) => {
         const route = job.liked_routes?.[peer.id]

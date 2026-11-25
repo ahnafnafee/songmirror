@@ -17,11 +17,13 @@ import requests
 from ..engine.config import REQUEST_TIMEOUT
 from ..deezer_links import share_location, share_url
 from ..engine.targets.deezer import SHARE_LINK_HOSTS as _DEEZER_SHARE_HOSTS
+from ..engine.targets.public_playlists import PUBLIC_PLAYLIST_TARGETS
 
 # Shown when a paste does not resolve to a playlist on any known service.
 PLAYLIST_LINK_HINT = (
     "That does not look like a playlist link. Paste a playlist URL from Spotify, "
-    "Apple Music, YouTube Music, TIDAL, Deezer, Qobuz, or Amazon Music."
+    "Apple Music, YouTube Music, TIDAL, Deezer, Qobuz, Amazon Music, Anghami, QQ Music, "
+    "Audiomack, Gaana, JioSaavn, LINE MUSIC, NetEase Cloud Music, Pandora, or Naver Vibe."
 )
 
 
@@ -47,6 +49,17 @@ _HOSTS = {
     "open.qobuz.com": "qobuz",
     "play.qobuz.com": "qobuz",
     "music.amazon.com": "amazon",
+    "play.anghami.com": "anghami",
+    "i2.y.qq.com": "qqmusic",
+    "y.qq.com": "qqmusic",
+    "audiomack.com": "audiomack",
+    "gaana.com": "gaana",
+    "jiosaavn.com": "jiosaavn",
+    "saavn.com": "jiosaavn",
+    "music.line.me": "linemusic",
+    "music.163.com": "netease",
+    "pandora.com": "pandora",
+    "vibe.naver.com": "vibe",
 }
 
 # Amazon runs one host per marketplace (music.amazon.co.uk, .de, .co.jp, ...),
@@ -60,6 +73,16 @@ _TIDAL_PATH_RE = re.compile(r"/playlist/([0-9a-fA-F-]{16,})")
 _DEEZER_PATH_RE = re.compile(r"/playlist/(\d+)")
 _QOBUZ_PATH_RE = re.compile(r"/playlist/(?:[^/]*?-)?(\d+)")
 _AMAZON_PATH_RE = re.compile(r"/(?:user-playlists|playlists)/([A-Za-z0-9._-]+)")
+_ANGHAMI_PATH_RE = re.compile(r"^/playlist/([A-Za-z0-9_-]+)/?$")
+_QQMUSIC_PATH_RE = re.compile(r"^/(?:a/playlist|n/ryqq(?:_v2)?/playlist)/(\d+)/?$")
+_PUBLIC_PLAYLIST_PREFIXES = {
+    "audiomack": "", "gaana": "playlist/", "jiosaavn": "", "linemusic": "webapp/playlist/",
+    "netease": "", "pandora": "playlist/", "vibe": "playlist/",
+}
+_PUBLIC_PLAYLIST_HOSTS = {
+    "audiomack": "audiomack.com", "gaana": "gaana.com", "jiosaavn": "www.jiosaavn.com",
+    "linemusic": "music.line.me", "netease": "music.163.com", "pandora": "www.pandora.com", "vibe": "vibe.naver.com",
+}
 
 
 def _host(parts):
@@ -160,6 +183,19 @@ def parse_playlist_link(text, *, resolve_redirect=_head_location, _visited=()):
 def _playlist_id(provider, parts):
     if provider == "ytmusic":
         return _ytmusic_id(parts)
+    if provider in PUBLIC_PLAYLIST_TARGETS:
+        if parts.scheme not in {"https", "http"} or parts.username is not None or parts.password is not None:
+            return None
+        if provider == "netease":
+            if parts.path == "/" and parts.fragment.startswith("/playlist?"):
+                parts = urlsplit(parts.fragment)
+            ids = parse_qs(parts.query).get("id", []) if parts.path == "/playlist" else []
+            return ids[0] if len(ids) == 1 and PUBLIC_PLAYLIST_TARGETS[provider].id_pattern.fullmatch(ids[0]) else None
+        prefix = "/" + _PUBLIC_PLAYLIST_PREFIXES[provider]
+        key = parts.path.removesuffix("/").removeprefix(prefix)
+        if not parts.path.startswith(prefix) or any(segment in {".", ".."} for segment in key.split("/")):
+            return None
+        return key if PUBLIC_PLAYLIST_TARGETS[provider].id_pattern.fullmatch(key) else None
     pattern = {
         "spotify": _SPOTIFY_PATH_RE,
         "apple": _APPLE_PATH_RE,
@@ -167,6 +203,8 @@ def _playlist_id(provider, parts):
         "deezer": _DEEZER_PATH_RE,
         "qobuz": _QOBUZ_PATH_RE,
         "amazon": _AMAZON_PATH_RE,
+        "anghami": _ANGHAMI_PATH_RE,
+        "qqmusic": _QQMUSIC_PATH_RE,
     }[provider]
     match = pattern.search(parts.path)
     return match.group(1) if match else None
@@ -185,6 +223,9 @@ _LABELS = {
     "subsonic": "Navidrome / Subsonic",
     "lastfm": "Last.fm",
     "soundcloud": "SoundCloud",
+    "emby": "Emby", "plex": "Plex", "mopidy": "Mopidy", "lyrion": "Lyrion Music Server",
+    "anghami": "Anghami", "qqmusic": "QQ Music",
+    **{source: cls.name for source, cls in PUBLIC_PLAYLIST_TARGETS.items()},
 }
 
 
@@ -194,6 +235,14 @@ def provider_label(provider_id):
 
 def external_url(provider_id, kind, item_id):
     """Stable first-party web URL for a provider playlist or track."""
+    if provider_id in PUBLIC_PLAYLIST_TARGETS:
+        raw_id = str(item_id)
+        if kind != "playlist" or not PUBLIC_PLAYLIST_TARGETS[provider_id].id_pattern.fullmatch(raw_id):
+            return ""
+        if provider_id == "netease":
+            return f"https://music.163.com/#/playlist?id={raw_id}"
+        return (f"https://{_PUBLIC_PLAYLIST_HOSTS[provider_id]}/"
+                f"{_PUBLIC_PLAYLIST_PREFIXES[provider_id]}{quote(raw_id, safe='/,=:')}")
     item_id = quote(str(item_id), safe="")
     routes = {
         "spotify": f"https://open.spotify.com/{kind}/{item_id}",
@@ -201,6 +250,8 @@ def external_url(provider_id, kind, item_id):
         "qobuz": f"https://open.qobuz.com/{kind}/{item_id}",
         "deezer": f"https://www.deezer.com/{kind}/{item_id}",
         "amazon": f"https://music.amazon.com/{kind}s/{item_id}",
+        "anghami": f"https://play.anghami.com/{'song' if kind == 'track' else 'playlist'}/{item_id}",
+        "qqmusic": f"https://i2.y.qq.com/a/{'song' if kind == 'track' else 'playlist'}/{item_id}",
         "apple": (
             f"https://music.apple.com/library/playlist/{item_id}"
             if kind == "playlist"

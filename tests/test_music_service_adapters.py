@@ -1,0 +1,862 @@
+"""Documented playlist transports exercised with local fixture responses."""
+
+from collections import deque
+import json
+from types import SimpleNamespace
+from urllib.parse import urlsplit
+
+import pytest
+from fastapi.testclient import TestClient
+
+from songmirror.engine.targets import build_peers, build_targets, is_peer
+from songmirror.engine.targets.anghami import AnghamiApi, AnghamiTarget
+from songmirror.engine.targets.base import TargetCapabilityError
+from songmirror.engine.targets.emby import EmbyTarget
+from songmirror.engine.targets.lyrion import LyrionTarget
+from songmirror.engine.targets.mopidy import MopidyTarget
+from songmirror.engine.targets.plex import PlexTarget
+from songmirror.engine.targets.public_playlists import (
+    PUBLIC_PLAYLIST_TARGETS, AudiomackTarget, GaanaTarget, JioSaavnTarget, LineMusicTarget, NetEaseTarget, PandoraTarget,
+    VibeTarget,
+)
+from songmirror.engine.targets.qqmusic import QQMusicTarget
+from songmirror.oauth import read_token
+from songmirror.services.accounts.playlist_browser import parse_playlist_session
+from songmirror.services.playlist_links import external_url, parse_playlist_link
+from songmirror.services.settings import SettingsStore
+from songmirror.services.syncs import SyncJob, validate_sync_job
+from songmirror.web import create_app
+
+
+class Wire:
+    def __init__(self, *replies):
+        self.replies = deque(replies)
+        self.calls = []
+
+    def request(self, method, url, **kwargs):
+        self.calls.append((method, urlsplit(url).path, kwargs))
+        assert kwargs["allow_redirects"] is False
+        assert self.replies, (method, url)
+        reply = self.replies.popleft()
+        if not isinstance(reply, tuple):
+            reply = (200, reply, {})
+        status, payload, headers = reply
+        return SimpleNamespace(status_code=status, json=lambda: payload, headers=headers, text=payload)
+
+
+def _emby_page(*items, total=None, start=0):
+    return {"Items": list(items), "TotalRecordCount": total if total is not None else len(items),
+            "StartIndex": start}
+
+
+def test_emby_reads_pages_and_removes_by_playlist_entry():
+    audio = {"Id": "24", "Type": "Audio", "Name": "Title", "Artists": ["Artist"], "RunTimeTicks": 2_000_000}
+    wire = Wire(
+        _emby_page({"Id": "2", "Name": "Mix", "MediaType": "Audio"},
+                   {"Id": "3", "Name": "Films", "MediaType": "Video"}),
+        _emby_page({**audio, "PlaylistItemId": "92"}, total=2),
+        _emby_page({**audio, "PlaylistItemId": "93"}, total=2, start=1),
+        _emby_page(audio),
+        {"Id": "4"},
+        _emby_page(),
+        {"ItemAddedCount": 1},
+        _emby_page(audio),
+        (204, None, {}),
+    )
+    target = EmbyTarget({"EMBY_URL": "http://emby.fixture/emby/", "EMBY_TOKEN": "fixture", "EMBY_USER_ID": "9"},
+                        session=wire)
+    playlist = target.list_playlists()["mix"]
+    tracks = target.playlist_tracks(playlist)
+    assert [(track["id"], track["playlistItemId"], track["duration_ms"]) for track in tracks] == [
+        ("24", "92", 200), ("24", "93", 200),
+    ]
+    assert target.search_candidates("Title")[0]["id"] == "24"
+    new = target.create({"name": "Other"})
+    assert target.add(new, ["24"]) == ["24"]
+    target.remove(playlist, tracks[1])
+    assert wire.calls[2][2]["params"]["StartIndex"] == 1
+    assert wire.calls[4][2]["params"] == {"Name": "Other", "UserId": "9", "MediaType": "Audio"}
+    assert wire.calls[-1][:2] == ("DELETE", "/emby/Playlists/2/Items")
+    assert wire.calls[-1][2]["params"] == {"EntryIds": "93"}
+    assert wire.calls[-1][2]["headers"]["X-Emby-Token"] == "fixture"
+
+
+def test_emby_verifies_untyped_playlists_and_batches_confirmed_additions():
+    first = {"Id": "24", "Type": "Audio", "Name": "First"}
+    second = {"Id": "25", "Type": "Audio", "Name": "Second"}
+    wire = Wire(
+        _emby_page({"Id": "10", "Name": "Music", "CanDelete": False}, {"Id": "11", "Name": "Films"}),
+        _emby_page(first),
+        _emby_page({"Id": "50", "Type": "Movie"}),
+        _emby_page(first),
+        {"ItemAddedCount": 1},
+        _emby_page(first, second),
+    )
+    target = EmbyTarget({"EMBY_URL": "http://emby.fixture", "EMBY_TOKEN": "fixture", "EMBY_USER_ID": "9"},
+                        session=wire)
+    music, = target.browse_playlists()
+    assert music["name"] == "Music"
+    assert target.is_editable(music)
+    assert target.add(music, ["24", "25"]) == ["25"]
+    assert wire.calls[4][2]["params"]["Ids"] == "24,25"
+
+
+def _plex_page(*items, **fields):
+    return {"MediaContainer": {"size": len(items), "Metadata": list(items), **fields}}
+
+
+def test_plex_creates_appends_and_deletes_static_audio_entries_only():
+    playlist = {"ratingKey": "1", "title": "Mix", "playlistType": "audio", "smart": False, "leafCount": 2}
+    smart = {**playlist, "ratingKey": "2", "title": "Smart", "smart": True}
+    entry = {"ratingKey": "24", "playlistItemID": 91, "type": "track",
+             "title": "Title", "grandparentTitle": "Artist", "duration": 200}
+    wire = Wire(
+        _plex_page(playlist, smart),
+        _plex_page(entry, offset=0, totalSize=2),
+        _plex_page({**entry, "playlistItemID": 92}, offset=1, totalSize=2),
+        {"MediaContainer": {"Hub": [{"type": "track", "size": 1, "Metadata": [entry]}]}},
+        _plex_page({**playlist, "ratingKey": "3", "title": "New", "leafCount": 0}),
+        _plex_page(playlist),
+        {"MediaContainer": {"machineIdentifier": "abc123"}},
+        _plex_page({**playlist, "leafCount": 3}),
+        _plex_page(playlist),
+        (204, None, {}),
+        _plex_page(smart),
+    )
+    target = PlexTarget({"PLEX_URL": "http://plex.fixture", "PLEX_TOKEN": "fixture"}, session=wire)
+    mix, read_only = target.browse_playlists()
+    tracks = target.playlist_tracks(mix)
+    assert [target.occurrence_id(track) for track in tracks] == ["91", "92"]
+    assert not read_only["_owned"]
+    assert target.search_candidates("Title")[0]["id"] == "24"
+    assert target.create({"name": "New"})["id"] == "3"
+    target.add(mix, ["24"])
+    target.remove(mix, tracks[1])
+    with pytest.raises(TargetCapabilityError, match="read-only"):
+        target.add(read_only, ["24"])
+    assert wire.calls[2][2]["headers"]["X-Plex-Container-Start"] == "1"
+    assert wire.calls[4][0] == "POST"
+    assert wire.calls[4][2]["params"]["uri"] == ""
+    assert wire.calls[7][2]["params"]["uri"] == "server://abc123/com.plexapp.plugins.library/library/metadata/24"
+    assert wire.calls[9][:2] == ("DELETE", "/playlists/1/items/92")
+    assert wire.calls[-1][:2] == ("GET", "/playlists/2")
+
+
+def _rpc(result):
+    return {"id": 1, "result": result}
+
+
+def test_mopidy_saves_m3u_and_checks_selected_occurrence():
+    first = {"__model__": "Track", "uri": "local:track:one", "name": "One"}
+    second = {"__model__": "Track", "uri": "local:track:two", "name": "Two"}
+    playlist = {"__model__": "Playlist", "uri": "m3u:Mix.m3u", "name": "Mix"}
+    model = {**playlist, "tracks": [first, first]}
+    refs = [{"uri": playlist["uri"], "name": "Mix"}, {"uri": "other:playlist", "name": "Other"}]
+    wire = Wire(
+        _rpc(refs), _rpc(["m3u", "other"]),
+        _rpc(model), _rpc({first["uri"]: [{**first, "artists": [{"name": "Artist"}]}]}),
+        _rpc([{"tracks": [second]}]),
+        _rpc(refs), _rpc({**playlist, "uri": "m3u:New.m3u", "name": "New"}),
+        _rpc({second["uri"]: [second]}), _rpc(model), _rpc({**model, "tracks": [first, first, second]}),
+        _rpc({**model, "tracks": [first, first, second]}), _rpc({**model, "tracks": [first, second]}),
+        _rpc({**model, "tracks": [first, second]}),
+    )
+    target = MopidyTarget({"MOPIDY_URL": "http://mopidy.fixture"}, session=wire)
+    mix, source_only = target.browse_playlists()
+    assert not source_only["_owned"]
+    tracks = target.playlist_tracks(mix)
+    assert [track["artist"] for track in tracks] == ["Artist", "Artist"]
+    assert target.search_candidates("Two")[0]["id"] == second["uri"]
+    assert target.create({"name": "New"})["id"] == "m3u:New.m3u"
+    assert target.add(mix, [second["uri"]]) == [second["uri"]]
+    assert target.remove_occurrences(mix, [(1, tracks[1])]) == 1
+    with pytest.raises(RuntimeError, match="changed"):
+        target.remove_occurrences(mix, [(1, tracks[1])])
+    assert wire.calls[6][2]["json"]["params"] == {"name": "New", "uri_scheme": "m3u"}
+    assert wire.calls[11][2]["json"]["params"]["playlist"]["tracks"] == [first, second]
+
+
+def test_mopidy_without_m3u_retains_read_access():
+    wire = Wire(_rpc([{"uri": "other:playlist", "name": "Read"}]), _rpc(["other"]))
+    target = MopidyTarget({"MOPIDY_URL": "http://mopidy.fixture"}, session=wire)
+    assert target.validate_connection() is False
+    with pytest.raises(TargetCapabilityError, match="M3U"):
+        target.create({"name": "New"})
+
+
+def _lyrion_tracks(*ids):
+    return {"count": len(ids), "playlisttracks_loop": [
+        {"id": track, "title": f"Song {track}", "artist": "Artist", "duration": 10.0, "playlist index": index}
+        for index, track in enumerate(ids)
+    ]}
+
+
+def test_lyrion_uses_saved_playlist_cli_and_deletes_exact_positions():
+    directory = {"count": 2, "playlists_loop": [
+        {"id": 1, "playlist": "Mix", "url": "file:///playlists/Mix.m3u", "remote": 0},
+        {"id": 2, "playlist": "Remote", "url": "https://remote.fixture/remote.m3u", "remote": 1},
+    ]}
+    created = {"id": 3, "playlist": "New", "url": "file:///playlists/New.m3u", "remote": 0}
+    wire = Wire(
+        _rpc(directory), _rpc({"_p2": "/playlists"}),
+        _rpc(_lyrion_tracks(21, 21)),
+        _rpc({"count": 1, "titles_loop": [{"id": 22, "title": "Song 22", "url": "file:///music/22.mp3"}]}),
+        _rpc({"playlist_id": 3}),
+        _rpc({"count": 3, "playlists_loop": [*directory["playlists_loop"], created]}),
+        _rpc(_lyrion_tracks(21, 21)),
+        _rpc({"songinfo_loop": [{"id": 22}, {"url": "file:///music/22.mp3"}]}), _rpc({}),
+        _rpc(_lyrion_tracks(21, 21, 22)), _rpc(_lyrion_tracks(21, 21, 22)),
+        _rpc({}), _rpc(_lyrion_tracks(21, 22)),
+    )
+    target = LyrionTarget({"LYRION_URL": "http://lms.fixture", "LYRION_USER": "test",
+                           "LYRION_PASSWORD": "fixture"}, session=wire)
+    mix, remote = target.browse_playlists()
+    assert not remote["_owned"]
+    tracks = target.playlist_tracks(mix)
+    assert [track["id"] for track in tracks] == ["21", "21"]
+    assert target.search_candidates("Song 22")[0]["id"] == "22"
+    assert target.create({"name": "New"})["id"] == "3"
+    assert target.add(mix, ["22"]) == ["22"]
+    assert target.remove_occurrences(mix, [(1, tracks[1])]) == 1
+    assert wire.calls[8][2]["json"]["params"] == [
+        "", ["playlists", "edit", "playlist_id:1", "cmd:add", "url:file:///music/22.mp3"],
+    ]
+    assert wire.calls[11][2]["json"]["params"] == [
+        "", ["playlists", "edit", "playlist_id:1", "cmd:delete", "index:1"],
+    ]
+    assert wire.calls[0][2]["auth"] == ("test", "fixture")
+
+
+def test_anghami_oauth_rotation_and_complete_read_only_playlist(tmp_path):
+    raw = {"id": {"value": "77"}, "name": {"value": "Mix"}, "itemCount": 2}
+    song = {"songId": {"value": "12"}, "title": "Track"}
+    wire = Wire(
+        {"token": {"accessToken": "test-1", "refreshToken": "refresh-1", "expiresIn": 3600}},
+        {"playlists": [raw]},
+        (401, {}, {}),
+        {"token": {"accessToken": "test-2", "refreshToken": "refresh-2", "expiresIn": 3600}},
+        {"playlists": [raw]},
+        {"playlist": raw, "items": [{"content": song}], "nextPageToken": "page-2"},
+        {"playlist": raw, "items": [{"content": {"episodeId": {"value": "55"}}, "position": 1}]},
+        {"results": {"12": {"song": {"id": {"value": "12"}, "durationMs": 6000, "isrc": "USRC17607839",
+                                      "artists": [{"name": {"value": "Artist"}}]}}}},
+    )
+    path = tmp_path / "anghami.json"
+    api = AnghamiApi("client-fixture", path, session=wire)
+    api.authorize("fixture-code", "fixture-verifier", "https://mirror.fixture/oauth/anghami/callback")
+    target = AnghamiTarget(api)
+    playlist = target.list_playlists()["mix"]
+    tracks = target.playlist_tracks(playlist)
+    assert [(t["id"], t["name"], t["artists"], t["isrc"]) for t in tracks] == [
+        ("12", "Track", ["Artist"], "USRC17607839"),
+    ]
+    assert read_token(path)["refresh_token"] == "refresh-2"
+    assert wire.calls[3][:2] == ("POST", "/v1/auth/token/refresh")
+    assert wire.calls[6][2]["params"]["page_token"] == "page-2"
+    assert wire.calls[-1][2]["json"] == {"songIdList": [{"value": "12"}]}
+    with pytest.raises(TargetCapabilityError, match="only supports playlist reads"):
+        target.add(playlist, ["12"])
+
+
+def test_qq_music_reads_pasted_links_across_pages():
+    page = {"dissId": 13, "dissName": "Mix", "totalNum": 2, "hasMore": True,
+            "trackList": [{"songMid": "a", "songName": "One", "singerName": "Artist"}]}
+    wire = Wire(page, page, {**page, "hasMore": False, "trackList": [{"songMid": "b", "songName": "Two"}]})
+    target = QQMusicTarget("qmk-fixture", session=wire)
+    provider, playlist_id = parse_playlist_link("https://i2.y.qq.com/a/playlist/13")
+    assert provider == "qqmusic"
+    playlist = target.fetch_playlist(playlist_id)
+    assert [t["id"] for t in target.playlist_tracks(playlist)] == ["a", "b"]
+    assert wire.calls[-1][2]["json"]["params"] == {"dissId": 13, "page": 1}
+    with pytest.raises(TargetCapabilityError, match="playlist link"):
+        target.browse_playlists()
+
+
+def test_qq_music_web_playlist_requires_actual_identity_and_complete_pages():
+    def page(start, end, playlist_id=13):
+        return {"code": 0, "req_0": {"code": 0, "data": {
+            "dirinfo": {"id": playlist_id, "title": "Public Mix"},
+            "total_song_num": 32,
+            "songlist": [{"mid": str(i), "name": f"Track {i}", "singer": [{"name": "Artist"}]}
+                         for i in range(start, end)],
+        }}}
+
+    wire = Wire(page(0, 0, playlist_id=0), page(0, 30), page(0, 30), page(30, 32), page(0, 29))
+    target = QQMusicTarget(web=True, session=wire)
+    assert target.fetch_playlist("13") is None
+    playlist = target.fetch_playlist("13")
+    assert [row["id"] for row in target.playlist_tracks(playlist)] == [str(i) for i in range(32)]
+    assert wire.calls[3][2]["json"]["req_0"]["param"]["song_begin"] == 30
+    with pytest.raises(RuntimeError, match="incomplete playlist"):
+        target.playlist_tracks(playlist)
+    assert all("Authorization" not in call[2]["headers"] for call in wire.calls)
+
+
+def test_qq_music_web_setup_is_profile_scoped_and_does_not_replace_api_key(tmp_path, monkeypatch):
+    from songmirror.engine.config import parse_args
+    from songmirror.engine.targets import build_one
+
+    app = create_app(settings=SettingsStore(dir=tmp_path))
+    profiles = app.state.account_profiles
+    profile = profiles.create("qqmusic", "Public links")
+    settings = profiles.settings_for(profile.id)
+    settings.save({"QQMUSIC_API_KEY": "qmk-existing"})
+    monkeypatch.setattr(QQMusicTarget, "fetch_playlist", lambda self, pid: {"id": pid} if pid == "13" else None)
+
+    with TestClient(app) as client:
+        route = f"/api/accounts/{profile.id}/qqmusic/browser"
+        invalid = client.post(route, json={"url": "https://i2.y.qq.com/a/playlist/17"})
+        assert invalid.json()["state"] == "error"
+        activated = client.post(route, json={"url": "https://i2.y.qq.com/a/playlist/13"}).json()
+        assert activated["state"] == "connected"
+        assert activated["capabilities"]["public_playlist_read"] and not activated["capabilities"]["library_write"]
+        options = parse_args([])
+        options.account_profiles = profiles
+        assert build_one(profile.id, options)._target._web
+        assert build_one("qqmusic", options) is None
+        assert client.delete(route).json()["state"] == "connected"
+        assert settings.get("QQMUSIC_API_KEY") == "qmk-existing"
+
+
+def test_read_only_playlist_links_reach_the_provider_from_transfers(tmp_path, monkeypatch):
+    qq_wire = Wire({"dissId": 13, "dissName": "QQ Mix", "totalNum": 3})
+    qq = QQMusicTarget("qmk-fixture", session=qq_wire)
+    anghami_wire = Wire(
+        {"token": {"accessToken": "test-1", "refreshToken": "refresh-1", "expiresIn": 3600}},
+        {"playlists": []},
+        {"playlists": []},
+        {"playlist": {"id": {"value": "77"}, "name": {"value": "Anghami Mix"}, "itemCount": 5}},
+    )
+    api = AnghamiApi("client-fixture", tmp_path / "anghami.json", session=anghami_wire)
+    api.authorize("fixture-code", "fixture-verifier", "https://mirror.fixture/oauth/anghami/callback")
+    anghami = AnghamiTarget(api)
+    app = create_app(settings=SettingsStore(dir=tmp_path))
+    accounts = app.state.account_profiles
+    targets = {accounts.default_id("anghami"): anghami, accounts.default_id("qqmusic"): qq}
+    monkeypatch.setattr(app.state.transfers, "_build", lambda account, _opts: targets.get(account))
+
+    with TestClient(app) as client:
+        for url, name, count in [
+            ("https://i2.y.qq.com/a/playlist/13", "QQ Mix", 3),
+            ("https://play.anghami.com/playlist/77", "Anghami Mix", 5),
+        ]:
+            preview = client.post("/api/transfers/preview", json={"url": url})
+            assert preview.status_code == 200, preview.json()
+            assert (preview.json()["name"], preview.json()["count"]) == (name, count)
+
+    assert not (qq_wire.replies or anghami_wire.replies)
+
+
+@pytest.mark.parametrize("provider, url, playlist_id", [
+    ("audiomack", "https://audiomack.com/mirror/playlist/mix", "mirror/playlist/mix"),
+    ("gaana", "https://gaana.com/playlist/my-mix", "my-mix"),
+    ("jiosaavn", "https://www.jiosaavn.com/s/playlist/owner/mix/w,Z_", "s/playlist/owner/mix/w,Z_"),
+    ("linemusic", "https://music.line.me/webapp/playlist/my-mix", "my-mix"),
+    ("netease", "https://music.163.com/#/playlist?id=123", "123"),
+    ("pandora", "https://www.pandora.com/playlist/PL:1:2", "PL:1:2"),
+    ("vibe", "https://vibe.naver.com/playlist/my-mix", "my-mix"),
+])
+def test_public_web_links_connect_and_preview_as_sources_only(tmp_path, monkeypatch, provider, url, playlist_id):
+    target_type = PUBLIC_PLAYLIST_TARGETS[provider]
+    monkeypatch.setattr(target_type, "_read", lambda self, key: {"id": key, "name": "Public Mix", "count": 1}
+                        if key == playlist_id else None)
+    app = create_app(settings=SettingsStore(dir=tmp_path))
+    profiles = app.state.account_profiles
+    profile = profiles.create(provider, "Fixture")
+    key = f"{provider.upper()}_PUBLIC_PLAYLIST"
+    assert parse_playlist_link(url) == (provider, playlist_id)
+    assert parse_playlist_link(external_url(provider, "playlist", playlist_id)) == (provider, playlist_id)
+    assert not target_type(web_session={}).supports_playlist_writes
+    assert target_type().find_playlist(playlist_id) is None
+
+    with TestClient(app) as client:
+        response = client.post(f"/api/accounts/{profile.id}/connect", json={key: url + ("&test=1" if "?" in url else "?test=1")})
+        assert response.status_code == 200, response.json()
+        result = response.json()
+        assert result["kind"] == "public_link" and result["state"] == "connected", result
+        assert result["capabilities"]["public_playlist_read"] and not result["capabilities"]["library_write"]
+        assert profiles.settings_for(profile.id).get(key) == external_url(provider, "playlist", playlist_id)
+        assert profiles.settings_for(profiles.default_id(provider)).get(key) is None
+        preview = client.post("/api/transfers/preview", json={"url": url, "source_account": profile.id})
+        assert preview.status_code == 200, preview.json()
+        assert (preview.json()["name"], preview.json()["count"]) == ("Public Mix", 1)
+
+
+@pytest.mark.parametrize("provider", ["linemusic", "vibe"])
+def test_line_and_vibe_guard_public_identity_and_track_count(provider):
+    row = {"trackId": "one", "trackTitle": "Track", "artists": [{"artistName": "Artist"}],
+           "album": {"albumTitle": "Album"}}
+
+    def body(pl_id, count):
+        return {"response": {"result": {"playlist": {"plId": pl_id, "isPublic": True,
+                "title": "Mix", "tracksTotalCount": count, "tracks": [row]}}}}
+
+    wire = Wire(body("other", 1), body("key", 1), body("key", 2))
+    target = PUBLIC_PLAYLIST_TARGETS[provider](session=wire)
+    assert target.fetch_playlist("key") is None
+    assert target.playlist_tracks(target.fetch_playlist("key"))[0]["album"] == "Album"
+    with pytest.raises(RuntimeError, match="incomplete playlist"):
+        target.fetch_playlist("key")
+
+
+def test_gaana_checks_the_public_track_ids_instead_of_the_editorial_total():
+    response = {"count": 1, "playlist": {"seokey": "key", "title": "Mix", "trackids": "102",
+                                        "trackcount": 50, "is_public": 0},
+                "tracks": [{"track_id": "102", "track_title": "Music"}]}
+    wire = Wire(response, {**response, "playlist": {**response["playlist"], "trackids": "103"}})
+    target = GaanaTarget(session=wire)
+    assert target.fetch_playlist("key")["count"] == 1
+    with pytest.raises(RuntimeError, match="playlist order"):
+        target.fetch_playlist("key")
+
+
+def test_jiosaavn_fetches_all_pages_in_order_and_detects_repeated_pages():
+    song = {"id": "one", "title": "First &amp; Best", "more_info": {"duration": "120"}}
+    page = {"id": "42", "type": "playlist", "title": "Mix", "list_count": "2", "list": [song]}
+    wire = Wire(page, {**page, "list": [{**song, "id": "two"}]}, page, page)
+    target = JioSaavnTarget(session=wire)
+    target.page_size = 1
+    key = "featured/test/token"
+    tracks = target.playlist_tracks(target.fetch_playlist(key))
+    assert [(x["id"], x["name"], x["duration_ms"]) for x in tracks] == [
+        ("one", "First & Best", 120_000), ("two", "First & Best", 120_000),
+    ]
+    assert [call[2]["params"]["p"] for call in wire.calls] == [1, 2]
+    with pytest.raises(RuntimeError, match="repeated a playlist page"):
+        target.fetch_playlist(key)
+
+
+def test_jiosaavn_reads_numeric_library_ids_only_from_the_signed_in_directory():
+    directory = {"user": {"uid": "viewer"}, "playlist": [
+        {"id": "123", "title": "Private Mix", "list_count": "2", "more_info": {"uid": "viewer"}},
+    ]}
+    detail = {"id": "123", "type": "playlist", "title": "Private Mix", "list_count": "2", "list": [
+        {"id": "a", "title": "First", "type": "song"}, {"id": "b", "title": "Second", "type": "song"},
+    ]}
+    wire = Wire(directory, detail)
+    raw = "curl 'https://www.jiosaavn.com/api.php?__call=library.getAll' -b 'user=fixture; _ga=metrics'"
+    target = JioSaavnTarget(session=wire, web_session=parse_playlist_session("jiosaavn", raw))
+    assert target.find_playlist("456") is None
+    assert [x["id"] for x in target.playlist_tracks(target.find_playlist("123"))] == ["a", "b"]
+    assert [call[2]["params"]["__call"] for call in wire.calls] == ["library.getAll", "playlist.getDetails"]
+    assert all(call[2]["headers"]["Cookie"] == "user=fixture" for call in wire.calls)
+
+
+def test_jiosaavn_creates_private_playlists_and_verifies_ordered_track_edits():
+    directory = {"user": {"uid": "viewer"}, "playlist": []}
+    empty = {"id": "123", "type": "playlist", "title": "Private Mix", "list_count": "0", "list": "",
+             "more_info": {"uid": "viewer", "share": "0"}}
+    first = {"id": "track_a", "title": "First", "type": "song", "language": "hindi"}
+    second = {"id": "track_b", "title": "Second", "type": "song", "language": "tamil"}
+    full = {**empty, "list_count": "2", "list": [first, second]}
+    trimmed = {**full, "list_count": "1", "list": [second]}
+    wire = Wire(
+        directory, {"status": "ok", "details": {"id": "123"}}, empty,
+        empty, {"songs": [second, first]}, {"status": "ok"}, full,
+        full, {"details": {"more_info": {"contents": "track_b"}}}, trimmed,
+        {**trimmed, "more_info": {"uid": "different-viewer", "share": "0"}},
+    )
+    target = JioSaavnTarget(session=wire, web_session={"cookie": "user=fixture"})
+    with pytest.raises(TargetCapabilityError, match="can.t create public"):
+        target.create({"name": "Public Mix", "_create_public": True})
+    assert target.list_playlists() == {}
+    playlist = target.create({"name": "Private Mix"})
+    assert target.is_editable(playlist)
+    assert target.find_playlist("123") == playlist
+    assert target.add(playlist, ["track_a", "track_b", "track_a"]) == ["track_a", "track_b"]
+    assert target.remove(playlist, {"id": "track_a"})
+    with pytest.raises(TargetCapabilityError, match="confirm ownership"):
+        target.remove(playlist, {"id": "track_b"})
+    calls = {kwargs["params"]["__call"]: kwargs["params"] for _, _, kwargs in wire.calls}
+    assert calls["playlist.create"]["share"] == "false"
+    assert calls["playlist.add"]["contents"] == "~~track_a~hindi^~~track_b~tamil"
+    assert calls["playlist.remove"]["pid"] == "track_a"
+    assert not wire.replies
+
+
+def test_audiomack_uses_the_complete_public_player_payload():
+    key = "mirror/playlist/mix"
+    data = {"music": {"type": "playlist", "href": "/" + key, "title": "Mix", "trackCount": 1,
+                      "tracks": [{"id": "9", "title": "Music", "artistName": "Artist", "duration": 61}]}}
+    script_arg = json.dumps([1, "13:" + json.dumps(data) + "\n"])
+    wire = Wire(f"<script>self.__next_f.push({script_arg})</script>")
+    target = AudiomackTarget(session=wire)
+    assert target.playlist_tracks(target.fetch_playlist(key))[0]["duration_ms"] == 61_000
+
+
+def test_audiomack_private_cookie_session_reads_only_playlists_from_its_directory(monkeypatch):
+    key = "mirror/playlist/mix"
+    data = {"music": {"type": "playlist", "href": "/" + key, "id": "91", "title": "Mix", "isPrivate": True,
+                      "trackCount": 1, "tracks": [{"id": "9", "title": "Music", "artistName": "Artist", "duration": 61}]}}
+    page = f"<script>self.__next_f.push({json.dumps([1, '13:' + json.dumps(data)])})</script>"
+    raw = ("curl 'https://audiomack.com/my-library/playlists' "
+           "-H 'Cookie: otoken=fixture-token-123456; osecret=fixture-secret-123456; unrelated=sample'")
+    session = parse_playlist_session("audiomack", raw)
+    assert session == {"otoken": "fixture-token-123456", "osecret": "fixture-secret-123456"}
+    with pytest.raises(ValueError, match="osecret cookie"):
+        parse_playlist_session("audiomack", raw.replace("osecret=", "other="))
+    signed = ("curl 'https://api.audiomack.com/v1/user/playlists/page/1?limit=20&"
+              "oauth_consumer_key=audiomack-web&oauth_token=fixture-token-123456&oauth_signature=fixture-signature'")
+    assert parse_playlist_session("audiomack", signed, signing_cookie="fixture-secret-123456") == session
+    with pytest.raises(ValueError, match="osecret cookie"):
+        parse_playlist_session("audiomack", signed)
+
+    def directory(cookies):
+        assert cookies == session
+        return [{"type": "playlist", "id": 91, "title": "Mix", "url_slug": "mix", "private": "yes",
+                 "artist": {"url_slug": "mirror"}, "track_count": "1", "tracks": []}]
+
+    monkeypatch.setattr("songmirror.engine.targets.public_playlists.audiomack_library", directory)
+
+    def detail(cookies, playlist_id):
+        assert cookies == session and playlist_id == "91"
+        return {"id": 91, "title": "Mix", "type": "playlist", "private": "yes", "track_count": 1,
+                "tracks": [{"id": "9", "title": "Music", "artist": "Artist", "duration": 61}]}
+
+    monkeypatch.setattr("songmirror.engine.targets.public_playlists.audiomack_playlist", detail)
+    wire = Wire(page)
+    target = AudiomackTarget(session=wire, web_session=session)
+    assert target.find_playlist("92") is None
+    assert target.fetch_playlist(key) is None
+    assert [(row["id"], row["artist"]) for row in target.playlist_tracks(target.find_playlist("91"))] == [("9", "Artist")]
+    assert "Cookie" not in wire.calls[0][2]["headers"]
+    assert len(wire.calls) == 1
+
+
+def test_audiomack_writes_only_owned_playlists_and_confirms_track_order(monkeypatch):
+    module = "songmirror.engine.targets.public_playlists"
+    entries = [{"id": "12", "title": "Followed", "type": "playlist", "track_count": 0}]
+    membership = []
+    changes = []
+
+    def directory(_cookies):
+        return [dict(row, track_count=len(membership) if row.get("_owned") else 0) for row in entries]
+
+    def detail(_cookies, identifier):
+        assert identifier == "91"
+        return {"id": identifier, "title": "Private Mix", "type": "playlist", "track_count": len(membership),
+                "tracks": [{"id": key, "title": f"Track {key}", "artist": "Artist"} for key in membership]}
+
+    def write(_cookies, method, endpoint, *, data=None):
+        changes.append((method, endpoint, data))
+        if endpoint == "playlist":
+            entries.append({"id": "91", "title": data["title"], "type": "playlist", "_owned": True})
+            return {"id": 91, "private": "yes"}
+        if method == "POST":
+            membership.extend(data["music_id"].split(","))
+        else:
+            membership.remove(endpoint.split("/")[-1])
+
+    monkeypatch.setattr(f"{module}.audiomack_library", directory)
+    monkeypatch.setattr(f"{module}.audiomack_playlist", detail)
+    monkeypatch.setattr(f"{module}.audiomack_write", write)
+    target = AudiomackTarget(web_session={"otoken": "fixture", "osecret": "fixture"})
+    followed = target.find_playlist("12")
+    assert not target.is_editable(followed)
+    with pytest.raises(TargetCapabilityError, match="Only playlists owned"):
+        target.add(followed, ["101"])
+    with pytest.raises(TargetCapabilityError, match="can't create public"):
+        target.create({"name": "Public Mix", "_create_public": True})
+    playlist = target.create({"name": "Private Mix"})
+    assert target.add(playlist, ["101", "102", "103"]) == ["101", "102", "103"]
+    assert target.add(playlist, ["103"]) == []
+    assert target.remove(playlist, {"id": "102"})
+    assert membership == ["101", "103"]
+    membership.append("101")
+    assert not target.remove(playlist, {"id": "101"})
+    assert changes == [("POST", "playlist", {"title": "Private Mix", "genre": "other", "private": "yes"}),
+                       ("POST", "playlist/91/track", {"music_id": "101,102,103"}),
+                       ("DELETE", "playlist/91/track/102", None)]
+
+
+def test_netease_reads_public_track_ids_in_order_and_hydrates_missing_metadata():
+    a, b = {"id": 1, "name": "Track 1"}, {"id": 2, "name": "Track 2"}
+    wire = Wire({"code": 200, "playlist": {"id": 123, "name": "Mix", "privacy": 0, "trackCount": 3,
+                "trackIds": [{"id": 2}, {"id": 1}, {"id": 2}], "tracks": [a]}}, {"code": 200, "songs": [b]})
+    target = NetEaseTarget(session=wire)
+    assert [track["id"] for track in target.playlist_tracks(target.fetch_playlist("123"))] == ["2", "1", "2"]
+    assert json.loads(wire.calls[1][2]["params"]["c"]) == [{"id": 2}]
+
+
+def test_gaana_private_reads_are_scoped_to_signed_in_playlist_directory():
+    directory = {"playlist": [{"playlist_id": 9, "title": "Private Mix", "trackcount": 1}]}
+    detail = {"count": 1, "playlist": {"playlist_id": "9", "title": "Private Mix", "trackids": "102", "is_public": 0},
+              "tracks": [{"track_id": 102, "track_title": "Music"}]}
+    wire = Wire(directory, detail)
+    target = GaanaTarget(session=wire, web_session={"token": "example-token-1234"})
+    assert target.find_playlist("10") is None
+    assert [t["id"] for t in target.playlist_tracks(target.find_playlist("9"))] == ["102"]
+    assert [call[1] for call in wire.calls] == ["/user.php", "/playlist/detail"]
+    assert wire.calls[-1][2]["params"]["playlist_id"] == "9"
+
+
+def test_gaana_writes_confirm_current_ownership_order_and_visibility():
+    directory = {"playlist": [{"playlist_id": 9, "title": "Private Mix", "trackcount": 0}]}
+
+    def detail(*ids):
+        return {"count": len(ids), "playlist": {"playlist_id": "9", "title": "Private Mix",
+                "trackids": ",".join(ids), "is_public": 0},
+                "tracks": [{"track_id": key, "track_title": f"Fixture {key}"} for key in ids]}
+
+    success = {"Status": 1, "user_token_status": 1}
+    wire = Wire({**success, "Success": "9"}, directory, directory, detail(), success, detail("101", "102"),
+                directory, detail("101", "102"), success, detail("101"), directory, detail("101", "101"))
+    target = GaanaTarget(session=wire, web_session={"token": "fixture-token"})
+    playlist = target.create({"name": "Private Mix"})
+    assert target.is_editable(playlist)
+    assert target.add(playlist, ["101", "102"]) == ["101", "102"]
+    assert target.remove(playlist, {"id": "102"})
+    assert target.remove(playlist, {"id": "101"}) is False
+    changes = [call for call in wire.calls if call[2]["params"].get("type") in {
+        "createplaylist", "addtoplaylist", "addeditplaylist",
+    }]
+    assert [call[0] for call in changes] == ["GET", "GET", "POST"]
+    assert changes[0][2]["params"]["is_public"] == 0
+    assert changes[1][2]["params"]["trackids"] == "101,102"
+    assert json.loads(changes[2][2]["data"]["playlist_json"]) == {"playlists": [{
+        "pid": "9", "playlist_title": "Private Mix", "is_public": 0,
+        "del_items": [{"tid": "102", "is_local": 0}],
+    }]}
+    with pytest.raises(TargetCapabilityError, match="connected Gaana library"):
+        target.remove({"id": "9"}, {"id": "101"})
+
+
+def test_netease_private_playlist_authenticates_account_and_never_uses_pasted_uid():
+    wire = Wire({"code": 200, "account": {"id": 5}},
+                {"code": 200, "more": False, "playlist": [{"id": 123, "name": "Private Mix", "trackCount": 1}]},
+                {"code": 200, "playlist": {"id": 123, "name": "Private Mix", "privacy": 10, "trackCount": 1,
+                                           "trackIds": [{"id": 7}], "tracks": [{"id": 7, "name": "Song"}]}})
+    target = NetEaseTarget(session=wire, web_session={"cookie": "MUSIC_U=fixture"})
+    assert [t["id"] for t in target.playlist_tracks(target.find_playlist("123"))] == ["7"]
+    assert wire.calls[1][2]["params"]["uid"] == 5
+    assert all(call[2]["headers"]["Cookie"] == "MUSIC_U=fixture" for call in wire.calls)
+    raw = "curl 'https://music.163.com/api/user/playlist?uid=999' -b 'unrelated=abc; MUSIC_U=session; __csrf=token'"
+    assert parse_playlist_session("netease", raw) == {"cookie": "MUSIC_U=session; __csrf=token"}
+    with pytest.raises(ValueError, match="signed-in web player"):
+        parse_playlist_session("netease", raw.replace("music.163.com", "music.163.com.invalid"))
+
+
+@pytest.mark.parametrize("target_type", [LineMusicTarget, VibeTarget])
+def test_line_style_requires_account_visibility_for_private_playlist_reads(target_type):
+    def envelope(**result):
+        return {"response": {"result": result}}
+
+    directory = envelope(libraries=[{"type": "MYLIST", "id": "123", "title": "Private Mix"}], totalCount=1)
+    if target_type is LineMusicTarget:
+        own = envelope(playlist={"plId": "123", "title": "Private Mix", "tracksTotalCount": 1,
+                                 "isMine": True, "isPublic": False})
+    else:
+        own = envelope(myAlbums=[{"myAlbumId": "123", "title": "Private Mix", "trackCount": 1,
+                                 "isMine": True, "isPublic": False}])
+    signed = Wire(directory, own, envelope(tracks=[{"trackId": 4, "trackTitle": "Song"}]))
+    target = target_type(session=signed, web_session={"cookie": "session=fixture"})
+    playlist = target.find_playlist("123")
+    assert playlist["name"] == "Private Mix"
+    assert [t["name"] for t in target.playlist_tracks(playlist)] == ["Song"]
+    assert len(signed.calls) == 3
+    assert all(call[2]["headers"]["Cookie"] == "session=fixture" for call in signed.calls)
+    public = Wire(envelope(playlist={"plId": "123", "isMine": True, "isPublic": False}))
+    assert target_type(session=public).fetch_playlist("123") is None
+    assert "Cookie" not in public.calls[0][2]["headers"]
+
+
+def test_playlist_browser_setup_preserves_public_mode_and_isolates_credentials(monkeypatch, tmp_path):
+    target = GaanaTarget
+    app = create_app(settings=SettingsStore(dir=tmp_path))
+    profiles = app.state.account_profiles
+    profile = profiles.create("gaana", "Private QA")
+    key = target.session_key()
+    captured = "curl 'https://api.gaana.com/user.php?type=myplaylists&subtype=myplaylists&token=fixture-token-safe' -H 'deviceId: device'"
+    store = profiles.settings_for(profile.id)
+    store.save({"GAANA_PUBLIC_PLAYLIST": "https://gaana.com/playlist/example"})
+
+    def read_directory(self):
+        assert self.web_session == {"token": "fixture-token-safe", "deviceid": "device"}
+        return [self._account_playlist("9", "Private Mix", 1)]
+
+    monkeypatch.setattr(target, "_read_directory", read_directory)
+    monkeypatch.setattr(target, "_read_account_playlist", lambda self, playlist:
+                        self._playlist(playlist["id"], "Private Mix", [{"id": "21", "name": "Fixture Track"}], count=1))
+    with TestClient(app) as client:
+        path = f"/api/accounts/{profile.id}/playlist-browser"
+        response = client.post(path, json={"request": captured})
+        assert response.status_code == 200, response.json()
+        caps = response.json()["capabilities"]
+        assert caps["library_read"] and caps["public_playlist_read"] and caps["library_write"]
+        assert json.loads(profiles.settings_for(profile.id).get(key)) == {"token": "fixture-token-safe", "deviceid": "device"}
+        assert profiles.settings_for("gaana").get(key) is None
+        accounts = client.get("/api/accounts")
+        assert "fixture-token-safe" not in accounts.text
+        gaana = next(account for account in accounts.json() if account["id"] == profile.id)
+        assert gaana["playlist_browser"]["login_url"] == "https://gaana.com/music"
+        assert gaana["playlist_browser"]["request_hint"] == "myplaylists"
+        assert client.put("/api/settings", json={key: "unvalidated"}).status_code == 422
+        assert client.post(path, json={"request": captured.replace("api.gaana.com", "example.org")}).json()["state"] == "error"
+        directory = client.get("/api/playlists", params={"provider": profile.id})
+        assert directory.status_code == 200, directory.json()
+        assert [(row["id"], row["name"]) for row in directory.json()] == [("9", "Private Mix")]
+        detail = client.get(f"/api/playlists/{profile.id}/9")
+        assert detail.status_code == 200 and detail.json()["tracks"][0]["name"] == "Fixture Track"
+        response = client.delete(path)
+        assert response.json()["capabilities"]["public_playlist_read"]
+        assert not response.json()["capabilities"]["library_read"] and not profiles.settings_for(profile.id).get(key)
+
+
+def test_qq_music_browser_library_uses_verified_directory_and_session_only_on_account_reads():
+    signed = {"code": 0, "req_0": {"code": 0, "data": {"total": 1, "bFinish": True, "v_playlist": [
+        {"tid": 93, "dirName": "Private Mix", "songNum": 1},
+    ]}}}
+    page = {"code": 0, "req_0": {"code": 0, "data": {"dirinfo": {"id": 93, "title": "Private Mix", "dir_show": 2,
+                     "owndir": 1}, "total_song_num": 1, "songlist": [{"mid": "a", "name": "Fixture Track"}]}}}
+    missing = {"code": 0, "req_0": {"code": 0, "data": {"dirinfo": {"id": 0}}}}
+    wire = Wire(signed, page, missing)
+    raw = "curl 'https://u.y.qq.com/cgi-bin/musicu.fcg' -b 'uin=o0042; qm_keyst=music-session; unrelated=abc'"
+    credentials = parse_playlist_session("qqmusic", raw)
+    target = QQMusicTarget(session=wire, web_session=credentials)
+    assert target.find_playlist("99") is None
+    assert [track["id"] for track in target.playlist_tracks(target.find_playlist("93"))] == ["a"]
+    assert target.fetch_playlist("93") is None
+    assert wire.calls[0][2]["json"]["req_0"]["param"] == {"uin": "42"}
+    assert wire.calls[1][2]["headers"]["Cookie"] == "uin=o0042; qm_keyst=music-session"
+    assert "comm" not in wire.calls[2][2]["json"] and "Cookie" not in wire.calls[2][2]["headers"]
+
+
+def test_pandora_uses_versioned_pages_and_keeps_guest_auth_local():
+    def page(offset, version):
+        aid = f"TR:{offset}"
+        return {"pandoraId": "PL:1:2", "name": "Mix", "version": version, "offset": offset,
+                "totalTracks": 2, "isPrivate": False, "tracks": [{"pandoraId": aid}],
+                "annotations": {aid: {"name": "Track", "artistName": "Artist"}}}
+
+    class Session(Wire):
+        cookies = SimpleNamespace(set=lambda *args, **kwargs: None)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    session = Session({"authToken": "guest-fixture"}, page(0, 7), page(1, 7),
+                      {"authToken": "guest-fixture"}, page(0, 7), {"errorCode": 99000})
+    target = PandoraTarget(session=lambda: session)
+    target.page_size = 1
+    assert [t["id"] for t in target.playlist_tracks(target.fetch_playlist("PL:1:2"))] == ["TR:0", "TR:1"]
+    requests = [call[2]["json"]["request"] for call in session.calls[1:3]]
+    assert [req["playlistVersion"] for req in requests] == [0, 7]
+    assert all(req["bypassPrivacyRules"] is False for req in requests)
+    assert all(req["allowedTypes"] == ["TR"] for req in requests)
+    assert "X-AuthToken" not in session.calls[0][2]["headers"]
+    with pytest.raises(RuntimeError, match="changed during the read"):
+        target.fetch_playlist("PL:1:2")
+
+
+def test_pandora_private_reads_require_the_same_collection_owner():
+    key = "PL:1:2"
+    directory = {"listenerId": 2, "listenerPandoraId": "LI:2", "totalCount": 1, "offset": 0,
+                 "items": [key], "annotations": {key: {"name": "Private Mix", "totalTracks": 1}}}
+    page = {"listenerId": 2, "pandoraId": key, "name": "Private Mix", "isPrivate": True, "version": 1,
+            "offset": 0, "totalTracks": 1, "tracks": [{"pandoraId": "TR:4"}],
+            "annotations": {"TR:4": {"name": "Fixture Track"}}}
+    wire = Wire(directory, page, {**page, "listenerId": 5})
+    raw = "curl 'https://www.pandora.com/api/v6/collections/getSortedPlaylists' -H 'X-AuthToken: local-fixture-session' -H 'X-CsrfToken: fixture-csrf'"
+    target = PandoraTarget(signed_session=wire, web_session=parse_playlist_session("pandora", raw))
+    mix = target.find_playlist(key)
+    assert [track["id"] for track in target.playlist_tracks(mix)] == ["TR:4"]
+    assert wire.calls[1][2]["json"]["request"]["bypassPrivacyRules"] is False
+    assert wire.calls[1][2]["headers"]["X-AuthToken"] == "local-fixture-session"
+    with pytest.raises(TargetCapabilityError, match="no longer visible"):
+        target.playlist_tracks(mix)
+
+
+def test_partial_collection_is_never_returned_as_a_shorter_playlist():
+    wire = Wire(_emby_page({"Id": "24"}, total=2), _emby_page(total=2, start=1))
+    target = EmbyTarget({"EMBY_URL": "http://emby.fixture", "EMBY_TOKEN": "fixture", "EMBY_USER_ID": "9"},
+                        session=wire)
+    with pytest.raises(RuntimeError, match="incomplete collection"):
+        target.playlist_tracks({"id": "2"})
+
+
+def test_anghami_web_playlist_writes_exclude_recommendations_and_require_ownership():
+    from contextlib import nullcontext
+
+    from songmirror.engine.targets.anghami_web import AnghamiWebTarget
+
+    class Player:
+        connection = staticmethod(nullcontext)
+        members = []
+        owned = True
+
+        def request(self, operation, *, params=None, form=None):
+            if operation == "GETplaylists":
+                return {"sections": [{"type": "playlist", "group": "playlists", "data": [
+                    {"id": "91", "name": "Private Mix", "count": len(self.members), "public": "false"},
+                ]}]}
+            if operation == "GETplaylistdata":
+                return {"playlistid": int(params["playlistid"]), "name": "Private Mix", "canedit": self.owned,
+                        "PlaylistCount": len(self.members), "sections": [
+                            {"type": "song", "show_recommendations": 0,
+                             "data": [{"id": key, "title": key, "artist": "Artist"} for key in self.members]},
+                            {"type": "song", "suggestionstoadd": 1,
+                             "data": [{"id": "19", "title": "Suggested", "artist": "Artist"}]},
+                        ]}
+            assert operation == "PUTplaylist"
+            if form == {"name": "Private Mix", "public": "false"}:
+                return {"playlist": {"id": 91}}
+            assert self.owned and form["playlistid"] == "91"
+            if form["action"] == "append":
+                self.members.append(form["songID"])
+            else:
+                assert form["action"] == "delete"
+                self.members.remove(form["songid"])
+            return {"status": "ok"}
+
+    transport = Player()
+    target = AnghamiWebTarget(transport)
+    playlist = target.create({"name": "Private Mix"})
+    assert playlist["_private"]
+    assert target.add(playlist, ["101", "102", "103"]) == ["101", "102", "103"]
+    assert target.remove(playlist, {"id": "102"})
+    assert [row["id"] for row in target.playlist_tracks(target.fetch_playlist("91"))] == ["101", "103"]
+    transport.owned = False
+    with pytest.raises(TargetCapabilityError, match="confirm ownership"):
+        target.add(playlist, ["104"])
+
+
+def test_anghami_search_keeps_top_matches_when_secondary_results_are_null():
+    from songmirror.engine.targets.anghami_web import AnghamiWebTarget
+
+    row = {"id": "101", "title": "Take It Or Leave It", "artist": "Cage The Elephant",
+           "duration": 200, "albumID": "1"}
+
+    class Player:
+        def request(self, operation, *, params=None):
+            assert operation == "search"
+            return {"sections": [
+                {"type": "genericitem", "group": "tops", "data": [row, {**row, "id": None}]},
+                {"type": "genericitem", "group": "search_top", "data": None},
+            ]}
+
+    target = AnghamiWebTarget(Player())
+    assert [row["id"] for row in target.search_candidates("Take It Or Leave It Cage The Elephant")] == ["101"]
+
+
+def test_read_only_providers_are_available_for_transfers_but_excluded_as_targets(monkeypatch):
+    opts = SimpleNamespace(providers="anghami,qqmusic,mopidy", sync_source="spotify")
+    node = SimpleNamespace(supports_playlist_writes=False, name="Mopidy", tag="mopidy")
+    builders = []
+
+    def build(provider, *_args, **_kwargs):
+        builders.append(provider)
+        return node
+
+    monkeypatch.setattr("songmirror.engine.targets.build_one", build)
+    assert is_peer("anghami") and is_peer("qqmusic")
+    assert build_targets(opts) == []
+    assert build_peers(opts, None) == []
+    assert builders == ["mopidy", "mopidy"]
+    with pytest.raises(ValueError, match="requires a public playlist link"):
+        validate_sync_job(SyncJob(mode="oneway", source="qqmusic"))
+    with pytest.raises(ValueError, match="destination must support playlist writes"):
+        validate_sync_job(SyncJob(mode="merge", sources=[{"url": "https://i2.y.qq.com/a/playlist/13"}],
+                                 destination={"provider": "anghami", "name": "new"}))

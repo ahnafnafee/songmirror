@@ -14,6 +14,7 @@ from songmirror.engine.targets.base import TargetAuthError, TargetCapabilityErro
 from songmirror.engine.targets.soundcloud import SoundCloudWebTarget
 from songmirror.services.account_profiles import AccountProfileStore
 from songmirror.services.settings import SettingsStore
+from songmirror.soundcloud_renewal import parse_page_request
 from songmirror.soundcloud_web import WEB_API, WEB_SESSION_FILENAME, SoundCloudWeb, parse_browser_request
 from songmirror.web import create_app
 
@@ -26,6 +27,10 @@ def pasted(token):
         f"curl '{WEB_API}/me/library/all?client_id={BOOKMARK}&limit=10' "
         f"-H 'authorization: OAuth {token}' -H 'cookie: unused=value' --compressed"
     )
+
+
+def pasted_page(token):
+    return f"curl 'https://soundcloud.com/you/sets' -b 'oauth_token={token}; sc_session=fixture'"
 
 
 def track(identifier):
@@ -43,6 +48,113 @@ def test_browser_request_keeps_only_the_session_and_client_id():
         parse_browser_request(pasted("token").replace("&limit=10", "&client_id=second-key"))
     with pytest.raises(ValueError, match="authorization header"):
         parse_browser_request(pasted("token").replace("OAuth", "Bearer"))
+
+
+def test_renewal_page_request_requires_soundcloud_and_stores_scoped_cookies():
+    raw = "curl 'https://soundcloud.com/you/sets' -b 'oauth_token=old; sc_session=session; _ga=analytics; datadome=check'"
+    cookies = parse_page_request(raw)
+    assert [cookie["name"] for cookie in cookies] == ["oauth_token", "sc_session"]
+    assert all(cookie["url"] == "https://soundcloud.com/" and cookie["secure"] for cookie in cookies)
+    with pytest.raises(ValueError, match="document request"):
+        parse_page_request(raw.replace("soundcloud.com", "other.test"))
+
+
+def test_browser_refresh_retries_once_and_persists_rotated_token_for_other_readers(tmp_path, monkeypatch):
+    session_file = tmp_path / WEB_SESSION_FILENAME
+    session = {**parse_browser_request(pasted("old")), "user_id": "912", "renewal_cookies": [{"name": "fixture"}]}
+    soundcloud.write_private(session_file, session)
+    calls, renewals = [], []
+
+    def renew(cookies, rejected, client_id):
+        renewals.append((cookies, rejected, client_id))
+        return "OAuth renewed", "renewed-client", [{"name": "updated-fixture"}]
+
+    def send(method, url, *, authorization, body):
+        path = urlsplit(url).path
+        calls.append((method, path, authorization, parse_qs(urlsplit(url).query)["client_id"]))
+        if authorization == "OAuth old":
+            raise soundcloud.SoundCloudAuthError("expired")
+        return {"id": 912, "username": "listener"} if path == "/me" else {"collection": []}
+
+    monkeypatch.setattr(soundcloud_web, "_request", send)
+    monkeypatch.setattr(soundcloud_web, "renew_on_site", renew)
+    current = SoundCloudWeb(session_file=session_file)
+    stale = SoundCloudWeb(session_file=session_file)
+    assert list(current.collection("/me/library/all")) == []
+    assert list(stale.collection("/me/library/all")) == []
+    assert len(renewals) == 1
+    assert [call[:3] for call in calls] == [
+        ("GET", "/me/library/all", "OAuth old"), ("GET", "/me", "OAuth renewed"),
+        ("GET", "/me/library/all", "OAuth renewed"), ("GET", "/me/library/all", "OAuth old"),
+        ("GET", "/me/library/all", "OAuth renewed"),
+    ]
+    assert soundcloud.read_private(session_file)["renewal_cookies"] == [{"name": "updated-fixture"}]
+    assert soundcloud.read_private(session_file)["client_id"] == "renewed-client"
+
+
+def test_browser_renewal_rejects_a_different_user_without_saving(tmp_path, monkeypatch):
+    session_file = tmp_path / WEB_SESSION_FILENAME
+    initial = {**parse_browser_request(pasted("old")), "user_id": "912", "renewal_cookies": [{"name": "fixture"}]}
+    soundcloud.write_private(session_file, initial)
+
+    def send(_method, _url, *, authorization, body):
+        if authorization == "OAuth old":
+            raise soundcloud.SoundCloudAuthError("expired")
+        return {"id": 555, "username": "another listener"}
+
+    monkeypatch.setattr(soundcloud_web, "_request", send)
+    monkeypatch.setattr(soundcloud_web, "renew_on_site",
+                        lambda *_args: ("OAuth new", BOOKMARK, [{"name": "rotated"}]))
+    with pytest.raises(soundcloud.SoundCloudAuthError, match="different account"):
+        SoundCloudWeb(session_file=session_file).profile()
+    assert soundcloud.read_private(session_file) == initial
+
+
+@pytest.mark.parametrize("fail_first", [False, True])
+def test_older_web_token_renews_before_use_and_can_retry_after_401(tmp_path, monkeypatch, fail_first):
+    session_file = tmp_path / WEB_SESSION_FILENAME
+    soundcloud.write_private(session_file, {
+        **parse_browser_request(pasted("old")), "user_id": "912", "renewal_cookies": [{"name": "cookie"}],
+        "captured_at": soundcloud_web.time.time() - 51 * 60,
+    })
+    events = []
+
+    def renew(*_):
+        events.append("renew")
+        if fail_first and events == ["renew"]:
+            raise soundcloud.SoundCloudTransient("temporary browser failure")
+        return "OAuth new", BOOKMARK, [{"name": "cookie"}]
+
+    def send(_method, _url, *, authorization, body):
+        events.append(authorization)
+        if authorization == "OAuth old":
+            raise soundcloud.SoundCloudAuthError("expired")
+        return {"id": 912, "username": "listener"}
+
+    monkeypatch.setattr(soundcloud_web, "renew_on_site", renew)
+    monkeypatch.setattr(soundcloud_web, "_request", send)
+    assert SoundCloudWeb(session_file=session_file).profile()["id"] == 912
+    prefix = ["renew", "OAuth old"] if fail_first else []
+    assert events == [*prefix, "renew", "OAuth new", "OAuth new"]
+    assert soundcloud.read_private(session_file)["authorization"] == "OAuth new"
+
+
+def test_browser_verification_does_not_start_automatic_renewal(tmp_path, monkeypatch):
+    session_file = tmp_path / WEB_SESSION_FILENAME
+    soundcloud.write_private(session_file, {
+        **parse_browser_request(pasted("old")), "user_id": "912", "renewal_cookies": [{"name": "fixture"}],
+    })
+
+    def challenge(*_args, **_kwargs):
+        raise soundcloud_web.BrowserVerificationRequired("manual browser verification")
+
+    def unexpected(*_args):
+        pytest.fail("browser verification must be completed by the listener")
+
+    monkeypatch.setattr(soundcloud_web, "_request", challenge)
+    monkeypatch.setattr(soundcloud_web, "renew_on_site", unexpected)
+    with pytest.raises(soundcloud_web.BrowserVerificationRequired, match="manual browser verification"):
+        SoundCloudWeb(session_file=session_file).profile()
 
 
 def test_browser_session_is_isolated_and_switches_back_to_existing_oauth(
@@ -66,12 +178,14 @@ def test_browser_session_is_isolated_and_switches_back_to_existing_oauth(
     monkeypatch.setattr(soundcloud_web, "_request", request)
     with TestClient(create_app(settings=settings, account_profiles=profiles)) as client:
         route = f"/api/accounts/{second.id}/soundcloud/browser"
-        assert client.post(route, json={"headers": pasted("expired")}).json()["state"] == "error"
-        res = client.post(route, json={"headers": pasted("correct")}).json()
+        assert client.post(route, json={"headers": pasted("correct")}).json()["state"] == "error"
+        assert client.post(route, json={"headers": pasted("expired"), "page_request": pasted_page("expired")}).json()["state"] == "error"
+        res = client.post(route, json={"headers": pasted("correct"), "page_request": pasted_page("correct")}).json()
         assert res["state"] == "connected"
         assert res["capabilities"]["library_write"]
         rows = {account["id"]: account for account in client.get("/api/accounts").json()}
         assert rows[second.id]["browser_mode"] is True
+        assert rows[second.id]["browser_renewable"] is True
         assert rows["profile_default_soundcloud"]["state"] == "unconfigured"
         assert "correct" not in str(rows)
 
@@ -81,7 +195,7 @@ def test_browser_session_is_isolated_and_switches_back_to_existing_oauth(
         assert build_one("soundcloud", options) is None
         session_file = profiles.profile_dir(second.id) / WEB_SESSION_FILENAME
         assert soundcloud.read_private(session_file)["user_id"] == "1"
-        assert client.post(route, json={"headers": pasted("another")}).json()["state"] == "error"
+        assert client.post(route, json={"headers": pasted("another"), "page_request": pasted_page("another")}).json()["state"] == "error"
         assert soundcloud.read_private(session_file)["authorization"] == "OAuth correct"
 
         oauth_file = profiles.profile_dir(second.id) / soundcloud.TOKEN_FILENAME

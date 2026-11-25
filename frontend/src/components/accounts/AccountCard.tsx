@@ -1,7 +1,8 @@
 import { t, useTranslation } from '@/i18n'
 import { useState } from 'react'
+import { LuTrash2 } from 'react-icons/lu'
 
-import { api, errorMessage } from '@/api'
+import { api, ApiError, errorMessage } from '@/api'
 import { capabilitiesOf } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { serviceLogoId, tagDot, tagText } from '@/lib/constants'
@@ -11,6 +12,7 @@ import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ServiceLogo } from '../ui/ServiceLogo'
+import { Spinner } from '../ui/Spinner'
 import { StatusPill } from '../ui/StatusPill'
 import { TextField } from '../ui/TextField'
 import { ConnectWizardModal } from './ConnectWizardModal'
@@ -28,6 +30,11 @@ const SERVICE_BLURBS: Record<string, string> = {
   get listenbrainz() { return t("Read loved recordings and playlists by username; add a user token to receive them.") },
   get subsonic() { return t("Syncs playlists and starred songs already stored on your music server.") },
   get jellyfin() { return t("Syncs playlists with music already in your Jellyfin library and can push playlist cover art.") },
+  get emby() { return t("Syncs playlists using music from your server library.") },
+  get plex() { return t("Syncs playlists using music from your server library.") },
+  get mopidy() { return t("Reads server playlists. Enable Mopidy’s M3U backend to write playlists.") },
+  get lyrion() { return t("Reads server playlists. Set a playlist folder in Lyrion to write playlists.") },
+  get qqmusic() { return t("Paste a QQ Music playlist link to use it as a source.") },
 }
 
 const AUTH_KIND_LABELS: Record<AuthKind, string> = {
@@ -35,6 +42,7 @@ const AUTH_KIND_LABELS: Record<AuthKind, string> = {
   get oauth_device() { return t("DEVICE CODE") },
   get token_paste() { return t("TOKEN PASTE") },
   get api_key() { return t("API KEY") },
+  get public_link() { return t("Public playlist link") },
 }
 
 /** Card border echoes severity: hairline for healthy, dashed for "nothing
@@ -45,8 +53,9 @@ function borderClass(state: Account['state']): string {
   return 'border-border'
 }
 
-export function AccountCard({ account, onChanged }: {
+export function AccountCard({ account, updating, onChanged }: {
   account: Account
+  updating: boolean
   /** Awaited before the card leaves its pending state, so a disconnect cannot
    * keep rendering the stale "Connected" while the account list reloads. That
    * reload revalidates every provider live and takes seconds. */
@@ -104,7 +113,7 @@ export function AccountCard({ account, onChanged }: {
       await onChanged()
       setEditingLabel(false)
     } catch (err) {
-      setError(errorMessage(err))
+      setError(err instanceof ApiError && err.status === 409 ? t("That profile name is already in use.") : errorMessage(err))
     } finally {
       setSavingLabel(false)
     }
@@ -126,12 +135,28 @@ export function AccountCard({ account, onChanged }: {
         <h3 className="text-base font-bold text-text">{account.name}</h3>
         <span className="font-mono text-[10px] tracking-wide text-text-3">{
           account.provider === 'listenbrainz' ? t("Username")
-            : account.provider === 'subsonic' ? t("Password") : AUTH_KIND_LABELS[account.auth_kind]
+            : account.provider === 'subsonic' ? t("Password")
+            : account.provider === 'mopidy' || account.provider === 'lyrion' ? t("Server URL")
+            : account.playlist_browser?.active ? AUTH_KIND_LABELS.token_paste
+            : AUTH_KIND_LABELS[account.auth_kind]
         }</span>
-        <StatusPill state={account.state} className="ms-auto" />
+        {updating ? (
+          <span role="status" className="ms-auto inline-flex items-center gap-1.5 text-xs text-text-2">
+            <Spinner className="size-3 motion-reduce:animate-none" />
+            {t("Updating account…")}
+          </span>
+        ) : <StatusPill state={account.state} className="ms-auto" />}
       </div>
 
-      <p className="text-[13px] leading-relaxed text-text-2">{SERVICE_BLURBS[account.provider] ?? ''}</p>
+      <p className="text-[13px] leading-relaxed text-text-2">{account.provider === 'anghami' && account.auth_kind === 'token_paste'
+        ? t("Sync playlists through the signed-in Anghami web player.")
+        : account.playlist_browser
+        ? capabilities.library_write
+          ? t("Sync playlists with your signed-in account or import a public playlist link.")
+          : t("Read playlists from your signed-in account or use a public playlist link.")
+        : account.auth_kind === 'public_link'
+          ? t("Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.")
+          : SERVICE_BLURBS[account.provider] ?? ''}</p>
 
       {editingLabel && (
         <div className="flex items-end gap-2">
@@ -164,10 +189,10 @@ export function AccountCard({ account, onChanged }: {
         </div>
       )}
 
-      {error && <p className="text-xs text-danger">{error}</p>}
+      {error && !confirmingRemove && <p role="alert" className="text-xs text-danger">{error}</p>}
 
       <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <Button variant={isConnected ? "secondary" : "primary"} size="sm" onClick={() => setWizardOpen(true)}>
+        <Button variant={isConnected ? "secondary" : "primary"} size="sm" disabled={updating} onClick={() => setWizardOpen(true)}>
           {isConnected ? t("Reconnect") : t("Connect")}
         </Button>
         {isConnected && (
@@ -180,15 +205,15 @@ export function AccountCard({ account, onChanged }: {
             {t("Rename")}
           </Button>
         )}
-        {account.removable && (
-          <Button variant="ghost" size="sm" onClick={() => setConfirmingRemove(true)}>
-            {t("Remove")}
-          </Button>
-        )}
+        <Button className="ms-auto" variant="ghost" size="sm" icon={<LuTrash2 className="size-3.5" aria-hidden="true" />}
+          onClick={() => { setError(null); setConfirmingRemove(true) }}>
+          {t("Remove")}
+        </Button>
       </div>
 
       <ConnectWizardModal
         account={account}
+        editName
         open={wizardOpen}
         onClose={() => setWizardOpen(false)}
         onConnected={() => {
@@ -212,10 +237,11 @@ export function AccountCard({ account, onChanged }: {
       <ConfirmDialog
         open={confirmingRemove}
         title={t("Remove {{accountName}}?", { accountName: account.name })}
-        description={t("This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account.")}
+        description={t("This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.")}
         confirmLabel={t("Remove profile")}
         danger
         loading={disconnecting}
+        error={error}
         onConfirm={() => void remove()}
         onCancel={() => setConfirmingRemove(false)}
       />

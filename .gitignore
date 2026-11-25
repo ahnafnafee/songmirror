@@ -24,6 +24,7 @@ spotify_tracks_cache.json
 download_state.json
 ytmusic_browser.json
 ytmusic_oauth.json
+anghami_oauth.json
 data/
 downloads/
 

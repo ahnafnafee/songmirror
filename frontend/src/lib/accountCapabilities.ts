@@ -1,5 +1,14 @@
 import type { Account, AccountCapabilities } from '@/types'
 
+/** An added account, or a configured compatibility profile from an older server. */
+export function isListedAccount(account: Account): boolean {
+  return account.show_in_accounts ?? (
+    !account.is_default || account.state !== 'unconfigured' || Boolean(account.authorization_pending) ||
+    Boolean(account.provider_name && account.label !== account.provider_name) ||
+    account.fields.some(field => field.configured)
+  )
+}
+
 const NO_CAPABILITIES: AccountCapabilities = {
   library_read: false,
   library_write: false,

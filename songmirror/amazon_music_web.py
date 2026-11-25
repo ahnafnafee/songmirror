@@ -50,9 +50,9 @@ _DEFAULT_BROWSER_USER_AGENT = (
 )
 
 # Public identifier embedded in Amazon Music's first-party Firefly web bundle.
-# It identifies the web client; it is not a customer secret.  The signed-in
-# ``config.json`` response supplies the per-user access token and device
-# context used to construct the web player's Authorization value.
+# It identifies the web client; it is not a customer secret. The signed-in
+# ``config.json`` response supplies device context. ``/pandaToken`` supplies
+# the renewable access token used in the web player's Authorization value.
 FIREFLY_WEB_API_KEY = "amzn1.application.e1dc16675f9f4c78b31927d5bfd5c229"
 
 # The signed-in Firefly client only needs these two headers.  The optional

@@ -5,7 +5,7 @@ import re
 
 from .logs import log_add, log_note, log_warn
 from .matching import normalize_text
-from .targets import build_one, target_class
+from .targets import build_one, profile_removed, target_class
 from .album_library import AlbumLibrary, AlbumManifest
 
 
@@ -59,8 +59,10 @@ def run_album_pass(opts, should_continue):
         raise ValueError("saved-album jobs must be one-way and album-only, with downloads and removals off")
     if opts.max_adds < 1:
         raise ValueError("max_adds must be at least 1")
+    providers = ",".join(identity for raw in (opts.providers or "").split(",")
+                         if (identity := raw.strip()) and not profile_removed(identity, opts))
     source_id, identities = album_participants(
-        opts.sync_source, opts.providers, getattr(opts, "account_profiles", None))
+        opts.sync_source, providers, getattr(opts, "account_profiles", None))
     targets, libraries = {}, {}
     manifest = AlbumManifest(getattr(opts, "saved_album_file", None) or os.path.join(
         os.getenv("SONGMIRROR_DATA_DIR") or "data", "saved_albums.json"))

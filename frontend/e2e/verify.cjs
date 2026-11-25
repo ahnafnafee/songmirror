@@ -134,6 +134,7 @@ for (const account of ACCOUNTS) {
   account.label = account.name
   account.is_default = true
   account.removable = false
+  account.show_in_accounts = true
   account.preserves_order = !['deezer', 'jellyfin'].includes(account.provider)
 }
 
@@ -570,6 +571,14 @@ async function installMocks(page, opts = {}) {
       return json(created)
     }
     if (/^\/api\/accounts\/[^/]+\/config$/.test(p) && method === 'POST') return json({ ok: true })
+    if (/^\/api\/accounts\/[^/]+$/.test(p) && method === 'PATCH') {
+      const id = p.split('/')[3]
+      const account = accountsData.find(row => row.id === id)
+      if (!account) return json({ detail: 'account profile not found' }, 404)
+      const label = req.postDataJSON().label
+      Object.assign(account, { label, name: `${account.provider_name} · ${label}` })
+      return json(account)
+    }
     if (/^\/api\/accounts\/[^/]+\/connect$/.test(p) && method === 'POST') {
       const id = p.split('/')[3]
       if (id === 'spotify') return json({ kind: 'token_paste', state: 'connected', detail: 'signed-in web session · no developer API' })
@@ -3006,6 +3015,62 @@ async function main() {
     }
 
     // -----------------------------------------------------------------
+    // A saved sync can still reference a disconnected or deleted profile.
+    {
+      const context = await browser.newContext({ viewport: { width: 375, height: 812 } })
+      await context.addInitScript(() => window.localStorage.setItem('songmirror-theme', 'dark'))
+      const page = await context.newPage()
+      const accounts = ACCOUNTS.map((account) =>
+        account.id === 'tidal' ? { ...account, state: 'connected' } : account)
+      accounts.push({ ...ACCOUNTS[0], id: 'lastfm', provider: 'lastfm', name: 'Last.fm', label: 'Last.fm',
+        provider_name: 'Last.fm', fields: [], state: 'unconfigured', transferable: false, show_in_accounts: false })
+      await installMocks(page, { accounts, syncs: [{ ...initialSyncs()[0], mode: 'group', source: 'spotify',
+        authorities: 'spotify,apple', providers: 'spotify,apple,lastfm,retired-mirror,amazon' }] })
+      await page.goto(BASE_URL, { waitUntil: 'networkidle' })
+      const dashboardRow = page.getByRole('listitem').filter({ hasText: 'Authoritative group' })
+      await dashboardRow.waitFor()
+      const dashboardClean = !/Last\.fm|Retired Mirror|Amazon Music/.test(await dashboardRow.innerText())
+      await page.goto(BASE_URL + '/sync', { waitUntil: 'networkidle' })
+      const card = page.locator('h3', { hasText: 'Default' }).locator('xpath=ancestor::div[contains(@class,"rounded-card")][1]')
+      const syncClean = !/Last\.fm|Retired Mirror|Amazon Music/.test(await card.innerText())
+      await card.getByRole('button', { name: 'Edit', exact: true }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByRole('radio', { name: 'Services', exact: true }).click()
+      const unavailable = dialog.getByRole('region', { name: 'Unavailable accounts' })
+      await unavailable.waitFor()
+      const removeLastFm = unavailable.getByRole('button', { name: 'Remove Last.fm', exact: true })
+      const warningVisible = await unavailable.evaluate(panel => {
+        const style = getComputedStyle(panel)
+        return parseFloat(style.borderInlineStartWidth) > parseFloat(style.borderInlineEndWidth)
+      })
+      const removeVisible = await removeLastFm.evaluate(button => {
+        const style = getComputedStyle(button)
+        return parseFloat(style.borderTopWidth) > 0 && button.getBoundingClientRect().height >= 44
+      })
+      await dialog.getByRole('button', { name: 'TIDAL', exact: true }).click()
+      await dialog.getByRole('button', { name: 'Remove Retired Mirror', exact: true }).click()
+      await dialog.getByRole('button', { name: 'Remove Amazon Music', exact: true }).waitFor()
+      await unavailable.scrollIntoViewIfNeeded()
+      await shot(page, 'sync-unavailable-accounts-mobile')
+      await removeLastFm.click()
+      await dialog.getByRole('button', { name: 'Remove Amazon Music', exact: true }).waitFor()
+      await checkOverflow(page, 'Unavailable sync accounts @ 375', results)
+      const update = page.waitForResponse(response => response.url().endsWith('/api/syncs/job1') && response.request().method() === 'PUT')
+      await dialog.getByRole('button', { name: 'Save changes', exact: true }).click()
+      const saved = (await update).request().postDataJSON()
+      await dialog.waitFor({ state: 'hidden' })
+      await card.getByText(/Authoritative group.*TIDAL/).waitFor()
+      await card.getByRole('button', { name: 'Edit', exact: true }).click()
+      await dialog.getByRole('radio', { name: 'Services', exact: true }).click()
+      await dialog.getByRole('button', { name: 'Remove Amazon Music', exact: true }).waitFor()
+      const removed = (await dialog.getByRole('button', { name: /Remove (Last\.fm|Retired Mirror)/ }).count()) === 0
+      const ok = dashboardClean && syncClean && removed && warningVisible && removeVisible && saved.authorities === 'spotify,apple' &&
+        saved.providers === 'spotify,tidal,apple,amazon'
+      console.log(`${ok ? 'ok        ' : 'FAIL      '} Saved syncs omit unavailable accounts in summaries and let you remove stale selections individually`)
+      if (!ok) results.push({ label: 'remove unavailable sync account', overflow: true })
+      await context.close()
+    }
+
     // Sync list: card-level quick actions — toggle enabled (immediate PUT),
     // delete (confirm + removal), run now (confirm + POST), and creating a
     // brand-new sync end to end.
@@ -4134,8 +4199,13 @@ async function main() {
       })
       await page.setViewportSize({ width: 1280, height: 900 })
       await page.goto(BASE_URL + '/accounts', { waitUntil: 'networkidle' })
-      await page.getByLabel('New profile label', { exact: true }).fill('Work')
-      await page.getByRole('button', { name: 'Add profile', exact: true }).click()
+      await page.getByRole('button', { name: 'Add account', exact: true }).click()
+      await page.getByRole('option', { name: 'Spotify', exact: true }).click()
+      const setup = page.getByRole('dialog', { name: /^Connect Spotify · / })
+      await setup.getByLabel('Profile label', { exact: true }).fill('Work')
+      await setup.getByRole('button', { name: 'Save', exact: true }).click()
+      await setup.getByRole('heading', { name: 'Connect Spotify · Work', exact: true }).waitFor()
+      await setup.getByRole('button', { name: 'Close', exact: true }).click()
       await page.waitForSelector('h3:has-text("Spotify · Work")')
       const addedOk = await page.getByRole('heading', { name: 'Spotify · Work', exact: true }).isVisible()
       console.log(`${addedOk ? 'ok        ' : 'FAIL      '} Accounts adds and renders a labeled provider profile`)
@@ -4436,20 +4506,20 @@ async function main() {
       // screen readers); the local-tagged row keeps its plain dot + text
       // since "local" has no brand mark.
       const spotifyRow = page.locator('li', { hasText: 'Added "Test Track"' })
-      const spotifyRowSvgCount = await spotifyRow.locator('[data-service-tag] svg').count()
+      const spotifyRowLogoCount = await spotifyRow.locator('[data-service-tag] img').count()
       // textContent(), not innerText() — the label is visually hidden
       // (sr-only) by design, and innerText()'s handling of zero-area/clipped
       // elements varies; textContent() reads the DOM node regardless of CSS.
       const spotifyRowSrLabel = await spotifyRow.locator('.sr-only').textContent()
-      const spotifyRowOk = spotifyRowSvgCount > 0 && /spotify/i.test(spotifyRowSrLabel ?? '')
-      console.log(`${spotifyRowOk ? 'ok        ' : 'FAIL      '} live feed spotify-tagged row shows a ServiceLogo icon (svg count=${spotifyRowSvgCount}, sr-only="${spotifyRowSrLabel}")`)
+      const spotifyRowOk = spotifyRowLogoCount > 0 && /spotify/i.test(spotifyRowSrLabel ?? '')
+      console.log(`${spotifyRowOk ? 'ok        ' : 'FAIL      '} live feed spotify-tagged row shows a ServiceLogo icon (image count=${spotifyRowLogoCount}, sr-only="${spotifyRowSrLabel}")`)
       if (!spotifyRowOk) results.push({ label: 'live feed spotify logo', overflow: true })
 
       const localRow = page.locator('li', { hasText: 'Wrote playlist file' })
-      const localRowSvgCount = await localRow.locator('[data-service-tag] svg').count()
+      const localRowLogoCount = await localRow.locator('[data-service-tag] img, [data-service-tag] svg').count()
       const localRowText = await localRow.innerText()
-      const localRowOk = localRowSvgCount === 0 && /local/i.test(localRowText)
-      console.log(`${localRowOk ? 'ok        ' : 'FAIL      '} live feed non-service ("local") row keeps its dot + text, no icon (svg count=${localRowSvgCount})`)
+      const localRowOk = localRowLogoCount === 0 && /local/i.test(localRowText)
+      console.log(`${localRowOk ? 'ok        ' : 'FAIL      '} live feed non-service ("local") row keeps its dot + text, no icon (count=${localRowLogoCount})`)
       if (!localRowOk) results.push({ label: 'live feed local fallback', overflow: true })
 
       for (const [message, label] of [

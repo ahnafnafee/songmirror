@@ -19,6 +19,7 @@ from ...engine.targets import is_peer, target_class
 from ...engine.targets import supports_playlists as targets_supports_playlists
 from ...services.accounts import CONNECTORS
 from ...services.accounts.base import FULL_PEER_CAPABILITIES, ConnStatus, DeviceCode
+from ...services.account_profiles import ProfileLabelConflict
 from ...diagnostics import redact_text
 from ..connection_attempts import COOKIE, TTL, with_query
 from ..profile_auth import COOKIE as OWNER_COOKIE
@@ -107,7 +108,9 @@ def _source_capable(provider):
     ID) cannot read tracks until that account is completed.
     """
     cls = target_class(provider)
-    return cls is not None and (targets_supports_playlists(provider) or cls.supports_playlists is False)
+    return cls is not None and cls.supports_playlist_library and (
+        targets_supports_playlists(provider) or cls.supports_playlists is False
+    )
 
 
 def _status_values(provider, status):
@@ -165,18 +168,25 @@ def _status_payload(request, profile):
         status_values = _status_values(profile.provider, status)
         supports_playlists = _supports_playlists(profile.provider)
         source_capable = _source_capable(profile.provider)
+        playlist_browser = getattr(connector, "playlist_browser", None)
+        if playlist_browser:
+            source_capable = status_values["capabilities"]["library_read"]
         transferable = is_peer(profile.provider)
         public_playlists = _public_playlists(profile.provider)
         editable_details = _editable_details(profile.provider)
         authorization_pending = connector.authorization_pending
         fields = []
-        for field in connector.config_fields:
+        for field in connector.setup_fields:
             data = asdict(field)
             current = store.get(field.key) or ""
             data["value"] = "" if field.secret else current
             data["configured"] = bool(current)
             fields.append(data)
     provider_name = connector.name
+    visible = profile.show_in_accounts
+    if visible is None:
+        visible = (not profile.is_default or profile.label != provider_name or status.state != "unconfigured"
+                   or authorization_pending or any(field["configured"] for field in fields))
     return {
         "id": profile.id,
         "provider": profile.provider,
@@ -185,7 +195,8 @@ def _status_payload(request, profile):
         "name": profiles.display_name(profile.id, provider_name),
         "is_default": profile.is_default,
         "removable": not profile.is_default,
-        "auth_kind": connector.auth_kind,
+        "show_in_accounts": visible,
+        "auth_kind": connector.setup_auth_kind,
         "fields": fields,
         **status_values,
         "transferable": transferable,
@@ -197,7 +208,9 @@ def _status_payload(request, profile):
         "editable_details": editable_details,
         "callback_url": _callback_url(request, profile, connector),
         "authorization_pending": authorization_pending,
-        **({"browser_mode": connector.browser_active} if profile.provider in {"soundcloud", "lastfm"} else {}),
+        **({"browser_mode": connector.browser_active} if profile.provider in {"soundcloud", "lastfm", "qqmusic"} else {}),
+        **({"browser_renewable": connector.browser_renewable} if profile.provider == "soundcloud" else {}),
+        **({"playlist_browser": playlist_browser} if playlist_browser else {}),
     }
 
 
@@ -216,7 +229,7 @@ def _callback_url(request, profile, connector):
     Best-effort: a misconfigured SONGMIRROR_PUBLIC_URL must not take down the
     whole accounts list, so the field is simply absent.
     """
-    if connector.auth_kind != "oauth_redirect":
+    if connector.setup_auth_kind != "oauth_redirect":
         return None
     try:
         return _redirect_uri(request, _callback_id(profile))
@@ -234,10 +247,18 @@ def list_accounts(request: Request):
 
 @router.post("/api/accounts")
 def add_account(request: Request, body: dict = Body(...)):
+    profiles = request.app.state.account_profiles
+    provider, label = str(body.get("provider") or ""), body.get("label")
     try:
-        profile = request.app.state.account_profiles.create(
-            str(body.get("provider") or ""), body.get("label")
-        )
+        default = profiles.resolve(provider)
+        if body.get("reuse_default") is True and default and default.is_default and default.provider == provider:
+            with profiles.activate(default.id):
+                default = profiles.get(default.id)
+                if not _status_payload(request, default)["show_in_accounts"]:
+                    return _status_payload(request, profiles.set_accounts_visibility(default, True, label=label))
+        profile = profiles.create(provider, label)
+    except ProfileLabelConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _status_payload(request, profile)
@@ -249,6 +270,8 @@ def rename_account(account_id: str, request: Request, body: dict = Body(...)):
         profile = request.app.state.account_profiles.rename(account_id, body.get("label"))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="account profile not found") from exc
+    except ProfileLabelConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _status_payload(request, profile)
@@ -276,14 +299,14 @@ def save_config(account_id: str, request: Request, values: dict = Body(...)):
 
 
 @router.post("/api/accounts/{account_id}/connect")
-async def connect(account_id: str, request: Request, body: dict | None = Body(default=None)):
+def connect(account_id: str, request: Request, body: dict | None = Body(default=None)):
     profile = _profile(request, account_id)
     request.app.state.connection_attempts.invalidate(profile.id)
     profiles = request.app.state.account_profiles
     connector = _conn(request, profile.id)
     with profiles.activate(profile.id):
-        # Public history needs only a key and username, without API approval.
-        if profile.provider == "lastfm" and body is not None:
+        # These wizards can submit a direct connection over an older OAuth setup.
+        if profile.provider in {"lastfm", "anghami"} and body is not None:
             status = connector.submit(body)
             return {"kind": "token_paste", **_status_values(profile.provider, status)}
         if connector.auth_kind == "oauth_redirect":
@@ -313,6 +336,10 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
                     url = connector.begin_redirect(uri, state=nonce)
                 elif profile.provider == "lastfm":
                     url = connector.begin_redirect(with_query(uri, state=nonce))
+                elif connector.redirect_pkce:
+                    verifier = secrets.token_urlsafe(48)
+                    url = with_query(connector.begin_redirect(uri, code_verifier=verifier), state=nonce)
+                    attempts.configure(nonce, code_verifier=verifier)
                 else:
                     url = with_query(connector.begin_redirect(uri), state=nonce)
                 attempts.configure(nonce, url=url)
@@ -381,7 +408,7 @@ def oauth_callback(account_id: str, request: Request):
     profiles = request.app.state.account_profiles
     connector = _conn(request, profile.id)
     try:
-        request.app.state.connection_attempts.get(
+        pending = request.app.state.connection_attempts.get(
             state, profile.id,
             browser=request.cookies.get(COOKIE, ""), owner_session=_owner_session(request), consume=True)
     except ValueError as exc:
@@ -395,7 +422,10 @@ def oauth_callback(account_id: str, request: Request):
     else:
         try:
             with profiles.activate(profile.id):
-                status = connector.complete_redirect({"url": str(request.url)})
+                params = {"url": str(request.url)}
+                if connector.redirect_pkce:
+                    params.update(code_verifier=pending["code_verifier"], redirect_uri=pending["redirect_uri"])
+                status = connector.complete_redirect(params)
         except Exception as exc:
             status = ConnStatus("error", f"could not finish authorization ({redact_text(exc)})")
     return HTMLResponse(
@@ -428,24 +458,35 @@ async def poll(account_id: str, request: Request, body: dict = Body(...)):
 
 @router.post("/api/accounts/{account_id}/disconnect")
 def disconnect_account(account_id: str, request: Request):
-    profile = _profile(request, account_id)
-    request.app.state.connection_attempts.invalidate(profile.id)
-    with request.app.state.account_profiles.activate(profile.id):
-        _conn(request, profile.id).disconnect()
-    return {"ok": True}
-
-
-@router.delete("/api/accounts/{account_id}")
-def remove_account(account_id: str, request: Request):
     profiles = request.app.state.account_profiles
     profile = _profile(request, account_id)
     request.app.state.connection_attempts.invalidate(profile.id)
     with profiles.activate(profile.id):
+        # Keep a linked legacy profile available to reconnect from Accounts.
+        visible = profile.is_default and _status_payload(request, profile)["show_in_accounts"]
         _conn(request, profile.id).disconnect()
-    if profile.is_default:
-        return {"ok": True}
-    profiles.remove(profile.id)
+        if visible and profile.show_in_accounts is None:
+            profiles.set_accounts_visibility(profile, True)
     return {"ok": True}
+
+
+@router.delete("/api/accounts/{account_id}")
+async def remove_account(account_id: str, request: Request):
+    profiles = request.app.state.account_profiles
+
+    def remove():
+        profile = _profile(request, account_id)
+        request.app.state.connection_attempts.invalidate(profile.id)
+        with profiles.activate(profile.id):
+            _conn(request, profile.id).disconnect()
+            if profile.is_default:
+                profiles.set_accounts_visibility(profile, False)
+            else:
+                profiles.remove(profile.id)
+        return {"ok": True}
+
+    # A running pass may still need this profile's credentials for later playlists.
+    return await request.app.state.sync.run_exclusive(remove)
 
 
 def _provider_connector(request, account_id, expected):
@@ -456,11 +497,49 @@ def _provider_connector(request, account_id, expected):
     return profile, _conn(request, profile.id)
 
 
+def _playlist_browser_controller(request, account_id, *, raw=None, signing_cookie=None, disconnect=False):
+    profile = _profile(request, account_id)
+    request.app.state.connection_attempts.invalidate(profile.id)
+    with request.app.state.account_profiles.activate(profile.id):
+        connector = _conn(request, profile.id)
+        if not getattr(connector, "playlist_browser", None):
+            raise HTTPException(status_code=422, detail="This provider does not support signed-in playlist access.")
+        status = connector.disable_playlist_browser() if disconnect else connector.enable_playlist_browser(raw, signing_cookie=signing_cookie)
+    return _status_values(profile.provider, status)
+
+
+@router.post("/api/accounts/{account_id}/playlist-browser")
+def enable_playlist_browser(account_id: str, request: Request, body: dict = Body(...)):
+    return _playlist_browser_controller(request, account_id, raw=body.get("request", ""),
+                                        signing_cookie=body.get("signing_cookie"))
+
+
+@router.delete("/api/accounts/{account_id}/playlist-browser")
+def disable_playlist_browser(account_id: str, request: Request):
+    return _playlist_browser_controller(request, account_id, disconnect=True)
+
+
 @router.post("/api/accounts/{account_id}/soundcloud/browser")
 def soundcloud_enable_browser(account_id: str, request: Request, body: dict = Body(...)):
     profile, connector = _provider_connector(request, account_id, "soundcloud")
     with request.app.state.account_profiles.activate(profile.id):
-        status = connector.enable_browser(body.get("headers", ""))
+        status = connector.enable_browser(body.get("headers", ""), body.get("page_request", ""))
+    return _status_values(profile.provider, status)
+
+
+@router.post("/api/accounts/{account_id}/qqmusic/browser")
+def qqmusic_enable_browser(account_id: str, request: Request, body: dict = Body(...)):
+    profile, connector = _provider_connector(request, account_id, "qqmusic")
+    with request.app.state.account_profiles.activate(profile.id):
+        status = connector.enable_browser(body.get("url", ""))
+    return _status_values(profile.provider, status)
+
+
+@router.delete("/api/accounts/{account_id}/qqmusic/browser")
+def qqmusic_disable_browser(account_id: str, request: Request):
+    profile, connector = _provider_connector(request, account_id, "qqmusic")
+    with request.app.state.account_profiles.activate(profile.id):
+        status = connector.disable_browser()
     return _status_values(profile.provider, status)
 
 

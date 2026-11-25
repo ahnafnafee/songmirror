@@ -1,5 +1,6 @@
 """Amazon Music account connector using its renewable consumer web session."""
 
+import json
 import os
 
 import requests
@@ -23,13 +24,6 @@ class AmazonMusicConnector(Connector):
     auth_kind = "token_paste"
     config_fields = [
         Field(
-            "AMAZON_MUSIC_WEB_HEADERS",
-            "Signed-in config.json response (optional bootstrap)",
-            secret=True,
-            required=False,
-            help="Copy the complete JSON from the config.json Response tab; request headers/cURL also work",
-        ),
-        Field(
             "AMAZON_MUSIC_RENEWAL_REQUEST",
             "Signed-in browser request",
             secret=True,
@@ -37,6 +31,13 @@ class AmazonMusicConnector(Connector):
                 "Copy the complete headers or cURL for a signed-in config.json request; "
                 "SongMirror preserves its browser context and verifies /pandaToken renewal"
             ),
+        ),
+        Field(
+            "AMAZON_MUSIC_WEB_HEADERS",
+            "Signed-in config.json response (optional bootstrap)",
+            secret=True,
+            required=False,
+            help="Leave blank if the config.json response has no accessToken.",
         ),
     ]
 
@@ -132,10 +133,20 @@ class AmazonMusicConnector(Connector):
         )
 
     def submit(self, values):
-        raw = values.get("AMAZON_MUSIC_WEB_HEADERS") or ""
+        raw = (values.get("AMAZON_MUSIC_WEB_HEADERS") or "").strip()
         renewal_raw = values.get("AMAZON_MUSIC_RENEWAL_REQUEST") or ""
         try:
-            minimized = serialize_web_headers(raw) if raw.strip() else ""
+            # The web player can return only device and marketplace details.
+            # Renewal fetches that context itself and verifies /pandaToken.
+            if raw.startswith("{"):
+                try:
+                    config = json.loads(raw)
+                except json.JSONDecodeError:
+                    config = None
+                if (isinstance(config, dict) and config.get("deviceId") and config.get("deviceType")
+                        and not config.get("accessToken") and "authorization" not in config):
+                    raw = ""
+            minimized = serialize_web_headers(raw) if raw else ""
             renewal = serialize_renewal_request(renewal_raw)
         except ValueError as exc:
             return ConnStatus("error", str(exc))

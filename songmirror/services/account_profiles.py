@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import os
 import shutil
+import unicodedata
 import uuid
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
+from ..engine.targets.public_playlists import PUBLIC_PLAYLIST_TARGETS
 from .settings import SettingsStore, _ENV_LOCK, _open_private
 
 
@@ -77,7 +79,18 @@ PROVIDER_KEYS = {
     "jellyfin": {"JELLYFIN_URL", "JELLYFIN_API_KEY", "JELLYFIN_USER_ID", "JELLYFIN_CACHE_FILE"},
     "listenbrainz": {"LISTENBRAINZ_USER", "LISTENBRAINZ_TOKEN", "LISTENBRAINZ_CACHE_FILE"},
     "subsonic": {"SUBSONIC_URL", "SUBSONIC_USER", "SUBSONIC_PASSWORD", "SUBSONIC_CACHE_FILE"},
+    "emby": {"EMBY_URL", "EMBY_USER_ID", "EMBY_TOKEN", "EMBY_CACHE_FILE"},
+    "plex": {"PLEX_URL", "PLEX_TOKEN", "PLEX_CACHE_FILE"},
+    "mopidy": {"MOPIDY_URL", "MOPIDY_CACHE_FILE"},
+    "lyrion": {"LYRION_URL", "LYRION_USER", "LYRION_PASSWORD", "LYRION_CACHE_FILE"},
+    "anghami": {"ANGHAMI_CLIENT_ID", "ANGHAMI_TOKEN_FILE", "ANGHAMI_SESSION_TOKEN", "ANGHAMI_BROWSER_ENDPOINT", "ANGHAMI_CACHE_FILE"},
+    "qqmusic": {"QQMUSIC_API_KEY", "QQMUSIC_PREFER_BROWSER", "QQMUSIC_PLAYLIST_WEB_SESSION"},
+    **{source: {f"{source.upper()}_PUBLIC_PLAYLIST", *([target.session_key()] if hasattr(target, "session_key") else [])}
+       for source, target in PUBLIC_PLAYLIST_TARGETS.items()},
 }
+PROVIDER_KEYS["gaana"].add("GAANA_CACHE_FILE")
+PROVIDER_KEYS["jiosaavn"].add("JIOSAAVN_CACHE_FILE")
+PROVIDER_KEYS["audiomack"].add("AUDIOMACK_CACHE_FILE")
 
 _FILE_DEFAULTS = {
     "spotify": {
@@ -115,6 +128,14 @@ _FILE_DEFAULTS = {
     "listenbrainz": {"LISTENBRAINZ_CACHE_FILE": "listenbrainz_resolve_cache.json"},
     "subsonic": {"SUBSONIC_CACHE_FILE": "subsonic_resolve_cache.json"},
     "jellyfin": {"JELLYFIN_CACHE_FILE": "jellyfin_resolve_cache.json"},
+    "emby": {"EMBY_CACHE_FILE": "emby_resolve_cache.json"},
+    "plex": {"PLEX_CACHE_FILE": "plex_resolve_cache.json"},
+    "mopidy": {"MOPIDY_CACHE_FILE": "mopidy_resolve_cache.json"},
+    "lyrion": {"LYRION_CACHE_FILE": "lyrion_resolve_cache.json"},
+    "anghami": {"ANGHAMI_TOKEN_FILE": "anghami_oauth.json", "ANGHAMI_CACHE_FILE": "anghami_resolve_cache.json"},
+    "gaana": {"GAANA_CACHE_FILE": "gaana_resolve_cache.json"},
+    "jiosaavn": {"JIOSAAVN_CACHE_FILE": "jiosaavn_resolve_cache.json"},
+    "audiomack": {"AUDIOMACK_CACHE_FILE": "audiomack_resolve_cache.json"},
 }
 
 _ACTIVE_SPOTIFY_PROFILE: str | None = None
@@ -126,6 +147,12 @@ class AccountProfile:
     provider: str
     label: str
     is_default: bool = False
+    # None preserves the visibility of legacy profiles based on configuration.
+    show_in_accounts: bool | None = None
+
+
+class ProfileLabelConflict(ValueError):
+    """The normalized label already identifies a different profile."""
 
 
 class ProfileSettings:
@@ -195,7 +222,7 @@ class ProfileSettings:
         values = self._local.load()
         if self.profile.is_default:
             values.update(self._fallback_values())
-        if not self.profile.is_default or self.profile.provider == "soundcloud":
+        if not self.profile.is_default or self.profile.provider in {"soundcloud", "anghami"}:
             root = self.data_dir
             for key, filename in _FILE_DEFAULTS.get(self.profile.provider, {}).items():
                 values.setdefault(key, str(root / filename))
@@ -353,13 +380,16 @@ class AccountProfileStore:
     def create(self, provider, label=None):
         if provider not in self._providers:
             raise ValueError(f"unknown provider: {provider}")
-        profile = AccountProfile(
-            id=f"{PROFILE_ID_PREFIX}{uuid.uuid4().hex[:12]}",
-            provider=provider,
-            label=self._clean_label(label) or self._next_label(provider),
-        )
-        self._profiles[profile.id] = profile
-        self._save()
+        with _ENV_LOCK:
+            clean = self._clean_label(label) or self._next_label(provider)
+            self._check_label(clean)
+            profile = AccountProfile(
+                id=f"{PROFILE_ID_PREFIX}{uuid.uuid4().hex[:12]}",
+                provider=provider,
+                label=clean,
+            )
+            self._profiles[profile.id] = profile
+            self._save()
         # Materialize independent file paths before a connector can run.
         local = SettingsStore(dir=self.profile_dir(profile.id), project_env=False)
         local.save({
@@ -369,13 +399,27 @@ class AccountProfileStore:
         return profile
 
     def rename(self, profile_id, label):
-        profile = self.resolve(profile_id)
-        if profile is None:
-            raise KeyError(profile_id)
         clean = self._clean_label(label)
         if not clean:
             raise ValueError("profile label must not be blank")
-        updated = AccountProfile(profile.id, profile.provider, clean, profile.is_default)
+        with _ENV_LOCK:
+            profile = self.resolve(profile_id)
+            if profile is None:
+                raise KeyError(profile_id)
+            if clean != profile.label:
+                self._check_label(clean, profile.id)
+            return self._update_metadata(profile, clean, profile.show_in_accounts)
+
+    def set_accounts_visibility(self, profile, visible, label=None):
+        with _ENV_LOCK:
+            profile = self._profiles[profile.id]
+            clean = (self._clean_label(label) or profile.label) if visible else self._provider_label(profile.provider)
+            if visible and clean != profile.label:
+                self._check_label(clean, profile.id)
+            return self._update_metadata(profile, clean, visible)
+
+    def _update_metadata(self, profile, label, visible):
+        updated = replace(profile, show_in_accounts=visible, label=label)
         self._profiles[profile.id] = updated
         self._save()
         return updated
@@ -481,6 +525,7 @@ class AccountProfileStore:
                 and isinstance(profile.provider, str)
                 and isinstance(profile.label, str)
                 and isinstance(profile.is_default, bool)
+                and (profile.show_in_accounts is None or isinstance(profile.show_in_accounts, bool))
             )
             if not valid_types:
                 rewrite = True
@@ -546,10 +591,24 @@ class AccountProfileStore:
     def _clean_label(label):
         return " ".join(str(label or "").split())[:80]
 
+    @staticmethod
+    def _label_key(label):
+        return unicodedata.normalize("NFKC", label).casefold()
+
+    def _check_label(self, label, own_id=None):
+        key = self._label_key(label)
+        if any(profile.id != own_id and self._label_key(profile.label) == key for profile in self._profiles.values()):
+            raise ProfileLabelConflict("That profile name is already in use.")
+
     def _next_label(self, provider):
         base = self._provider_label(provider)
         count = sum(profile.provider == provider for profile in self._profiles.values())
-        return f"{base} {count + 1}"
+        existing = {self._label_key(profile.label) for profile in self._profiles.values()}
+        candidate = f"{base} {count + 1}"
+        while self._label_key(candidate) in existing:
+            count += 1
+            candidate = f"{base} {count + 1}"
+        return candidate
 
     @staticmethod
     def _provider_label(provider):
@@ -562,5 +621,8 @@ class AccountProfileStore:
             "deezer": "Deezer", "amazon": "Amazon Music", "apple": "Apple Music",
             "ytmusic": "YouTube Music", "lastfm": "Last.fm", "soundcloud": "SoundCloud",
             "listenbrainz": "ListenBrainz", "subsonic": "Navidrome / Subsonic",
+            "emby": "Emby", "plex": "Plex", "mopidy": "Mopidy",
+            "lyrion": "Lyrion Music Server", "anghami": "Anghami", "qqmusic": "QQ Music",
+            **{source: cls.name for source, cls in PUBLIC_PLAYLIST_TARGETS.items()},
             "jellyfin": "Jellyfin",
         }.get(provider, provider)

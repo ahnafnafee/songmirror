@@ -13,10 +13,11 @@ uv run python scripts/live_confidence.py --seed-playlist "Drive" --sessions shar
 - `--seed-playlist` names an existing playlist on the seed provider (Jellyfin by default; change it with `--seed-provider`). Its first songs (`--seed-count`, default 8) are cloned. The playlist itself is only read, and the run checks that it is unchanged.
 - `--sessions` is required, because some providers renew their session while they run:
   - `shared` writes renewed TIDAL, Deezer and Amazon Music sessions back to the data directory, so the live app keeps reading a valid session. Nothing else in the data directory is written.
-  - `copy` never writes the data directory. A provider whose session would renew during the run (`--session-budget`, default 25 minutes) is skipped, because a renewal could sign the live app out.
+  - `copy` keeps the test caches and copies of the supported session files in scratch. The runner skips a provider with a session due for renewal during the run (`--session-budget`, default 25 minutes), because a renewal could sign the live app out.
 - `--data-dir` points at the data directory that holds `settings.json` (default: the repository's `data/`, or `SONGMIRROR_CONFIDENCE_DATA_DIR`).
-- `--providers spotify,tidal` limits the run. By default every provider the live app reports as connected for playlist writes is tested.
+- `--providers spotify,tidal` limits the run. With live preflight enabled, the runner uses each provider's default account and requires playlist write access.
 - `--merge-sources spotify,tidal` picks the two merge sources (default: the first two providers tested).
+- `--check-seed` checks the seed account alone. It clones the selected tracks, removes one occurrence, checks the remaining order, and verifies cleanup and the original playlist.
 - `--jobs` sets how many providers are tested at once (default 4). Every provider also reads and writes the seed provider, so a local server like Jellyfin can drop connections under more load.
 
 ## What it checks
@@ -36,7 +37,7 @@ A delisting is simulated by hiding a song from every catalog lookup path of the 
 ## Safety
 
 - Temporary playlists are named `SongMirror confidence <stamp> ...`, and the delete helper refuses any playlist without that prefix.
-- Before starting, the script reads the live app (`--live-url`, default `http://127.0.0.1:8888`, `''` to skip) and refuses to run while a sync is running, within `--quiet-minutes` (default 15) of a scheduled sync, or when an enabled live job syncs every playlist on a tested provider, because that job could copy a temporary playlist to your other accounts.
+- Before starting, the script reads the live app (`--live-url`, default `http://127.0.0.1:8888`, `''` to skip). If that check fails, the script exits before writing anything. It also stops when a sync is running, within `--quiet-minutes` (default 15) of a scheduled sync, or when an enabled job syncs every playlist on a tested provider and could copy a temporary playlist to other accounts.
 - Credential files other than the three shared sessions are copied into the scratch directory, and resolve caches stay there.
 
 ## Results
@@ -56,4 +57,4 @@ uv run python scripts/live_confidence.py --sweep --sessions shared
 
 ## Adding a provider
 
-No provider has a playlist delete API in the engine, so the script carries a test-only `delete_playlist` helper per provider. A new provider needs a branch there, or its run fails at cleanup and reports the leftover playlist by name.
+No provider has a playlist delete API in the engine, so the script carries a test-only `delete_playlist` helper per provider. A new write provider needs a branch there, or its run fails at cleanup and reports the leftover playlist by name. Emby, Plex, Mopidy, and Lyrion Music Server recheck the playlist ID, name, and editability before deleting it.

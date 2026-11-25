@@ -1,4 +1,5 @@
 import { t } from '@/i18n'
+import type { ServiceId } from '@/components/ui/ServiceLogo'
 import type { AccountState, EventKind, TransferStatus } from '../types'
 
 interface StateStyle {
@@ -34,9 +35,15 @@ interface ServiceStyle {
   soft: string
   text: string
 }
+const DEFAULT_SERVICE_STYLE: ServiceStyle = {
+  label: '',
+  dot: 'bg-neutral',
+  soft: 'bg-neutral-soft',
+  text: 'text-neutral',
+}
 
-/** Service/source identity — dots + soft-tinted badges only, never buttons
- * (the app accent is teal). Engine events historically used a few shortened
+/** Service/source identity for marks, dots, and soft-tinted badges.
+ * Engine events historically used a few shortened
  * tags, so normalize them before presenting or filtering them. */
 const SERVICE_STYLES: Record<string, ServiceStyle> = {
   spotify: { label: 'Spotify', dot: 'bg-svc-spotify', soft: 'bg-svc-spotify-soft', text: 'text-svc-spotify' },
@@ -51,6 +58,19 @@ const SERVICE_STYLES: Record<string, ServiceStyle> = {
   listenbrainz: { label: 'ListenBrainz', dot: 'bg-svc-listenbrainz', soft: 'bg-svc-listenbrainz-soft', text: 'text-svc-listenbrainz' },
   subsonic: { label: 'Navidrome / Subsonic', dot: 'bg-svc-subsonic', soft: 'bg-svc-subsonic-soft', text: 'text-svc-subsonic' },
   jellyfin: { label: 'Jellyfin', dot: 'bg-svc-jellyfin', soft: 'bg-svc-jellyfin-soft', text: 'text-svc-jellyfin' },
+  emby: { label: 'Emby', dot: 'bg-svc-emby', soft: 'bg-svc-emby-soft', text: 'text-svc-emby' },
+  plex: { label: 'Plex', dot: 'bg-svc-plex', soft: 'bg-svc-plex-soft', text: 'text-svc-plex' },
+  mopidy: { label: 'Mopidy', dot: 'bg-svc-mopidy', soft: 'bg-svc-mopidy-soft', text: 'text-svc-mopidy' },
+  lyrion: { label: 'Lyrion Music Server', dot: 'bg-svc-lyrion', soft: 'bg-svc-lyrion-soft', text: 'text-svc-lyrion' },
+  anghami: { label: 'Anghami', dot: 'bg-svc-anghami', soft: 'bg-svc-anghami-soft', text: 'text-svc-anghami' },
+  qqmusic: { label: 'QQ Music', dot: 'bg-svc-qqmusic', soft: 'bg-svc-qqmusic-soft', text: 'text-svc-qqmusic' },
+  audiomack: { label: 'Audiomack', dot: 'bg-svc-audiomack', soft: 'bg-svc-audiomack-soft', text: 'text-svc-audiomack' },
+  gaana: { label: 'Gaana', dot: 'bg-svc-gaana', soft: 'bg-svc-gaana-soft', text: 'text-svc-gaana' },
+  jiosaavn: { label: 'JioSaavn', dot: 'bg-svc-jiosaavn', soft: 'bg-svc-jiosaavn-soft', text: 'text-svc-jiosaavn' },
+  linemusic: { label: 'LINE MUSIC', dot: 'bg-svc-linemusic', soft: 'bg-svc-linemusic-soft', text: 'text-svc-linemusic' },
+  netease: { label: 'NetEase Cloud Music', dot: 'bg-svc-netease', soft: 'bg-svc-netease-soft', text: 'text-svc-netease' },
+  pandora: { label: 'Pandora', dot: 'bg-svc-pandora', soft: 'bg-svc-pandora-soft', text: 'text-svc-pandora' },
+  vibe: { label: 'Naver Vibe', dot: 'bg-svc-vibe', soft: 'bg-svc-vibe-soft', text: 'text-svc-vibe' },
   sync: { get label() { return t("Sync engine") }, dot: 'bg-accent', soft: 'bg-accent-soft', text: 'text-accent' },
   local: { get label() { return t("Download mirror") }, dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },
   transfer: { get label() { return t("Playlist transfers") }, dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },
@@ -58,12 +78,6 @@ const SERVICE_STYLES: Record<string, ServiceStyle> = {
 const SOURCE_ALIASES: Record<string, string> = {
   jelly: 'jellyfin',
   yt: 'ytmusic',
-}
-const DEFAULT_SERVICE_STYLE: ServiceStyle = {
-  label: '',
-  dot: 'bg-neutral',
-  soft: 'bg-neutral-soft',
-  text: 'text-neutral',
 }
 
 /** Stable source identity used by filters as well as display helpers. */
@@ -92,7 +106,7 @@ export function tagText(tag: string): string {
 
 /** Provider id -> ServiceLogo id (both the "yt" event tag and the "ytmusic"
  * account id resolve to the same YouTube Music mark). */
-export function serviceLogoId(idOrTag: string): 'soundcloud' | 'spotify' | 'tidal' | 'qobuz' | 'deezer' | 'amazon' | 'apple' | 'ytmusic' | 'lastfm' | 'listenbrainz' | 'subsonic' | 'jellyfin' | null {
+export function serviceLogoId(idOrTag: string): ServiceId | null {
   idOrTag = activitySourceId(idOrTag)
   if (idOrTag === 'spotify') return 'spotify'
   if (idOrTag === 'tidal') return 'tidal'
@@ -106,6 +120,10 @@ export function serviceLogoId(idOrTag: string): 'soundcloud' | 'spotify' | 'tida
   if (idOrTag === 'listenbrainz') return 'listenbrainz'
   if (idOrTag === 'subsonic') return 'subsonic'
   if (idOrTag === 'jellyfin') return 'jellyfin'
+  if (idOrTag === 'emby' || idOrTag === 'plex' || idOrTag === 'qqmusic'
+    || idOrTag === 'mopidy' || idOrTag === 'lyrion' || idOrTag === 'anghami'
+    || idOrTag === 'audiomack' || idOrTag === 'gaana' || idOrTag === 'jiosaavn'
+    || idOrTag === 'linemusic' || idOrTag === 'netease' || idOrTag === 'pandora' || idOrTag === 'vibe') return idOrTag
   return null
 }
 
@@ -116,6 +134,10 @@ export type ServiceGroup = (typeof SERVICE_GROUPS)[number]
 const SERVICE_GROUP_OF: Record<string, ServiceGroup> = {
   jellyfin: 'self_hosted',
   subsonic: 'self_hosted',
+  emby: 'self_hosted',
+  plex: 'self_hosted',
+  mopidy: 'self_hosted',
+  lyrion: 'self_hosted',
   lastfm: 'history',
   listenbrainz: 'history',
 }

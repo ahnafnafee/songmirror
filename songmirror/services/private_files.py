@@ -1,7 +1,27 @@
 """Owner-private credential storage on POSIX and Windows."""
 
+import json
 import os
+import tempfile
 from functools import lru_cache
+from pathlib import Path
+
+
+def write_private(path, payload):
+    """Replace a JSON credential file atomically with an owner-only copy."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                     delete=False) as handle:
+        temporary = Path(handle.name)
+        try:
+            owner_only(temporary)
+            json.dump(payload, handle)
+            handle.close()
+            os.replace(temporary, path)
+        finally:
+            handle.close()
+            temporary.unlink(missing_ok=True)
 
 
 @lru_cache(maxsize=1)

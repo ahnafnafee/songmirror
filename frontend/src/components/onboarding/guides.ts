@@ -32,8 +32,8 @@ export function featureGuide(page: FeatureGuideId): Guide {
       return {
         feature: t('Accounts'),
         steps: [
-          { title: t('Choose a service'), body: t('Find your service below and select Connect. Its sign-in dialog explains what you need.') },
-          { title: t('Add profile'), body: t('For two accounts on one service, add a profile for each and label them so you can tell them apart.') },
+          { title: t('Choose a service'), body: t('Select a service to open its connection setup.') },
+          { title: t('Profile label'), body: t('For two accounts on one service, add a profile for each and label them so you can tell them apart.') },
           { title: t('Playlists'), to: '/playlists', body: t('Once an account says Connected, browse its playlists or start a transfer.') },
         ],
       }

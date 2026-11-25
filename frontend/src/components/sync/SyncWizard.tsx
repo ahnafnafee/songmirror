@@ -1,6 +1,6 @@
 import { t, Trans, useTranslation } from '@/i18n'
 import { Fragment, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
-import { LuArrowLeft, LuArrowRight, LuCheck, LuInfo } from 'react-icons/lu'
+import { LuArrowLeft, LuArrowRight, LuCheck, LuInfo, LuTriangleAlert, LuX } from 'react-icons/lu'
 
 import { api, errorMessage } from '@/api'
 import { Button } from '@/components/ui/Button'
@@ -20,14 +20,16 @@ import {
   canSyncAccount,
   hasFavorites,
   hasPlaylists,
+  isListedAccount,
 } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
-import { SERVICE_GROUPS, serviceGroupOf, serviceLogoId, tagDot, tagText, type ServiceGroup } from '@/lib/constants'
+import { SERVICE_GROUPS, serviceGroupOf, serviceLogoId, tagDot, tagLabel, tagText, type ServiceGroup } from '@/lib/constants'
 import { intervalSeconds, isValidIntervalText, isValidPositiveInt } from '@/lib/format'
 import { nativeLikedTracksName, providerLikedTracksLabel } from '@/lib/likedTracks'
 import {
   authorityProvidersOf,
   buildSyncSummaryRows,
+  canUseSyncAccount,
   enabledProvidersOf,
   lockedProvidersOf,
   parseCsv,
@@ -161,7 +163,8 @@ const STEPS = [
  * its own can still supply tracks or receive loves, so it belongs here while
  * staying out of the transfer and playlist-link pickers. */
 function syncCandidates(accounts: Account[]): Account[] {
-  return accounts.filter((account) => account.transferable || canParticipateInSync(account))
+  return accounts.filter((account) => isListedAccount(account) &&
+    (account.transferable || canParticipateInSync(account)))
 }
 
 /** A followers/services toggle chip — `locked` marks whichever service is
@@ -366,6 +369,7 @@ interface Props {
   /** Saved syncs, to warn when two one-way syncs copy into each other. */
   otherSyncs?: SyncJob[]
   accounts: Account[]
+  accountsReady: boolean
   onSaved: () => void
 }
 
@@ -391,7 +395,7 @@ function normalizeSourceFavorites(form: JobFormState, accounts: Account[]): JobF
  * Saves via POST/PUT /api/syncs; the only /api/settings traffic is a
  * read-only fetch of the global download folder, purely to show it in the
  * review's Downloads row. */
-export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSaved }: Props) {
+export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, accountsReady, onSaved }: Props) {
   useTranslation()
   const { settings } = useSettings()
   const [form, setForm] = useState<JobFormState>(NEW_JOB_DEFAULTS)
@@ -469,7 +473,12 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
   })
   if (form.liked_tracks) lockedProviderIds.add(syncSource)
 
-  const enabledProviders = enabledProvidersOf({ providers: form.providers }, syncPeers)
+  const availablePeers = syncPeers.filter((account) => canUseSyncAccount(form, account) ||
+    (form.saved_albums && !hasPlaylists(account) && canReceiveLikedTracks(account)))
+  const enabledProviders = enabledProvidersOf(form, availablePeers)
+  const availableIds = new Set(availablePeers.map((account) => account.id))
+  const configuredIds = new Set([...parseCsv(form.providers), ...(job ? lockedProviderIds : [])])
+  const unavailableIds = new Set([...configuredIds].filter((id) => !availableIds.has(id)))
   const albumAccountsValid = form.mode === 'oneway' && enabledProviders.has(syncSource) &&
     enabledProviders.size >= 2 && [...enabledProviders].every((id) =>
       syncPeers.some((account) => account.id === id && canParticipateInSync(account)))
@@ -500,7 +509,9 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
   const connectedPeerIds = new Set(syncPeers.filter(canSyncAccount).map((account) => account.id))
 
   function csvInPeerOrder(ids: Set<string>) {
-    return syncPeers.filter((account) => ids.has(account.id)).map((account) => account.id).join(',')
+    const ordered = syncPeers.filter((account) => ids.has(account.id)).map((account) => account.id)
+    const seen = new Set(ordered)
+    return [...ordered, ...[...ids].filter((id) => !seen.has(id))].join(',')
   }
 
   function selectMode(mode: SyncMode) {
@@ -551,11 +562,13 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
 
   function selectOrderAuthority(id: string) {
     setForm((prev) => {
-      const providers = new Set(parseCsv(prev.providers).filter((providerId) =>
-        providerId === id || accounts.some((account) => account.id === providerId &&
-          (canSyncAccount(account) || canReceiveLikedTracks(account)))))
+      const providers = new Set(parseCsv(prev.providers))
       providers.add(id)
       if (prev.mode !== 'group') {
+        const previousSource = accounts.find((account) => account.id === prev.source)
+        if (prev.source !== id && (!previousSource || !canUseSyncAccount({ ...prev, source: id }, previousSource))) {
+          providers.delete(prev.source)
+        }
         const providerCsv = csvInPeerOrder(providers)
         return normalizeSourceFavorites({
           ...prev,
@@ -664,7 +677,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
 
   function toggleProvider(id: string) {
     if (lockedProviderIds.has(id)) return
-    const next = new Set(enabledProviders)
+    const next = new Set(parseCsv(form.providers))
     for (const lockedId of lockedProviderIds) next.add(lockedId)
     if (next.has(id)) next.delete(id)
     else next.add(id)
@@ -678,6 +691,19 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
     }))
   }
 
+  function removeUnavailableProvider(id: string) {
+    setForm((previous) => {
+      const likedRoutes = { ...previous.liked_routes }
+      delete likedRoutes[id]
+      return {
+        ...previous,
+        providers: parseCsv(previous.providers).filter((provider) => provider !== id).join(','),
+        authorities: parseCsv(previous.authorities).filter((authority) => authority !== id).join(','),
+        liked_routes: likedRoutes,
+      }
+    })
+  }
+
   const nameValid = form.name.trim().length > 0
   const intervalValid = isValidIntervalText(form.interval) && (intervalSeconds(form.interval) ?? 0) > 0
   const maxAddsValid = isValidPositiveInt(form.max_adds)
@@ -686,9 +712,11 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
     form.mode !== 'group' ||
     (authorityIds.size >= 2 && authorityIds.has(syncSource) &&
       [...authorityIds].every((id) => connectedPeerIds.has(id) && enabledProviders.has(id)))
+  const preservingExpiredLikedSource = job?.liked_tracks === true && job.source === syncSource &&
+    accounts.some((account) => account.id === syncSource && account.state === 'expired' && isListedAccount(account))
   const likedRoutesValid =
     !form.liked_tracks ||
-    (enabledProviders.has(syncSource) &&
+    ((enabledProviders.has(syncSource) || preservingExpiredLikedSource) &&
       [...enabledProviders]
         .filter((providerId) => providerId !== syncSource && receivesLikes(providerId))
         .every((providerId) => {
@@ -924,7 +952,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
                         {t("Additions and confirmed removals on any selected authority flow to the full group. Choose at least two; the order authority is always included.")}
                       </p>
                     </div>
-                    <ServiceGroups accounts={syncPeers}>
+                    <ServiceGroups accounts={syncPeers.filter(canSyncAccount)}>
                       {(account) => {
                         const selected = authorityIds.has(account.id)
                         const isOrder = account.id === syncSource
@@ -960,7 +988,46 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, onSa
               />
             ) : (
               <>
-              <ServiceGroups accounts={syncPeers}>
+              {accountsReady && unavailableIds.size > 0 && (
+                <section aria-labelledby="sync-unavailable-heading"
+                  className="overflow-hidden rounded-control border border-warning/35 border-s-[3px] border-s-warning bg-warning-soft">
+                  <div className="flex items-center gap-2.5 px-3 py-2.5">
+                    <span className="grid size-7 shrink-0 place-items-center rounded-control bg-warning text-surface">
+                      <LuTriangleAlert aria-hidden="true" className="size-4" />
+                    </span>
+                    <h3 id="sync-unavailable-heading" className="text-sm font-bold text-text">{t("Unavailable accounts")}</h3>
+                  </div>
+                  <ul className="divide-y divide-border border-t border-warning/25 bg-surface">
+                    {[...unavailableIds].map((id) => {
+                      const account = accounts.find((account) => account.id === id)
+                      const name = account?.name ?? tagLabel(id)
+                      const logo = serviceLogoId(account?.provider ?? id)
+                      const required = id === syncSource && lockedProviderIds.has(id)
+                      return (
+                        <li key={id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 py-2 text-sm text-text">
+                          <span className="flex min-w-0 flex-1 basis-28 items-center gap-2 font-semibold">
+                            {logo && <ServiceLogo service={logo} className="size-4 shrink-0" />}
+                            <span className="min-w-0 break-words">{name}</span>
+                          </span>
+                          {required ? (
+                            <Button variant="secondary" size="sm" className="ms-auto max-w-full" onClick={() => goToStep(form.mode === 'nway' ? 2 : 0)}>
+                              {form.mode === 'nway' ? t("Playlists") : t("Choose a new source")}
+                            </Button>
+                          ) : (
+                            <Button variant="secondary" size="sm" className="ms-auto max-w-full"
+                              icon={<LuX aria-hidden="true" className="size-3.5 shrink-0" />}
+                              aria-label={t("Remove {{sourceName}}", { sourceName: name })} onClick={() => removeUnavailableProvider(id)}>
+                              {t("Remove")}
+                            </Button>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </section>
+              )}
+              <ServiceGroups accounts={syncPeers.filter((account) => !unavailableIds.has(account.id) &&
+                (account.state !== 'connected' || availableIds.has(account.id)))}>
                 {(account) => {
                   const locked = lockedProviderIds.has(account.id)
                   const checked = locked || enabledProviders.has(account.id)

@@ -878,7 +878,9 @@ def test_every_registered_provider_has_a_class_and_a_cache_path():
     assert set(_CLASSES) == set(_REGISTRY)
     opts = parse_args([])
     for provider_id in _REGISTRY:
-        assert target_class(provider_id).resolve_cache_path(opts), provider_id
+        cls = target_class(provider_id)
+        if cls.supports_playlist_writes:
+            assert cls.resolve_cache_path(opts), provider_id
 
 
 def test_a_target_opens_the_cache_path_its_class_advertises(monkeypatch, tmp_path):
