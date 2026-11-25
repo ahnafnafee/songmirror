@@ -135,7 +135,7 @@ export const api = {
   // Accounts
   getAccounts: () => request<Account[]>('/api/accounts'),
   addAccount: (provider: string, label: string) =>
-    request<Account>('/api/accounts', json({ provider, label })),
+    request<Account>('/api/accounts', json({ provider, label, reuse_default: true })),
   renameAccount: (id: string, label: string) =>
     request<Account>(`/api/accounts/${id}`, { method: 'PATCH', body: JSON.stringify({ label }) }),
   saveAccountConfig: (id: string, values: Record<string, string>) =>
@@ -157,8 +157,8 @@ export const api = {
   disableSoundcloudBrowserMode: (id: string) => request<PollResponse>(`/api/accounts/${id}/soundcloud/browser`, { method: 'DELETE' }),
   enableQQMusicBrowserMode: (id: string, url: string) => request<PollResponse>(`/api/accounts/${id}/qqmusic/browser`, json({ url })),
   disableQQMusicBrowserMode: (id: string) => request<PollResponse>(`/api/accounts/${id}/qqmusic/browser`, { method: 'DELETE' }),
-  enablePlaylistBrowser: (id: string, browserRequest: string) =>
-    request<PollResponse>(`/api/accounts/${id}/playlist-browser`, json({ request: browserRequest })),
+  enablePlaylistBrowser: (id: string, browserRequest: string, signingCookie?: string) =>
+    request<PollResponse>(`/api/accounts/${id}/playlist-browser`, json({ request: browserRequest, signing_cookie: signingCookie })),
   disablePlaylistBrowser: (id: string) => request<PollResponse>(`/api/accounts/${id}/playlist-browser`, { method: 'DELETE' }),
   enableLastfmBrowserMode: (id: string, headers: string) => request<PollResponse>(`/api/accounts/${id}/lastfm/browser`, json({ headers })),
   disableLastfmBrowserMode: (id: string) => request<PollResponse>(`/api/accounts/${id}/lastfm/browser`, { method: 'DELETE' }),

@@ -1,7 +1,8 @@
 import { t, useTranslation } from '@/i18n'
 import { useState } from 'react'
+import { LuTrash2 } from 'react-icons/lu'
 
-import { api, errorMessage } from '@/api'
+import { api, ApiError, errorMessage } from '@/api'
 import { capabilitiesOf } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
 import { serviceLogoId, tagDot, tagText } from '@/lib/constants'
@@ -111,7 +112,7 @@ export function AccountCard({ account, onChanged }: {
       await onChanged()
       setEditingLabel(false)
     } catch (err) {
-      setError(errorMessage(err))
+      setError(err instanceof ApiError && err.status === 409 ? t("That profile name is already in use.") : errorMessage(err))
     } finally {
       setSavingLabel(false)
     }
@@ -178,7 +179,7 @@ export function AccountCard({ account, onChanged }: {
         </div>
       )}
 
-      {error && <p className="text-xs text-danger">{error}</p>}
+      {error && !confirmingRemove && <p role="alert" className="text-xs text-danger">{error}</p>}
 
       <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-border pt-3">
         <Button variant={isConnected ? "secondary" : "primary"} size="sm" onClick={() => setWizardOpen(true)}>
@@ -194,15 +195,15 @@ export function AccountCard({ account, onChanged }: {
             {t("Rename")}
           </Button>
         )}
-        {account.removable && (
-          <Button variant="ghost" size="sm" onClick={() => setConfirmingRemove(true)}>
-            {t("Remove")}
-          </Button>
-        )}
+        <Button className="ms-auto" variant="ghost" size="sm" icon={<LuTrash2 className="size-3.5" aria-hidden="true" />}
+          onClick={() => { setError(null); setConfirmingRemove(true) }}>
+          {t("Remove")}
+        </Button>
       </div>
 
       <ConnectWizardModal
         account={account}
+        editName
         open={wizardOpen}
         onClose={() => setWizardOpen(false)}
         onConnected={() => {
@@ -230,6 +231,7 @@ export function AccountCard({ account, onChanged }: {
         confirmLabel={t("Remove profile")}
         danger
         loading={disconnecting}
+        error={error}
         onConfirm={() => void remove()}
         onCancel={() => setConfirmingRemove(false)}
       />

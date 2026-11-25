@@ -5,12 +5,14 @@ import re
 from urllib.parse import parse_qs, urlsplit
 
 from ...browser_session import selected_headers, urls_in
+from ...engine.targets.audiomack_browser import LIBRARY_URL as AUDIOMACK_LIBRARY_URL, SESSION_COOKIES as AUDIOMACK_SESSION_COOKIES
 from ...engine.targets.base import TargetAuthError
 from .base import ConnStatus
 
 
 PLAYLIST_WEB_CONNECTIONS = {
-    "gaana": ("https://gaana.com/", "api.gaana.com", "/user.php", "myplaylists"),
+    "audiomack": (AUDIOMACK_LIBRARY_URL, "audiomack.com", "/my-library/playlists", "v1/user/playlists"),
+    "gaana": ("https://gaana.com/music", "api.gaana.com", "/user.php", "myplaylists"),
     "jiosaavn": ("https://www.jiosaavn.com/my-music/playlists", "www.jiosaavn.com", "/api.php", "library.getAll"),
     "linemusic": ("https://music.line.me/webapp/library/playlists", "music.line.me",
                   "/api2/user/me/libraries.v1", "libraries.v1"),
@@ -49,7 +51,34 @@ def _cookies(raw):
     return result
 
 
-def parse_playlist_session(provider, raw):
+def _audiomack_session(raw, signing_cookie):
+    if not isinstance(raw, str) or not raw.strip() or len(raw) > 64_000:
+        raise ValueError("Copy the signed-in Audiomack playlist request as cURL (bash).")
+    requests = [url for url in map(urlsplit, urls_in(raw))
+                if url.scheme == "https" and url.netloc == "api.audiomack.com"
+                and re.fullmatch(r"/v1/user/playlists/page/[1-9][0-9]{0,5}", url.path)]
+    cookies = _cookies(raw)
+    if requests:
+        if len(requests) != 1:
+            raise ValueError("Copy one v1/user/playlists request from Audiomack.")
+        query = parse_qs(requests[0].query)
+        tokens = query.get("oauth_token", [])
+        if len(tokens) != 1 or query.get("oauth_consumer_key") != ["audiomack-web"] or not query.get("oauth_signature"):
+            raise ValueError("Copy the v1/user/playlists request after signing in to Audiomack.")
+        cookies["otoken"] = tokens[0]
+    else:
+        _signed_request("audiomack", raw)
+    if isinstance(signing_cookie, str) and signing_cookie.strip():
+        cookies["osecret"] = signing_cookie.strip()
+    session = {name: cookies.get(name, "") for name in AUDIOMACK_SESSION_COOKIES}
+    if not all(re.fullmatch(r"[A-Za-z0-9_~.+=/-]{16,600}", value) for value in session.values()):
+        raise ValueError("Audiomack needs the signed-in playlist request and the osecret cookie.")
+    return session
+
+
+def parse_playlist_session(provider, raw, *, signing_cookie=None):
+    if provider == "audiomack":
+        return _audiomack_session(raw, signing_cookie)
     url = _signed_request(provider, raw)
     if provider == "gaana":
         query = parse_qs(url.query)
@@ -114,16 +143,21 @@ class PlaylistBrowserConnection:
 
     def browser_status(self, credentials=None):
         try:
-            self.target_class(web_session=credentials).browse_playlists()
+            target = self.target_class(web_session=credentials)
+            playlists = target.browse_playlists()
+            if self.id == "audiomack" and credentials is not None:
+                sample = next((row for row in playlists if row["count"]), None)
+                if sample is not None:
+                    target.playlist_tracks(sample)
         except TargetAuthError as exc:
             return ConnStatus("expired", str(exc))
         except (RuntimeError, ValueError) as exc:
             return ConnStatus("error", str(exc))
         return ConnStatus("connected", capabilities=frozenset({"library_read", "public_playlist_read"}))
 
-    def enable_playlist_browser(self, raw):
+    def enable_playlist_browser(self, raw, *, signing_cookie=None):
         try:
-            credentials = parse_playlist_session(self.id, raw)
+            credentials = parse_playlist_session(self.id, raw, signing_cookie=signing_cookie)
         except ValueError as exc:
             return ConnStatus("error", str(exc))
         status = self.browser_status(credentials)

@@ -40,6 +40,8 @@ export interface Account {
   label: string
   is_default: boolean
   removable: boolean
+  /** Whether the profile has a tile on Accounts. Older snapshots omit this. */
+  show_in_accounts?: boolean
   name: string
   auth_kind: AuthKind
   fields: AccountField[]

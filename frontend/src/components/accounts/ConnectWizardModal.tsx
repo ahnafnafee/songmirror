@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { LuCheck, LuChevronDown, LuCircleAlert, LuCircleHelp, LuClipboardPaste, LuExternalLink, LuInfinity } from 'react-icons/lu'
 
-import { api, errorMessage } from '@/api'
+import { api, ApiError, errorMessage } from '@/api'
 import { linkify } from '@/lib/linkify'
 import type { Account, AccountField, AccountState, ConnectDeviceResponse, ConnectRedirectResponse } from '@/types'
 
@@ -16,6 +16,7 @@ import { TextField } from '../ui/TextField'
 
 interface Props {
   account: Account
+  editName?: boolean
   open: boolean
   onClose: () => void
   /** Fired after a brief confirmation once the account reaches
@@ -360,7 +361,7 @@ const SUCCESS_CLOSE_DELAY_MS = 1100
 const REDIRECT_POLL_INTERVAL_MS = 2500
 const REDIRECT_POLL_TIMEOUT_MS = 5 * 60 * 1000
 
-export function ConnectWizardModal({ account, open, onClose, onConnected, onChanged }: Props) {
+export function ConnectWizardModal({ account, editName = false, open, onClose, onConnected, onChanged }: Props) {
   useTranslation()
   const [values, setValues] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
@@ -370,6 +371,11 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
   const [directResult, setDirectResult] = useState<DirectResult | null>(null)
   const [showSuccess, setShowSuccess] = useState(false)
   const [lastfmMode, setLastfmMode] = useState<'api' | 'public'>('api')
+  const [profileLabel, setProfileLabel] = useState(account.label)
+  const [savedName, setSavedName] = useState({ name: account.name, label: account.label })
+  const [nameError, setNameError] = useState<string | null>(null)
+  const [savingName, setSavingName] = useState(false)
+  const label = profileLabel.trim().replace(/\s+/g, ' ')
   const isLastfm = account.provider === 'lastfm'
   const isDirectServer = ['emby', 'plex', 'mopidy', 'lyrion'].includes(account.provider)
   const description = isLastfm ? t("Choose what to connect")
@@ -410,6 +416,9 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     setDirectResult(null)
     setShowSuccess(false)
     setLastfmMode('api')
+    setProfileLabel(account.label)
+    setSavedName({ name: account.name, label: account.label })
+    setNameError(null)
     // account.fields intentionally omitted — this snapshots the stored values on open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, account.id])
@@ -502,12 +511,36 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     setValues((prev) => ({ ...prev, [key]: value }))
   }
 
+  async function saveName() {
+    if (!editName || label === savedName.label) return true
+    if (savingName) return false
+    if (!label) {
+      setNameError(t("Enter a profile name."))
+      return false
+    }
+    setSavingName(true)
+    setNameError(null)
+    try {
+      const updated = await api.renameAccount(account.id, label)
+      setSavedName({ name: updated.name, label: updated.label })
+      setProfileLabel(updated.label)
+      onChanged()
+      return true
+    } catch (err) {
+      setNameError(err instanceof ApiError && err.status === 409 ? t("That profile name is already in use.") : errorMessage(err))
+      return false
+    } finally {
+      setSavingName(false)
+    }
+  }
+
   // oauth_redirect / oauth_device: save app config, then begin the connect
   // handshake to get either an authorize URL or a device code.
   async function saveAndConnect() {
     setSaving(true)
     setError(null)
     try {
+      if (!await saveName()) return
       if (setupAccount.fields.length > 0) {
         // Don't overwrite a stored secret with a blank the user left in place to keep it.
         const payload = Object.fromEntries(
@@ -533,6 +566,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     setSaving(true)
     setError(null)
     try {
+      if (!await saveName()) return
       const payload = (isLastfm || canKeepBlank) ? Object.fromEntries(setupAccount.fields
         .filter((f) => !(f.secret && f.configured && !values[f.key]?.trim()))
         .map((f) => [f.key, values[f.key] ?? ''])) : values
@@ -554,14 +588,29 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     <Modal
       open={open}
       onClose={onClose}
-      title={t("Connect {{accountName}}", { accountName: account.name })}
+      title={t("Connect {{accountName}}", { accountName: editName ? savedName.name : account.name })}
       description={description}
     >
       <div className="flex flex-col gap-5">
         {showSuccess ? (
-          <SuccessStep accountName={account.name} />
+          <SuccessStep accountName={editName ? savedName.name : account.name} />
         ) : (
           <>
+            {editName && (
+              <form className="flex flex-col gap-2" onSubmit={event => { event.preventDefault(); void saveName() }}>
+                <div className="flex items-end gap-2">
+                  <TextField label={t("Profile label")} value={profileLabel} maxLength={80}
+                    disabled={saving || savingName || Boolean(redirectInfo || deviceInfo)}
+                    aria-invalid={Boolean(nameError)} aria-describedby={nameError ? 'profile-name-error' : undefined}
+                    onChange={event => { setProfileLabel(event.target.value); setNameError(null) }} />
+                  <Button type="submit" variant="secondary" loading={savingName}
+                    disabled={saving || !label || label === savedName.label || Boolean(redirectInfo || deviceInfo)}>
+                    {t("Save")}
+                  </Button>
+                </div>
+                {nameError && <p id="profile-name-error" role="alert" className="text-xs text-danger">{nameError}</p>}
+              </form>
+            )}
             {error && <p className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
             {isLastfm && (
@@ -627,10 +676,10 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
                 />
               ))}
 
-            {account.provider === 'qqmusic' && <NoQuotaModeSection account={account} onChanged={onChanged} />}
+            {account.provider === 'qqmusic' && <NoQuotaModeSection account={account} onChanged={onChanged} beforeConnect={saveName} />}
             {account.playlist_browser && (
               <PlaylistBrowserSection account={account} session={account.playlist_browser}
-                onChanged={onChanged} onConnected={() => setShowSuccess(true)} />
+                onChanged={onChanged} onConnected={() => setShowSuccess(true)} beforeConnect={saveName} />
             )}
 
             {(account.auth_kind === 'token_paste' || account.auth_kind === 'api_key' || account.auth_kind === 'public_link') && (
@@ -653,7 +702,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
             )}
 
             {['ytmusic', 'soundcloud', 'lastfm'].includes(account.provider) &&
-              <NoQuotaModeSection account={account} onChanged={onChanged} />}
+              <NoQuotaModeSection account={account} onChanged={onChanged} beforeConnect={saveName} />}
           </>
         )}
       </div>
@@ -661,14 +710,17 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
   )
 }
 
-function PlaylistBrowserSection({ account, session, onChanged, onConnected }: {
+function PlaylistBrowserSection({ account, session, onChanged, onConnected, beforeConnect }: {
   account: Account
   session: NonNullable<Account['playlist_browser']>
   onChanged: () => void
   onConnected: () => void
+  beforeConnect: () => Promise<boolean>
 }) {
   useTranslation()
   const [browserRequest, setBrowserRequest] = useState('')
+  const [signingCookie, setSigningCookie] = useState('')
+  const audiomack = account.provider === 'audiomack'
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -676,11 +728,13 @@ function PlaylistBrowserSection({ account, session, onChanged, onConnected }: {
     setBusy(true)
     setError(null)
     try {
+      if (!disconnect && !await beforeConnect()) return
       const response = disconnect ? await api.disablePlaylistBrowser(account.id)
-        : await api.enablePlaylistBrowser(account.id, browserRequest)
+        : await api.enablePlaylistBrowser(account.id, browserRequest, audiomack ? signingCookie : undefined)
       if (disconnect) onChanged()
       else if (response.state === 'connected') {
         setBrowserRequest('')
+        setSigningCookie('')
         onConnected()
       } else setError(response.detail || t("Could not connect with those values. Double-check them and try again."))
     } catch (err) {
@@ -699,8 +753,15 @@ function PlaylistBrowserSection({ account, session, onChanged, onConnected }: {
         <ol className="ms-5 list-decimal space-y-2 text-sm leading-relaxed text-text-2">
           <li><Trans i18nKey={"Open the <player>web player</player> and sign in to your account."}
             components={{ player: <GuideLink href={session.login_url} /> }} /></li>
-          <li><Trans i18nKey={"Open Developer Tools → Network, then open your playlist library. Find <request/> and choose Copy → Copy as cURL (bash)."}
-            components={{ request: <Code>{session.request_hint}</Code> }} /></li>
+          <li>{audiomack
+            ? <Trans i18nKey={"In Developer Tools → Network, filter for <request/>. Copy the request as cURL (bash)."}
+                components={{ request: <Code>{session.request_hint}</Code> }} />
+            : <Trans i18nKey={"Open Developer Tools → Network, then open your playlist library. Find <request/> and choose Copy → Copy as cURL (bash)."}
+                components={{ request: <Code>{session.request_hint}</Code> }} />}</li>
+          {audiomack && (
+            <li><Trans i18nKey={"In Developer Tools → Application or Storage → Cookies, copy the <cookie/> value from <site/>."}
+              components={{ cookie: <Code>osecret</Code>, site: <Code>audiomack.com</Code> }} /></li>
+          )}
           <li>{t("Paste the copied request below and connect your account.")}</li>
         </ol>
         <label htmlFor="playlist-browser-request" className="text-xs font-semibold text-text-2">
@@ -709,12 +770,17 @@ function PlaylistBrowserSection({ account, session, onChanged, onConnected }: {
         <textarea id="playlist-browser-request" rows={4} maxLength={64_000} autoComplete="off" spellCheck={false} dir="ltr"
           className="w-full rounded-control border border-border bg-inset px-3 py-2 font-mono text-xs text-text"
           value={browserRequest} onChange={event => setBrowserRequest(event.target.value)} />
+        {audiomack && (
+          <TextField label={t("Signing cookie")} type="password" autoComplete="off" maxLength={600}
+            value={signingCookie} onChange={event => setSigningCookie(event.target.value)} />
+        )}
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
         <div className="flex flex-wrap justify-end gap-2">
           {session.active && <Button variant="ghost" size="sm" disabled={busy} onClick={() => void changeSession(true)}>
             {t("Disconnect browser session")}
           </Button>}
-          <Button size="sm" loading={busy} disabled={!browserRequest.trim()} onClick={() => void changeSession()}>
+          <Button size="sm" loading={busy} disabled={!browserRequest.trim() || (audiomack && !signingCookie.trim())}
+            onClick={() => void changeSession()}>
             {t("Connect account")}
           </Button>
         </div>
@@ -941,7 +1007,11 @@ function HeaderPasteBox({ fields, onFilled }: { fields: AccountField[]; onFilled
 }
 
 /** Browser session setup sits below the provider's OAuth setup. */
-function NoQuotaModeSection({ account, onChanged }: { account: Account; onChanged: () => void }) {
+function NoQuotaModeSection({ account, onChanged, beforeConnect }: {
+  account: Account
+  onChanged: () => void
+  beforeConnect: () => Promise<boolean>
+}) {
   useTranslation()
   const soundcloud = account.provider === 'soundcloud'
   const lastfm = account.provider === 'lastfm'
@@ -967,6 +1037,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     setSaving(true)
     setError(null)
     try {
+      if (!await beforeConnect()) return
       const res = await (qqmusic ? api.enableQQMusicBrowserMode(account.id, playlistLink) : soundcloud
         ? api.enableSoundcloudBrowserMode(account.id, headers, pageRequest)
         : lastfm ? api.enableLastfmBrowserMode(account.id, headers) : api.enableYtmusicBrowserMode(account.id, headers))
@@ -1073,7 +1144,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
                     <Trans i18nKey={"Reload the page, then right-click <code1/> and choose Copy as cURL (bash). Paste the request below."} components={{ code1: <Code>/me/library/all</Code> }} />
                   </li>
                   <li className="ps-1">
-                    <Trans i18nKey={"In Network, choose Doc and copy the <code1/> document request as cURL (bash). Paste it into the renewal field."} components={{ code1: <Code>you/sets</Code> }} />
+                    <Trans i18nKey={"Filter Network for <code1/>. Copy the <code2/> page request as cURL (bash) and paste it into SoundCloud playlist page request."} components={{ code1: <Code>you/sets</Code>, code2: <Code>soundcloud.com/you/sets</Code> }} />
                   </li>
                 </>
               ) : (

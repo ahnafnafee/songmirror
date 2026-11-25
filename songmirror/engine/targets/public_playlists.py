@@ -1,4 +1,4 @@
-"""Read public playlists from the services' own web players."""
+"""Read public and signed-in playlists from the services' own web players."""
 
 import json
 import os
@@ -8,6 +8,7 @@ from html import unescape
 
 import requests
 
+from .audiomack_browser import read_library as audiomack_library, read_playlist as audiomack_playlist
 from .base import ReadOnlyPlaylistTarget, TargetAuthError, TargetCapabilityError
 from .music_server import MusicApi, counted_pages, integer, rows
 from .provider_utils import chunks
@@ -415,11 +416,40 @@ def _audiomack_music(value, path):
     return next((music for item in values if (music := _audiomack_music(item, path)) is not None), None)
 
 
-class AudiomackTarget(PublicPlaylistTarget):
+class AudiomackTarget(WebPlaylistAccountTarget):
     name = "Audiomack"
     tag = source = "audiomack"
     api_url = "https://audiomack.com"
     id_pattern = re.compile(r"[A-Za-z0-9_-]{1,150}/playlist/[A-Za-z0-9_-]{1,150}")
+    account_id_pattern = re.compile(r"[1-9][0-9]{0,23}")
+
+    def _read_directory(self):
+        entries = {}
+        for row in audiomack_library(self.web_session):
+            count = integer(row.get("track_count"))
+            if row.get("type") != "playlist" or count is None:
+                raise RuntimeError("Audiomack returned an invalid playlist entry.")
+            entry = self._account_playlist(row.get("id"), row.get("title"), count, row.get("image"))
+            if entry["id"] in entries:
+                raise RuntimeError("Audiomack returned a repeated playlist entry.")
+            entries[entry["id"]] = entry
+        return list(entries.values())
+
+    def _read_account_playlist(self, playlist):
+        key = playlist["id"]
+        record = audiomack_playlist(self.web_session, key)
+        if record is None or str(record.get("id")) != key or record.get("type") != "playlist":
+            return None
+        count = integer(record.get("track_count"))
+        if count != playlist["count"]:
+            raise RuntimeError("Audiomack's playlist changed since the directory loaded. Retry the read.")
+        tracks = [
+            track(row.get("id"), row.get("title"), [row.get("artist")], album=row.get("album"),
+                  seconds=row.get("duration"), isrc=row.get("isrc"))
+            for row in self._check_rows(record.get("tracks"), count)
+        ]
+        return self._playlist(key, record.get("title"), tracks, count=count,
+                              image=record.get("image"), description=record.get("description"))
 
     def _read(self, key):
         path = "/" + key
@@ -438,14 +468,14 @@ class AudiomackTarget(PublicPlaylistTarget):
             if music is not None:
                 break
         else:
-            raise RuntimeError(f"{self.name} did not return public playlist data.")
+            raise RuntimeError("Audiomack did not return playlist data.")
         if music.get("isPrivate") is True:
             return None
-        count = music.get("trackCount")
+        track_count = music.get("trackCount")
         tracks = [track(row.get("id"), row.get("title"), [row.get("artistName")],
                         seconds=row.get("duration"), isrc=row.get("isrc"))
-                  for row in self._check_rows(music.get("tracks"), count)]
-        return self._playlist(key, music.get("title"), tracks, count=count,
+                  for row in self._check_rows(music.get("tracks"), track_count)]
+        return self._playlist(key, music.get("title"), tracks, count=track_count,
                               image=music.get("image"), description=music.get("description"))
 
 

@@ -10,6 +10,7 @@ interface ConfirmDialogProps {
   cancelLabel?: string
   danger?: boolean
   loading?: boolean
+  error?: string | null
   onConfirm: () => void
   onCancel: () => void
 }
@@ -26,6 +27,7 @@ export function ConfirmDialog({
   cancelLabel = t("Cancel"),
   danger = false,
   loading = false,
+  error,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -33,7 +35,7 @@ export function ConfirmDialog({
   return (
     <Modal
       open={open}
-      onClose={onCancel}
+      onClose={() => { if (!loading) onCancel() }}
       title={title}
       widthClassName="max-w-[400px]"
       footer={
@@ -48,6 +50,7 @@ export function ConfirmDialog({
       }
     >
       <p className="text-sm leading-relaxed text-text-2">{description}</p>
+      {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
     </Modal>
   )
 }

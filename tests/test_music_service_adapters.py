@@ -450,6 +450,45 @@ def test_audiomack_uses_the_complete_public_player_payload():
     assert target.playlist_tracks(target.fetch_playlist(key))[0]["duration_ms"] == 61_000
 
 
+def test_audiomack_private_cookie_session_reads_only_playlists_from_its_directory(monkeypatch):
+    key = "mirror/playlist/mix"
+    data = {"music": {"type": "playlist", "href": "/" + key, "id": "91", "title": "Mix", "isPrivate": True,
+                      "trackCount": 1, "tracks": [{"id": "9", "title": "Music", "artistName": "Artist", "duration": 61}]}}
+    page = f"<script>self.__next_f.push({json.dumps([1, '13:' + json.dumps(data)])})</script>"
+    raw = ("curl 'https://audiomack.com/my-library/playlists' "
+           "-H 'Cookie: otoken=fixture-token-123456; osecret=fixture-secret-123456; unrelated=sample'")
+    session = parse_playlist_session("audiomack", raw)
+    assert session == {"otoken": "fixture-token-123456", "osecret": "fixture-secret-123456"}
+    with pytest.raises(ValueError, match="osecret cookie"):
+        parse_playlist_session("audiomack", raw.replace("osecret=", "other="))
+    signed = ("curl 'https://api.audiomack.com/v1/user/playlists/page/1?limit=20&"
+              "oauth_consumer_key=audiomack-web&oauth_token=fixture-token-123456&oauth_signature=fixture-signature'")
+    assert parse_playlist_session("audiomack", signed, signing_cookie="fixture-secret-123456") == session
+    with pytest.raises(ValueError, match="osecret cookie"):
+        parse_playlist_session("audiomack", signed)
+
+    def directory(cookies):
+        assert cookies == session
+        return [{"type": "playlist", "id": 91, "title": "Mix", "url_slug": "mix", "private": "yes",
+                 "artist": {"url_slug": "mirror"}, "track_count": "1", "tracks": []}]
+
+    monkeypatch.setattr("songmirror.engine.targets.public_playlists.audiomack_library", directory)
+
+    def detail(cookies, playlist_id):
+        assert cookies == session and playlist_id == "91"
+        return {"id": 91, "title": "Mix", "type": "playlist", "private": "yes", "track_count": 1,
+                "tracks": [{"id": "9", "title": "Music", "artist": "Artist", "duration": 61}]}
+
+    monkeypatch.setattr("songmirror.engine.targets.public_playlists.audiomack_playlist", detail)
+    wire = Wire(page)
+    target = AudiomackTarget(session=wire, web_session=session)
+    assert target.find_playlist("92") is None
+    assert target.fetch_playlist(key) is None
+    assert [(row["id"], row["artist"]) for row in target.playlist_tracks(target.find_playlist("91"))] == [("9", "Artist")]
+    assert "Cookie" not in wire.calls[0][2]["headers"]
+    assert len(wire.calls) == 1
+
+
 def test_netease_reads_public_track_ids_in_order_and_hydrates_missing_metadata():
     a, b = {"id": 1, "name": "Track 1"}, {"id": 2, "name": "Track 2"}
     wire = Wire({"code": 200, "playlist": {"id": 123, "name": "Mix", "privacy": 0, "trackCount": 3,
@@ -535,8 +574,11 @@ def test_playlist_browser_setup_preserves_public_mode_and_isolates_credentials(m
         assert caps["library_read"] and caps["public_playlist_read"] and not caps["library_write"]
         assert json.loads(profiles.settings_for(profile.id).get(key)) == {"token": "fixture-token-safe", "deviceid": "device"}
         assert profiles.settings_for("gaana").get(key) is None
-        accounts = client.get("/api/accounts").text
-        assert "fixture-token-safe" not in accounts
+        accounts = client.get("/api/accounts")
+        assert "fixture-token-safe" not in accounts.text
+        gaana = next(account for account in accounts.json() if account["id"] == profile.id)
+        assert gaana["playlist_browser"]["login_url"] == "https://gaana.com/music"
+        assert gaana["playlist_browser"]["request_hint"] == "myplaylists"
         assert client.put("/api/settings", json={key: "unvalidated"}).status_code == 422
         assert client.post(path, json={"request": captured.replace("api.gaana.com", "example.org")}).json()["state"] == "error"
         directory = client.get("/api/playlists", params={"provider": profile.id})

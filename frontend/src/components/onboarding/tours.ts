@@ -22,7 +22,7 @@ export function featureTour(page: FeatureGuideId): TourStep[] {
     case 'dashboard':
       return guide.steps.map((item, index) => ({ ...item, targets: [target(`dashboard-task-${index}`)] }))
     case 'accounts':
-      return [step(0, 'account-card', 'account-add'), step(1, 'account-add'), step(2, 'account-card', 'account-add')]
+      return [step(0, 'account-add'), step(1, 'account-card', 'account-add'), step(2, 'account-card', 'account-add')]
     case 'playlists':
       return [step(0, 'playlist-browser', 'playlist-empty'), step(1, 'playlist-browser'), step(2, 'playlist-pairings')]
     case 'sync':

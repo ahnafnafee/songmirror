@@ -109,16 +109,16 @@ async function main() {
     await page.goto(`http://127.0.0.1:${server.address().port}/accounts`)
     for (const width of [1280, 375]) {
       await page.setViewportSize({ width, height: 900 })
-      const controls = [page.getByLabel('Provider', { exact: true }), page.getByLabel('New profile label', { exact: true }), page.getByRole('button', { name: 'Add profile', exact: true })]
-      const boxes = await Promise.all(controls.map(control => control.boundingBox()))
-      if (width === 1280) {
-        assert.ok(Math.max(...boxes.map(box => box.y)) - Math.min(...boxes.map(box => box.y)) <= 1, 'Profile fields and button must align at the top')
-        assert.ok(Math.max(...boxes.map(box => box.y + box.height)) - Math.min(...boxes.map(box => box.y + box.height)) <= 1, 'Profile fields and button must align at the bottom')
-      } else assert.ok(boxes[0].y < boxes[1].y && boxes[1].y < boxes[2].y, 'Profile controls stack on mobile')
+      const picker = page.getByRole('button', { name: 'Add account', exact: true })
+      await picker.click()
+      const search = page.getByRole('combobox', { name: 'Search', exact: true })
+      const box = await search.boundingBox()
+      assert.ok(box.x >= 0 && box.x + box.width <= width, 'Service search must fit the viewport')
       await page.screenshot({ path: path.join(__dirname, `screenshots/account-profile-alignment-${width}.png`) })
+      await search.press('Escape')
     }
     console.log('PASS: running-backup editing, draft preservation, no helper, Docker path guidance, folder creation/cancellation/errors on desktop and mobile')
-    console.log('PASS: account profile row aligns on desktop and stacks on mobile')
+    console.log('PASS: account provider search fits desktop and mobile')
   } finally {
     await browser.close()
     await new Promise(resolve => server.close(resolve))

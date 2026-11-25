@@ -9,7 +9,9 @@ The provider marks identify the services SongMirror connects to. Their names and
 - `anghami.svg` traces the four colored bands from the [Anghami app icon](https://apps.apple.com/us/app/anghami/id545395155).
 - `apple.svg`, `emby.svg`, `lastfm.svg`, and `netease.svg` use [Simple Icons vectors](https://github.com/simple-icons/simple-icons/tree/develop/icons), with the Apple Music tile and NetEase badge removed. Emby's fill and play triangle match the [Emby site icon](https://emby.media/android-chrome-192x192.png).
 - `audiomack.svg` keeps the waveform from the [Audiomack site logo](https://audiomack.com/icons/logo.svg).
+- `deezer.svg` keeps the purple heart from the [Deezer site logo](https://cdn-files.dzcdn.net/cache/images/common/logos/logo-horizontal-white-text.c409af08ede4db772948.svg).
 - `gaana.svg` uses the first glyph from the [Gaana site logo](https://a10.gaanacdn.com/images/section/gaanaLogo_1736164356.svg), as shown in the [Gaana app icon](https://a10.gaanacdn.com/images/gaanawebsite/Gaana_logo_192.png).
+- `jellyfin.svg` is the unmodified [transparent Jellyfin project icon](https://github.com/jellyfin/jellyfin-ux/blob/master/branding/SVG/icon-transparent.svg).
 - `jiosaavn.svg` keeps the leaf shapes from the inline header logo on the [JioSaavn music site](https://www.jiosaavn.com/).
 - `linemusic.svg` traces the note from the [LINE MUSIC web-player icon](https://linemusic-webapp.landpress.line.me/images/icon/LM5_web_favicon_180.png).
 - `lyrion.svg` uses the [Lyrion Music Server waveform](https://github.com/LMS-Community/lms-community.github.io/blob/7debef5667bcfeadcd191dc35d4d666f65fec1d7/assets/icon/Lyrion%20-%20logo%20-%20lime.svg).
@@ -18,6 +20,9 @@ The provider marks identify the services SongMirror connects to. Their names and
 - `plex.svg` isolates the chevron from the inline [Plex web-player logo](https://watch.plex.tv/).
 - `qobuz.svg` keeps the Qobuz monogram from SongMirror's existing provider artwork and omits the rounded tile.
 - `qqmusic.svg` traces the note from the [QQ Music app icon](https://apps.apple.com/cn/app/qq%E9%9F%B3%E4%B9%90/id414603431) and retains the disc from the [QQ Music website logo](https://y.qq.com/mediastyle/yqq/img/logo.png).
+- `soundcloud.svg` uses the inline [SoundCloud site header mark](https://soundcloud.com/) in the orange from the [site icon](https://a-v2.sndcdn.com/assets/images/sc-icons/favicon-48x48-8466dd3758.png).
+- `spotify.svg` and `tidal.svg` use their [Simple Icons vectors](https://github.com/simple-icons/simple-icons/tree/develop/icons). Spotify uses the green from the [web-player favicon](https://open.spotifycdn.com/cdn/images/favicon32.b64ecc03.png), and TIDAL uses a light or dark fill with the app theme.
 - `vibe.svg` applies the [Naver Vibe app icon](https://vibe.naver.com/images/icon/icon_180x180.png) colors to the [web-player waveform](https://vibe.naver.com/images/browser/browser_vibe_logo.svg).
+- `ytmusic.svg` uses the standalone [YouTube Music web-player mark](https://music.youtube.com/img/on_platform_logo.svg).
 
 SongMirror is an independent third-party integration. It is not affiliated with or endorsed by the Navidrome project or the MetaBrainz Foundation.

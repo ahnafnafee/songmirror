@@ -16,7 +16,7 @@ async function main() {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   const base = `http://127.0.0.1:${server.address().port}`
   const browser = await chromium.launch({ headless: true })
-  const errors = [], connections = [], saved = [], profiles = []
+  const errors = [], connections = [], saved = [], profiles = [], removals = []
   const guideSteps = [
     ['Emby', 'emby', 'AuthenticateByName'],
     ['Plex', 'plex', 'X-Plex-Token'],
@@ -45,11 +45,15 @@ async function main() {
     })),
     { id: 'gaana', provider: 'gaana', name: 'Gaana', provider_name: 'Gaana', auth_kind: 'public_link',
       transferable: true, source_capable: false, supports_playlists: true,
-      playlist_browser: { login_url: 'https://gaana.com/', request_hint: 'myplaylists', active: false },
+      playlist_browser: { login_url: 'https://gaana.com/music', request_hint: 'myplaylists', active: false },
       fields: [{ key: 'GAANA_PUBLIC_PLAYLIST', label: 'Public playlist link', required: true, secret: false }],
       capabilities: { library_read: false, library_write: false, favorites_write: false, public_playlist_read: true } },
+    { id: 'audiomack', provider: 'audiomack', name: 'Audiomack', provider_name: 'Audiomack', auth_kind: 'public_link',
+      show_in_accounts: false, transferable: true,
+      playlist_browser: { login_url: 'https://audiomack.com/my-library/playlists', request_hint: 'v1/user/playlists', active: false },
+      fields: [{ key: 'AUDIOMACK_PUBLIC_PLAYLIST', label: 'Public playlist link', required: true, secret: false }] },
   ].map(account => ({ auth_kind: 'api_key', state: 'unconfigured', label: account.name, detail: '',
-    is_default: true, removable: false, preserves_order: false, ...account,
+    is_default: true, removable: false, show_in_accounts: true, preserves_order: false, ...account,
     fields: account.fields.map(field => ({ value: '', configured: false, ...field })) }))
 
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } })
@@ -62,9 +66,32 @@ async function main() {
       if (request.method() === 'POST') {
         const profile = request.postDataJSON()
         profiles.push(profile)
-        return send({ id: 'new-profile', ...profile })
+        const account = accounts.find(row => row.provider === profile.provider && row.is_default)
+        if (!account.show_in_accounts && profile.reuse_default) {
+          account.show_in_accounts = true
+          return send(account)
+        }
+        const label = profile.label || `${account.provider_name} 2`
+        const added = { ...account, id: 'new-profile', label, name: `${account.provider_name} · ${label}`,
+          is_default: false, removable: true }
+        accounts.push(added)
+        return send(added)
       }
       return send(accounts)
+    }
+    if (url.pathname === '/api/accounts/new-profile' && request.method() === 'PATCH') {
+      const { label } = request.postDataJSON()
+      if (accounts.some(row => row.id !== 'new-profile' && row.label.toLowerCase() === label.toLowerCase())) {
+        return route.fulfill({ status: 409, contentType: 'application/json', body: '{}' })
+      }
+      const account = accounts.find(row => row.id === 'new-profile')
+      Object.assign(account, { label, name: `${account.provider_name} · ${label}` })
+      return send(account)
+    }
+    if (url.pathname === '/api/accounts/audiomack' && request.method() === 'DELETE') {
+      removals.push('audiomack')
+      Object.assign(accounts.find(row => row.id === 'audiomack'), { show_in_accounts: false, state: 'unconfigured' })
+      return send({ ok: true })
     }
     if (url.pathname === '/api/accounts/cloud/soundcloud/browser') {
       const account = accounts.find(row => row.id === 'cloud')
@@ -82,6 +109,12 @@ async function main() {
       const account = accounts.find(row => row.id === 'gaana')
       account.playlist_browser.active = request.method() === 'POST'
       account.capabilities.library_read = account.playlist_browser.active
+      return send({ state: 'connected', detail: '' })
+    }
+    if (url.pathname === '/api/accounts/audiomack/playlist-browser' && request.method() === 'POST') {
+      const account = accounts.find(row => row.id === 'audiomack')
+      account.playlist_browser.active = true
+      account.state = 'connected'
       return send({ state: 'connected', detail: '' })
     }
     if (/\/api\/accounts\/[^/]+\/connect$/.test(url.pathname)) {
@@ -124,21 +157,21 @@ async function main() {
 
   try {
     await page.goto(base + '/accounts')
-    const picker = page.getByRole('button', { name: 'Provider', exact: true })
+    const picker = page.getByRole('button', { name: 'Add account', exact: true })
+    const search = page.getByRole('combobox', { name: 'Search', exact: true })
+    assert.equal(await page.getByRole('heading', { name: 'Audiomack', exact: true }).count(), 0)
     await picker.click()
-    let menu = page.getByRole('listbox', { name: 'Provider', exact: true })
+    let menu = page.getByRole('listbox', { name: 'Add account', exact: true })
     await menu.waitFor()
     assert.equal(await menu.getByRole('option').count(), 25)
     assert.equal(await menu.getByRole('option', { name: 'SoundCloud', exact: true }).count(), 1)
-    for (const option of await menu.getByRole('option').all()) {
-      assert.ok(await option.locator('svg, img').count() >= 1, `${await option.innerText()} needs its provider mark`)
-    }
-    const customMarks = [
-      'Amazon Music', 'Apple Music', 'Last.fm', 'Qobuz', 'Emby', 'Plex', 'Mopidy', 'Lyrion Music Server',
+    const providersWithMarks = [
+      'Spotify', 'TIDAL', 'Qobuz', 'Deezer', 'Amazon Music', 'Apple Music', 'YouTube Music', 'SoundCloud',
+      'Last.fm', 'ListenBrainz', 'Navidrome / Subsonic', 'Jellyfin', 'Emby', 'Plex', 'Mopidy', 'Lyrion Music Server',
       'Anghami', 'QQ Music', 'Audiomack', 'Gaana', 'JioSaavn', 'LINE MUSIC', 'NetEase Cloud Music', 'Pandora', 'Naver Vibe',
     ]
     async function verifyServiceMarks(listbox, theme) {
-      const marks = await Promise.all(customMarks.map(async name => {
+      const marks = await Promise.all(providersWithMarks.map(async name => {
         const mark = listbox.getByRole('option', { name, exact: true }).locator('img')
         const { src, colorScheme, outerPixelAlpha, hasArtwork } = await mark.evaluate(async img => {
           await img.decode()
@@ -162,32 +195,26 @@ async function main() {
         assert.ok(hasArtwork, `${name} has a visible mark`)
         return src
       }))
-      assert.equal(new Set(marks).size, customMarks.length, 'Every provider has distinct artwork')
+      assert.equal(new Set(marks).size, providersWithMarks.length, 'Every provider has distinct artwork')
       return marks
     }
     const darkMarks = await verifyServiceMarks(menu, 'dark')
-    await menu.press('End')
-    await menu.press('Enter')
-    assert.ok((await picker.innerText()).includes('Naver Vibe'))
+    assert.equal(await search.evaluate(el => el === document.activeElement), true)
+    await search.fill('fictional-provider')
+    await page.getByText('No matching services', { exact: true }).waitFor()
+    await search.press('Enter')
+    assert.equal(profiles.length, 0)
+    await search.fill('vibe')
+    assert.deepEqual(await menu.getByRole('option').allTextContents(), ['Naver Vibe'])
+    await search.press('Escape')
     assert.equal(await picker.evaluate(el => el === document.activeElement), true)
-    await picker.press('ArrowDown')
-    menu = page.getByRole('listbox', { name: 'Provider', exact: true })
-    for (const key of 'lis') await menu.press(key)
-    await menu.press('Enter')
-    assert.ok((await picker.innerText()).includes('ListenBrainz'))
-    assert.equal(await picker.locator('img').count(), 1, 'Selected ListenBrainz uses its official artwork')
-    assert.equal(await picker.locator('svg').count(), 1, 'The dropdown chevron stays visible')
-    await picker.click()
-    assert.equal(await page.getByRole('option', { name: 'Navidrome / Subsonic', exact: true }).locator('img').count(), 1,
-      'Navidrome uses its official artwork instead of a generic server symbol')
-    await page.getByRole('listbox', { name: 'Provider', exact: true }).press('Escape')
     assert.equal(await picker.getAttribute('aria-expanded'), 'false')
     const screenshotDir = process.env.SONGMIRROR_E2E_SCREENSHOTS
     if (screenshotDir) fs.mkdirSync(screenshotDir, { recursive: true })
     for (const width of [1280, 375, 320]) {
       await page.setViewportSize({ width, height: 812 })
       await picker.click()
-      menu = page.getByRole('listbox', { name: 'Provider', exact: true })
+      menu = page.getByRole('listbox', { name: 'Add account', exact: true })
       await menu.waitFor()
       await menu.getByRole('option', { name: 'Navidrome / Subsonic', exact: true }).scrollIntoViewIfNeeded()
       const box = await menu.boundingBox()
@@ -198,26 +225,77 @@ async function main() {
         assert.ok((await menu.getByRole('option').first().boundingBox()).height >= 44)
       }
       if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, `provider-icons-${width}.png`), fullPage: true })
-      await page.getByLabel('New profile label', { exact: true }).click()
+      await page.getByRole('heading', { name: 'Accounts', exact: true }).click()
       await menu.waitFor({ state: 'hidden' })
     }
     await page.setViewportSize({ width: 1280, height: 1000 })
-    await page.getByLabel('New profile label', { exact: true }).fill('Test listener')
-    const addedProfile = page.waitForResponse(response => response.url().endsWith('/api/accounts') && response.request().method() === 'POST')
-    await page.getByRole('button', { name: 'Add profile', exact: true }).click()
-    await addedProfile
-    assert.deepEqual(profiles, [{ provider: 'listenbrainz', label: 'Test listener' }])
+    await picker.press('ArrowDown')
+    await search.fill('listen')
+    await search.press('Enter')
+    const setup = page.getByRole('dialog', { name: /^Connect ListenBrainz · / })
+    await setup.waitFor()
+    assert.deepEqual(profiles, [{ provider: 'listenbrainz', label: '', reuse_default: true }])
+    const name = setup.getByRole('textbox', { name: 'Profile label', exact: true })
+    await name.fill('  GAANA  ')
+    await setup.getByRole('button', { name: 'Save', exact: true }).click()
+    await setup.getByText('That profile name is already in use.', { exact: true }).waitFor()
+    await name.fill('Test listener')
+    await setup.getByRole('button', { name: 'Save', exact: true }).click()
+    await setup.getByRole('heading', { name: 'Connect ListenBrainz · Test listener', exact: true }).waitFor()
+    await setup.getByRole('button', { name: 'Close', exact: true }).click()
     await page.evaluate(() => localStorage.setItem('songmirror-theme', 'light'))
     await page.reload()
     await picker.click()
-    menu = page.getByRole('listbox', { name: 'Provider', exact: true })
+    menu = page.getByRole('listbox', { name: 'Add account', exact: true })
     assert.deepEqual(await verifyServiceMarks(menu, 'light'), darkMarks)
     if (screenshotDir) {
       await menu.getByRole('option', { name: 'Naver Vibe', exact: true }).scrollIntoViewIfNeeded()
       await page.screenshot({ path: path.join(screenshotDir, 'provider-icons-light.png'), fullPage: true })
     }
-    await menu.press('Escape')
-    console.log('PASS: provider marks, keyboard selection, typeahead, dismissal, mobile bounds, and selected profile submission')
+    await search.press('Escape')
+    await picker.click()
+    await menu.getByRole('option', { name: 'Audiomack', exact: true }).click()
+    const audioSetup = page.getByRole('dialog', { name: 'Connect Audiomack', exact: true })
+    await audioSetup.getByText('v1/user/playlists', { exact: true }).waitFor()
+    assert.equal(await audioSetup.getByRole('link', { name: 'web player', exact: true }).getAttribute('href'),
+      'https://audiomack.com/my-library/playlists')
+    const audioRequest = "curl 'https://api.audiomack.com/v1/user/playlists/page/1?oauth_consumer_key=audiomack-web&oauth_token=fixture-token-123456&oauth_signature=fixture-signature'"
+    const signingCookie = 'fixture-secret-123456'
+    await audioSetup.getByRole('textbox', { name: 'Signed-in playlist request' }).fill(audioRequest)
+    await audioSetup.getByLabel('Signing cookie', { exact: true }).fill(signingCookie)
+    const audioResponse = page.waitForResponse(response => response.url().endsWith('/audiomack/playlist-browser'))
+    await audioSetup.getByRole('button', { name: 'Connect account', exact: true }).click()
+    assert.deepEqual((await audioResponse).request().postDataJSON(), { request: audioRequest, signing_cookie: signingCookie })
+    await audioSetup.waitFor({ state: 'hidden' })
+    const audioCard = page.locator('[data-tour="account-card"]').filter({
+      has: page.getByRole('heading', { name: 'Audiomack', exact: true }),
+    })
+    await audioCard.getByRole('button', { name: 'Remove', exact: true }).click()
+    const confirm = page.getByRole('dialog', { name: 'Remove Audiomack?', exact: true })
+    await confirm.getByRole('button', { name: 'Cancel', exact: true }).click()
+    assert.deepEqual(removals, [], 'Cancelling keeps the account')
+    await audioCard.getByRole('button', { name: 'Remove', exact: true }).click()
+    await confirm.getByRole('button', { name: 'Remove profile', exact: true }).click()
+    await audioCard.waitFor({ state: 'detached' })
+    assert.deepEqual(removals, ['audiomack'])
+    await page.reload()
+    assert.equal(await page.getByRole('heading', { name: 'Audiomack', exact: true }).count(), 0)
+    console.log('PASS: provider marks, search, keyboard setup, unique profile names, signed-in Audiomack setup, and confirmed removal')
+    await page.goto(base)
+    const roster = page.getByRole('heading', { name: 'Your services', exact: true }).locator('../..')
+    await roster.getByText('SoundCloud', { exact: true }).waitFor()
+    assert.equal(await roster.getByText('Audiomack', { exact: true }).count(), 0)
+    assert.equal(await page.getByText("Audiomack isn't set up", { exact: true }).count(), 0)
+    const listedCount = accounts.filter(account => account.show_in_accounts).length
+    await page.getByText(`0 of ${listedCount} up to date`, { exact: true }).waitFor()
+    await page.getByRole('button', { name: "What's new Unread updates", exact: true }).click()
+    const updates = page.getByRole('dialog', { name: "What's new", exact: true })
+    await updates.getByText('Audiomack', { exact: true }).waitFor()
+    await updates.getByRole('button', { name: 'Close', exact: true }).click()
+    await page.reload()
+    await page.getByRole('button', { name: "What's new", exact: true }).waitFor()
+    await page.goto(base + '/accounts')
+    console.log("PASS: the dashboard omits unadded services, and What's new marks a viewed update as read")
     const cloudCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'SoundCloud', exact: true }) })
     await cloudCard.getByRole('button', { name: 'Connect', exact: true }).click()
     const cloudDialog = page.getByRole('dialog')
@@ -273,6 +351,8 @@ async function main() {
     assert.deepEqual(connections.pop(), { provider: 'gaana', values: { GAANA_PUBLIC_PLAYLIST: gaanaUrl } })
     await gaanaCard.getByRole('button', { name: 'Reconnect', exact: true }).click()
     await publicDialog.getByText('myplaylists', { exact: true }).waitFor()
+    assert.equal(await publicDialog.getByRole('link', { name: 'web player', exact: true }).getAttribute('href'),
+      'https://gaana.com/music')
     assert.equal(await publicDialog.getByRole('button', { name: 'Connect account', exact: true }).isDisabled(), true)
     const privateRequest = "curl 'https://api.gaana.com/user.php?type=myplaylists&token=local-fixture-token'"
     await publicDialog.getByRole('textbox', { name: 'Signed-in playlist request' }).fill(privateRequest)
@@ -430,7 +510,7 @@ async function main() {
     await dialog.getByRole('radio', { name: 'TIDAL', exact: true }).click()
     await dialog.getByRole('radio', { name: 'Services', exact: true }).click()
     // With a token, ListenBrainz is a full playlist peer and joins by default.
-    assert.equal(await dialog.getByRole('button', { name: /^ListenBrainz/ }).getAttribute('aria-pressed'), 'true')
+    assert.equal(await dialog.getByRole('button', { name: 'ListenBrainz', exact: true }).getAttribute('aria-pressed'), 'true')
     await dialog.getByRole('radio', { name: 'Playlists', exact: true }).click()
     await dialog.getByRole('checkbox', { name: 'TIDAL Favorite Tracks', exact: true }).locator('..').click()
     const lovesRoute = dialog.getByRole('radio', { name: 'Use ListenBrainz Loved Recordings', exact: true })

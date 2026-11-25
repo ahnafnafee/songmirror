@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import os
 import shutil
+import unicodedata
 import uuid
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from ..engine.targets.public_playlists import PUBLIC_PLAYLIST_TARGETS
@@ -140,6 +141,12 @@ class AccountProfile:
     provider: str
     label: str
     is_default: bool = False
+    # None preserves the visibility of legacy profiles based on configuration.
+    show_in_accounts: bool | None = None
+
+
+class ProfileLabelConflict(ValueError):
+    """The normalized label already identifies a different profile."""
 
 
 class ProfileSettings:
@@ -367,13 +374,16 @@ class AccountProfileStore:
     def create(self, provider, label=None):
         if provider not in self._providers:
             raise ValueError(f"unknown provider: {provider}")
-        profile = AccountProfile(
-            id=f"{PROFILE_ID_PREFIX}{uuid.uuid4().hex[:12]}",
-            provider=provider,
-            label=self._clean_label(label) or self._next_label(provider),
-        )
-        self._profiles[profile.id] = profile
-        self._save()
+        with _ENV_LOCK:
+            clean = self._clean_label(label) or self._next_label(provider)
+            self._check_label(clean)
+            profile = AccountProfile(
+                id=f"{PROFILE_ID_PREFIX}{uuid.uuid4().hex[:12]}",
+                provider=provider,
+                label=clean,
+            )
+            self._profiles[profile.id] = profile
+            self._save()
         # Materialize independent file paths before a connector can run.
         local = SettingsStore(dir=self.profile_dir(profile.id), project_env=False)
         local.save({
@@ -383,13 +393,27 @@ class AccountProfileStore:
         return profile
 
     def rename(self, profile_id, label):
-        profile = self.resolve(profile_id)
-        if profile is None:
-            raise KeyError(profile_id)
         clean = self._clean_label(label)
         if not clean:
             raise ValueError("profile label must not be blank")
-        updated = AccountProfile(profile.id, profile.provider, clean, profile.is_default)
+        with _ENV_LOCK:
+            profile = self.resolve(profile_id)
+            if profile is None:
+                raise KeyError(profile_id)
+            if clean != profile.label:
+                self._check_label(clean, profile.id)
+            return self._update_metadata(profile, clean, profile.show_in_accounts)
+
+    def set_accounts_visibility(self, profile, visible, label=None):
+        with _ENV_LOCK:
+            profile = self._profiles[profile.id]
+            clean = (self._clean_label(label) or profile.label) if visible else self._provider_label(profile.provider)
+            if visible and clean != profile.label:
+                self._check_label(clean, profile.id)
+            return self._update_metadata(profile, clean, visible)
+
+    def _update_metadata(self, profile, label, visible):
+        updated = replace(profile, show_in_accounts=visible, label=label)
         self._profiles[profile.id] = updated
         self._save()
         return updated
@@ -495,6 +519,7 @@ class AccountProfileStore:
                 and isinstance(profile.provider, str)
                 and isinstance(profile.label, str)
                 and isinstance(profile.is_default, bool)
+                and (profile.show_in_accounts is None or isinstance(profile.show_in_accounts, bool))
             )
             if not valid_types:
                 rewrite = True
@@ -560,10 +585,24 @@ class AccountProfileStore:
     def _clean_label(label):
         return " ".join(str(label or "").split())[:80]
 
+    @staticmethod
+    def _label_key(label):
+        return unicodedata.normalize("NFKC", label).casefold()
+
+    def _check_label(self, label, own_id=None):
+        key = self._label_key(label)
+        if any(profile.id != own_id and self._label_key(profile.label) == key for profile in self._profiles.values()):
+            raise ProfileLabelConflict("That profile name is already in use.")
+
     def _next_label(self, provider):
         base = self._provider_label(provider)
         count = sum(profile.provider == provider for profile in self._profiles.values())
-        return f"{base} {count + 1}"
+        existing = {self._label_key(profile.label) for profile in self._profiles.values()}
+        candidate = f"{base} {count + 1}"
+        while self._label_key(candidate) in existing:
+            count += 1
+            candidate = f"{base} {count + 1}"
+        return candidate
 
     @staticmethod
     def _provider_label(provider):
