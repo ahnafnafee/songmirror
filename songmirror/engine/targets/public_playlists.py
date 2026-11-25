@@ -1,4 +1,4 @@
-"""Read public and signed-in playlists from the services' own web players."""
+"""Playlist adapters for public links and signed-in web players."""
 
 import json
 import os
@@ -10,8 +10,8 @@ import requests
 
 from .audiomack_browser import read_library as audiomack_library, read_playlist as audiomack_playlist
 from .base import ReadOnlyPlaylistTarget, TargetAuthError, TargetCapabilityError
-from .music_server import MusicApi, counted_pages, integer, rows
-from .provider_utils import chunks
+from .music_server import MusicApi, counted_pages, integer, resolve_catalog_track, rows
+from .provider_utils import chunks, source_playlist_details
 
 
 def text(value):
@@ -264,6 +264,13 @@ class GaanaTarget(WebPlaylistAccountTarget):
     tag = source = "gaana"
     api_url = "https://api.gaana.com"
     id_pattern = re.compile(r"[A-Za-z0-9_-]{1,160}")
+    account_id_pattern = re.compile(r"[1-9][0-9]{0,23}")
+    supports_playlist_writes = True
+
+    def __init__(self, *, session=None, web_session=None):
+        super().__init__(session=session, web_session=web_session)
+        self.supports_playlist_writes = bool(self.web_session)
+        self._search = MusicApi(self.name, "https://gsearch.gaana.com", session=session)
 
     def _headers(self, signed=False):
         return {"Referer": "https://gaana.com/", "Origin": "https://gaana.com",
@@ -283,6 +290,97 @@ class GaanaTarget(WebPlaylistAccountTarget):
 
     def _read_account_playlist(self, playlist):
         return self._read(playlist["id"], signed=True)
+
+    def is_editable(self, playlist):
+        return self.supports_playlist_writes and playlist.get("_account_playlist") is True
+
+    def _owned_snapshot(self, playlist):
+        key = str(playlist.get("id") or "")
+        if not self.is_editable(playlist) or not self.account_id_pattern.fullmatch(key):
+            raise TargetCapabilityError("Only playlists in the connected Gaana library can be edited.")
+        if not any(entry["id"] == key for entry in self.browse_playlists()):
+            raise TargetCapabilityError("Gaana could not confirm the destination playlist in this account.")
+        snapshot = self._read(key, signed=True)
+        if snapshot is None:
+            raise TargetCapabilityError("Gaana could not open the destination playlist.")
+        return snapshot
+
+    def _write(self, method, action, *, data=None, **params):
+        self._requires_session()
+        response = self._signed_api.request(method, "/user.php", headers=self._headers(signed=True), params={
+            "type": action, "token": self.web_session["token"], **params,
+        }, **({"data": data} if data is not None else {}))
+        if integer(response.get("user_token_status")) == 0 or "login needed" in text(response.get("msg")).lower():
+            raise TargetAuthError("Sign in again on Gaana and import a fresh playlist request.")
+        if integer(response.get("Status", response.get("status"))) != 1:
+            raise TargetCapabilityError("Gaana rejected the playlist change.")
+        return response
+
+    def create(self, playlist):
+        self._create_public(playlist)
+        name, _ = source_playlist_details(playlist)
+        response = self._write("GET", "createplaylist", request_type="web", title=name, is_public=0)
+        key = str(response.get("playlist_id") or response.get("Success") or "")
+        if not self.account_id_pattern.fullmatch(key):
+            raise RuntimeError("Gaana did not identify the new playlist.")
+        owned = next((entry for entry in self.browse_playlists() if entry["id"] == key), None)
+        if owned is None or owned["name"] != text(name):
+            raise RuntimeError("Gaana did not confirm the newly created playlist.")
+        return owned
+
+    def add(self, playlist, target_ids):
+        desired = list(dict.fromkeys(map(str, target_ids)))
+        if not all(self.account_id_pattern.fullmatch(key) for key in desired):
+            raise ValueError("Expected valid Gaana track IDs.")
+        current = self._owned_snapshot(playlist)
+        expected = [track["id"] for track in current["_tracks"]]
+        existing = set(expected)
+        added = [key for key in desired if key not in existing]
+        for batch in chunks(added, 50):
+            self._write("GET", "addtoplaylist", request_type="web", id=current["id"], trackids=",".join(batch))
+        if added:
+            self._verify_tracks(current["id"], expected + added)
+        return added
+
+    def remove(self, playlist, track):
+        current = self._owned_snapshot(playlist)
+        key = str(track.get("id") or "")
+        expected = [row["id"] for row in current["_tracks"]]
+        if expected.count(key) != 1:
+            # Gaana removes by track ID, with no identifier for one duplicate.
+            return False
+        visibility = current.get("_visibility")
+        if visibility not in (0, 1):
+            raise RuntimeError("Gaana did not identify the current playlist visibility.")
+        edit = {"playlists": [{"pid": current["id"], "playlist_title": current["_title"], "is_public": visibility,
+                               "del_items": [{"tid": key, "is_local": 0}]}]}
+        self._write("POST", "addeditplaylist", data={"playlist_json": json.dumps(edit, separators=(",", ":"))})
+        expected.remove(key)
+        self._verify_tracks(current["id"], expected)
+        return True
+
+    def _verify_tracks(self, key, expected):
+        snapshot = self._read(key, signed=True)
+        if snapshot is None or [row["id"] for row in snapshot["_tracks"]] != expected:
+            raise RuntimeError("Gaana did not confirm the expected playlist tracks after the change.")
+
+    def search_candidates(self, query, *, limit=5):
+        body = self._search.request("GET", "/vichitih/go/v2/", headers=self._headers(), params={
+            "query": query, "content_filter": "2", "include": "track", "isRegSrch": "0", "webVersion": "mix",
+            "rType": "web", "autocomplete": "0", "startIndex": "0", "usrLang": "Hindi,English",
+        })
+        found = {}
+        for group in rows(body.get("gr"), "Gaana returned invalid search results."):
+            for item in rows(group.get("gd"), "Gaana returned invalid track search results."):
+                key = str(item.get("id") or "")
+                if (text(item.get("ty")).casefold() not in {"", "track"}
+                        or not self.account_id_pattern.fullmatch(key) or not text(item.get("ti"))):
+                    continue
+                found.setdefault(key, track(key, item["ti"], text(item.get("sti")).split(","), isrc=item.get("isrc")))
+        return list(found.values())[:limit]
+
+    def resolve(self, track, cache):
+        return resolve_catalog_track(self, track, cache)
 
     def _read(self, key, *, signed=False):
         api = self._signed_api if signed else self._api
@@ -310,8 +408,11 @@ class GaanaTarget(WebPlaylistAccountTarget):
                   for row in self._check_rows(body.get("tracks"), body.get("count"))]
         if [item["id"] for item in tracks] != ordered_ids:
             raise RuntimeError(f"{self.name} returned tracks that do not match the playlist order.")
-        return self._playlist(key, playlist.get("title"), tracks, count=len(ordered_ids),
-                              image=playlist.get("atw") or playlist.get("artwork"))
+        result = self._playlist(key, playlist.get("title"), tracks, count=len(ordered_ids),
+                                image=playlist.get("atw") or playlist.get("artwork"))
+        if signed:
+            result.update(_title=playlist["title"], _visibility=integer(playlist.get("is_public")), _account_playlist=True)
+        return result
 
 
 class JioSaavnTarget(WebPlaylistAccountTarget):

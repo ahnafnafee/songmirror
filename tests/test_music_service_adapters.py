@@ -366,7 +366,7 @@ def test_public_web_links_connect_and_preview_as_sources_only(tmp_path, monkeypa
     key = f"{provider.upper()}_PUBLIC_PLAYLIST"
     assert parse_playlist_link(url) == (provider, playlist_id)
     assert parse_playlist_link(external_url(provider, "playlist", playlist_id)) == (provider, playlist_id)
-    assert not target_type.supports_playlist_writes
+    assert not target_type(web_session={}).supports_playlist_writes
     assert target_type().find_playlist(playlist_id) is None
 
     with TestClient(app) as client:
@@ -510,6 +510,37 @@ def test_gaana_private_reads_are_scoped_to_signed_in_playlist_directory():
     assert wire.calls[-1][2]["params"]["playlist_id"] == "9"
 
 
+def test_gaana_writes_confirm_current_ownership_order_and_visibility():
+    directory = {"playlist": [{"playlist_id": 9, "title": "Private Mix", "trackcount": 0}]}
+
+    def detail(*ids):
+        return {"count": len(ids), "playlist": {"playlist_id": "9", "title": "Private Mix",
+                "trackids": ",".join(ids), "is_public": 0},
+                "tracks": [{"track_id": key, "track_title": f"Fixture {key}"} for key in ids]}
+
+    success = {"Status": 1, "user_token_status": 1}
+    wire = Wire({**success, "Success": "9"}, directory, directory, detail(), success, detail("101", "102"),
+                directory, detail("101", "102"), success, detail("101"), directory, detail("101", "101"))
+    target = GaanaTarget(session=wire, web_session={"token": "fixture-token"})
+    playlist = target.create({"name": "Private Mix"})
+    assert target.is_editable(playlist)
+    assert target.add(playlist, ["101", "102"]) == ["101", "102"]
+    assert target.remove(playlist, {"id": "102"})
+    assert target.remove(playlist, {"id": "101"}) is False
+    changes = [call for call in wire.calls if call[2]["params"].get("type") in {
+        "createplaylist", "addtoplaylist", "addeditplaylist",
+    }]
+    assert [call[0] for call in changes] == ["GET", "GET", "POST"]
+    assert changes[0][2]["params"]["is_public"] == 0
+    assert changes[1][2]["params"]["trackids"] == "101,102"
+    assert json.loads(changes[2][2]["data"]["playlist_json"]) == {"playlists": [{
+        "pid": "9", "playlist_title": "Private Mix", "is_public": 0,
+        "del_items": [{"tid": "102", "is_local": 0}],
+    }]}
+    with pytest.raises(TargetCapabilityError, match="connected Gaana library"):
+        target.remove({"id": "9"}, {"id": "101"})
+
+
 def test_netease_private_playlist_authenticates_account_and_never_uses_pasted_uid():
     wire = Wire({"code": 200, "account": {"id": 5}},
                 {"code": 200, "more": False, "playlist": [{"id": 123, "name": "Private Mix", "trackCount": 1}]},
@@ -571,7 +602,7 @@ def test_playlist_browser_setup_preserves_public_mode_and_isolates_credentials(m
         response = client.post(path, json={"request": captured})
         assert response.status_code == 200, response.json()
         caps = response.json()["capabilities"]
-        assert caps["library_read"] and caps["public_playlist_read"] and not caps["library_write"]
+        assert caps["library_read"] and caps["public_playlist_read"] and caps["library_write"]
         assert json.loads(profiles.settings_for(profile.id).get(key)) == {"token": "fixture-token-safe", "deviceid": "device"}
         assert profiles.settings_for("gaana").get(key) is None
         accounts = client.get("/api/accounts")

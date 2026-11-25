@@ -153,7 +153,10 @@ class PlaylistBrowserConnection:
             return ConnStatus("expired", str(exc))
         except (RuntimeError, ValueError) as exc:
             return ConnStatus("error", str(exc))
-        return ConnStatus("connected", capabilities=frozenset({"library_read", "public_playlist_read"}))
+        capabilities = {"library_read", "public_playlist_read"}
+        if target.supports_playlist_writes:
+            capabilities.add("library_write")
+        return ConnStatus("connected", capabilities=frozenset(capabilities))
 
     def enable_playlist_browser(self, raw, *, signing_cookie=None):
         try:

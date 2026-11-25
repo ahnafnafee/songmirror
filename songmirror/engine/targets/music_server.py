@@ -98,6 +98,34 @@ def counted_pages(fetch, name):
     return items
 
 
+def resolve_catalog_track(target, track, cache):
+    name = track.get("name")
+    if not name:
+        return None, None
+    artists = track.get("artists") or [track.get("artist") or ""]
+    key = target.search_cache_key(name, artists)
+    if key in cache["search"]:
+        return cache["search"][key], "search"
+    match = None
+    for query in dict.fromkeys((f"{name} {artists[0]}".strip(), name)):
+        candidates = target.search_candidates(query, limit=30)
+        by_isrc = {}
+        for candidate in candidates:
+            if candidate.get("isrc"):
+                by_isrc.setdefault(candidate["isrc"], []).append(candidate)
+        match = best_candidate(track, compatible_isrc_candidates(track, {"isrc": by_isrc}))
+        if match:
+            cache["search"][key] = match
+            cache["dirty"] = True
+            return match, "isrc"
+        match = best_candidate(track, candidates)
+        if match:
+            break
+    cache["search"][key] = match
+    cache["dirty"] = True
+    return match, "search"
+
+
 class MusicServerTarget(MirrorTarget):
     catalog_ids_global = False
     supports_favorites = supports_favorite_writes = supports_saved_albums = False
@@ -122,31 +150,7 @@ class MusicServerTarget(MirrorTarget):
         return result
 
     def resolve(self, track, cache):
-        name = track.get("name")
-        if not name:
-            return None, None
-        artists = track.get("artists") or [track.get("artist") or ""]
-        key = self.search_cache_key(name, artists)
-        if key in cache["search"]:
-            return cache["search"][key], "search"
-        match = None
-        for query in dict.fromkeys((f"{name} {artists[0]}".strip(), name)):
-            candidates = self.search_candidates(query, limit=30)
-            by_isrc = {}
-            for candidate in candidates:
-                if candidate.get("isrc"):
-                    by_isrc.setdefault(candidate["isrc"], []).append(candidate)
-            match = best_candidate(track, compatible_isrc_candidates(track, {"isrc": by_isrc}))
-            if match:
-                cache["search"][key] = match
-                cache["dirty"] = True
-                return match, "isrc"
-            match = best_candidate(track, candidates)
-            if match:
-                break
-        cache["search"][key] = match
-        cache["dirty"] = True
-        return match, "search"
+        return resolve_catalog_track(self, track, cache)
 
     def _require_editable(self, playlist):
         if not self.is_editable(playlist):
