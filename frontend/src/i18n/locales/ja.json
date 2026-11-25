@@ -1,4 +1,5 @@
 {
+  "Choose a new source": "新しい同期元を選択",
   "Connected accounts": "接続済みのアカウント",
   "Leave blank if the config.json response has no accessToken.": "config.json レスポンスに accessToken がない場合は、空欄にしてください。",
   "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Amazon がアクセストークンなしで端末情報を返した場合は、任意の config.json レスポンス欄を空欄にしてください。",
@@ -98,6 +99,7 @@
   "Start tour": "ツアーを開始",
   "Step {{current, number}} of {{total, number}}": "ステップ {{current, number}} / {{total, number}}",
   "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "アカウントが SongMirror から削除され、保存済みのログイン情報も消去されます。残りのアカウントで対応できる同期は継続できます。",
+  "Unavailable accounts": "利用できないアカウント",
   "Updating account…": "アカウントを更新中…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "再開から準備完了、一時停止、失敗したインポートを開き、確認や作成を続けます。",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "一度だけのコピーには転送、定期更新には同期、曲リストのインポートにはプレイリスト作成を使います。",

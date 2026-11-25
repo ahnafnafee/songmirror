@@ -1,4 +1,5 @@
 {
+  "Choose a new source": "Choisir une nouvelle source",
   "Connected accounts": "Comptes connectés",
   "Leave blank if the config.json response has no accessToken.": "Laissez ce champ vide si la réponse config.json ne contient pas d’accessToken.",
   "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Laissez le champ facultatif de la réponse config.json vide si Amazon renvoie les données de l’appareil sans jeton d’accès.",
@@ -98,6 +99,7 @@
   "Start tour": "Commencer la visite",
   "Step {{current, number}} of {{total, number}}": "Étape {{current, number}} sur {{total, number}}",
   "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "Le compte est retiré de SongMirror et ses données de connexion enregistrées sont effacées. Les synchronisations peuvent continuer si les comptes restants les prennent en charge.",
+  "Unavailable accounts": "Comptes indisponibles",
   "Updating account…": "Mise à jour du compte…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "Utilisez Reprendre pour rouvrir un import prêt, en pause ou en échec et poursuivre sa vérification ou sa création.",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "Utilisez Transferts pour une copie ponctuelle, Sync pour des mises à jour régulières ou Créer une playlist pour importer une liste de titres.",

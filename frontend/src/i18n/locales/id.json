@@ -1,4 +1,5 @@
 {
+  "Choose a new source": "Pilih sumber baru",
   "Connected accounts": "Akun terhubung",
   "Leave blank if the config.json response has no accessToken.": "Kosongkan jika respons config.json tidak berisi accessToken.",
   "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Kosongkan kolom respons config.json opsional jika Amazon mengembalikan detail perangkat tanpa token akses.",
@@ -98,6 +99,7 @@
   "Start tour": "Mulai tur",
   "Step {{current, number}} of {{total, number}}": "Langkah {{current, number}} dari {{total, number}}",
   "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "Tindakan ini menghapus akun dari SongMirror dan menghapus informasi masuk yang tersimpan. Sinkronisasi dapat berlanjut jika didukung oleh akun yang tersisa.",
+  "Unavailable accounts": "Akun tidak tersedia",
   "Updating account…": "Memperbarui akun…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "Gunakan Lanjutkan untuk membuka kembali impor yang siap, dijeda, atau gagal dan melanjutkan peninjauan atau pembuatannya.",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "Gunakan Transfer untuk menyalin satu kali, Sinkronisasi untuk pembaruan berkala, atau Buat Playlist untuk mengimpor daftar lagu.",

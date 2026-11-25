@@ -1,4 +1,5 @@
 {
+  "Choose a new source": "选择新的来源",
   "Connected accounts": "已连接的账户",
   "Leave blank if the config.json response has no accessToken.": "如果 config.json 响应不含 accessToken，请留空。",
   "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "如果 Amazon 返回的设备信息不含访问令牌，请将可选的 config.json 响应字段留空。",
@@ -98,6 +99,7 @@
   "Start tour": "开始导览",
   "Step {{current, number}} of {{total, number}}": "第 {{current, number}} 步，共 {{total, number}} 步",
   "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "这会从 SongMirror 中移除此账户并清除保存的登录信息。如果其余账户支持同步，相关同步仍可继续。",
+  "Unavailable accounts": "不可用的账户",
   "Updating account…": "正在更新账户…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "使用继续重新打开就绪、已暂停或失败的导入，继续检查或创建。",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "一次性复制请使用传输，定期更新请使用同步，导入歌曲清单请使用创建播放列表。",

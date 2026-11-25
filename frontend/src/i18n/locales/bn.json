@@ -1,4 +1,5 @@
 {
+  "Choose a new source": "নতুন উৎস বেছে নিন",
   "Connected accounts": "সংযুক্ত অ্যাকাউন্ট",
   "Leave blank if the config.json response has no accessToken.": "config.json প্রতিক্রিয়ায় accessToken না থাকলে ঘরটি ফাঁকা রাখুন।",
   "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Amazon অ্যাক্সেস টোকেন ছাড়া ডিভাইসের তথ্য ফেরত দিলে ঐচ্ছিক config.json প্রতিক্রিয়ার ঘরটি ফাঁকা রাখুন।",
@@ -98,6 +99,7 @@
   "Start tour": "ট্যুর শুরু করুন",
   "Step {{current, number}} of {{total, number}}": "{{total, number}}টির মধ্যে ধাপ {{current, number}}",
   "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "এটি SongMirror থেকে অ্যাকাউন্ট সরিয়ে দেবে এবং সংরক্ষিত সাইন-ইন তথ্য মুছে ফেলবে। বাকি অ্যাকাউন্টগুলো সমর্থন করলে সিঙ্ক চলতে পারবে।",
+  "Unavailable accounts": "অনুপলব্ধ অ্যাকাউন্ট",
   "Updating account…": "অ্যাকাউন্ট আপডেট হচ্ছে…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "প্রস্তুত, বিরতিতে থাকা বা ব্যর্থ ইম্পোর্ট আবার খুলে পর্যালোচনা বা তৈরি চালিয়ে যেতে পুনরায় শুরু করুন ব্যবহার করুন।",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "একবার কপির জন্য ট্রান্সফার, নিয়মিত হালনাগাদের জন্য সিঙ্ক বা গানের তালিকা ইম্পোর্ট করতে প্লেলিস্ট তৈরি করুন ব্যবহার করুন।",

@@ -1,4 +1,5 @@
 {
+  "Choose a new source": "नया स्रोत चुनें",
   "Connected accounts": "कनेक्ट किए गए खाते",
   "Leave blank if the config.json response has no accessToken.": "अगर config.json प्रतिक्रिया में accessToken नहीं है, तो फ़ील्ड खाली छोड़ें।",
   "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "अगर Amazon एक्सेस टोकन के बिना डिवाइस की जानकारी लौटाता है, तो वैकल्पिक config.json प्रतिक्रिया फ़ील्ड खाली छोड़ें।",
@@ -98,6 +99,7 @@
   "Start tour": "टूर शुरू करें",
   "Step {{current, number}} of {{total, number}}": "{{total, number}} में से चरण {{current, number}}",
   "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "इससे खाता SongMirror से हट जाएगा और उसकी सहेजी गई साइन-इन जानकारी मिट जाएगी। बाकी खाते समर्थन करते हैं, तो सिंक जारी रह सकता है।",
+  "Unavailable accounts": "अनुपलब्ध खाते",
   "Updating account…": "खाता अपडेट हो रहा है…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "तैयार, रुके या विफल आयात को फिर खोलकर उसकी समीक्षा या निर्माण जारी रखने के लिए फिर शुरू करें का उपयोग करें।",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "एक बार कॉपी करने के लिए ट्रांसफ़र, नियमित अपडेट के लिए सिंक और गानों की सूची आयात करने के लिए प्लेलिस्ट बनाएँ का उपयोग करें।",

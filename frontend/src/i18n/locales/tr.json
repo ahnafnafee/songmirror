@@ -1,4 +1,5 @@
 {
+  "Choose a new source": "Yeni bir kaynak seçin",
   "Connected accounts": "Bağlı hesaplar",
   "Leave blank if the config.json response has no accessToken.": "config.json yanıtında accessToken yoksa boş bırakın.",
   "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Amazon erişim belirteci olmadan cihaz bilgilerini döndürürse isteğe bağlı config.json yanıt alanını boş bırakın.",
@@ -98,6 +99,7 @@
   "Start tour": "Turu başlat",
   "Step {{current, number}} of {{total, number}}": "Adım {{current, number}} / {{total, number}}",
   "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "Bu işlem hesabı SongMirror’dan kaldırır ve kayıtlı oturum bilgilerini siler. Kalan hesaplar destekliyorsa eşitlemeler devam edebilir.",
+  "Unavailable accounts": "Kullanılamayan hesaplar",
   "Updating account…": "Hesap güncelleniyor…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "Hazır, duraklatılmış veya başarısız bir içe aktarımı yeniden açıp incelemeye ya da oluşturmaya devam etmek için Sürdür’ü kullanın.",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "Tek seferlik kopya için Aktarımlar’ı, düzenli güncellemeler için Eşitleme’yi veya parça listesi içe aktarmak için Çalma listesi oluştur’u kullanın.",

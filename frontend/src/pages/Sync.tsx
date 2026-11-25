@@ -109,6 +109,7 @@ export default function Sync() {
         job={editingJob}
         otherSyncs={syncs ?? []}
         accounts={accounts ?? []}
+        accountsReady={accounts !== null}
         onSaved={() => {
           setWizardOpen(false)
           refreshAll()
