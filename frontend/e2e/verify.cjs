@@ -1709,13 +1709,14 @@ async function main() {
       console.log(`${faviconOk ? 'ok        ' : 'FAIL      '} favicon mark is proportional and fills the tile (ratio=${faviconGeometry.markRatio.toFixed(3)} coverage=${faviconGeometry.coverage.toFixed(3)})`)
       if (!faviconOk) results.push({ label: 'favicon mark geometry', overflow: true })
 
-      const projectLinks = [
+      const kofi = ['Support on Ko-fi', 'https://ko-fi.com/ahnafnafee']
+      const secondaryProjectLinks = [
         ['SongMirror on GitHub', 'https://github.com/ahnafnafee/songmirror'],
         ['Sponsor on GitHub', 'https://github.com/sponsors/ahnafnafee'],
-        ['Support on Ko-fi', 'https://ko-fi.com/ahnafnafee'],
       ]
 
-      async function checkProjectLinks(scope, state, { centered = false } = {}) {
+      async function checkProjectLinks(scope, state, { centered = false, includesKofi = true } = {}) {
+        const projectLinks = includesKofi ? [kofi, ...secondaryProjectLinks] : secondaryProjectLinks
         const group = scope.getByRole('group', { name: 'Project links', exact: true })
         let linksOk = await group.isVisible() && await group.getByRole('link').count() === projectLinks.length
         const linkBoxes = []
@@ -1724,14 +1725,15 @@ async function main() {
           linksOk = linksOk && await link.isVisible() && await link.getAttribute('href') === expectedHref
           linkBoxes.push(await link.boundingBox())
         }
-        console.log(`${linksOk ? 'ok        ' : 'FAIL      '} ${state} exposes all project and support links`)
+        console.log(`${linksOk ? 'ok        ' : 'FAIL      '} ${state} exposes the expected project links`)
         if (!linksOk) results.push({ label: `${state} project links`, overflow: true })
 
         if (centered) {
           const scopeBox = await scope.boundingBox()
-          const firstBox = linkBoxes[0]
-          const lastBox = linkBoxes.at(-1)
-          const dockCenter = firstBox && lastBox ? (firstBox.x + lastBox.x + lastBox.width) / 2 : NaN
+          const boxes = linkBoxes.filter(Boolean)
+          const left = Math.min(...boxes.map((box) => box.x))
+          const right = Math.max(...boxes.map((box) => box.x + box.width))
+          const dockCenter = (left + right) / 2
           const scopeCenter = scopeBox ? scopeBox.x + scopeBox.width / 2 : NaN
           const centeredOk = Number.isFinite(dockCenter) && Math.abs(dockCenter - scopeCenter) <= 1
           console.log(`${centeredOk ? 'ok        ' : 'FAIL      '} ${state} centers the project-link dock`)
@@ -1770,9 +1772,13 @@ async function main() {
       await page.setViewportSize({ width: 375, height: 900 })
       await page.reload({ waitUntil: 'networkidle' })
       await page.waitForSelector('text=Next check')
+      const donate = page.locator('[data-tour="shell-header"]').getByRole('link', { name: 'Donate', exact: true })
+      const donateOk = await donate.isVisible() && await donate.getAttribute('href') === kofi[1]
+      console.log(`${donateOk ? 'ok        ' : 'FAIL      '} mobile header exposes the Ko-fi link before opening the drawer`)
+      if (!donateOk) results.push({ label: 'mobile header Ko-fi link', overflow: true })
       await page.getByRole('button', { name: 'Open menu', exact: true }).click()
       await page.waitForSelector('#mobile-nav')
-      await checkProjectLinks(page.locator('#mobile-nav'), 'mobile drawer')
+      await checkProjectLinks(page.locator('#mobile-nav'), 'mobile drawer', { includesKofi: false })
       await checkOverflow(page, 'Mobile drawer open @ 375', results)
       await shot(page, 'sidebar-mobile-drawer-375')
 
