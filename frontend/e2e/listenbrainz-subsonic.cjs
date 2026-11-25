@@ -23,7 +23,7 @@ async function main() {
     ['Plex', 'plex', 'X-Plex-Token'],
     ['Mopidy', 'mopidy', 'playlists_dir'],
     ['Lyrion Music Server', 'lyrion', 'Playlist Folder'],
-    ['Anghami', 'anghami', 'Anghami Developer Portal'],
+    ['Anghami', 'anghami', 'GETplaylists'],
     ['QQ Music', 'qqmusic', 'QQ Music Skills'],
   ]
   const accounts = [
@@ -49,6 +49,11 @@ async function main() {
     ...guideSteps.map(([name, provider]) => ({
       id: provider, provider, name, provider_name: name, fields: [], transferable: true,
       state: provider === 'emby' ? 'error' : 'unconfigured',
+      ...(provider === 'anghami' && {
+        auth_kind: 'token_paste',
+        supports_favorites: false,
+        fields: [{ key: 'ANGHAMI_SESSION_TOKEN', label: 'Anghami session token', required: true, secret: true }],
+      }),
     })),
     { id: 'gaana', provider: 'gaana', name: 'Gaana', provider_name: 'Gaana', auth_kind: 'public_link',
       transferable: true, source_capable: false, supports_playlists: true,
@@ -360,6 +365,28 @@ async function main() {
       const dialog = page.getByRole('dialog')
       const guide = dialog.locator('details[open]').filter({ hasText: 'How to get these' })
       assert.equal(await guide.getByText(hint, { exact: false }).first().isVisible(), true)
+      if (provider === 'anghami') {
+        assert.equal(await guide.getByRole('link', { name: 'Anghami', exact: true }).getAttribute('href'),
+          'https://play.anghami.com/playlists')
+        await guide.getByText('Paste the copied request or its sid value below.', { exact: true }).waitFor()
+        const connect = dialog.getByRole('button', { name: 'Connect', exact: true })
+        assert.equal(await connect.isDisabled(), true)
+        const sessionToken = dialog.getByLabel(/^Anghami session token/)
+        assert.equal(await sessionToken.getAttribute('type'), 'password')
+        await sessionToken.fill('fixture-anghami-session-123')
+        await connect.click()
+        await dialog.getByRole('status').filter({ hasText: 'Anghami is connected.' }).waitFor()
+        await dialog.waitFor({ state: 'hidden' })
+        assert.deepEqual(connections.pop(), {
+          provider: 'anghami', values: { ANGHAMI_SESSION_TOKEN: 'fixture-anghami-session-123' },
+        })
+        const account = accounts.find(row => row.provider === 'anghami')
+        account.state = 'unconfigured'
+        account.fields[0].configured = false
+        await page.reload()
+        await card.getByRole('button', { name: 'Connect', exact: true }).waitFor()
+        continue
+      }
       if (provider === 'qqmusic') {
         await dialog.getByText('No-quota mode', { exact: true }).click()
         const playlist = 'https://y.qq.com/n/ryqq/playlist/7256912512'
