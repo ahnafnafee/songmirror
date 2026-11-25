@@ -1618,19 +1618,20 @@ def _archive_sources_for_peer(peer):
 
 
 def _partition_reconcile_rows(songs, peer, provider_rows):
-    """Split peer rows into usable tracks, known hidden tracks, and unidentified entries."""
-    raw, hidden_rows = [], []
-    for track in provider_rows:
-        if not isinstance(track, dict):
-            hidden_rows.append(track)
-            continue
-        if str(track.get("name") or "").strip() and not track.get("unavailable"):
-            raw.append(track)
-        else:
-            hidden_rows.append(track)
+    """Restore usable metadata in provider order and separate remaining hidden rows."""
+    rows = list(provider_rows)
+    hidden_rows = [
+        (position, track)
+        for position, track in enumerate(rows)
+        if not isinstance(track, dict)
+        or not str(track.get("name") or "").strip()
+        or track.get("unavailable")
+    ]
+    if not hidden_rows:
+        return rows, [], 0
 
     hidden_ids = list(dict.fromkeys(
-        tid for track in hidden_rows
+        tid for _, track in hidden_rows
         if isinstance(track, dict) and (tid := peer.track_id(track))
     ))
     snapshots, known_cids = {}, {}
@@ -1652,7 +1653,7 @@ def _partition_reconcile_rows(songs, peer, provider_rows):
 
     preserved_hidden = []
     unidentified_hidden = 0
-    for track in hidden_rows:
+    for position, track in hidden_rows:
         tid = peer.track_id(track) if isinstance(track, dict) else None
         if tid and tid in snapshots:
             restored = {
@@ -1662,12 +1663,15 @@ def _partition_reconcile_rows(songs, peer, provider_rows):
                 ) if track.get(k)},
             }
             restored.pop("unavailable", None)
-            raw.append(restored)
-        elif tid and tid in known_cids:
+            rows[position] = restored
+            continue
+
+        rows[position] = None
+        if tid and tid in known_cids:
             preserved_hidden.append((known_cids[tid], track))
         else:
             unidentified_hidden += 1
-    return raw, preserved_hidden, unidentified_hidden
+    return [track for track in rows if track is not None], preserved_hidden, unidentified_hidden
 
 
 def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, max_adds,

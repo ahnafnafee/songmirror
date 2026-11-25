@@ -437,10 +437,14 @@ def test_reconcile_preserves_liked_track_when_spotify_hides_metadata_across_pass
     resources = {"spotify": spotify.favorite_tracks_resource(), "apple": {"id": "apple"}}
     caches = {"spotify": {"isrc": {}, "search": {}, "dirty": False}, "apple": {"isrc": {}, "search": {}, "dirty": False}}
 
+    link_key = "collection:liked-tracks"
+    expected_order = [[f"spLiked{code}", TITLES[code], "A"] for code in "ABC"]
+
     # Pass 1: establish baseline with visible metadata.
     reconcile([spotify, apple], "Liked Songs", resources, caches, conn,
-              execute=True, max_removals=25, max_adds=200, link_key="collection:liked-tracks")
+              execute=True, max_removals=25, max_adds=200, link_key=link_key)
     assert sorted(apple.songs) == ["A", "B", "C"]
+    assert archive.get_order_history(conn, link_key, "spotify")[0][1] == expected_order
 
     # Passes 2 & 3: Spotify hides Alpha Road's title/duration, yet still returns its saved ID.
     liked_items[0]["track"]["data"].update({
@@ -451,18 +455,19 @@ def test_reconcile_preserves_liked_track_when_spotify_hides_metadata_across_pass
     })
     for _ in range(2):
         stats = reconcile([spotify, apple], "Liked Songs", resources, caches, conn,
-                          execute=True, max_removals=25, max_adds=200, link_key="collection:liked-tracks")
+                          execute=True, max_removals=25, max_adds=200, link_key=link_key)
         assert sorted(apple.songs) == ["A", "B", "C"], (
             "Apple Music must keep the hidden track while Spotify still returns its ID"
         )
         assert apple.removed == []
         assert stats["removed"] == 0
+        assert archive.get_order_history(conn, link_key, "spotify")[0][1] == expected_order
 
     # Passes 4 & 5: user genuinely unlikes the track on Spotify -> propagates once confirmed.
     liked_items.pop(0)
     for _ in range(2):
         reconcile([spotify, apple], "Liked Songs", resources, caches, conn,
-                  execute=True, max_removals=25, max_adds=200, link_key="collection:liked-tracks")
+                  execute=True, max_removals=25, max_adds=200, link_key=link_key)
     assert sorted(apple.songs) == ["B", "C"]
     assert apple.removed == ["A"]
     conn.close()
