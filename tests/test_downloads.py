@@ -109,6 +109,36 @@ def test_stream_parsing():
     assert (downloaded, skipped, code) == (1, 1, 0)
 
 
+def test_run_retries_track_after_spotdl_permission_error(monkeypatch, tmp_path):
+    state = tmp_path / "state.json"
+    monkeypatch.setenv("DOWNLOAD_STATE_FILE", str(state))
+    monkeypatch.setattr(lm, "_spotdl_cmd", lambda: ["spotdl"])
+    monkeypatch.setattr(lm, "ffmpeg_available", lambda: True)
+    source = types.SimpleNamespace(
+        read=lambda playlist: [{"id": "song"}],
+        playlist_query=lambda playlist: None,
+        track_queries=lambda ids, tracks: ids,
+    )
+    playlist = {"id": "playlist", "name": "Mix", "snapshot_id": "snapshot"}
+    results = iter([
+        ["PermissionError: [Errno 13] Permission denied: 'Artist/Album'\n"],
+        ['Downloaded "Artist - Title"\n'],
+    ])
+    monkeypatch.setattr(lm.subprocess, "Popen", lambda *args, **kwargs: types.SimpleNamespace(
+        stdout=iter(next(results)), returncode=0, wait=lambda: None, poll=lambda: 0,
+    ))
+    files = iter([(0, 0, 0, {}, ["song"]), (0, 0, 0, {"song": "Artist/Album/Track.mp3"}, [])])
+    monkeypatch.setattr(lm, "finalize_folder", lambda *args: next(files))
+
+    lm.run(source, [playlist], str(tmp_path))
+    assert not state.exists()
+
+    lm.run(source, [playlist], str(tmp_path))
+    assert lm._load_json(state)["playlist"] == {
+        "snapshot": "snapshot", "files": {"song": "Artist/Album/Track.mp3"}, "unavailable": [],
+    }
+
+
 def test_fill_missing_tags():
     track = {"name": "T", "artist": "A, B", "album": "Alb", "isrc": "US1"}
     audio = {}
