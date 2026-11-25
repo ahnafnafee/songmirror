@@ -711,9 +711,11 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, acco
     form.mode !== 'group' ||
     (authorityIds.size >= 2 && authorityIds.has(syncSource) &&
       [...authorityIds].every((id) => connectedPeerIds.has(id) && enabledProviders.has(id)))
+  const preservingExpiredLikedSource = job?.liked_tracks === true && job.source === syncSource &&
+    accounts.some((account) => account.id === syncSource && account.state === 'expired' && isListedAccount(account))
   const likedRoutesValid =
     !form.liked_tracks ||
-    (enabledProviders.has(syncSource) &&
+    ((enabledProviders.has(syncSource) || preservingExpiredLikedSource) &&
       [...enabledProviders]
         .filter((providerId) => providerId !== syncSource && receivesLikes(providerId))
         .every((providerId) => {
