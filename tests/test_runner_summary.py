@@ -45,6 +45,32 @@ def test_oneway_returns_summary_shape(monkeypatch):
     assert isinstance(s["duration_s"], float)
 
 
+@pytest.mark.parametrize(
+    ("mode", "authorities", "remaining_mode", "remaining_order", "remaining_authorities"),
+    [
+        ("nway", "", "nway", "spotify", ""),
+        ("group", "spotify,tidal,deezer", "group", "tidal", "tidal,deezer"),
+        ("group", "spotify,tidal", "oneway", "tidal", "tidal"),
+    ],
+)
+def test_removed_contributors_pause_removals_without_losing_surviving_authorities(
+    tmp_path, mode, authorities, remaining_mode, remaining_order, remaining_authorities,
+):
+    from songmirror.services.account_profiles import AccountProfileStore
+    from songmirror.services.settings import SettingsStore
+
+    profiles = AccountProfileStore(SettingsStore(dir=tmp_path))
+    profiles.set_accounts_visibility(profiles.resolve("spotify"), False)
+    opts = _opts(sync_mode=mode, sync_source="spotify", authorities=authorities,
+                 providers="spotify,tidal,deezer", apply_large_removals=True)
+    opts.account_profiles = profiles
+
+    runner._keep_available_authorities(opts)
+
+    assert (opts.sync_mode, opts.sync_source, opts.authorities) == (remaining_mode, remaining_order, remaining_authorities)
+    assert opts.max_removals == 0 and opts.apply_large_removals is False
+
+
 def test_non_spotify_oneway_does_not_require_an_unselected_spotify_account(monkeypatch):
     class Source:
         source, name = "tidal", "TIDAL"

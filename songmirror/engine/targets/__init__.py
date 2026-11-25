@@ -314,12 +314,21 @@ def _profiles(opts):
     return getattr(opts, "account_profiles", None)
 
 
+def profile_removed(identity, opts):
+    """A saved profile reference can outlive the account it belonged to."""
+    profiles = _profiles(opts)
+    if profiles is None or not identity:
+        return False
+    profile = profiles.resolve(identity)
+    return profile is None or profile.show_in_accounts is False
+
+
 def _identity_parts(identity, opts):
     profiles = _profiles(opts)
     if profiles is None:
         return identity, None, None
     profile = profiles.resolve(identity)
-    if profile is None:
+    if profile is None or profile.show_in_accounts is False:
         return None, None, profiles
     return profile.provider, profile, profiles
 
@@ -330,8 +339,10 @@ def _participant_ids(opts):
     if profiles is None:
         return raw or list(_SOURCE_ORDER)
     if raw:
-        return list(dict.fromkeys(profiles.canonical_id(part) for part in raw))
-    return [profile.id for profile in profiles.list() if profile.provider in _REGISTRY]
+        return list(dict.fromkeys(profiles.canonical_id(part) for part in raw
+                                  if not profile_removed(part, opts)))
+    return [profile.id for profile in profiles.list()
+            if profile.provider in _REGISTRY and profile.show_in_accounts is not False]
 
 
 def target_class(provider_id):
@@ -384,7 +395,7 @@ def build_targets(opts, sp=None):
         if identity == source:
             continue
         if not _writable(identity, opts):
-            if getattr(opts, "providers", None) or not playlists_for(identity, opts):
+            if getattr(opts, "providers", None):
                 _announce_playlistless(identity, opts, loved_tracks)
             continue
         target = build_one(identity, opts, sp, sync_peer=True)
@@ -443,7 +454,7 @@ def build_peers(opts, sp, songs=None):
     peers = []
     for identity in _participant_ids(opts):
         if not _writable(identity, opts):
-            if getattr(opts, "providers", None) or not playlists_for(identity, opts):
+            if getattr(opts, "providers", None):
                 _announce_playlistless(identity, opts, loved_tracks)
             continue
         peer = build_one(identity, opts, sp, sync_peer=True, songs=songs)

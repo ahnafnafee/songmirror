@@ -26,6 +26,7 @@ from .targets import (
     build_targets,
     mirror_pair,
     nway_order_candidates,
+    profile_removed,
     reconcile,
     target_provider,
     writable_target,
@@ -189,10 +190,17 @@ def _run_merge(opts, sp, should_continue=None):
     # the catalogs of the sources it came from before it is removed.
     catalog_peers = {}
     incomplete = False
+    if profile_removed(destination_identity, opts):
+        error = "The aggregate destination account was removed. Choose a destination to resume this sync."
+        aggregate["removals_guarded"] = True
+        return [_summary_entry(destination_label, agg)], aggregate, False, error
     for descriptor in descriptors:
         if ctrl() != "run":
             incomplete = True
             break
+        if profile_removed(descriptor.get("provider"), opts):
+            incomplete = True
+            continue
         try:
             source = provider(descriptor.get("provider"))
         except Exception as exc:
@@ -711,6 +719,28 @@ def _build_nway_order_authority(opts, sp):
     return None
 
 
+def _keep_available_authorities(opts):
+    """Keep the saved job intact while executing with surviving contributors."""
+    if opts.sync_mode == "nway":
+        lost_contributor = any(profile_removed(identity, opts) for identity in _wanted_providers(opts))
+    elif opts.sync_mode == "group":
+        authorities = list(dict.fromkeys(part.strip() for part in opts.authorities.split(",") if part.strip()))
+        retained = [identity for identity in authorities if not profile_removed(identity, opts)]
+        lost_contributor = len(retained) != len(authorities)
+        if lost_contributor and retained:
+            opts.authorities = ",".join(retained)
+            if opts.sync_source not in retained:
+                opts.sync_source = retained[0]
+            if len(retained) == 1:
+                opts.sync_mode = "oneway"
+    else:
+        lost_contributor = False
+    if lost_contributor:
+        opts.max_removals = 0
+        opts.apply_large_removals = False
+        log_note("Track removals are paused because a contributing account was removed.", tag="sync")
+
+
 def run_pass(opts, should_continue=None):
     pass_started = time.monotonic()
     # Pause/Stop hook: should_continue() returns "run" | "pause" | "stop"; the pass
@@ -760,6 +790,7 @@ def run_pass(opts, should_continue=None):
             }
         wanted_providers = set(participant_ids)
         opts.providers = ",".join(participant_ids)
+        _keep_available_authorities(opts)
         spotify_requested = not wanted_providers or any(
             profiles.provider_of(identity) == "spotify" for identity in wanted_providers
         )
@@ -822,12 +853,22 @@ def run_pass(opts, should_continue=None):
 
     # The library whose playlists drive this pass: a configured participant for
     # N-way; the chosen source/order authority for one-way and group modes.
+    if opts.sync_mode in {"nway", "group"} and wanted_providers:
+        remaining = [identity for identity in wanted_providers if not profile_removed(identity, opts)]
+        if len(remaining) < 2 and len(remaining) != len(wanted_providers):
+            error = "This sync needs at least two remaining provider accounts."
+            log_warn(error, indent="  ")
+            return _summary(opts, [], pass_started, ok=False, error=error)
     if opts.sync_mode == "nway":
         source = _build_nway_order_authority(opts, sp)
         source_provider = source.source if source is not None else None
     else:
         source = build_one(source_provider, opts, sp)
     if source is None:
+        if profile_removed(source_provider, opts):
+            error = "The sync source account was removed. Choose a source to resume this sync."
+            log_warn(error, indent="  ")
+            return _summary(opts, [], pass_started, ok=False, error=error)
         if opts.sync_mode == "nway":
             log_warn("no configured N-way provider can supply playlist names and ordering", indent="  ")
         else:
@@ -893,6 +934,12 @@ def run_pass(opts, should_continue=None):
 
     targets = build_targets(opts, sp)
     if not targets:
+        if wanted_providers - {source_provider} and all(
+            profile_removed(identity, opts) for identity in wanted_providers - {source_provider}
+        ):
+            error = "The sync has no remaining destination accounts."
+            log_warn(error, indent="  ")
+            return _summary(opts, [], pass_started, ok=False, error=error)
         log_warn("no mirror targets configured — connect another provider and include it in the sync", indent="  ")
         return _summary(opts, [], pass_started)
     log(f"  targets: {paint(', '.join(t.name for t in targets), 'cyan')}"

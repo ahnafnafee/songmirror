@@ -471,17 +471,22 @@ def disconnect_account(account_id: str, request: Request):
 
 
 @router.delete("/api/accounts/{account_id}")
-def remove_account(account_id: str, request: Request):
+async def remove_account(account_id: str, request: Request):
     profiles = request.app.state.account_profiles
-    profile = _profile(request, account_id)
-    request.app.state.connection_attempts.invalidate(profile.id)
-    with profiles.activate(profile.id):
-        _conn(request, profile.id).disconnect()
-        if profile.is_default:
-            profiles.set_accounts_visibility(profile, False)
-        else:
-            profiles.remove(profile.id)
-    return {"ok": True}
+
+    def remove():
+        profile = _profile(request, account_id)
+        request.app.state.connection_attempts.invalidate(profile.id)
+        with profiles.activate(profile.id):
+            _conn(request, profile.id).disconnect()
+            if profile.is_default:
+                profiles.set_accounts_visibility(profile, False)
+            else:
+                profiles.remove(profile.id)
+        return {"ok": True}
+
+    # A running pass may still need this profile's credentials for later playlists.
+    return await request.app.state.sync.run_exclusive(remove)
 
 
 def _provider_connector(request, account_id, expected):

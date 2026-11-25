@@ -334,6 +334,29 @@ def test_removal_waits_until_every_source_drops_track(monkeypatch, tmp_path):
     assert destination.rows[dest_pl["id"]] == []
 
 
+def test_removed_aggregate_source_keeps_its_tracks_and_other_sources_continue(monkeypatch, tmp_path):
+    source = _Provider("spotify", tmp_path)
+    destination = _Provider("deezer", tmp_path)
+    source.add_playlist("source", [_track("Added by surviving source")])
+    destination.add_playlist("dest", [_track("From removed account")])
+    _install_providers(monkeypatch, {"spotify": source, "deezer": destination})
+    profiles = AccountProfileStore(SettingsStore(dir=tmp_path / "settings"))
+    profiles.set_accounts_visibility(profiles.resolve("apple"), False)
+    opts = _opts(tmp_path, [
+        {"provider": "spotify", "playlist_id": "source"},
+        {"provider": "apple", "playlist_id": "former-source"},
+    ], {"provider": "deezer", "playlist_id": "dest"})
+    opts.account_profiles = profiles
+
+    result, summary, ok, error = _run_merge(opts, None)
+
+    assert ok and error is None
+    assert summary["sources_read"] == 1 and summary["sources_failed"] == 0
+    assert summary["removals_guarded"] is True
+    assert result[0]["added"] == 1 and result[0]["removed"] == 0
+    assert [row["name"] for row in destination.rows["dest"]] == ["From removed account", "Added by surviving source"]
+
+
 def test_append_only_strategy_never_removes_destination_only_track(monkeypatch, tmp_path):
     source = _Provider("spotify", tmp_path)
     destination = _Provider("deezer", tmp_path)
