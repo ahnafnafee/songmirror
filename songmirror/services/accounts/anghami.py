@@ -6,7 +6,9 @@ import os
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from ...engine.targets.anghami import API, TOKEN_FILE, AnghamiApi
-from ...engine.targets.anghami_web import AnghamiBrowserClient, AnghamiWebTarget, normalize_browser_endpoint
+from ...engine.targets.anghami_web import (
+    AnghamiBrowserClient, AnghamiSessionClient, AnghamiWebTarget, normalize_browser_endpoint, parse_session_token,
+)
 from ...engine.targets.base import TargetAuthError, TargetCapabilityError
 from .base import ConnStatus, Connector, Field
 
@@ -16,29 +18,37 @@ class AnghamiConnector(Connector):
     name = "Anghami"
     redirect_pkce = True
     config_fields = [
+        Field("ANGHAMI_SESSION_TOKEN", "Anghami session token", secret=True),
         Field("ANGHAMI_BROWSER_ENDPOINT", "Chrome DevTools address", secret=True),
         Field("ANGHAMI_CLIENT_ID", "Client ID", help="Register the callback URL in the Anghami Developer Portal."),
     ]
 
     @property
     def auth_kind(self):
-        if not self._store.get("ANGHAMI_BROWSER_ENDPOINT") and self._store.get("ANGHAMI_CLIENT_ID"):
+        if self._store.get("ANGHAMI_CLIENT_ID") and not (
+            self._store.get("ANGHAMI_SESSION_TOKEN") or self._store.get("ANGHAMI_BROWSER_ENDPOINT")
+        ):
             return "oauth_redirect"
         return "token_paste"
 
+    setup_auth_kind = "token_paste"
+
     @property
     def setup_fields(self):
-        return [self.config_fields[1 if self.auth_kind == "oauth_redirect" else 0]]
+        return self.config_fields[:1]
 
     def normalize_config(self, values):
+        values = dict(values)
+        if values.get("ANGHAMI_SESSION_TOKEN"):
+            values["ANGHAMI_SESSION_TOKEN"] = parse_session_token(values["ANGHAMI_SESSION_TOKEN"])
         if values.get("ANGHAMI_BROWSER_ENDPOINT"):
-            return {**values, "ANGHAMI_BROWSER_ENDPOINT": normalize_browser_endpoint(values["ANGHAMI_BROWSER_ENDPOINT"])}
+            values["ANGHAMI_BROWSER_ENDPOINT"] = normalize_browser_endpoint(values["ANGHAMI_BROWSER_ENDPOINT"])
         return values
 
     @staticmethod
-    def _browser_status(endpoint):
+    def _web_status(client_type, credential):
         try:
-            target = AnghamiWebTarget(AnghamiBrowserClient(endpoint))
+            target = AnghamiWebTarget(client_type(credential))
             target.browse_playlists()
         except TargetAuthError as exc:
             return ConnStatus("expired", str(exc))
@@ -47,12 +57,14 @@ class AnghamiConnector(Connector):
         return ConnStatus("connected", capabilities=frozenset({"library_read", "library_write", "public_playlist_read"}))
 
     def submit(self, values):
-        endpoint = values.get("ANGHAMI_BROWSER_ENDPOINT") or self._store.get("ANGHAMI_BROWSER_ENDPOINT")
-        if not endpoint:
-            return ConnStatus("error", "Enter the local Chrome DevTools address.")
-        status = self._browser_status(endpoint)
+        raw = values.get("ANGHAMI_SESSION_TOKEN") or self._store.get("ANGHAMI_SESSION_TOKEN")
+        try:
+            token = parse_session_token(raw)
+        except ValueError as exc:
+            return ConnStatus("error", str(exc))
+        status = self._web_status(AnghamiSessionClient, token)
         if status.state == "connected":
-            self._store.save({"ANGHAMI_BROWSER_ENDPOINT": normalize_browser_endpoint(endpoint)})
+            self._store.save({"ANGHAMI_SESSION_TOKEN": token})
         return status
 
     def _client(self):
@@ -63,9 +75,12 @@ class AnghamiConnector(Connector):
         return AnghamiApi(client_id, path)
 
     def status(self):
+        token = self._store.get("ANGHAMI_SESSION_TOKEN")
+        if token:
+            return self._web_status(AnghamiSessionClient, token)
         endpoint = self._store.get("ANGHAMI_BROWSER_ENDPOINT")
         if endpoint:
-            return self._browser_status(endpoint)
+            return self._web_status(AnghamiBrowserClient, endpoint)
         client = self._client()
         if client is None or not client.configured():
             return ConnStatus("unconfigured")

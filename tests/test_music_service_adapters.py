@@ -744,9 +744,12 @@ def test_partial_collection_is_never_returned_as_a_shorter_playlist():
 
 
 def test_anghami_web_playlist_writes_exclude_recommendations_and_require_ownership():
+    from contextlib import nullcontext
+
     from songmirror.engine.targets.anghami_web import AnghamiWebTarget
 
     class Player:
+        connection = staticmethod(nullcontext)
         members = []
         owned = True
 

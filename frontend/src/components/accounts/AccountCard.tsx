@@ -34,7 +34,6 @@ const SERVICE_BLURBS: Record<string, string> = {
   get plex() { return t("Syncs playlists using music from your server library.") },
   get mopidy() { return t("Reads server playlists. Enable Mopidy’s M3U backend to write playlists.") },
   get lyrion() { return t("Reads server playlists. Set a playlist folder in Lyrion to write playlists.") },
-  get anghami() { return t("Use Anghami playlists as a source for sync and transfers.") },
   get qqmusic() { return t("Paste a QQ Music playlist link to use it as a source.") },
 }
 
@@ -150,7 +149,7 @@ export function AccountCard({ account, updating, onChanged }: {
       </div>
 
       <p className="text-[13px] leading-relaxed text-text-2">{account.provider === 'anghami' && account.auth_kind === 'token_paste'
-        ? t("Sync playlists through the signed-in Anghami web player. Keep its playlist tab open during sync.")
+        ? t("Sync playlists through the signed-in Anghami web player.")
         : account.playlist_browser
         ? t("Read playlists from your signed-in account or use a public playlist link.")
         : account.auth_kind === 'public_link'

@@ -52,23 +52,29 @@ def test_anghami_pkce_is_bound_to_the_account_authorization_attempt(tmp_path, mo
     assert exchanged["redirect_uri"] == started["redirect_uri"]
 
 
-def test_anghami_account_prefers_web_player_and_only_accepts_local_browser_addresses(tmp_path, monkeypatch):
-    from songmirror.engine.targets.anghami_web import AnghamiBrowserClient
+def test_anghami_wizard_imports_only_the_session_token_even_for_legacy_profiles(tmp_path, monkeypatch):
+    from songmirror.engine.targets.anghami_web import AnghamiSessionClient
 
     def request(self, operation):
         assert operation == "GETplaylists"
         return {"sections": []}
 
-    monkeypatch.setattr(AnghamiBrowserClient, "request", request)
+    monkeypatch.setattr(AnghamiSessionClient, "request", request)
     with TestClient(_app(tmp_path)) as client:
+        client.post("/api/accounts/anghami/config", json={"ANGHAMI_CLIENT_ID": "fixture-legacy-app"})
         account = next(row for row in client.get("/api/accounts").json() if row["provider"] == "anghami")
         assert account["auth_kind"] == "token_paste" and account["callback_url"] is None
-        assert [field["key"] for field in account["fields"]] == ["ANGHAMI_BROWSER_ENDPOINT"]
+        assert [field["key"] for field in account["fields"]] == ["ANGHAMI_SESSION_TOKEN"]
         endpoint = "/api/accounts/anghami/connect"
-        bad = client.post(endpoint, json={"ANGHAMI_BROWSER_ENDPOINT": "http://remote.example:9222"})
+        bad = client.post(endpoint, json={"ANGHAMI_SESSION_TOKEN": "http://remote.example/gateway.php?type=GETplaylists"})
         assert bad.json()["state"] == "error"
-        good = client.post(endpoint, json={"ANGHAMI_BROWSER_ENDPOINT": "http://host.docker.internal:9222"})
+        token = "fixture-session-token-0123456"
+        copied = (f"curl 'https://coussa.anghami.com/gateway.php?type=GETplaylists&sid={token}' "
+                  "-H 'Origin: https://play.anghami.com' -H 'Cookie: example=unused'")
+        good = client.post(endpoint, json={"ANGHAMI_SESSION_TOKEN": copied})
         assert good.json()["capabilities"]["library_write"]
+        settings = client.app.state.account_profiles.settings_for("anghami")
+        assert settings.get("ANGHAMI_SESSION_TOKEN") == token
         account = next(row for row in client.get("/api/accounts").json() if row["provider"] == "anghami")
         assert account["fields"][0]["configured"] and not account["fields"][0]["value"]
 

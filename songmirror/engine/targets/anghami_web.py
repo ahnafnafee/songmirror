@@ -2,11 +2,20 @@
 
 import os
 import re
-from urllib.parse import urlsplit
+import select
+import shutil
+import subprocess
+import sys
+from contextlib import contextmanager, nullcontext
+from tempfile import TemporaryDirectory
+from threading import local
+from urllib.parse import parse_qs, unquote, urlsplit
+from uuid import uuid4
 
 import requests
 from playwright.sync_api import Error as BrowserError, sync_playwright
 
+from ...browser_session import urls_in
 from ..matching import normalize_isrc
 from .base import MirrorTarget, TargetAuthError, TargetCapabilityError, TargetDirectoryIncompleteError, TargetTransientError
 from .music_server import integer, resolve_catalog_track, rows
@@ -16,19 +25,22 @@ PLAYER_URL = "https://play.anghami.com/playlists"
 GATEWAY_URL = "https://coussa.anghami.com/gateway.php"
 ID = re.compile(r"[1-9][0-9]{0,24}")
 _INCOMPLETE = "Anghami returned an incomplete playlist. Sync was stopped."
+_TOKEN = re.compile(r"[A-Za-z0-9_~.+:/=-]{16,4096}")
+_OPERATIONS = {"GETplaylists", "GETplaylistdata", "search", "PUTplaylist", "UPDATEplaylist"}
 
 _WEB_REQUEST = """
-async ({operation, params, form, gateway}) => {
+async ({operation, params, form, gateway, imported}) => {
   if (location.origin !== 'https://play.anghami.com') return {state: 'signed_out'};
-  const session = performance.getEntriesByType('resource').map(e => new URL(e.name)).reverse().find(u =>
-    u.origin + u.pathname === gateway && u.searchParams.get('type') === 'GETplaylists' && u.searchParams.has('sid'));
+  const session = imported ? new URLSearchParams(imported) :
+    performance.getEntriesByType('resource').map(e => new URL(e.name)).reverse().find(u =>
+      u.origin + u.pathname === gateway && u.searchParams.get('type') === 'GETplaylists' && u.searchParams.has('sid'))?.searchParams;
   if (!session) return {state: 'signed_out'};
   let url = new URL(gateway);
   const search = operation === 'search';
   if (search) url.pathname = '/rest/v2/GETSearchResults.view';
   for (const key of ['lang','language','userlanguageprod','output','web2','fingerprint','sid','appsid']) {
-    if (session.searchParams.has(key) && !(search && ['sid','appsid'].includes(key))) {
-      url.searchParams.set(key, session.searchParams.get(key));
+    if (session.has(key) && !(search && ['sid','appsid'].includes(key))) {
+      url.searchParams.set(key, session.get(key));
     }
   }
   if (!search) {
@@ -46,6 +58,117 @@ async ({operation, params, form, gateway}) => {
 """
 
 
+def parse_session_token(raw):
+    error = "Paste the sid value or the signed-in Anghami GETplaylists request."
+    if not isinstance(raw, str) or len(raw) > 64_000:
+        raise ValueError(error)
+    raw = raw.strip()
+    urls = list(urls_in(raw))
+    if urls:
+        # Copy as cURL also includes URLs in headers. Its request URL comes first.
+        url = urlsplit(urls[0])
+        params = parse_qs(url.query)
+        if ((url.scheme, url.netloc, url.path) != ("https", "coussa.anghami.com", "/gateway.php")
+                or params.get("type") != ["GETplaylists"]):
+            raise ValueError(error)
+        tokens = params.get("sid", [])
+        raw = tokens[0] if len(tokens) == 1 else ""
+    else:
+        raw = unquote(raw)
+    if not _TOKEN.fullmatch(raw):
+        raise ValueError(error)
+    return raw
+
+
+def _reply_body(reply, operation):
+    status = reply.get("status")
+    if status in (401, 403) or reply.get("state") == "signed_out":
+        raise TargetAuthError("Anghami rejected this session. Sign in again and copy a fresh session token.")
+    if status is None or status == 429 or status >= 500:
+        raise TargetTransientError("The Anghami web player could not complete the request.")
+    body = reply.get("body")
+    if status == 200 and operation == "GETplaylists" and isinstance(body, dict) and body.get("status") != "ok":
+        raise TargetAuthError("Anghami rejected this session. Sign in again and copy a fresh session token.")
+    if status != 200 or not isinstance(body, dict) or (operation != "search" and body.get("status") != "ok"):
+        raise TargetCapabilityError("Anghami rejected the web-player request.")
+    return body
+
+
+@contextmanager
+def _virtual_display(env):
+    executable = shutil.which("Xvfb") if sys.platform.startswith("linux") else None
+    if executable is None:
+        yield None
+        return
+    read_fd, write_fd = os.pipe()
+    with os.fdopen(read_fd, "rb") as ready:
+        try:
+            server = subprocess.Popen(
+                [executable, "-displayfd", str(write_fd), "-screen", "0", "1280x720x24", "-nolisten", "tcp"],
+                pass_fds=(write_fd,), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, env=env,
+            )
+        finally:
+            os.close(write_fd)
+        try:
+            if not select.select([ready], [], [], 5)[0]:
+                raise TargetTransientError("The Anghami browser display did not start.")
+            number = ready.readline(32).strip().decode("ascii", errors="ignore")
+            if not number.isdecimal():
+                raise TargetTransientError("The Anghami browser display could not start.")
+            yield f":{number}"
+        finally:
+            if server.poll() is None:
+                server.terminate()
+                try:
+                    server.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait()
+
+
+class AnghamiSessionClient:
+    def __init__(self, token):
+        self._session = {"sid": parse_session_token(token), "fingerprint": str(uuid4()), "lang": "en", "language": "en",
+                         "userlanguageprod": "en", "output": "jsonhp", "web2": "true"}
+        self._active = local()
+
+    @contextmanager
+    def connection(self):
+        if getattr(self._active, "page", None) is not None:
+            yield
+            return
+        env_keys = ("PATH", "SYSTEMROOT", "WINDIR", "USERPROFILE", "LOCALAPPDATA", "TMP", "TEMP", "TMPDIR", "LANG",
+                    "PLAYWRIGHT_BROWSERS_PATH")
+        env = {name: os.environ[name] for name in env_keys if name in os.environ}
+        try:
+            with TemporaryDirectory(prefix="songmirror-anghami-") as scratch, _virtual_display(env) as display, sync_playwright() as pw:
+                env.update(XDG_CONFIG_HOME=scratch, XDG_CACHE_HOME=scratch)
+                if display:
+                    env["DISPLAY"] = display
+                browser = pw.chromium.launch(channel="chromium", headless=display is None, env=env, timeout=12_000,
+                                             chromium_sandbox=os.getenv("SONGMIRROR_CONTAINER") != "1")
+                try:
+                    context = browser.new_context(locale="en-US", accept_downloads=False)
+                    page = context.new_page()
+                    page.goto(PLAYER_URL, wait_until="domcontentloaded", timeout=12_000)
+                    self._active.page = page
+                    yield
+                finally:
+                    self._active.page = None
+                    browser.close()
+        except (BrowserError, OSError):
+            raise TargetTransientError("SongMirror could not open Anghami in its background browser.") from None
+
+    def request(self, operation, *, params=None, form=None):
+        if operation not in _OPERATIONS:
+            raise ValueError("Unexpected Anghami web-player operation.")
+        with self.connection():
+            reply = self._active.page.evaluate(_WEB_REQUEST, {"operation": operation, "params": params or {}, "form": form,
+                                                              "gateway": GATEWAY_URL, "imported": self._session})
+            return _reply_body(reply, operation)
+
+
 def normalize_browser_endpoint(value):
     try:
         address = urlsplit(str(value).strip())
@@ -59,11 +182,13 @@ def normalize_browser_endpoint(value):
 
 
 class AnghamiBrowserClient:
+    connection = staticmethod(nullcontext)
+
     def __init__(self, endpoint):
         self._endpoint = normalize_browser_endpoint(endpoint)
 
     def request(self, operation, *, params=None, form=None):
-        if operation not in {"GETplaylists", "GETplaylistdata", "search", "PUTplaylist", "UPDATEplaylist"}:
+        if operation not in _OPERATIONS:
             raise ValueError("Unexpected Anghami web-player operation.")
         try:
             address = urlsplit(self._endpoint)
@@ -89,15 +214,7 @@ class AnghamiBrowserClient:
                                                    "form": form, "gateway": GATEWAY_URL})
         except (BrowserError, requests.RequestException, ValueError, AttributeError):
             raise TargetTransientError("SongMirror could not reach the connected Anghami browser.") from None
-        status = reply.get("status")
-        if status in (401, 403) or reply.get("state") == "signed_out":
-            raise TargetAuthError("Sign in to Anghami and reload your playlist library in the connected browser.")
-        if status is None or status == 429 or status >= 500:
-            raise TargetTransientError("The Anghami web player could not complete the request.")
-        body = reply.get("body")
-        if status != 200 or not isinstance(body, dict) or (operation != "search" and body.get("status") != "ok"):
-            raise TargetCapabilityError("Anghami rejected the web-player request.")
-        return body
+        return _reply_body(reply, operation)
 
 
 def _id(value):
@@ -124,7 +241,7 @@ class AnghamiWebTarget(MirrorTarget):
 
     @classmethod
     def playlist_writes_configured(cls):
-        return bool(os.getenv("ANGHAMI_BROWSER_ENDPOINT"))
+        return bool(os.getenv("ANGHAMI_SESSION_TOKEN") or os.getenv("ANGHAMI_BROWSER_ENDPOINT"))
 
     def browse_playlists(self):
         body = self._api.request("GETplaylists")
@@ -188,10 +305,11 @@ class AnghamiWebTarget(MirrorTarget):
 
     def fetch_playlist(self, playlist_id):
         key = _id(playlist_id)
-        entry = self.find_playlist(key)
-        if entry is not None:
-            return dict(entry, _tracks=self._detail(key, expected=entry["count"])["_tracks"])
-        return self._detail(key)
+        with self._api.connection():
+            entry = self.find_playlist(key)
+            if entry is not None:
+                return dict(entry, _tracks=self._detail(key, expected=entry["count"])["_tracks"])
+            return self._detail(key)
 
     def playlist_tracks(self, playlist):
         if "_tracks" in playlist:
@@ -218,14 +336,15 @@ class AnghamiWebTarget(MirrorTarget):
     def create(self, playlist):
         self._create_public(playlist)
         name, _ = source_playlist_details(playlist)
-        body = self._api.request("PUTplaylist", form={"name": name, "public": "false"})
-        created = body.get("playlist")
-        if not isinstance(created, dict):
-            raise TargetDirectoryIncompleteError("Anghami did not identify the new playlist.")
-        item = self.find_playlist(_id(created.get("id")))
-        if item is None or item["name"] != name or not item["_private"]:
-            raise TargetDirectoryIncompleteError("Anghami did not confirm the new private playlist.")
-        return item
+        with self._api.connection():
+            body = self._api.request("PUTplaylist", form={"name": name, "public": "false"})
+            created = body.get("playlist")
+            if not isinstance(created, dict):
+                raise TargetDirectoryIncompleteError("Anghami did not identify the new playlist.")
+            item = self.find_playlist(_id(created.get("id")))
+            if item is None or item["name"] != name or not item["_private"]:
+                raise TargetDirectoryIncompleteError("Anghami did not confirm the new private playlist.")
+            return item
 
     def _verify(self, key, expected):
         actual = self._detail(key, expected=len(expected))["_tracks"]
@@ -234,26 +353,28 @@ class AnghamiWebTarget(MirrorTarget):
 
     def add(self, playlist, track_ids):
         desired = list(dict.fromkeys(_id(key) for key in track_ids))
-        current = self._owned(playlist)
-        ordered = [entry["id"] for entry in current["_tracks"]]
-        existing = set(ordered)
-        added = [key for key in desired if key not in existing]
-        for key in added:
-            self._api.request("PUTplaylist", form={"playlistid": current["id"], "action": "append", "songID": key})
-        if added:
-            self._verify(current["id"], ordered + added)
-        return added
+        with self._api.connection():
+            current = self._owned(playlist)
+            ordered = [entry["id"] for entry in current["_tracks"]]
+            existing = set(ordered)
+            added = [key for key in desired if key not in existing]
+            for key in added:
+                self._api.request("PUTplaylist", form={"playlistid": current["id"], "action": "append", "songID": key})
+            if added:
+                self._verify(current["id"], ordered + added)
+            return added
 
     def remove(self, playlist, track):
         key = _id(track.get("id"))
-        current = self._owned(playlist)
-        ordered = [entry["id"] for entry in current["_tracks"]]
-        if ordered.count(key) != 1:
-            return False
-        self._api.request("PUTplaylist", form={"playlistid": current["id"], "action": "delete", "songid": key})
-        ordered.remove(key)
-        self._verify(current["id"], ordered)
-        return True
+        with self._api.connection():
+            current = self._owned(playlist)
+            ordered = [entry["id"] for entry in current["_tracks"]]
+            if ordered.count(key) != 1:
+                return False
+            self._api.request("PUTplaylist", form={"playlistid": current["id"], "action": "delete", "songid": key})
+            ordered.remove(key)
+            self._verify(current["id"], ordered)
+            return True
 
     def search_candidates(self, query, *, limit=5):
         result = self._api.request("search", params={"query": query, "page": "0", "filter_type": "top",

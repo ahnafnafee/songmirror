@@ -290,13 +290,6 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
       <>{t("To create or edit playlists, set the Playlist Folder in Lyrion’s Basic Settings.")}</>,
     ],
   },
-  anghami: {
-    intro: t("Use Anghami playlists as a source for sync and transfers."),
-    steps: [
-      <Trans key="step-5" i18nKey={"Copy the callback URL shown below. In the <link1>Anghami Developer Portal</link1>, register an app and add that exact URL as its redirect URI."} components={{ link1: <GuideLink href="https://developers.anghami.com" /> }} />,
-      <>{t("Copy the app’s Client ID below and select Save and continue. Sign in to Anghami and approve access when prompted.")}</>,
-    ],
-  },
   qqmusic: {
     intro: t("Paste a QQ Music playlist link to use it as a source."),
     steps: [
@@ -809,14 +802,13 @@ function FieldsStep({
   useTranslation()
   const anghamiBrowser = account.provider === 'anghami' && account.auth_kind === 'token_paste'
   const guide = guideOverride ?? (anghamiBrowser ? {
-    intro: t("Sync playlists through the signed-in Anghami web player. Keep its playlist tab open during sync."),
+    intro: t("Sync playlists through the signed-in Anghami web player."),
     steps: [
-      <span key="chrome">{t("Open a dedicated Chrome profile with a local DevTools port enabled.")}{' '}
-        <Code>--remote-debugging-port=9222</Code>{' '}<Code>--user-data-dir=…</Code></span>,
-      <Trans key="player" i18nKey="Sign in to <player>Anghami</player> and leave Your Library open."
+      <Trans key="player" i18nKey="Sign in to <player>Anghami</player> and open Your Library."
         components={{ player: <GuideLink href="https://play.anghami.com/playlists" /> }} />,
-      <Trans key="address" i18nKey="Enter the Chrome DevTools address, for example <local/> or <docker/> from Docker."
-        components={{ local: <Code>http://127.0.0.1:9222</Code>, docker: <Code>http://host.docker.internal:9222</Code> }} />,
+      <Trans key="request" i18nKey="Open Developer Tools → Network, reload the page, and filter for <request/>. Choose Copy → Copy as cURL (bash)."
+        components={{ request: <Code>GETplaylists</Code> }} />,
+      t("Paste the copied request or its sid value below."),
     ],
   } : account.auth_kind === 'public_link' ? {
     intro: t("Use public playlists as sources for sync and transfers. No developer key or sign-in is needed."),

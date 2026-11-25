@@ -196,7 +196,7 @@ def _status_payload(request, profile):
         "is_default": profile.is_default,
         "removable": not profile.is_default,
         "show_in_accounts": visible,
-        "auth_kind": connector.auth_kind,
+        "auth_kind": connector.setup_auth_kind,
         "fields": fields,
         **status_values,
         "transferable": transferable,
@@ -229,7 +229,7 @@ def _callback_url(request, profile, connector):
     Best-effort: a misconfigured SONGMIRROR_PUBLIC_URL must not take down the
     whole accounts list, so the field is simply absent.
     """
-    if connector.auth_kind != "oauth_redirect":
+    if connector.setup_auth_kind != "oauth_redirect":
         return None
     try:
         return _redirect_uri(request, _callback_id(profile))
@@ -305,8 +305,8 @@ def connect(account_id: str, request: Request, body: dict | None = Body(default=
     profiles = request.app.state.account_profiles
     connector = _conn(request, profile.id)
     with profiles.activate(profile.id):
-        # Public history needs only a key and username, without API approval.
-        if profile.provider == "lastfm" and body is not None:
+        # These wizards can submit a direct connection over an older OAuth setup.
+        if profile.provider in {"lastfm", "anghami"} and body is not None:
             status = connector.submit(body)
             return {"kind": "token_paste", **_status_values(profile.provider, status)}
         if connector.auth_kind == "oauth_redirect":

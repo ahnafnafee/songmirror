@@ -74,6 +74,10 @@ class Connector:
     def setup_fields(self):
         return self.config_fields
 
+    @property
+    def setup_auth_kind(self):
+        return self.auth_kind
+
     def status(self) -> ConnStatus:
         raise NotImplementedError
 

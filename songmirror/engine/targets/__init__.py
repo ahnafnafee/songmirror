@@ -13,7 +13,7 @@ import os
 
 from .amazon_music import AmazonMusicTarget
 from .anghami import AnghamiTarget
-from .anghami_web import AnghamiBrowserClient, AnghamiWebTarget
+from .anghami_web import AnghamiBrowserClient, AnghamiSessionClient, AnghamiWebTarget
 from .apple import AppleMusicTarget
 from .base import (
     MirrorTarget,
@@ -75,10 +75,12 @@ def _rest_provider(target_cls, label, **kwargs):
 
 
 def _anghami():
+    token = os.getenv("ANGHAMI_SESSION_TOKEN")
     endpoint = os.getenv("ANGHAMI_BROWSER_ENDPOINT")
-    if endpoint:
+    if token or endpoint:
         try:
-            return AnghamiWebTarget(AnghamiBrowserClient(endpoint))
+            client = AnghamiSessionClient(token) if token else AnghamiBrowserClient(endpoint)
+            return AnghamiWebTarget(client)
         except ValueError:
             return None
     return _rest_provider(AnghamiTarget, "Anghami")
