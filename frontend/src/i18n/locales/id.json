@@ -1,4 +1,5 @@
 {
+  "Connected accounts": "Akun terhubung",
   "Playlist layout": "Tata letak playlist",
   "Grid": "Grid",
   "Rows": "Baris",
@@ -94,6 +95,8 @@
   "Skip tour": "Lewati tur",
   "Start tour": "Mulai tur",
   "Step {{current, number}} of {{total, number}}": "Langkah {{current, number}} dari {{total, number}}",
+  "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "Tindakan ini menghapus akun dari SongMirror dan menghapus informasi masuk yang tersimpan. Sinkronisasi dapat berlanjut jika didukung oleh akun yang tersisa.",
+  "Updating account…": "Memperbarui akun…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "Gunakan Lanjutkan untuk membuka kembali impor yang siap, dijeda, atau gagal dan melanjutkan peninjauan atau pembuatannya.",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "Gunakan Transfer untuk menyalin satu kali, Sinkronisasi untuk pembaruan berkala, atau Buat Playlist untuk mengimpor daftar lagu.",
   "Use Your library for a connected account, or Paste a link for a public playlist.": "Gunakan Pustaka Anda untuk akun terhubung atau Tempel tautan untuk playlist publik.",
@@ -1043,7 +1046,6 @@
   "This applies real changes to your connected services right away, outside its normal schedule. Removals are still capped per pass.": "Ini segera menerapkan perubahan nyata pada layanan Anda yang terhubung, di luar jadwal normalnya. Penghapusan masih dibatasi per pass.",
   "This authority set has not completed a trusted pass before. Additions may proceed, but SongMirror held every removal until the next complete pass can compare against this baseline.": "Kumpulan otoritas ini belum pernah menyelesaikan pass tepercaya sebelumnya. Penambahan dapat dilanjutkan, tetapi SongMirror menahan setiap penghapusan hingga lintasan lengkap berikutnya dapat dibandingkan dengan garis dasar ini.",
   "This changes {{accountName}} directly. If Spotify owns this mirror, make the same edit in Spotify or the next sync will restore it.": "Ini mengubah {{accountName}} secara langsung. Jika Spotify memiliki mirror ini, lakukan pengeditan yang sama di Spotify atau sinkronisasi berikutnya akan memulihkannya.",
-  "This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account.": "Ini menghapus kredensial dan file sesi yang tersimpan di profil ini. Sinkronisasi yang dipilih akan berhenti hingga Anda memilih akun lain.",
   "This folder is read-only. Open or select a writable subfolder.": "Folder ini hanya dapat dibaca. Buka atau pilih subfolder yang dapat ditulis.",
   "THIS PASS": "LULUS INI",
   "This playlist is empty": "Daftar putar ini kosong",

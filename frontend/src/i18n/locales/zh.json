@@ -1,4 +1,5 @@
 {
+  "Connected accounts": "已连接的账户",
   "Playlist layout": "播放列表布局",
   "Grid": "网格",
   "Rows": "行",
@@ -94,6 +95,8 @@
   "Skip tour": "跳过导览",
   "Start tour": "开始导览",
   "Step {{current, number}} of {{total, number}}": "第 {{current, number}} 步，共 {{total, number}} 步",
+  "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "这会从 SongMirror 中移除此账户并清除保存的登录信息。如果其余账户支持同步，相关同步仍可继续。",
+  "Updating account…": "正在更新账户…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "使用继续重新打开就绪、已暂停或失败的导入，继续检查或创建。",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "一次性复制请使用传输，定期更新请使用同步，导入歌曲清单请使用创建播放列表。",
   "Use Your library for a connected account, or Paste a link for a public playlist.": "已连接账号的列表请使用你的音乐库，公开播放列表请使用粘贴链接。",
@@ -1043,7 +1046,6 @@
   "This applies real changes to your connected services right away, outside its normal schedule. Removals are still capped per pass.": "这会立即对您的连接服务应用真正的更改，超出正常计划。每次通行证的清除量仍然有上限。",
   "This authority set has not completed a trusted pass before. Additions may proceed, but SongMirror held every removal until the next complete pass can compare against this baseline.": "该权限集之前未完成可信传递。添加可能会继续进行，但 SongMirror 会保留每次删除，直到下一次完整的通过可以与此基线进行比较。",
   "This changes {{accountName}} directly. If Spotify owns this mirror, make the same edit in Spotify or the next sync will restore it.": "这直接改变了{{accountName}}。如果 Spotify 拥有此镜像，请在 Spotify 中进行相同的编辑，否则下次同步将恢复它。",
-  "This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account.": "这将删除此配置文件保存的凭据和会话文件。选择它的同步将停止，直到您选择另一个帐户。",
   "This folder is read-only. Open or select a writable subfolder.": "该文件夹是只读的。打开或选择可写子文件夹。",
   "THIS PASS": "此通行证",
   "This playlist is empty": "该播放列表为空",

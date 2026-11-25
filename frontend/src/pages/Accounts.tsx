@@ -1,5 +1,5 @@
 import { t, useTranslation } from '@/i18n'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { LuPlus } from 'react-icons/lu'
 
 import { api, errorMessage } from '@/api'
@@ -33,7 +33,24 @@ export default function Accounts() {
   const [adding, setAdding] = useState(false)
   const [setup, setSetup] = useState<Account | null>(null)
   const [addError, setAddError] = useState<string | null>(null)
+  const [updating, setUpdating] = useState<string[]>([])
   const shownAccounts = accounts?.filter(isListedAccount) ?? []
+  const reconnect = shownAccounts.filter(({ state }) => state === 'expired' || state === 'error')
+  const unconfigured = shownAccounts.filter(({ state }) => state === 'unconfigured')
+  const connected = shownAccounts.filter(({ state }) => state === 'connected')
+  const attentionCount = reconnect.length + unconfigured.length
+
+  async function refreshAccount(id: string) {
+    setUpdating(ids => [...ids, id])
+    try {
+      await refresh()
+    } finally {
+      setUpdating(ids => {
+        const completed = ids.indexOf(id)
+        return ids.filter((_, index) => index !== completed)
+      })
+    }
+  }
 
   async function addProfile(provider: ServiceId | '') {
     if (!provider || adding) return
@@ -92,8 +109,17 @@ export default function Accounts() {
         </LoadingStatus>
       ) : shownAccounts.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {shownAccounts.map((account) => (
-            <AccountCard key={account.id} account={account} onChanged={refresh} />
+          {attentionCount > 0 && (
+            <h2 className="col-span-full text-base font-bold text-text">{t("Needs a look")}</h2>
+          )}
+          {[...reconnect, ...unconfigured, ...connected].map((account, index) => (
+            <Fragment key={account.id}>
+              {index === attentionCount && (
+                <h2 className="col-span-full text-base font-bold text-text">{t("Connected accounts")}</h2>
+              )}
+              <AccountCard account={account} updating={updating.includes(account.id)}
+                onChanged={() => refreshAccount(account.id)} />
+            </Fragment>
           ))}
         </div>
       ) : accounts ? <EmptyState title={t("No accounts added")} /> : null}
@@ -103,8 +129,8 @@ export default function Accounts() {
           open
           editName
           onClose={() => setSetup(null)}
-          onConnected={() => { setSetup(null); void refresh() }}
-          onChanged={refresh}
+          onConnected={() => { setSetup(null); void refreshAccount(setup.id) }}
+          onChanged={() => void refreshAccount(setup.id)}
         />
       )}
     </div>

@@ -1,4 +1,5 @@
 {
+  "Connected accounts": "Tài khoản đã kết nối",
   "Playlist layout": "Bố cục danh sách phát",
   "Grid": "Lưới",
   "Rows": "Hàng",
@@ -94,6 +95,8 @@
   "Skip tour": "Bỏ qua hướng dẫn",
   "Start tour": "Bắt đầu hướng dẫn",
   "Step {{current, number}} of {{total, number}}": "Bước {{current, number}} trên {{total, number}}",
+  "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "Tài khoản sẽ bị gỡ khỏi SongMirror và thông tin đăng nhập đã lưu sẽ bị xóa. Các lượt đồng bộ có thể tiếp tục nếu những tài khoản còn lại hỗ trợ.",
+  "Updating account…": "Đang cập nhật tài khoản…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "Dùng Tiếp tục để mở lại lần nhập sẵn sàng, tạm dừng hoặc thất bại và tiếp tục kiểm tra hay tạo.",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "Dùng Chuyển để sao chép một lần, Đồng bộ để cập nhật định kỳ hoặc Tạo danh sách phát để nhập danh sách bài hát.",
   "Use Your library for a connected account, or Paste a link for a public playlist.": "Dùng Thư viện của bạn cho tài khoản đã kết nối hoặc Dán liên kết cho danh sách phát công khai.",
@@ -1043,7 +1046,6 @@
   "This applies real changes to your connected services right away, outside its normal schedule. Removals are still capped per pass.": "Điều này áp dụng ngay những thay đổi thực sự cho các dịch vụ được kết nối của bạn, ngoài lịch trình thông thường. Việc xóa vẫn bị giới hạn trên mỗi lượt.",
   "This authority set has not completed a trusted pass before. Additions may proceed, but SongMirror held every removal until the next complete pass can compare against this baseline.": "Bộ quyền hạn này trước đây chưa hoàn thành đường chuyền đáng tin cậy. Việc bổ sung có thể tiếp tục, nhưng SongMirror sẽ giữ lại mọi lần xóa cho đến khi lần vượt qua hoàn chỉnh tiếp theo có thể so sánh với đường cơ sở này.",
   "This changes {{accountName}} directly. If Spotify owns this mirror, make the same edit in Spotify or the next sync will restore it.": "Điều này thay đổi trực tiếp {{accountName}}. Nếu Spotify sở hữu máy nhân bản này, hãy thực hiện chỉnh sửa tương tự trong Spotify nếu không lần đồng bộ hóa tiếp theo sẽ khôi phục nó.",
-  "This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account.": "Thao tác này sẽ xóa thông tin xác thực đã lưu và tệp phiên của hồ sơ này. Đồng bộ hóa việc chọn nó sẽ dừng cho đến khi bạn chọn một tài khoản khác.",
   "This folder is read-only. Open or select a writable subfolder.": "Thư mục này ở chế độ chỉ đọc. Mở hoặc chọn thư mục con có thể ghi.",
   "THIS PASS": "THƯỢNG NÀY",
   "This playlist is empty": "Danh sách phát này trống",

@@ -1,4 +1,5 @@
 {
+  "Connected accounts": "कनेक्ट किए गए खाते",
   "Playlist layout": "प्लेलिस्ट का लेआउट",
   "Grid": "ग्रिड",
   "Rows": "पंक्तियाँ",
@@ -94,6 +95,8 @@
   "Skip tour": "टूर छोड़ें",
   "Start tour": "टूर शुरू करें",
   "Step {{current, number}} of {{total, number}}": "{{total, number}} में से चरण {{current, number}}",
+  "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "इससे खाता SongMirror से हट जाएगा और उसकी सहेजी गई साइन-इन जानकारी मिट जाएगी। बाकी खाते समर्थन करते हैं, तो सिंक जारी रह सकता है।",
+  "Updating account…": "खाता अपडेट हो रहा है…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "तैयार, रुके या विफल आयात को फिर खोलकर उसकी समीक्षा या निर्माण जारी रखने के लिए फिर शुरू करें का उपयोग करें।",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "एक बार कॉपी करने के लिए ट्रांसफ़र, नियमित अपडेट के लिए सिंक और गानों की सूची आयात करने के लिए प्लेलिस्ट बनाएँ का उपयोग करें।",
   "Use Your library for a connected account, or Paste a link for a public playlist.": "जुड़े खाते के लिए आपकी लाइब्रेरी या सार्वजनिक प्लेलिस्ट के लिए लिंक पेस्ट करें का उपयोग करें।",
@@ -1043,7 +1046,6 @@
   "This applies real changes to your connected services right away, outside its normal schedule. Removals are still capped per pass.": "यह आपकी कनेक्टेड सेवाओं में उसके सामान्य शेड्यूल के बाहर तुरंत वास्तविक परिवर्तन लागू करता है। प्रति पास निष्कासन अभी भी सीमित है।",
   "This authority set has not completed a trusted pass before. Additions may proceed, but SongMirror held every removal until the next complete pass can compare against this baseline.": "इस प्राधिकरण सेट ने पहले कोई विश्वसनीय पास पूरा नहीं किया है। परिवर्धन आगे बढ़ सकता है, लेकिन SongMirror ने प्रत्येक निष्कासन को तब तक रोके रखा जब तक कि अगले पूर्ण पास की तुलना इस आधार रेखा से नहीं की जा सकती।",
   "This changes {{accountName}} directly. If Spotify owns this mirror, make the same edit in Spotify or the next sync will restore it.": "यह सीधे {{accountName}} को बदल देता है। यदि Spotify के पास यह दर्पण है, तो Spotify में वही संपादन करें या अगला सिंक इसे पुनर्स्थापित कर देगा।",
-  "This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account.": "इससे इस प्रोफ़ाइल के सहेजे गए क्रेडेंशियल और सत्र फ़ाइलें हटा दी जाती हैं। इसे चुनने वाले सिंक तब तक रुकेंगे जब तक आप दूसरा खाता नहीं चुन लेते।",
   "This folder is read-only. Open or select a writable subfolder.": "यह फ़ोल्डर केवल-पढ़ने के लिए है। लिखने योग्य सबफ़ोल्डर खोलें या चुनें.",
   "THIS PASS": "यह पास",
   "This playlist is empty": "यह प्लेलिस्ट खाली है",

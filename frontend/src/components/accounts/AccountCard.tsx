@@ -12,6 +12,7 @@ import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ServiceLogo } from '../ui/ServiceLogo'
+import { Spinner } from '../ui/Spinner'
 import { StatusPill } from '../ui/StatusPill'
 import { TextField } from '../ui/TextField'
 import { ConnectWizardModal } from './ConnectWizardModal'
@@ -53,8 +54,9 @@ function borderClass(state: Account['state']): string {
   return 'border-border'
 }
 
-export function AccountCard({ account, onChanged }: {
+export function AccountCard({ account, updating, onChanged }: {
   account: Account
+  updating: boolean
   /** Awaited before the card leaves its pending state, so a disconnect cannot
    * keep rendering the stale "Connected" while the account list reloads. That
    * reload revalidates every provider live and takes seconds. */
@@ -139,7 +141,12 @@ export function AccountCard({ account, onChanged }: {
             : account.playlist_browser?.active ? AUTH_KIND_LABELS.token_paste
             : AUTH_KIND_LABELS[account.auth_kind]
         }</span>
-        <StatusPill state={account.state} className="ms-auto" />
+        {updating ? (
+          <span role="status" className="ms-auto inline-flex items-center gap-1.5 text-xs text-text-2">
+            <Spinner className="size-3 motion-reduce:animate-none" />
+            {t("Updating account…")}
+          </span>
+        ) : <StatusPill state={account.state} className="ms-auto" />}
       </div>
 
       <p className="text-[13px] leading-relaxed text-text-2">{account.playlist_browser
@@ -182,7 +189,7 @@ export function AccountCard({ account, onChanged }: {
       {error && !confirmingRemove && <p role="alert" className="text-xs text-danger">{error}</p>}
 
       <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <Button variant={isConnected ? "secondary" : "primary"} size="sm" onClick={() => setWizardOpen(true)}>
+        <Button variant={isConnected ? "secondary" : "primary"} size="sm" disabled={updating} onClick={() => setWizardOpen(true)}>
           {isConnected ? t("Reconnect") : t("Connect")}
         </Button>
         {isConnected && (
@@ -227,7 +234,7 @@ export function AccountCard({ account, onChanged }: {
       <ConfirmDialog
         open={confirmingRemove}
         title={t("Remove {{accountName}}?", { accountName: account.name })}
-        description={t("This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account.")}
+        description={t("This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.")}
         confirmLabel={t("Remove profile")}
         danger
         loading={disconnecting}

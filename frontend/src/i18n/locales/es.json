@@ -1,4 +1,5 @@
 {
+  "Connected accounts": "Cuentas conectadas",
   "Playlist layout": "Diseño de listas",
   "Grid": "Cuadrícula",
   "Rows": "Filas",
@@ -94,6 +95,8 @@
   "Skip tour": "Omitir recorrido",
   "Start tour": "Iniciar recorrido",
   "Step {{current, number}} of {{total, number}}": "Paso {{current, number}} de {{total, number}}",
+  "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "Esto elimina la cuenta de SongMirror y borra sus datos de inicio de sesión guardados. Las sincronizaciones pueden continuar si las cuentas restantes son compatibles.",
+  "Updating account…": "Actualizando cuenta…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "Usa Reanudar para abrir una importación lista, pausada o fallida y continuar su revisión o creación.",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "Usa Transferencias para una copia puntual, Sync para actualizaciones periódicas o Crear lista para importar una lista de canciones.",
   "Use Your library for a connected account, or Paste a link for a public playlist.": "Usa Tu biblioteca para una cuenta conectada o Pegar un enlace para una lista pública.",
@@ -1054,7 +1057,6 @@
   "This applies real changes to your connected services right away, outside its normal schedule. Removals are still capped per pass.": "Esto aplica cambios reales a tus servicios conectados de inmediato, fuera de su horario normal. Las mudanzas todavía tienen un límite por pase.",
   "This authority set has not completed a trusted pass before. Additions may proceed, but SongMirror held every removal until the next complete pass can compare against this baseline.": "Este conjunto de autoridades no ha completado un pase confiable antes. Es posible que se realicen adiciones, pero SongMirror mantuvo todas las eliminaciones hasta que la siguiente pasada completa pueda compararse con esta línea de base.",
   "This changes {{accountName}} directly. If Spotify owns this mirror, make the same edit in Spotify or the next sync will restore it.": "Esto cambia {{accountName}} directamente. Si Spotify posee este espejo, realice la misma edición en Spotify o la próxima sincronización lo restaurará.",
-  "This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account.": "Esto elimina las credenciales guardadas y los archivos de sesión de este perfil. Las sincronizaciones que la seleccionen se detendrán hasta que elijas otra cuenta.",
   "This folder is read-only. Open or select a writable subfolder.": "Esta carpeta es de solo lectura. Abra o seleccione una subcarpeta grabable.",
   "THIS PASS": "ESTE PASE",
   "This playlist is empty": "Esta lista de reproducción está vacía",

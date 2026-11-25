@@ -17,6 +17,7 @@ async function main() {
   const base = `http://127.0.0.1:${server.address().port}`
   const browser = await chromium.launch({ headless: true })
   const errors = [], connections = [], saved = [], profiles = [], removals = []
+  let holdAccountsRefresh
   const guideSteps = [
     ['Emby', 'emby', 'AuthenticateByName'],
     ['Plex', 'plex', 'X-Plex-Token'],
@@ -26,6 +27,9 @@ async function main() {
     ['QQ Music', 'qqmusic', 'QQ Music Skills'],
   ]
   const accounts = [
+    { id: 'apple', provider: 'apple', name: 'Apple Music', state: 'connected', fields: [], transferable: false },
+    { id: 'amazon', provider: 'amazon', name: 'Amazon Music', state: 'expired', auth_kind: 'token_paste',
+      fields: [], transferable: true },
     { id: 'cloud', provider: 'soundcloud', name: 'SoundCloud', provider_name: 'SoundCloud',
       auth_kind: 'oauth_redirect', fields: [], transferable: true, source_capable: true,
       supports_playlists: true, supports_favorites: false,
@@ -42,6 +46,7 @@ async function main() {
       capabilities: { library_read: true, library_write: true, favorites_write: true, public_playlist_read: true } },
     ...guideSteps.map(([name, provider]) => ({
       id: provider, provider, name, provider_name: name, fields: [], transferable: true,
+      state: provider === 'emby' ? 'error' : 'unconfigured',
     })),
     { id: 'gaana', provider: 'gaana', name: 'Gaana', provider_name: 'Gaana', auth_kind: 'public_link',
       transferable: true, source_capable: false, supports_playlists: true,
@@ -59,7 +64,7 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } })
   page.setDefaultTimeout(10_000)
   page.on('pageerror', error => errors.push(error.message))
-  await page.route('**/api/**', route => {
+  await page.route('**/api/**', async route => {
     const request = route.request(), url = new URL(request.url())
     const send = body => route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) })
     if (url.pathname === '/api/accounts') {
@@ -77,6 +82,7 @@ async function main() {
         accounts.push(added)
         return send(added)
       }
+      if (holdAccountsRefresh) await holdAccountsRefresh
       return send(accounts)
     }
     if (url.pathname === '/api/accounts/new-profile' && request.method() === 'PATCH') {
@@ -159,6 +165,19 @@ async function main() {
     await page.goto(base + '/accounts')
     const picker = page.getByRole('button', { name: 'Add account', exact: true })
     const search = page.getByRole('combobox', { name: 'Search', exact: true })
+    const accountCards = page.locator('[data-tour="account-card"]')
+    const attention = page.getByRole('heading', { name: 'Needs a look', exact: true })
+    const connected = page.getByRole('heading', { name: 'Connected accounts', exact: true })
+    const amazon = accountCards.filter({ has: page.getByRole('heading', { name: 'Amazon Music', exact: true }) })
+    await attention.waitFor()
+    assert.deepEqual((await accountCards.getByRole('heading', { level: 3 }).allTextContents()).slice(0, 2), ['Amazon Music', 'Emby'])
+    assert.ok((await attention.boundingBox()).y < (await amazon.boundingBox()).y)
+    assert.ok((await amazon.boundingBox()).y < (await connected.boundingBox()).y)
+    assert.ok((await connected.boundingBox()).y < (await page.getByRole('heading', { name: 'Apple Music' }).boundingBox()).y)
+    await amazon.getByRole('button', { name: 'Reconnect', exact: true }).click()
+    const amazonDialog = page.getByRole('dialog', { name: 'Connect Amazon Music', exact: true })
+    assert.equal(await amazonDialog.getByRole('link', { name: 'music.amazon.com', exact: true }).getAttribute('href'), 'https://music.amazon.com/')
+    await amazonDialog.getByRole('button', { name: 'Close', exact: true }).click()
     assert.equal(await page.getByRole('heading', { name: 'Audiomack', exact: true }).count(), 0)
     await picker.click()
     let menu = page.getByRole('listbox', { name: 'Add account', exact: true })
@@ -264,12 +283,22 @@ async function main() {
     await audioSetup.getByRole('textbox', { name: 'Signed-in playlist request' }).fill(audioRequest)
     await audioSetup.getByLabel('Signing cookie', { exact: true }).fill(signingCookie)
     const audioResponse = page.waitForResponse(response => response.url().endsWith('/audiomack/playlist-browser'))
-    await audioSetup.getByRole('button', { name: 'Connect account', exact: true }).click()
-    assert.deepEqual((await audioResponse).request().postDataJSON(), { request: audioRequest, signing_cookie: signingCookie })
-    await audioSetup.waitFor({ state: 'hidden' })
     const audioCard = page.locator('[data-tour="account-card"]').filter({
       has: page.getByRole('heading', { name: 'Audiomack', exact: true }),
     })
+    let releaseAccountsRefresh
+    holdAccountsRefresh = new Promise(resolve => { releaseAccountsRefresh = resolve })
+    try {
+      await audioSetup.getByRole('button', { name: 'Connect account', exact: true }).click()
+      assert.deepEqual((await audioResponse).request().postDataJSON(), { request: audioRequest, signing_cookie: signingCookie })
+      await audioSetup.waitFor({ state: 'hidden' })
+      await audioCard.getByRole('status').filter({ hasText: 'Updating account…' }).waitFor()
+    } finally {
+      holdAccountsRefresh = undefined
+      releaseAccountsRefresh()
+    }
+    await audioCard.getByText('Connected', { exact: true }).waitFor()
+    assert.ok((await connected.boundingBox()).y < (await audioCard.boundingBox()).y)
     await audioCard.getByRole('button', { name: 'Remove', exact: true }).click()
     const confirm = page.getByRole('dialog', { name: 'Remove Audiomack?', exact: true })
     await confirm.getByRole('button', { name: 'Cancel', exact: true }).click()
@@ -287,7 +316,8 @@ async function main() {
     assert.equal(await roster.getByText('Audiomack', { exact: true }).count(), 0)
     assert.equal(await page.getByText("Audiomack isn't set up", { exact: true }).count(), 0)
     const listedCount = accounts.filter(account => account.show_in_accounts).length
-    await page.getByText(`0 of ${listedCount} up to date`, { exact: true }).waitFor()
+    const connectedCount = accounts.filter(account => account.show_in_accounts && account.state === 'connected').length
+    await page.getByText(`${connectedCount} of ${listedCount} up to date`, { exact: true }).waitFor()
     await page.getByRole('button', { name: "What's new Unread updates", exact: true }).click()
     const updates = page.getByRole('dialog', { name: "What's new", exact: true })
     await updates.getByText('Audiomack', { exact: true }).waitFor()
@@ -295,7 +325,7 @@ async function main() {
     await page.reload()
     await page.getByRole('button', { name: "What's new", exact: true }).waitFor()
     await page.goto(base + '/accounts')
-    console.log("PASS: the dashboard omits unadded services, and What's new marks a viewed update as read")
+    console.log("PASS: Accounts puts attention first, links Amazon Music, and shows connection refresh progress. The dashboard omits unadded services and marks viewed updates as read.")
     const cloudCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'SoundCloud', exact: true }) })
     await cloudCard.getByRole('button', { name: 'Connect', exact: true }).click()
     const cloudDialog = page.getByRole('dialog')

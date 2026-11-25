@@ -1,4 +1,5 @@
 {
+  "Connected accounts": "接続済みのアカウント",
   "Playlist layout": "プレイリストの表示形式",
   "Grid": "グリッド",
   "Rows": "行",
@@ -94,6 +95,8 @@
   "Skip tour": "ツアーをスキップ",
   "Start tour": "ツアーを開始",
   "Step {{current, number}} of {{total, number}}": "ステップ {{current, number}} / {{total, number}}",
+  "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "アカウントが SongMirror から削除され、保存済みのログイン情報も消去されます。残りのアカウントで対応できる同期は継続できます。",
+  "Updating account…": "アカウントを更新中…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "再開から準備完了、一時停止、失敗したインポートを開き、確認や作成を続けます。",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "一度だけのコピーには転送、定期更新には同期、曲リストのインポートにはプレイリスト作成を使います。",
   "Use Your library for a connected account, or Paste a link for a public playlist.": "接続済みアカウントにはライブラリを、公開プレイリストにはリンクを貼り付けるを使います。",
@@ -1043,7 +1046,6 @@
   "This applies real changes to your connected services right away, outside its normal schedule. Removals are still capped per pass.": "これにより、通常のスケジュール外に、接続されているサービスに実際の変更がすぐに適用されます。削除はパスごとに制限されています。",
   "This authority set has not completed a trusted pass before. Additions may proceed, but SongMirror held every removal until the next complete pass can compare against this baseline.": "この権限セットはこれまでにトラステッド パスを完了していません。追加は続行できますが、SongMirror は次の完全なパスがこのベースラインと比較できるまですべての削除を保持しました。",
   "This changes {{accountName}} directly. If Spotify owns this mirror, make the same edit in Spotify or the next sync will restore it.": "これにより、{{accountName}} が直接変更されます。 Spotify がこのミラーを所有している場合は、Spotify で同じ編集を行うか、次回の同期でミラーが復元されます。",
-  "This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account.": "これにより、このプロファイルに保存されている認証情報とセッション ファイルが削除されます。それを選択した同期は、別のアカウントを選択するまで停止します。",
   "This folder is read-only. Open or select a writable subfolder.": "このフォルダーは読み取り専用です。書き込み可能なサブフォルダーを開くか選択します。",
   "THIS PASS": "このパス",
   "This playlist is empty": "このプレイリストは空です",

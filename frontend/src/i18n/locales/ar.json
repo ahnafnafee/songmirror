@@ -1,4 +1,5 @@
 {
+  "Connected accounts": "الحسابات المتصلة",
   "Playlist layout": "تخطيط قوائم التشغيل",
   "Grid": "شبكة",
   "Rows": "صفوف",
@@ -94,6 +95,8 @@
   "Skip tour": "تخطي الجولة",
   "Start tour": "بدء الجولة",
   "Step {{current, number}} of {{total, number}}": "الخطوة {{current, number}} من {{total, number}}",
+  "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "يؤدي هذا إلى إزالة الحساب من SongMirror وحذف بيانات تسجيل الدخول المحفوظة. يمكن أن تستمر عمليات المزامنة إذا كانت الحسابات المتبقية تدعمها.",
+  "Updating account…": "جارٍ تحديث الحساب…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "استخدم استئناف لإعادة فتح استيراد جاهز أو متوقف مؤقتًا أو فاشل، ومتابعة مراجعته أو إنشائه.",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "استخدم النقل للنسخ مرة واحدة، والمزامنة للتحديثات المتكررة، وإنشاء قائمة تشغيل لاستيراد قائمة مقاطع.",
   "Use Your library for a connected account, or Paste a link for a public playlist.": "استخدم مكتبتك لحساب متصل، أو لصق رابط لقائمة تشغيل عامة.",
@@ -1087,7 +1090,6 @@
   "This applies real changes to your connected services right away, outside its normal schedule. Removals are still capped per pass.": "يؤدي هذا إلى تطبيق تغييرات حقيقية على خدماتك المتصلة على الفور، خارج جدولها الزمني العادي. لا تزال عمليات الإزالة محدودة لكل تمريرة.",
   "This authority set has not completed a trusted pass before. Additions may proceed, but SongMirror held every removal until the next complete pass can compare against this baseline.": "لم تكمل مجموعة السلطة هذه تمريرة موثوقة من قبل. قد تستمر الإضافات، لكن SongMirror أبقى كل إزالة حتى يمكن مقارنة التمريرة الكاملة التالية بخط الأساس هذا.",
   "This changes {{accountName}} directly. If Spotify owns this mirror, make the same edit in Spotify or the next sync will restore it.": "يؤدي هذا إلى تغيير {{accountName}} مباشرة. إذا كان Spotify يمتلك هذه النسخة المتطابقة، فقم بإجراء نفس التعديل في Spotify وإلا ستستعيدها المزامنة التالية.",
-  "This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account.": "يؤدي هذا إلى حذف بيانات الاعتماد وملفات الجلسة المحفوظة لهذا الملف الشخصي. ستتوقف عمليات المزامنة التي تحدده حتى تختار حسابًا آخر.",
   "This folder is read-only. Open or select a writable subfolder.": "هذا المجلد للقراءة فقط. افتح أو حدد مجلدًا فرعيًا قابلاً للكتابة.",
   "THIS PASS": "هذا المرور",
   "This playlist is empty": "قائمة التشغيل هذه فارغة",

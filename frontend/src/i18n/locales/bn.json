@@ -1,4 +1,5 @@
 {
+  "Connected accounts": "সংযুক্ত অ্যাকাউন্ট",
   "Playlist layout": "প্লেলিস্টের বিন্যাস",
   "Grid": "গ্রিড",
   "Rows": "সারি",
@@ -94,6 +95,8 @@
   "Skip tour": "ট্যুর এড়িয়ে যান",
   "Start tour": "ট্যুর শুরু করুন",
   "Step {{current, number}} of {{total, number}}": "{{total, number}}টির মধ্যে ধাপ {{current, number}}",
+  "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "এটি SongMirror থেকে অ্যাকাউন্ট সরিয়ে দেবে এবং সংরক্ষিত সাইন-ইন তথ্য মুছে ফেলবে। বাকি অ্যাকাউন্টগুলো সমর্থন করলে সিঙ্ক চলতে পারবে।",
+  "Updating account…": "অ্যাকাউন্ট আপডেট হচ্ছে…",
   "Use Resume to reopen a ready, paused, or failed import and continue reviewing or creating it.": "প্রস্তুত, বিরতিতে থাকা বা ব্যর্থ ইম্পোর্ট আবার খুলে পর্যালোচনা বা তৈরি চালিয়ে যেতে পুনরায় শুরু করুন ব্যবহার করুন।",
   "Use Transfers for a one-time copy, Sync for recurring updates, or Create Playlist to import a song list.": "একবার কপির জন্য ট্রান্সফার, নিয়মিত হালনাগাদের জন্য সিঙ্ক বা গানের তালিকা ইম্পোর্ট করতে প্লেলিস্ট তৈরি করুন ব্যবহার করুন।",
   "Use Your library for a connected account, or Paste a link for a public playlist.": "সংযুক্ত অ্যাকাউন্টের জন্য আপনার লাইব্রেরি বা পাবলিক প্লেলিস্টের জন্য লিঙ্ক পেস্ট করুন ব্যবহার করুন।",
@@ -1043,7 +1046,6 @@
   "This applies real changes to your connected services right away, outside its normal schedule. Removals are still capped per pass.": "এটির স্বাভাবিক সময়সূচীর বাইরে, এটি সরাসরি আপনার সংযুক্ত পরিষেবাগুলিতে প্রকৃত পরিবর্তনগুলি প্রযোজ্য। পাস প্রতি অপসারণ এখনও সীমিত করা হয়.",
   "This authority set has not completed a trusted pass before. Additions may proceed, but SongMirror held every removal until the next complete pass can compare against this baseline.": "এই কর্তৃপক্ষ সেট আগে একটি বিশ্বস্ত পাস সম্পন্ন করা হয়নি. সংযোজনগুলি এগিয়ে যেতে পারে, কিন্তু পরবর্তী সম্পূর্ণ পাস এই বেসলাইনের সাথে তুলনা না করা পর্যন্ত SongMirror প্রতিটি অপসারণকে ধরে রেখেছে।",
   "This changes {{accountName}} directly. If Spotify owns this mirror, make the same edit in Spotify or the next sync will restore it.": "এটি সরাসরি {{accountName}} পরিবর্তন করে। Spotify এই আয়নার মালিক হলে, Spotify-এ একই সম্পাদনা করুন বা পরবর্তী সিঙ্ক এটি পুনরুদ্ধার করবে।",
-  "This deletes this profile's saved credentials and session files. Syncs that select it will stop until you choose another account.": "এটি এই প্রোফাইলের সংরক্ষিত শংসাপত্র এবং সেশন ফাইল মুছে দেয়। যে সিঙ্কগুলি এটি নির্বাচন করে তা বন্ধ হয়ে যাবে যতক্ষণ না আপনি অন্য অ্যাকাউন্ট বেছে নিন।",
   "This folder is read-only. Open or select a writable subfolder.": "এই ফোল্ডারটি শুধুমাত্র পঠনযোগ্য। একটি লিখনযোগ্য সাবফোল্ডার খুলুন বা নির্বাচন করুন।",
   "THIS PASS": "এই পাস",
   "This playlist is empty": "এই প্লেলিস্টটি খালি",
