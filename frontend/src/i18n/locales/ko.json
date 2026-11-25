@@ -1,5 +1,7 @@
 {
   "Connected accounts": "연결된 계정",
+  "Leave blank if the config.json response has no accessToken.": "config.json 응답에 accessToken이 없으면 비워 두세요.",
+  "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Amazon이 액세스 토큰 없이 기기 정보만 반환하는 경우 선택 사항인 config.json 응답 필드를 비워 두세요.",
   "Playlist layout": "플레이리스트 레이아웃",
   "Grid": "그리드",
   "Rows": "행",
@@ -272,7 +274,6 @@
   "Copy the <strong1>Client ID</strong1> and <strong2>Client secret</strong2> and paste them below.": "<strong1>Client ID</strong1> 및 <strong2>Client secret</strong2>를 복사하여 아래에 붙여넣습니다.",
   "Copy the auth.deezer.com/login/renew request as cURL or paste only refresh-token's value": "auth.deezer.com/login/renew 요청을 cURL로 복사하거나 refresh-token 값만 붙여넣으세요.",
   "Copy the complete headers or cURL for a signed-in config.json request; SongMirror preserves its browser context and verifies /pandaToken renewal": "로그인된 config.json 요청에 대해 전체 헤더 또는 cURL를 복사합니다. SongMirror는 브라우저 컨텍스트를 유지하고 /pandaToken 갱신을 확인합니다.",
-  "Copy the complete JSON from the config.json Response tab; request headers/cURL also work": "config.json 응답 탭에서 전체 JSON를 복사합니다. 요청 헤더/cURL도 작동합니다.",
   "Copy the JSON Response from the signed-in web player's oauth2/token request; legacy OpenAPI request headers still work without automatic renewal": "로그인한 웹 플레이어의 oauth2/token 요청에서 JSON 응답을 복사합니다. 레거시 OpenAPI 요청 헤더는 자동 갱신 없이 계속 작동합니다.",
   "Copy this playlist?": "이 재생목록을 복사하시겠습니까?",
   "Correct or retry": "수정하거나 다시 시도하세요.",
@@ -726,7 +727,6 @@
   "Paste raw headers instead": "대신 원시 헤더를 붙여넣으세요.",
   "Paste the URL and key below. For playlist sync, enter your Jellyfin user name in <strong1>User ID</strong1>, as <strong2>Dashboard → Users</strong2> lists it. SongMirror saves the matching ID.": "아래에 URL과 키를 붙여넣으세요. 재생목록을 동기화하려면 <strong2>Dashboard → Users</strong2>에 표시된 Jellyfin 사용자 이름을 <strong1>사용자 ID</strong1>에 입력하세요. SongMirror가 일치하는 ID를 저장합니다.",
   "Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.": "브라우저 개발 도구의 요청 헤더 블록을 붙여넣으면(\"요청 헤더 복사\" 작업) 아래 일치하는 필드가 자동으로 채워집니다.",
-  "Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field.": "해당 <strong1>request</strong1> 헤더를 갱신 필드에 붙여넣습니다. <strong2>Response</strong2> JSON는 첫 번째 필드의 선택적 부트스트랩일 뿐입니다.",
   "Paste your tracks": "트랙 붙여넣기",
   "Pause": "일시 정지",
   "Pause \"{{jobName}}\"": "\"{{jobName}}\" 일시중지",

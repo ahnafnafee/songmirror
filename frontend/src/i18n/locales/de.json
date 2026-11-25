@@ -1,5 +1,7 @@
 {
   "Connected accounts": "Verbundene Konten",
+  "Leave blank if the config.json response has no accessToken.": "Lasse das Feld leer, wenn die config.json-Antwort kein accessToken enthält.",
+  "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Lasse das optionale Feld für die config.json-Antwort leer, wenn Amazon Gerätedaten ohne Zugriffstoken zurückgibt.",
   "Playlist layout": "Playlist-Ansicht",
   "Grid": "Raster",
   "Rows": "Zeilen",
@@ -272,7 +274,6 @@
   "Copy the <strong1>Client ID</strong1> and <strong2>Client secret</strong2> and paste them below.": "Kopieren Sie <strong1>Client ID</strong1> und <strong2>Client Secret</strong2> und fügen Sie sie unten ein.",
   "Copy the auth.deezer.com/login/renew request as cURL or paste only refresh-token's value": "Kopieren Sie die auth.deezer.com/login/renew-Anfrage als cURL oder fügen Sie nur den Wert von refresh-token ein",
   "Copy the complete headers or cURL for a signed-in config.json request; SongMirror preserves its browser context and verifies /pandaToken renewal": "Kopieren Sie die vollständigen Header oder cURL für eine angemeldete config.json-Anfrage; SongMirror behält seinen Browserkontext bei und überprüft die Erneuerung von /pandaToken",
-  "Copy the complete JSON from the config.json Response tab; request headers/cURL also work": "Kopieren Sie den vollständigen JSON von der Registerkarte „config.json-Antwort“. Anforderungsheader/cURL funktionieren auch",
   "Copy the JSON Response from the signed-in web player's oauth2/token request; legacy OpenAPI request headers still work without automatic renewal": "Kopieren Sie die JSON-Antwort aus der oauth2/token-Anfrage des angemeldeten Webplayers; Ältere OpenAPI-Anfrageheader funktionieren weiterhin ohne automatische Verlängerung",
   "Copy this playlist?": "Diese Playlist kopieren?",
   "Correct or retry": "Korrigieren oder erneut versuchen",
@@ -726,7 +727,6 @@
   "Paste raw headers instead": "Fügen Sie stattdessen rohe Header ein",
   "Paste the URL and key below. For playlist sync, enter your Jellyfin user name in <strong1>User ID</strong1>, as <strong2>Dashboard → Users</strong2> lists it. SongMirror saves the matching ID.": "Fügen Sie die URL und den Schlüssel unten ein. Für die Playlist-Synchronisierung geben Sie Ihren Jellyfin-Benutzernamen in <strong1>Benutzer-ID</strong1> ein, so wie <strong2>Dashboard → Users</strong2> ihn anzeigt. SongMirror speichert die passende ID.",
   "Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.": "Fügen Sie den Block „Anforderungsheader“ aus den Entwicklungstools Ihres Browsers ein (die Aktion „Anforderungsheader kopieren“), und die entsprechenden Felder unten werden automatisch ausgefüllt.",
-  "Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field.": "Fügen Sie diese <strong1>request</strong1>-Header in das Erneuerungsfeld ein. Sein <strong2>Response</strong2> JSON ist nur ein optionaler Bootstrap im ersten Feld.",
   "Paste your tracks": "Tracks einfügen",
   "Pause": "Pause",
   "Pause \"{{jobName}}\"": "Pause „{{jobName}}“",

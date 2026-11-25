@@ -1,5 +1,7 @@
 {
   "Connected accounts": "已连接的账户",
+  "Leave blank if the config.json response has no accessToken.": "如果 config.json 响应不含 accessToken，请留空。",
+  "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "如果 Amazon 返回的设备信息不含访问令牌，请将可选的 config.json 响应字段留空。",
   "Playlist layout": "播放列表布局",
   "Grid": "网格",
   "Rows": "行",
@@ -272,7 +274,6 @@
   "Copy the <strong1>Client ID</strong1> and <strong2>Client secret</strong2> and paste them below.": "复制 <strong1>Client ID</strong1> 和 <strong2>Client Secret</strong2> 并将其粘贴到下面。",
   "Copy the auth.deezer.com/login/renew request as cURL or paste only refresh-token's value": "将 auth.deezer.com/login/renew 请求复制为 cURL 或仅粘贴 refresh-token 的值",
   "Copy the complete headers or cURL for a signed-in config.json request; SongMirror preserves its browser context and verifies /pandaToken renewal": "复制登录的 config.json 请求的完整标头或 cURL； SongMirror 保留其浏览器上下文并验证 /pandaToken 更新",
-  "Copy the complete JSON from the config.json Response tab; request headers/cURL also work": "从 config.json 响应选项卡复制完整的 JSON；请求标头/cURL 也可以",
   "Copy the JSON Response from the signed-in web player's oauth2/token request; legacy OpenAPI request headers still work without automatic renewal": "复制登录网络玩家的 oauth2/token 请求中的 JSON 响应；旧版 OpenAPI 请求标头仍然有效，无需自动续订",
   "Copy this playlist?": "复制此播放列表？",
   "Correct or retry": "正确或重试",
@@ -726,7 +727,6 @@
   "Paste raw headers instead": "粘贴原始标题",
   "Paste the URL and key below. For playlist sync, enter your Jellyfin user name in <strong1>User ID</strong1>, as <strong2>Dashboard → Users</strong2> lists it. SongMirror saves the matching ID.": "在下方粘贴 URL 和密钥。如需同步播放列表，请在<strong1>用户 ID</strong1>中输入 <strong2>Dashboard → Users</strong2> 所列的 Jellyfin 用户名。SongMirror 会保存对应的 ID。",
   "Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.": "从浏览器的开发工具粘贴请求标头块（其“复制请求标头”操作），然后填写下面的匹配字段。",
-  "Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field.": "将这些 <strong1>request</strong1> 标头粘贴到续订字段中。它的<strong2>Response</strong2> JSON只是第一个字段中的可选引导程序。",
   "Paste your tracks": "粘贴你的曲目",
   "Pause": "暂停",
   "Pause \"{{jobName}}\"": "暂停“{{jobName}}”",

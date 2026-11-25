@@ -2368,8 +2368,8 @@ def test_amazon_connector_accepts_web_session_without_beta_approval(tmp_path, mo
     assert "no developer approval" in status.detail
 
     assert [(field.key, field.required) for field in connector.config_fields] == [
-        ("AMAZON_MUSIC_WEB_HEADERS", False),
         ("AMAZON_MUSIC_RENEWAL_REQUEST", True),
+        ("AMAZON_MUSIC_WEB_HEADERS", False),
     ]
 
     validation_kwargs = []
@@ -2399,6 +2399,36 @@ def test_amazon_connector_accepts_web_session_without_beta_approval(tmp_path, mo
         "music_host": "music.amazon.com",
         "renewal_cookies": {"at-main-music": "renew-me"}
     }
+
+
+def test_amazon_connector_accepts_config_response_without_access_token(tmp_path, monkeypatch):
+    from songmirror.services.accounts.amazon_music import AmazonMusicConnector
+
+    connector = AmazonMusicConnector(SettingsStore(dir=tmp_path))
+
+    def validate(raw, renewal_request, *, prefer_persisted, require_renewal):
+        assert raw == ""
+        assert json.loads(renewal_request)["renewal_cookies"] == {"at-main-music": "fixture-cookie"}
+        assert not prefer_persisted and require_renewal
+        return True, "auto-renewing web session"
+
+    monkeypatch.setenv("AMAZON_MUSIC_WEB_HEADERS", "")
+    monkeypatch.setenv("AMAZON_MUSIC_RENEWAL_REQUEST", "")
+    monkeypatch.setattr(connector, "_validate", validate)
+    result = connector.submit({
+        "AMAZON_MUSIC_WEB_HEADERS": json.dumps({
+            "deviceId": "fixture-device", "deviceType": "fixture-type",
+            "hornetAppFeatures": {"isCookieAuthEnabled": True},
+            "csrf": {"token": "unused-fixture"},
+        }),
+        "AMAZON_MUSIC_RENEWAL_REQUEST": (
+            "curl 'https://music.amazon.com/config.json?clientApplication=hornet' -X POST "
+            "-H 'Cookie: at-main-music=fixture-cookie'"
+        ),
+    })
+
+    assert result.state == "connected"
+    assert not connector._store.get("AMAZON_MUSIC_WEB_HEADERS")
 
 
 def test_amazon_web_backend_maps_playlists_tracks_and_mutations():

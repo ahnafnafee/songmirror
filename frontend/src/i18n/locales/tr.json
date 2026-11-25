@@ -1,5 +1,7 @@
 {
   "Connected accounts": "Bağlı hesaplar",
+  "Leave blank if the config.json response has no accessToken.": "config.json yanıtında accessToken yoksa boş bırakın.",
+  "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Amazon erişim belirteci olmadan cihaz bilgilerini döndürürse isteğe bağlı config.json yanıt alanını boş bırakın.",
   "Playlist layout": "Çalma listesi düzeni",
   "Grid": "Izgara",
   "Rows": "Satırlar",
@@ -272,7 +274,6 @@
   "Copy the <strong1>Client ID</strong1> and <strong2>Client secret</strong2> and paste them below.": "<strong1>Client ID</strong1> ve <strong2>Client secret</strong2> değerlerini kopyalayıp aşağıya yapıştırın.",
   "Copy the auth.deezer.com/login/renew request as cURL or paste only refresh-token's value": "auth.deezer.com/login/renew isteğini cURL olarak kopyalayın veya yalnızca refresh-token değerini yapıştırın",
   "Copy the complete headers or cURL for a signed-in config.json request; SongMirror preserves its browser context and verifies /pandaToken renewal": "Oturum açılmış bir config.json isteğinin tüm başlıklarını veya cURL komutunu kopyalayın; SongMirror tarayıcı bağlamını korur ve /pandaToken yenilemesini doğrular",
-  "Copy the complete JSON from the config.json Response tab; request headers/cURL also work": "config.json Yanıt (Response) sekmesindeki tüm JSON'ı kopyalayın; istek başlıkları veya cURL de geçerlidir",
   "Copy the JSON Response from the signed-in web player's oauth2/token request; legacy OpenAPI request headers still work without automatic renewal": "Oturum açılmış web oynatıcısının oauth2/token isteğindeki JSON Yanıtını kopyalayın; eski OpenAPI istek başlıkları otomatik yenileme olmadan da çalışmaya devam eder",
   "Copy this playlist?": "Bu çalma listesi kopyalansın mı?",
   "Correct or retry": "Düzeltin veya tekrar deneyin",
@@ -726,7 +727,6 @@
   "Paste raw headers instead": "Bunun yerine ham başlıkları yapıştırın",
   "Paste the URL and key below. For playlist sync, enter your Jellyfin user name in <strong1>User ID</strong1>, as <strong2>Dashboard → Users</strong2> lists it. SongMirror saves the matching ID.": "URL'yi ve anahtarı aşağıya yapıştırın. Çalma listesi senkronizasyonu için Jellyfin kullanıcı adınızı <strong2>Dashboard → Users</strong2> bölümünde göründüğü gibi <strong1>Kullanıcı Kimliği</strong1> alanına girin. SongMirror eşleşen kimliği kaydeder.",
   "Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.": "Tarayıcınızın geliştirme araçlarından istek başlıkları (Request headers) bloğunu yapıştırın (\"İstek başlıklarını kopyala\" eylemi); aşağıdaki eşleşen alanlar otomatik olarak doldurulacaktır.",
-  "Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field.": "Bu <strong1>request</strong1> başlıklarını yenileme alanına yapıştırın. <strong2>Response</strong2> JSON verisi ise yalnızca ilk alanda isteğe bağlı bir önyüklemedir.",
   "Paste your tracks": "Şarkılarınızı yapıştırın",
   "Pause": "Duraklat",
   "Pause \"{{jobName}}\"": "\"{{jobName}}\" senkronizasyonunu duraklat",

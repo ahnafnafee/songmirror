@@ -162,9 +162,7 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
       <>
         <Trans i18nKey={"Choose <strong1>Copy request headers</strong1> or <strong2>Copy as cURL</strong2>, then paste it into the renewal field below. Keep the complete <code3/>, <code4/>, and <code5/> headers."} components={{ strong1: <strong />, strong2: <strong />, code3: <Code>User-Agent</Code>, code4: <Code>Referer</Code>, code5: <Code>Cookie</Code> }} />
       </>,
-      <>
-        <Trans i18nKey={"Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field."} components={{ strong1: <strong />, strong2: <strong /> }} />
-      </>,
+      t("Leave the optional config.json response field blank if Amazon returns device details without an access token."),
     ],
     note: t("SongMirror replays the captured browser context against /pandaToken and rejects a connection if Amazon revokes its Music renewal cookie. Only three safe request headers and a named allowlist of authentication cookies are retained."),
   },

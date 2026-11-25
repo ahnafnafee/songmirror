@@ -1,5 +1,7 @@
 {
   "Connected accounts": "الحسابات المتصلة",
+  "Leave blank if the config.json response has no accessToken.": "اترك الحقل فارغًا إذا كانت استجابة config.json لا تحتوي على accessToken.",
+  "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "اترك حقل استجابة config.json الاختياري فارغًا إذا أعادت Amazon تفاصيل الجهاز بدون رمز وصول.",
   "Playlist layout": "تخطيط قوائم التشغيل",
   "Grid": "شبكة",
   "Rows": "صفوف",
@@ -292,7 +294,6 @@
   "Copy the <strong1>Client ID</strong1> and <strong2>Client secret</strong2> and paste them below.": "انسخ <strong1>Client ID</strong1> و <strong2>Client Secret</strong2> والصقه أدناه.",
   "Copy the auth.deezer.com/login/renew request as cURL or paste only refresh-token's value": "انسخ طلب auth.deezer.com/login/renew باسم cURL أو الصق قيمة refresh-token فقط",
   "Copy the complete headers or cURL for a signed-in config.json request; SongMirror preserves its browser context and verifies /pandaToken renewal": "انسخ الرؤوس الكاملة أو cURL لطلب config.json الذي تم تسجيل الدخول إليه؛ يحتفظ SongMirror بسياق المتصفح الخاص به ويتحقق من تجديد /pandaToken",
-  "Copy the complete JSON from the config.json Response tab; request headers/cURL also work": "انسخ JSON الكامل من علامة التبويب استجابة config.json؛ تعمل رؤوس الطلب/cURL أيضًا",
   "Copy the JSON Response from the signed-in web player's oauth2/token request; legacy OpenAPI request headers still work without automatic renewal": "انسخ استجابة JSON من طلب oauth2/token الخاص بمشغل الويب الذي تم تسجيل الدخول إليه؛ لا تزال رؤوس طلب OpenAPI القديمة تعمل بدون تجديد تلقائي",
   "Copy this playlist?": "هل تريد نسخ قائمة التشغيل هذه؟",
   "Correct or retry": "قم بالتصحيح أو أعد المحاولة",
@@ -750,7 +751,6 @@
   "Paste raw headers instead": "الصق الرؤوس الأولية بدلاً من ذلك",
   "Paste the URL and key below. For playlist sync, enter your Jellyfin user name in <strong1>User ID</strong1>, as <strong2>Dashboard → Users</strong2> lists it. SongMirror saves the matching ID.": "الصق عنوان URL والمفتاح أدناه. لمزامنة قوائم التشغيل، أدخل اسم مستخدم Jellyfin في <strong1>معرف المستخدم</strong1> كما يظهر في <strong2>Dashboard → Users</strong2>. يحفظ SongMirror المعرف المطابق.",
   "Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.": "الصق كتلة رؤوس الطلب من أدوات التطوير في متصفحك (إجراء \"نسخ رؤوس الطلبات\")، وستملأ الحقول المطابقة أدناه نفسها.",
-  "Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field.": "قم بلصق رؤوس <strong1>request</strong1> في حقل التجديد. إن <strong2>Response</strong2> JSON هو مجرد تمهيد اختياري في الحقل الأول.",
   "Paste your tracks": "الصق مقاطعك",
   "Pause": "وقفة",
   "Pause \"{{jobName}}\"": "إيقاف مؤقت \"{{jobName}}\"",

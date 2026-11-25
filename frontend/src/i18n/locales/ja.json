@@ -1,5 +1,7 @@
 {
   "Connected accounts": "接続済みのアカウント",
+  "Leave blank if the config.json response has no accessToken.": "config.json レスポンスに accessToken がない場合は、空欄にしてください。",
+  "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Amazon がアクセストークンなしで端末情報を返した場合は、任意の config.json レスポンス欄を空欄にしてください。",
   "Playlist layout": "プレイリストの表示形式",
   "Grid": "グリッド",
   "Rows": "行",
@@ -272,7 +274,6 @@
   "Copy the <strong1>Client ID</strong1> and <strong2>Client secret</strong2> and paste them below.": "<strong1>Client ID</strong1> と <strong2>Client Secret</strong2> をコピーし、下に貼り付けます。",
   "Copy the auth.deezer.com/login/renew request as cURL or paste only refresh-token's value": "auth.deezer.com/login/renew リクエストを cURL としてコピーするか、refresh-token の値のみを貼り付けます",
   "Copy the complete headers or cURL for a signed-in config.json request; SongMirror preserves its browser context and verifies /pandaToken renewal": "サインインした config.json 要求の完全なヘッダーまたは cURL をコピーします。 SongMirror はブラウザーのコンテキストを保持し、/pandaToken の更新を検証します",
-  "Copy the complete JSON from the config.json Response tab; request headers/cURL also work": "config.json の [応答] タブから完全な JSON をコピーします。リクエストヘッダー/cURL も機能します",
   "Copy the JSON Response from the signed-in web player's oauth2/token request; legacy OpenAPI request headers still work without automatic renewal": "サインインした Web プレーヤーの oauth2/token リクエストから JSON レスポンスをコピーします。従来の OpenAPI リクエスト ヘッダーは自動更新なしでも機能します",
   "Copy this playlist?": "このプレイリストをコピーしますか?",
   "Correct or retry": "修正するか再試行してください",
@@ -726,7 +727,6 @@
   "Paste raw headers instead": "代わりに生のヘッダーを貼り付けます",
   "Paste the URL and key below. For playlist sync, enter your Jellyfin user name in <strong1>User ID</strong1>, as <strong2>Dashboard → Users</strong2> lists it. SongMirror saves the matching ID.": "以下に URL とキーを貼り付けます。プレイリストを同期するには、<strong2>Dashboard → Users</strong2> に表示されている Jellyfin のユーザー名を <strong1>ユーザーID</strong1> に入力します。SongMirror は対応する ID を保存します。",
   "Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.": "ブラウザの開発ツール (「リクエスト ヘッダーのコピー」アクション) からリクエスト ヘッダー ブロックを貼り付けると、以下の一致するフィールドが自動的に入力されます。",
-  "Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field.": "これらの <strong1>request</strong1> ヘッダーを更新フィールドに貼り付けます。その <strong2>Response</strong2> JSON は、最初のフィールドのオプションのブートストラップにすぎません。",
   "Paste your tracks": "曲を貼り付け",
   "Pause": "一時停止",
   "Pause \"{{jobName}}\"": "一時停止「{{jobName}}」",

@@ -1,5 +1,7 @@
 {
   "Connected accounts": "Akun terhubung",
+  "Leave blank if the config.json response has no accessToken.": "Kosongkan jika respons config.json tidak berisi accessToken.",
+  "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Kosongkan kolom respons config.json opsional jika Amazon mengembalikan detail perangkat tanpa token akses.",
   "Playlist layout": "Tata letak playlist",
   "Grid": "Grid",
   "Rows": "Baris",
@@ -272,7 +274,6 @@
   "Copy the <strong1>Client ID</strong1> and <strong2>Client secret</strong2> and paste them below.": "Salin <strong1>Client ID</strong1> dan <strong2>Client secret</strong2> dan tempel di bawah.",
   "Copy the auth.deezer.com/login/renew request as cURL or paste only refresh-token's value": "Salin permintaan auth.deezer.com/login/renew sebagai cURL atau tempelkan hanya nilai refresh-token",
   "Copy the complete headers or cURL for a signed-in config.json request; SongMirror preserves its browser context and verifies /pandaToken renewal": "Salin header lengkap atau cURL untuk permintaan config.json yang masuk; SongMirror mempertahankan konteks browsernya dan memverifikasi pembaruan /pandaToken",
-  "Copy the complete JSON from the config.json Response tab; request headers/cURL also work": "Salin JSON lengkap dari tab Respons config.json; header permintaan/cURL juga berfungsi",
   "Copy the JSON Response from the signed-in web player's oauth2/token request; legacy OpenAPI request headers still work without automatic renewal": "Salin Respons JSON dari permintaan oauth2/token pemutar web yang masuk; header permintaan OpenAPI lama masih berfungsi tanpa perpanjangan otomatis",
   "Copy this playlist?": "Salin playlist ini?",
   "Correct or retry": "Koreksi atau coba lagi",
@@ -726,7 +727,6 @@
   "Paste raw headers instead": "Tempelkan header mentah sebagai gantinya",
   "Paste the URL and key below. For playlist sync, enter your Jellyfin user name in <strong1>User ID</strong1>, as <strong2>Dashboard → Users</strong2> lists it. SongMirror saves the matching ID.": "Tempelkan URL dan kunci di bawah. Untuk sinkronisasi playlist, masukkan nama pengguna Jellyfin Anda di <strong1>ID Pengguna</strong1>, seperti yang tercantum di <strong2>Dashboard → Users</strong2>. SongMirror menyimpan ID yang cocok.",
   "Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.": "Tempel blok header permintaan dari alat pengembang browser Anda (tindakan “Salin header permintaan”), dan kolom yang cocok di bawah akan terisi dengan sendirinya.",
-  "Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field.": "Tempelkan header <strong1>request</strong1> tersebut ke dalam kolom pembaruan. <strong2>Response</strong2> JSON-nya hanyalah bootstrap opsional di kolom pertama.",
   "Paste your tracks": "Tempel trek Anda",
   "Pause": "Jeda",
   "Pause \"{{jobName}}\"": "Jeda \"{{jobName}}\"",

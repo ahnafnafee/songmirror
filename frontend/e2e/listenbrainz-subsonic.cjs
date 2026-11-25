@@ -29,7 +29,9 @@ async function main() {
   const accounts = [
     { id: 'apple', provider: 'apple', name: 'Apple Music', state: 'connected', fields: [], transferable: false },
     { id: 'amazon', provider: 'amazon', name: 'Amazon Music', state: 'expired', auth_kind: 'token_paste',
-      fields: [], transferable: true },
+      fields: [{ key: 'AMAZON_MUSIC_RENEWAL_REQUEST', label: 'Signed-in browser request', required: true, secret: true },
+        { key: 'AMAZON_MUSIC_WEB_HEADERS', label: 'Signed-in config.json response (optional bootstrap)', required: false, secret: true }],
+      transferable: true },
     { id: 'cloud', provider: 'soundcloud', name: 'SoundCloud', provider_name: 'SoundCloud',
       auth_kind: 'oauth_redirect', fields: [], transferable: true, source_capable: true,
       supports_playlists: true, supports_favorites: false,
@@ -177,6 +179,11 @@ async function main() {
     await amazon.getByRole('button', { name: 'Reconnect', exact: true }).click()
     const amazonDialog = page.getByRole('dialog', { name: 'Connect Amazon Music', exact: true })
     assert.equal(await amazonDialog.getByRole('link', { name: 'music.amazon.com', exact: true }).getAttribute('href'), 'https://music.amazon.com/')
+    await amazonDialog.getByText('Leave the optional config.json response field blank if Amazon returns device details without an access token.', { exact: true }).waitFor()
+    const amazonFields = await amazonDialog.locator('textarea').evaluateAll(fields => fields.map(field => field.labels[0].textContent.trim()))
+    assert.equal(amazonFields.length, 2)
+    assert.match(amazonFields[0], /^Signed-in browser request/)
+    assert.equal(amazonFields[1], 'Signed-in config.json response (optional bootstrap)')
     await amazonDialog.getByRole('button', { name: 'Close', exact: true }).click()
     assert.equal(await page.getByRole('heading', { name: 'Audiomack', exact: true }).count(), 0)
     await picker.click()

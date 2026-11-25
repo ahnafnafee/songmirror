@@ -1,5 +1,7 @@
 {
   "Connected accounts": "সংযুক্ত অ্যাকাউন্ট",
+  "Leave blank if the config.json response has no accessToken.": "config.json প্রতিক্রিয়ায় accessToken না থাকলে ঘরটি ফাঁকা রাখুন।",
+  "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Amazon অ্যাক্সেস টোকেন ছাড়া ডিভাইসের তথ্য ফেরত দিলে ঐচ্ছিক config.json প্রতিক্রিয়ার ঘরটি ফাঁকা রাখুন।",
   "Playlist layout": "প্লেলিস্টের বিন্যাস",
   "Grid": "গ্রিড",
   "Rows": "সারি",
@@ -272,7 +274,6 @@
   "Copy the <strong1>Client ID</strong1> and <strong2>Client secret</strong2> and paste them below.": "<strong1>Client ID</strong1> এবং <strong2>Client secret</strong2> অনুলিপি করুন এবং নিচে পেস্ট করুন।",
   "Copy the auth.deezer.com/login/renew request as cURL or paste only refresh-token's value": "auth.deezer.com/login/renew অনুরোধটি cURL হিসাবে অনুলিপি করুন বা শুধুমাত্র refresh-token এর মান পেস্ট করুন",
   "Copy the complete headers or cURL for a signed-in config.json request; SongMirror preserves its browser context and verifies /pandaToken renewal": "একটি সাইন ইন করা config.json অনুরোধের জন্য সম্পূর্ণ শিরোনাম বা cURL অনুলিপি করুন; SongMirror এর ব্রাউজার প্রসঙ্গ সংরক্ষণ করে এবং /pandaToken পুনর্নবীকরণ যাচাই করে",
-  "Copy the complete JSON from the config.json Response tab; request headers/cURL also work": "config.json প্রতিক্রিয়া ট্যাব থেকে সম্পূর্ণ JSON অনুলিপি করুন; অনুরোধ শিরোনাম/cURL এছাড়াও কাজ করে",
   "Copy the JSON Response from the signed-in web player's oauth2/token request; legacy OpenAPI request headers still work without automatic renewal": "সাইন-ইন করা ওয়েব প্লেয়ারের oauth2/টোকেন অনুরোধ থেকে JSON প্রতিক্রিয়াটি অনুলিপি করুন; লিগ্যাসি OpenAPI অনুরোধ শিরোনাম এখনও স্বয়ংক্রিয় পুনর্নবীকরণ ছাড়াই কাজ করে",
   "Copy this playlist?": "এই প্লেলিস্টটি অনুলিপি করবেন?",
   "Correct or retry": "সঠিক বা পুনরায় চেষ্টা করুন",
@@ -726,7 +727,6 @@
   "Paste raw headers instead": "পরিবর্তে কাঁচা হেডার আটকান",
   "Paste the URL and key below. For playlist sync, enter your Jellyfin user name in <strong1>User ID</strong1>, as <strong2>Dashboard → Users</strong2> lists it. SongMirror saves the matching ID.": "নীচে URL এবং কী আটকান। প্লেলিস্ট সিঙ্কের জন্য <strong1>ইউজার আইডি</strong1>-তে আপনার Jellyfin ব্যবহারকারীর নাম লিখুন, যেমনটি <strong2>Dashboard → Users</strong2>-এ দেখানো আছে। SongMirror মিলে যাওয়া আইডি সংরক্ষণ করে।",
   "Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.": "আপনার ব্রাউজারের ডেভ টুলস থেকে রিকোয়েস্ট হেডার ব্লক পেস্ট করুন (এটির “কপি রিকোয়েস্ট হেডার” অ্যাকশন), এবং নিচের ম্যাচিং ফিল্ডগুলো পূরণ করুন।",
-  "Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field.": "সেই <strong1>request</strong1> শিরোনামগুলি পুনর্নবীকরণ ক্ষেত্রে আটকান৷ এর <strong2>Response</strong2> JSON প্রথম ক্ষেত্রে শুধুমাত্র একটি ঐচ্ছিক বুটস্ট্র্যাপ।",
   "Paste your tracks": "আপনার ট্র্যাক পেস্ট করুন",
   "Pause": "বিরতি",
   "Pause \"{{jobName}}\"": "পজ \"{{jobName}}\"",

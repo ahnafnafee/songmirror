@@ -1,5 +1,7 @@
 {
   "Connected accounts": "Tài khoản đã kết nối",
+  "Leave blank if the config.json response has no accessToken.": "Để trống nếu phản hồi config.json không có accessToken.",
+  "Leave the optional config.json response field blank if Amazon returns device details without an access token.": "Hãy để trống trường phản hồi config.json không bắt buộc nếu Amazon trả về thông tin thiết bị mà không có mã truy cập.",
   "Playlist layout": "Bố cục danh sách phát",
   "Grid": "Lưới",
   "Rows": "Hàng",
@@ -272,7 +274,6 @@
   "Copy the <strong1>Client ID</strong1> and <strong2>Client secret</strong2> and paste them below.": "Sao chép <strong1>Client ID</strong1> và <strong2>Client secret</strong2> và dán chúng vào bên dưới.",
   "Copy the auth.deezer.com/login/renew request as cURL or paste only refresh-token's value": "Sao chép yêu cầu auth.deezer.com/login/renew dưới dạng cURL hoặc chỉ dán giá trị của refresh-token",
   "Copy the complete headers or cURL for a signed-in config.json request; SongMirror preserves its browser context and verifies /pandaToken renewal": "Sao chép tiêu đề hoàn chỉnh hoặc cURL cho yêu cầu config.json đã đăng nhập; SongMirror duy trì bối cảnh trình duyệt của nó và xác minh việc gia hạn /pandaToken",
-  "Copy the complete JSON from the config.json Response tab; request headers/cURL also work": "Sao chép JSON hoàn chỉnh từ tab Phản hồi config.json; tiêu đề yêu cầu/cURL cũng hoạt động",
   "Copy the JSON Response from the signed-in web player's oauth2/token request; legacy OpenAPI request headers still work without automatic renewal": "Sao chép Phản hồi JSON từ yêu cầu oauth2/mã thông báo của trình phát web đã đăng nhập; tiêu đề yêu cầu OpenAPI cũ vẫn hoạt động mà không cần gia hạn tự động",
   "Copy this playlist?": "Sao chép danh sách phát này?",
   "Correct or retry": "Sửa hoặc thử lại",
@@ -726,7 +727,6 @@
   "Paste raw headers instead": "Dán tiêu đề thô thay thế",
   "Paste the URL and key below. For playlist sync, enter your Jellyfin user name in <strong1>User ID</strong1>, as <strong2>Dashboard → Users</strong2> lists it. SongMirror saves the matching ID.": "Dán URL và khóa bên dưới. Để đồng bộ danh sách phát, nhập tên người dùng Jellyfin của bạn vào <strong1>ID người dùng</strong1>, đúng như trong <strong2>Dashboard → Users</strong2>. SongMirror sẽ lưu ID tương ứng.",
   "Paste the request headers block from your browser's dev tools (its “Copy request headers” action), and the matching fields below fill themselves in.": "Dán khối tiêu đề yêu cầu từ công cụ phát triển của trình duyệt của bạn (hành động “Sao chép tiêu đề yêu cầu”) và các trường phù hợp bên dưới sẽ tự điền vào.",
-  "Paste those <strong1>request</strong1> headers into the renewal field. Its <strong2>Response</strong2> JSON is only an optional bootstrap in the first field.": "Dán các tiêu đề <strong1>request</strong1> đó vào trường gia hạn. <strong2>Response</strong2> JSON của nó chỉ là một bootstrap tùy chọn trong trường đầu tiên.",
   "Paste your tracks": "Dán các bài hát của bạn",
   "Pause": "Tạm dừng",
   "Pause \"{{jobName}}\"": "Tạm dừng \"{{jobName}}\"",
