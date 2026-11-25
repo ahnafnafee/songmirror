@@ -1,6 +1,6 @@
 # Playlist service adapters
 
-Add each connection on **Accounts** and use the account's supported operations in **Sync** and **Transfers**. The table describes the protocol capabilities verified against provider references and exercised with local fixtures. Authenticated live servers and libraries were outside the verification scope.
+Add each connection on **Accounts** and use the account's supported operations in **Sync** and **Transfers**. The table describes the protocol capabilities checked against provider references and exercised with local fixtures. Disposable Emby, Mopidy, and Lyrion servers also passed ordered playlist clone, track removal, and cleanup checks with generated music.
 
 | Provider | Read playlists and tracks | Create and append | Remove tracks |
 | --- | --- | --- | --- |
@@ -14,6 +14,10 @@ Add each connection on **Accounts** and use the account's supported operations i
 Mopidy and Lyrion expose the local library as a source when their write backend or playlist folder is unavailable. Plex smart playlists are source-only. Anghami can supply a one-way or aggregate sync. QQ Music's Skills API documents paginated playlist details by ID, so SongMirror uses links for transfers and aggregate sources. The separate QQ Music QPlay example includes a personal-directory request with its own credential and signing contract. [Tencent Music QPlay OpenAPI example](https://github.com/tencentmusic/QQMusic_Innovation_QPlay_OpenAPI_Demo/tree/partner)
 
 Mopidy replaces the M3U playlist contents when saving, and Lyrion removes by position. SongMirror checks the selected entries against a fresh read before removing them. Those protocols do not provide an atomic revision check against simultaneous changes from another client.
+
+Emby may omit the media type in an account's playlist directory. SongMirror checks those playlist entries before offering them as audio playlists. It sends track additions in batches and verifies the entries Emby reports adding against a fresh playlist read.
+
+The disposable Emby, Mopidy, and Lyrion run passed 46 checks covering one-way and bidirectional sync, aggregate sync, removal propagation, catalog holds, and cleanup. Plex passed the playlist protocol fixtures. Its disposable server repeatedly stalled during music-library setup, so a cloned playlist run against Plex still needs a working music library. Anghami and QQ Music passed fixture checks for opening playlist links through Transfers and reading paginated tracks. They need connected accounts for live verification.
 
 ## Providers pending a playlist API contract
 

@@ -22,6 +22,7 @@ the deletion is verified. `--sweep` removes leftovers from an interrupted run.
 import argparse
 import json
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -33,14 +34,15 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 TEMP_PREFIX = "SongMirror confidence"
 PLAYLIST_PROVIDERS = ("spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
-                      "listenbrainz", "subsonic", "jellyfin")
+                      "listenbrainz", "subsonic", "jellyfin", "emby", "plex", "mopidy", "lyrion")
 # Session files a provider renews while it runs. Renewal can rotate the refresh
 # token, which would sign the live app out unless it reads the renewed file.
 SESSION_FILES = {"tidal": ("TIDAL_TOKEN_FILE", "tidal_oauth.json"),
                  "deezer": ("DEEZER_WEB_SESSION_FILE", "deezer_web_session.json"),
                  "amazon": ("AMAZON_MUSIC_WEB_SESSION_FILE", "amazon_music_web_session.json")}
 # Read-only credential files a scratch copy is enough for.
-COPIED_FILES = {"SPOTIFY_SP_DC_FILE": "spotify_sp_dc.private", "YTMUSIC_BROWSER_AUTH": "ytmusic_browser.json"}
+COPIED_FILES = {"spotify": ("SPOTIFY_SP_DC_FILE", "spotify_sp_dc.private"),
+                "ytmusic": ("YTMUSIC_BROWSER_AUTH", "ytmusic_browser.json")}
 WORKER_TIMEOUT = 20 * 60
 
 
@@ -90,11 +92,15 @@ def is_temporary(name):
     return str(name or "").startswith(TEMP_PREFIX + " ")
 
 
+def run_prefix(stamp):
+    return f"{TEMP_PREFIX} {stamp} "
+
+
 # --------------------------------------------------------------------------- #
 # Worker environment
 # --------------------------------------------------------------------------- #
 
-def prepare_environment(scratch, data_dir, sessions):
+def prepare_environment(scratch, data_dir, sessions, providers):
     """Point every file a provider reads or writes at scratch, except the shared sessions."""
     (scratch / "data").mkdir(parents=True, exist_ok=True)
     os.chdir(scratch)  # resolve caches default to the working directory
@@ -103,11 +109,16 @@ def prepare_environment(scratch, data_dir, sessions):
         if key.isupper() and isinstance(value, str):
             os.environ[key] = value
     os.environ.pop("AUTO_SYNC", None)
-    for env, name in COPIED_FILES.items():
+    for key in tuple(os.environ):
+        if key.endswith("_CACHE_FILE"):
+            os.environ[key] = str(scratch / f"{key.lower()}.json")
+    for provider in providers & COPIED_FILES.keys():
+        env, name = COPIED_FILES[provider]
         if (data_dir / name).exists():
             shutil.copy(data_dir / name, scratch / "data" / name)
         os.environ[env] = str(scratch / "data" / name)
-    for env, name in SESSION_FILES.values():
+    for provider in providers & SESSION_FILES.keys():
+        env, name = SESSION_FILES[provider]
         if sessions == "copy" and (data_dir / name).exists():
             shutil.copy(data_dir / name, scratch / "data" / name)
         os.environ[env] = str((data_dir if sessions == "shared" else scratch / "data") / name)
@@ -179,7 +190,7 @@ def hide_from_catalog(target, hidden, queries=None):
     target.search_candidates, target.resolve = search_candidates, resolve_hidden
 
 
-def delete_playlist(target, playlist):
+def delete_playlist(target, playlist, *, stamp=None):
     """Delete a temporary playlist this run created. Providers have no delete API of their own."""
     from songmirror.engine import jellyfin as jellyfin_api
     from songmirror.engine.config import AMP
@@ -187,10 +198,41 @@ def delete_playlist(target, playlist):
     name = target.playlist_name(playlist)
     if not is_temporary(name):
         raise RuntimeError(f"refusing to delete {name!r}: it is not a temporary playlist")
+    if stamp and not name.startswith(run_prefix(stamp)):
+        raise RuntimeError(f"refusing to delete {name!r}: it does not belong to this run")
     provider = getattr(target, "provider", None) or target.source
     pid = str(target.playlist_id(playlist))
     if provider == "jellyfin":
+        match = target.find_playlist(pid)
+        if match is None:
+            return
+        if target.playlist_name(match) != name or not target.is_editable(match):
+            raise RuntimeError("refusing to delete a changed or read-only Jellyfin playlist")
         jellyfin_api.send(target._url, target._key, "delete", f"/Items/{pid}")
+    elif provider in {"emby", "plex", "mopidy", "lyrion"}:
+        current = target.find_playlist(pid)
+        if current is None:
+            return
+        if target.playlist_name(current) != name or not target.is_editable(current):
+            raise RuntimeError(f"refusing to delete {provider} playlist {pid}: it changed or is read-only")
+        if provider == "emby":
+            from songmirror.engine.targets.emby import _id
+
+            item = target._get(f"/Users/{target._user}/Items/{_id(pid)}")
+            if item.get("Type") != "Playlist" or item.get("Name") != name or str(item.get("Id")) != pid:
+                raise RuntimeError("Emby did not confirm this item is the temporary playlist")
+            target._api.request("DELETE", f"/Items/{_id(pid)}", expect_json=False)
+        elif provider == "plex":
+            from songmirror.engine.targets.plex import _id
+
+            target._api.request("DELETE", f"/playlists/{_id(pid)}", expect_json=False)
+        elif provider == "mopidy":
+            if target._rpc("playlists.delete", uri=pid) is not True:
+                raise RuntimeError("Mopidy did not confirm deletion of the temporary playlist")
+        else:
+            from songmirror.engine.targets.lyrion import _id
+
+            target._rpc("playlists", "delete", f"playlist_id:{_id(pid)}")
     elif provider == "listenbrainz":
         target._api._playlist_write(f"/1/playlist/{pid}/delete", {})
     elif provider == "tidal":
@@ -269,8 +311,11 @@ def clone_seed(seed, args, name, created):
     playlist = next((p for p in list_playlists(seed) if seed.playlist_name(p) == args.seed_playlist), None)
     if playlist is None:
         raise RuntimeError(f"seed playlist {args.seed_playlist!r} was not found on {seed.source}")
-    original = [seed.track_id(t) for t in seed.playlist_tracks(playlist)]
-    songs = seed.playlist_tracks(playlist)[:args.seed_count]
+    tracks = seed.playlist_tracks(playlist)
+    original = [seed.track_id(t) for t in tracks]
+    songs = tracks[:args.seed_count]
+    if len(songs) < 4 or any(seed.track_id(track) is None for track in songs):
+        raise RuntimeError("the seed needs at least four identified tracks to run the clone checks")
     clone = seed.create({"name": name})
     created.append((seed, clone))
     seed.add(clone, [seed.track_id(t) for t in songs])
@@ -286,6 +331,35 @@ def source_tracks(seed, playlist):
         norm["id"] = seed.track_id(track)
         out.append(norm)
     return out
+
+
+def seed_worker(args, rec):
+    seed = build(args.seed_provider)
+    if seed is None:
+        rec.check(f"{args.seed_provider} is configured", False)
+        return
+    created, original_playlist = [], None
+    try:
+        original_playlist, original, songs, clone = clone_seed(
+            seed, args, run_prefix(args.stamp) + "seed check", created,
+        )
+        expected = [seed.track_id(track) for track in songs]
+        actual = seed.playlist_tracks(clone)
+        if not rec.check("seed clone contains the selected tracks in order",
+                         [seed.track_id(track) for track in actual] == expected, len(actual)):
+            return
+        selected = len(actual) // 2
+        seed.remove_occurrences(clone, [(selected, actual[selected])])
+        expected.pop(selected)
+        rec.check("removing the selected occurrence preserves the other entries in order",
+                  [seed.track_id(track) for track in seed.playlist_tracks(clone)] == expected)
+    except Exception as exc:
+        rec.check("seed checks finished", False, repr(exc))
+    finally:
+        cleanup(rec, created, args.stamp)
+        if original_playlist is not None:
+            rec.check("the original seed playlist is unchanged",
+                      [seed.track_id(track) for track in seed.playlist_tracks(original_playlist)] == original)
 
 
 def provider_worker(args, rec):
@@ -321,7 +395,9 @@ def provider_worker(args, rec):
 
         _, first, _ = one_way()
         matched = [t for t in songs if key(t["name"]) in first]
-        rec.check("one-way: bootstrap copies the cloned songs", len(matched) >= 4, f"{len(matched)}/{len(songs)}")
+        if not rec.check("one-way: bootstrap copies the cloned songs",
+                         len(matched) >= 4, f"{len(matched)}/{len(songs)}"):
+            return
         _, second, new = one_way()
         rec.check("one-way: a steady-state pass writes nothing", not new and second == first, new)
         a, b = key(matched[0]["name"]), key(matched[1]["name"])
@@ -366,7 +442,8 @@ def provider_worker(args, rec):
 
         p1, s1, _, _ = nway()
         shared = [song for song in p1 if song in s1]
-        rec.check("n-way: bootstrap pairs both playlists", len(shared) >= 3, f"{len(shared)} on both")
+        if not rec.check("n-way: bootstrap pairs both playlists", len(shared) >= 3, f"{len(shared)} on both"):
+            return
         p2, s2, new, seed_new = nway()
         rec.check("n-way: a steady-state pass writes nothing", not new and not seed_new and (p2, s2) == (p1, s1),
                   (new, seed_new))
@@ -399,7 +476,7 @@ def provider_worker(args, rec):
     except Exception as exc:
         rec.check("the run finished without an exception", False, repr(exc))
     finally:
-        cleanup(rec, created)
+        cleanup(rec, created, args.stamp)
         if seed_playlist is not None:
             rec.check("the seed playlist is unchanged",
                       [seed.track_id(t) for t in seed.playlist_tracks(seed_playlist)] == original)
@@ -473,8 +550,10 @@ def merge_worker(args, rec):
 
         stats, aggregate, ok, error, d1 = merge()
         both = [song for song in on(first) if song in on(second) and song in d1]
-        rec.check("merge: bootstrap writes the union with every source read",
-                  ok and not aggregate["removals_guarded"] and len(both) >= 2, f"{error or ''} {len(both)} shared")
+        if not rec.check("merge: bootstrap writes the union with every source read",
+                         ok and not aggregate["removals_guarded"] and len(both) >= 2,
+                         f"{error or ''} {len(both)} shared"):
+            return
         stats, _, _, _, d2 = merge()
         rec.check("merge: a steady-state pass changes nothing", d2 == d1 and not stats["added"] and not stats["removed"])
         m1, m2 = both[0], both[1]
@@ -497,16 +576,16 @@ def merge_worker(args, rec):
         rec.check("the merge run finished without an exception", False, repr(exc))
     finally:
         cls.search_candidates, cls.resolve = real_search, real_resolve
-        cleanup(rec, created)
+        cleanup(rec, created, args.stamp)
         if seed_playlist is not None:
             rec.check("the seed playlist is unchanged",
                       [seed.track_id(t) for t in seed.playlist_tracks(seed_playlist)] == original)
 
 
-def cleanup(rec, created):
+def cleanup(rec, created, stamp):
     for target, playlist in reversed(created):
         try:
-            delete_playlist(target, playlist)
+            delete_playlist(target, playlist, stamp=stamp)
         except Exception as exc:
             rec.check(f"cleanup deleted {target.source}:{target.playlist_name(playlist)}", False, repr(exc))
     time.sleep(2)
@@ -523,7 +602,7 @@ def cleanup(rec, created):
 
 def sweep_worker(args, rec):
     """Delete temporary playlists on the selected providers: this run's, or with --sweep every run's."""
-    prefix = f"{TEMP_PREFIX} {args.stamp} " if args.this_run else TEMP_PREFIX + " "
+    prefix = run_prefix(args.stamp) if args.this_run else TEMP_PREFIX + " "
     for provider in args.providers.split(","):
         target = build(provider)
         if target is None:
@@ -533,7 +612,7 @@ def sweep_worker(args, rec):
 
         try:
             for playlist in [p for p in list_playlists(target) if ours(p)]:
-                delete_playlist(target, playlist)
+                delete_playlist(target, playlist, stamp=args.stamp if args.this_run else None)
                 print(f"deleted {provider}: {target.playlist_name(playlist)}", flush=True)
             left = [target.playlist_name(p) for p in list_playlists(target) if ours(p)]
             rec.check(f"no temporary playlist is left on {provider}", not left, left)
@@ -562,7 +641,7 @@ def preflight(args, data_dir):
             status = _get(f"{args.live_url}/api/sync/status")
             jobs = _get(f"{args.live_url}/api/syncs")
         except OSError as exc:
-            notes.append(f"live app at {args.live_url} not reachable ({exc}); schedule and job checks skipped")
+            raise SystemExit(f"refusing to start: could not check the live app at {args.live_url} ({exc})") from exc
         else:
             blocker = schedule_blocker(status, now, args.quiet_minutes)
             if blocker:
@@ -570,13 +649,16 @@ def preflight(args, data_dir):
             conflicts = job_conflicts(jobs, accounts, providers + [args.seed_provider])
             if conflicts:
                 raise SystemExit("refusing to start: " + "; ".join(conflicts))
-            connected = {a["provider"] for a in accounts if a.get("state") == "connected"
+            connected = {a["provider"] for a in accounts if a.get("is_default", True)
+                         and a.get("state") == "connected"
                          and a.get("supports_playlists") and (a.get("capabilities") or {}).get("library_write")}
             if not args.providers:
                 skipped = [p for p in providers if p not in connected]
                 providers = [p for p in providers if p in connected]
                 if skipped:
                     notes.append(f"not connected for playlist writes, skipped: {', '.join(skipped)}")
+            elif unavailable := sorted(set(providers) - connected):
+                raise SystemExit("refusing to start: not connected for playlist writes: " + ", ".join(unavailable))
             if args.seed_provider not in connected:
                 raise SystemExit(f"refusing to start: seed provider {args.seed_provider} is not connected")
     if args.sessions == "copy":
@@ -645,12 +727,16 @@ def orchestrate(args):
         raise SystemExit(f"no settings.json in {data_dir}; pass --data-dir")
     if not args.sweep and not args.seed_playlist:
         raise SystemExit("--seed-playlist is required (an existing playlist on the seed provider)")
+    if args.check_seed:
+        args.providers = args.seed_provider
     providers, notes = preflight(args, data_dir)
     scratch = Path(args.scratch or tempfile.mkdtemp(prefix="songmirror-confidence-"))
     scratch.mkdir(parents=True, exist_ok=True)
     for note in notes:
         print("note:", note)
-    if args.sweep:
+    if args.check_seed:
+        results = collect({"seed": spawn(args, "seed", scratch)})
+    elif args.sweep:
         processes = {"sweep": spawn(args, "sweep", scratch, ("--providers", ",".join(providers + [args.seed_provider])))}
         results = collect(processes)
     else:
@@ -691,6 +777,8 @@ def parse(argv=None):
     parser.add_argument("--providers", default="", help="comma-separated providers (default: every connected one)")
     parser.add_argument("--seed-provider", default="jellyfin")
     parser.add_argument("--seed-count", type=int, default=8)
+    parser.add_argument("--check-seed", action="store_true",
+                        help="only clone the seed playlist and verify ordered removal and cleanup")
     parser.add_argument("--merge-sources", default="", help="two merge source providers (default: the first two run)")
     parser.add_argument("--live-url", default="http://127.0.0.1:8888",
                         help="the live app, checked read-only for its schedule and jobs ('' skips the check)")
@@ -703,7 +791,7 @@ def parse(argv=None):
                         help="providers tested at once; each one also loads the shared seed server")
     parser.add_argument("--this-run", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--scratch", default="")
-    parser.add_argument("--stamp", default=time.strftime("%Y%m%d-%H%M%S"))
+    parser.add_argument("--stamp", default=f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(4)}")
     parser.add_argument("--worker", default="", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
@@ -714,9 +802,10 @@ def main(argv=None):
     args = parse(argv)
     if not args.worker:
         return orchestrate(args)
-    prepare_environment(Path(args.scratch), Path(args.data_dir), args.sessions)
+    providers = {args.seed_provider, args.worker, *args.merge_sources.split(","), *args.providers.split(",")}
+    prepare_environment(Path(args.scratch), Path(args.data_dir), args.sessions, providers)
     rec = Recorder(args.worker)
-    {"merge": merge_worker, "sweep": sweep_worker}.get(args.worker, provider_worker)(args, rec)
+    {"merge": merge_worker, "seed": seed_worker, "sweep": sweep_worker}.get(args.worker, provider_worker)(args, rec)
     return 0
 
 

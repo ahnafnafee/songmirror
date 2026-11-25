@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 import pytest
+from fastapi.testclient import TestClient
 
 from songmirror.engine.targets import build_peers, build_targets, is_peer
 from songmirror.engine.targets.anghami import AnghamiApi, AnghamiTarget
@@ -16,7 +17,9 @@ from songmirror.engine.targets.plex import PlexTarget
 from songmirror.engine.targets.qqmusic import QQMusicTarget
 from songmirror.oauth import read_token
 from songmirror.services.playlist_links import parse_playlist_link
+from songmirror.services.settings import SettingsStore
 from songmirror.services.syncs import SyncJob, validate_sync_job
+from songmirror.web import create_app
 
 
 class Wire:
@@ -49,7 +52,9 @@ def test_emby_reads_pages_and_removes_by_playlist_entry():
         _emby_page({**audio, "PlaylistItemId": "93"}, total=2, start=1),
         _emby_page(audio),
         {"Id": "4"},
+        _emby_page(),
         {"ItemAddedCount": 1},
+        _emby_page(audio),
         (204, None, {}),
     )
     target = EmbyTarget({"EMBY_URL": "http://emby.fixture/emby/", "EMBY_TOKEN": "fixture", "EMBY_USER_ID": "9"},
@@ -68,6 +73,26 @@ def test_emby_reads_pages_and_removes_by_playlist_entry():
     assert wire.calls[-1][:2] == ("DELETE", "/emby/Playlists/2/Items")
     assert wire.calls[-1][2]["params"] == {"EntryIds": "93"}
     assert wire.calls[-1][2]["headers"]["X-Emby-Token"] == "fixture"
+
+
+def test_emby_verifies_untyped_playlists_and_batches_confirmed_additions():
+    first = {"Id": "24", "Type": "Audio", "Name": "First"}
+    second = {"Id": "25", "Type": "Audio", "Name": "Second"}
+    wire = Wire(
+        _emby_page({"Id": "10", "Name": "Music", "CanDelete": False}, {"Id": "11", "Name": "Films"}),
+        _emby_page(first),
+        _emby_page({"Id": "50", "Type": "Movie"}),
+        _emby_page(first),
+        {"ItemAddedCount": 1},
+        _emby_page(first, second),
+    )
+    target = EmbyTarget({"EMBY_URL": "http://emby.fixture", "EMBY_TOKEN": "fixture", "EMBY_USER_ID": "9"},
+                        session=wire)
+    music, = target.browse_playlists()
+    assert music["name"] == "Music"
+    assert target.is_editable(music)
+    assert target.add(music, ["24", "25"]) == ["25"]
+    assert wire.calls[4][2]["params"]["Ids"] == "24,25"
 
 
 def _plex_page(*items, **fields):
@@ -238,6 +263,35 @@ def test_qq_music_reads_pasted_links_across_pages():
     assert wire.calls[-1][2]["json"]["params"] == {"dissId": 13, "page": 1}
     with pytest.raises(TargetCapabilityError, match="playlist link"):
         target.browse_playlists()
+
+
+def test_read_only_playlist_links_reach_the_provider_from_transfers(tmp_path, monkeypatch):
+    qq_wire = Wire({"dissId": 13, "dissName": "QQ Mix", "totalNum": 3})
+    qq = QQMusicTarget("qmk-fixture", session=qq_wire)
+    anghami_wire = Wire(
+        {"token": {"accessToken": "test-1", "refreshToken": "refresh-1", "expiresIn": 3600}},
+        {"playlists": []},
+        {"playlists": []},
+        {"playlist": {"id": {"value": "77"}, "name": {"value": "Anghami Mix"}, "itemCount": 5}},
+    )
+    api = AnghamiApi("client-fixture", tmp_path / "anghami.json", session=anghami_wire)
+    api.authorize("fixture-code", "fixture-verifier", "https://mirror.fixture/oauth/anghami/callback")
+    anghami = AnghamiTarget(api)
+    app = create_app(settings=SettingsStore(dir=tmp_path))
+    accounts = app.state.account_profiles
+    targets = {accounts.default_id("anghami"): anghami, accounts.default_id("qqmusic"): qq}
+    monkeypatch.setattr(app.state.transfers, "_build", lambda account, _opts: targets.get(account))
+
+    with TestClient(app) as client:
+        for url, name, count in [
+            ("https://i2.y.qq.com/a/playlist/13", "QQ Mix", 3),
+            ("https://play.anghami.com/playlist/77", "Anghami Mix", 5),
+        ]:
+            preview = client.post("/api/transfers/preview", json={"url": url})
+            assert preview.status_code == 200, preview.json()
+            assert (preview.json()["name"], preview.json()["count"]) == (name, count)
+
+    assert not (qq_wire.replies or anghami_wire.replies)
 
 
 def test_partial_collection_is_never_returned_as_a_shorter_playlist():

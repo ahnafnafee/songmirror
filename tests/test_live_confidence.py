@@ -2,6 +2,7 @@
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -56,3 +57,54 @@ def test_it_refuses_to_run_in_ci(monkeypatch):
     monkeypatch.setenv("CI", "true")
     with pytest.raises(SystemExit, match="does not run in CI"):
         live.main(["--seed-playlist", "Drive", "--sessions", "copy"])
+
+
+def test_cleanup_refuses_another_run_before_contacting_provider():
+    target = SimpleNamespace(playlist_name=lambda playlist: playlist["name"])
+    with pytest.raises(RuntimeError, match="does not belong to this run"):
+        live.delete_playlist(target, {"name": "SongMirror confidence different emby"}, stamp="my-run")
+
+
+def test_cleanup_checks_emby_item_type_before_using_item_delete():
+    name = "SongMirror confidence my-run emby"
+    playlist = {"id": "123", "name": name}
+    calls = []
+    item = {"Id": "123", "Name": name, "Type": "Audio"}
+    target = SimpleNamespace(
+        source="emby", _user="user", playlist_name=lambda row: row["name"],
+        playlist_id=lambda row: row["id"], find_playlist=lambda _pid: playlist,
+        is_editable=lambda _row: True, _get=lambda _path: item,
+        _api=SimpleNamespace(request=lambda *args, **kwargs: calls.append((args, kwargs))),
+    )
+    with pytest.raises(RuntimeError, match="temporary playlist"):
+        live.delete_playlist(target, playlist, stamp="my-run")
+    assert not calls
+    item["Type"] = "Playlist"
+    live.delete_playlist(target, playlist, stamp="my-run")
+    assert calls == [(("DELETE", "/Items/123"), {"expect_json": False})]
+
+
+def test_unavailable_live_status_blocks_writes(monkeypatch, tmp_path):
+    def unreachable(_url):
+        raise OSError("fixture offline")
+
+    monkeypatch.setattr(live, "_get", unreachable)
+    args = live.parse(["--seed-playlist", "Drive", "--sessions", "copy", "--providers", "mopidy"])
+    with pytest.raises(SystemExit, match="could not check the live app"):
+        live.preflight(args, tmp_path)
+
+
+def test_a_connected_custom_profile_does_not_authorize_using_the_default(monkeypatch, tmp_path):
+    connected = {"state": "connected", "supports_playlists": True, "capabilities": {"library_write": True}}
+    replies = {
+        "accounts": [
+            {**connected, "id": "profile_default_jellyfin", "provider": "jellyfin", "is_default": True},
+            {**connected, "id": "profile_other", "provider": "mopidy", "is_default": False},
+        ],
+        "status": {"running": False},
+        "syncs": [],
+    }
+    monkeypatch.setattr(live, "_get", lambda url: replies[url.rsplit("/", 1)[1]])
+    args = live.parse(["--seed-playlist", "Drive", "--sessions", "copy", "--providers", "mopidy"])
+    with pytest.raises(SystemExit, match="not connected for playlist writes: mopidy"):
+        live.preflight(args, tmp_path)

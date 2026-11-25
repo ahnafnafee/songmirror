@@ -2,12 +2,14 @@
 
 import os
 import re
+import time
+from collections import Counter
 
 from ..matching import normalize_isrc
 from ..track_references import reference_text
 from .base import TargetCapabilityError
 from .music_server import MusicApi, MusicServerTarget, counted_pages, integer, rows, server_url
-from .provider_utils import source_playlist_details
+from .provider_utils import chunks, source_playlist_details
 
 
 def _id(value):
@@ -66,11 +68,11 @@ class EmbyTarget(MusicServerTarget):
 
     def _playlist_directory(self):
         return self._paged(f"/Users/{self._user}/Items", Recursive="true", IncludeItemTypes="Playlist",
-                           Fields="Overview,CanDelete")
+                           Fields="Overview,CanEditItems")
 
     @staticmethod
     def _playlist(item):
-        editable = item.get("CanEditItems", item.get("CanDelete")) is not False
+        editable = item.get("CanEditItems") is not False
         return {
             "id": _id(item.get("Id")), "name": item.get("Name") or "",
             "description": item.get("Overview") or "",
@@ -78,7 +80,14 @@ class EmbyTarget(MusicServerTarget):
         }
 
     def browse_playlists(self):
-        return [self._playlist(item) for item in self._playlist_directory() if item.get("MediaType") == "Audio"]
+        return [self._playlist(item) for item in self._playlist_directory() if self._is_audio_playlist(item)]
+
+    def _is_audio_playlist(self, item):
+        kind = item.get("MediaType")
+        if kind:
+            return kind == "Audio"
+        entries = self._paged(f"/Playlists/{_id(item.get('Id'))}/Items")
+        return all(entry.get("Type") == "Audio" for entry in entries)
 
     def is_editable(self, playlist):
         return playlist.get("_editable") is True
@@ -114,15 +123,33 @@ class EmbyTarget(MusicServerTarget):
 
     def add(self, playlist, target_ids):
         self._require_editable(playlist)
+        ids = [_id(target_id) for target_id in target_ids]
+        if not ids:
+            return []
         path = f"/Playlists/{_id(playlist['id'])}/Items"
+        before = Counter(track["id"] for track in self.playlist_tracks(playlist))
         added = []
-        for target_id in target_ids:
-            body = self._api.request("POST", path, params={"Ids": _id(target_id), "UserId": self._user})
+        for batch in chunks(ids, 100):
+            body = self._api.request("POST", path, params={"Ids": ",".join(batch), "UserId": self._user})
             count = integer(body.get("ItemAddedCount"))
-            if count not in {0, 1}:
+            if count is None or count > len(batch):
                 raise RuntimeError("Emby did not confirm the requested playlist addition.")
-            if count == 1:
-                added.append(target_id)
+            if not count:
+                continue
+            for delay in (0, 0.25, 0.5, 1, 2):
+                if delay:
+                    time.sleep(delay)
+                current = Counter(track["id"] for track in self.playlist_tracks(playlist))
+                confirmed = (current - before) & Counter(batch)
+                if sum(confirmed.values()) == count:
+                    before = current
+                    break
+            else:
+                raise RuntimeError("Emby did not show the tracks it reported adding.")
+            for track_id in batch:
+                if confirmed[track_id]:
+                    added.append(track_id)
+                    confirmed[track_id] -= 1
         return added
 
     def remove(self, playlist, track):
