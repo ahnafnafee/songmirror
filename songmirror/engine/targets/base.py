@@ -707,9 +707,14 @@ def _fit_chronology_writes(ordered_keys, current_by_key, additions, addition_key
 
     full_by_key = {addition_key(item): addition_target_id(item) for item in additions}
     full_replay = _chronology_replay_tail(ordered_keys, current_by_key, full_by_key)
-    full_cost = replay_write_cost(full_replay) if full_replay else len(additions)
-
     selected = additions[:max(0, max_writes)]
+    if any(original is not None and original[1].get("unavailable")
+           for _target_id, original in full_replay):
+        # A replay stages a new copy of every original. Append the additions
+        # when a hidden original in the suffix may no longer be addable.
+        return selected, [], len(additions) - len(selected), len(additions)
+
+    full_cost = replay_write_cost(full_replay) if full_replay else len(additions)
     replay = []
     while selected:
         selected_by_key = {
@@ -1618,11 +1623,11 @@ def _archive_sources_for_peer(peer):
 
 
 def _partition_reconcile_rows(songs, peer, provider_rows):
-    """Restore usable metadata in provider order and separate remaining hidden rows."""
-    rows = list(provider_rows)
+    """Return usable rows by position, identified hidden rows, and an unknown count."""
+    rows = dict(enumerate(provider_rows))
     hidden_rows = [
         (position, track)
-        for position, track in enumerate(rows)
+        for position, track in rows.items()
         if not isinstance(track, dict)
         or not str(track.get("name") or "").strip()
         or track.get("unavailable")
@@ -1656,22 +1661,25 @@ def _partition_reconcile_rows(songs, peer, provider_rows):
     for position, track in hidden_rows:
         tid = peer.track_id(track) if isinstance(track, dict) else None
         if tid and tid in snapshots:
-            restored = {
-                **snapshots[tid],
-                **{k: track[k] for k in (
-                    "id", "catalog_id", "videoId", "playlistItemId", "relationship_id", "added_at"
-                ) if track.get(k)},
+            snapshot = snapshots[tid]
+            # The archive is keyed by catalog track, so occurrence IDs and
+            # dates belong exclusively to the current playlist response.
+            rows[position] = {
+                **track,
+                **{field: snapshot[field] for field in (
+                    "name", "artist", "artists", "album", "album_position",
+                    "duration_ms", "isrc", "image",
+                ) if field in snapshot},
+                "unavailable": True,
             }
-            restored.pop("unavailable", None)
-            rows[position] = restored
             continue
 
-        rows[position] = None
+        del rows[position]
         if tid and tid in known_cids:
-            preserved_hidden.append((known_cids[tid], track))
+            preserved_hidden.append((position, known_cids[tid], {**track, "unavailable": True}))
         else:
             unidentified_hidden += 1
-    return [track for track in rows if track is not None], preserved_hidden, unidentified_hidden
+    return rows, preserved_hidden, unidentified_hidden
 
 
 def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, max_adds,
@@ -1745,7 +1753,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     learned_identities = {}  # source -> physical id -> newly proven hard canonical id
     present = {}       # source -> set of ALL current target ids (not canonical-deduped)
     key2isrc = {}      # track_key -> [(ISRC, metadata)], retaining conflicting recordings for validation
-    raw_by_source = {}
+    positioned_by_source = {}
     preserved_hidden_by_source = {}
     unidentified_hidden_by_source = {}
     unreadable = {}
@@ -1765,14 +1773,14 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             if authorities is None or p.source in authorities:
                 raise
             unreadable[p.source] = f"{p.name} mirror read failed: {e}"
-            raw_by_source[p.source] = []
+            positioned_by_source[p.source] = {}
             preserved_hidden_by_source[p.source] = []
             unidentified_hidden_by_source[p.source] = 0
             present[p.source] = set()
             log_warn(f"{p.name}/{name}: playlist read failed ({e!r}); "
                      "syncing the other providers without it", tag=p.tag)
             continue
-        raw, preserved_hidden, unidentified_hidden = _partition_reconcile_rows(
+        positioned, preserved_hidden, unidentified_hidden = _partition_reconcile_rows(
             songs, p, provider_rows
         )
         if unidentified_hidden:
@@ -1781,7 +1789,8 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                 f"entr{'y' if unidentified_hidden == 1 else 'ies'} without a usable title",
                 tag=p.tag,
             )
-        raw_by_source[p.source] = raw
+        positioned_by_source[p.source] = positioned
+        raw = positioned.values()
         preserved_hidden_by_source[p.source] = preserved_hidden
         unidentified_hidden_by_source[p.source] = unidentified_hidden
         archive.upsert_many(songs, p.source, raw)
@@ -1790,7 +1799,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                                t.get("artist") or ", ".join(t.get("artists") or [])] for t in raw])
         present[p.source] = (
             {p.track_id(t) for t in raw if p.track_id(t)}
-            | {p.track_id(t) for _cid, t in preserved_hidden if p.track_id(t)}
+            | {p.track_id(t) for _position, _cid, t in preserved_hidden if p.track_id(t)}
         )
 
     # Read every peer before assigning identities. Tracks still missing native
@@ -1798,7 +1807,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     # without making peer ordering part of correctness.
     for p in peers:
         native = p.native_isrc_map(caches[p.source])
-        for track in raw_by_source[p.source]:
+        for track in positioned_by_source[p.source].values():
             norm = _normalize(track, _target_provider(p))
             isrc = normalize_isrc(norm.get("isrc") or native.get(p.track_id(track)))
             if isrc:
@@ -1806,14 +1815,16 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                     key2isrc.setdefault(key_, []).append((isrc, norm))
 
     for p in peers:
-        raw = raw_by_source[p.source]
+        positioned = positioned_by_source[p.source]
         changes, learned = {}, {}
         entries = _entry_cids(
-            p, raw, songs, caches[p.source], key2isrc,
+            p, positioned.values(), songs, caches[p.source], key2isrc,
             rebindings=changes, remember=False, learned_out=learned)
-        for hidden_cid, hidden_track in preserved_hidden_by_source[p.source]:
+        for position, (_cid, norm) in zip(positioned, entries, strict=True):
+            norm["_playlist_position"] = position
+        for position, hidden_cid, hidden_track in preserved_hidden_by_source[p.source]:
             norm = _normalize(hidden_track, _target_provider(p))
-            norm["_playlist_position"] = len(entries)
+            norm["_playlist_position"] = position
             norm["_hidden_placeholder"] = True
             entries.append((hidden_cid, norm))
         per_entry[p.source] = entries

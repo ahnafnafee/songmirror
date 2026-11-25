@@ -5,6 +5,8 @@ A song a provider can never match must not block unrelated deletions, and a
 song a provider delisted is not a user deletion, in two-way and one-way syncs.
 """
 
+import pytest
+
 from songmirror.engine import archive
 from songmirror.engine.targets.base import mirror_pair, reconcile
 
@@ -511,3 +513,64 @@ def test_reconcile_holds_removals_when_hidden_entry_cannot_be_identified(tmp_pat
         assert stats["removed"] == 0
         assert not stats["clean"]
     conn.close()
+
+
+@pytest.mark.parametrize("has_snapshot", [False, True], ids=["identity-only", "archived"])
+@pytest.mark.parametrize("hidden_in_suffix", [False, True], ids=["safe-suffix", "hidden-suffix"])
+def test_reconcile_appends_recovered_track_when_replay_would_touch_hidden_entry(
+    tmp_path, has_snapshot, hidden_in_suffix,
+):
+    dates = {
+        "A": "2026-01-01T00:00:00Z" if hidden_in_suffix else "2019-01-01T00:00:00Z",
+        "B": "2020-01-01T00:00:00Z",
+        "C": "2024-01-01T00:00:00Z",
+    }
+
+    class DatedPeer(Peer):
+        def playlist_tracks(self, playlist):
+            rows = super().playlist_tracks(playlist)
+            for code, row in zip(self.songs, rows):
+                row["added_at"] = dates[code]
+            return rows
+
+    class HiddenSpotify(DatedPeer):
+        replayed = None
+
+        def playlist_tracks(self, playlist):
+            rows = super().playlist_tracks(playlist)
+            rows[0] = {
+                "id": "spotify-A", "name": "", "added_at": dates["A"], "unavailable": True,
+            }
+            return rows
+
+        def replay_chronology(self, playlist, entries):
+            self.replayed = [track_id for track_id, _original in entries]
+            assert "spotify-A" not in self.replayed, "Spotify rejects re-adding the hidden track"
+            assert [original[0] for _track_id, original in entries if original is not None] == [1]
+            self.add(playlist, [track_id for track_id, original in entries if original is None])
+
+    spotify = HiddenSpotify("spotify", "AC")
+    apple = DatedPeer("apple", "ABC")
+    conn = archive.connect(str(tmp_path / "hidden-replay.db"))
+    try:
+        for peer in (spotify, apple):
+            archive.set_playlist_state(conn, "mix", peer.source, {"i:ISRCA", "i:ISRCC"})
+        archive.set_identities(conn, "spotify", {"spotify-A": "i:ISRCA"})
+        if has_snapshot:
+            archive.upsert_many(conn, "spotify", [{
+                "id": "spotify-A", "name": TITLES["A"], "artists": ["A"],
+                "isrc": "ISRCA", "duration_ms": 1000, "added_at": dates["A"],
+            }])
+
+        stats = _sync(conn, [spotify, apple])
+        assert spotify.added == ["B"]
+        assert spotify.removed == apple.removed == []
+        assert stats["added"] == 1
+        if hidden_in_suffix:
+            assert spotify.replayed is None
+            assert stats["chronology_replayed"] == 0
+        else:
+            assert spotify.replayed == ["spotify-B", "spotify-C"]
+            assert stats["chronology_replayed"] == 1
+    finally:
+        conn.close()
