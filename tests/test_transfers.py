@@ -402,6 +402,44 @@ def test_transfer_same_provider_copies_by_id_without_resolving():
     assert resolved == []          # resolver never invoked
 
 
+def test_transfer_same_provider_keeps_unavailable_destination_ids_in_dedup():
+    added = []
+
+    class _SpotifySrc:
+        source = "spotify"
+
+        def playlist_tracks(self, pl):
+            return [
+                {"id": "t1", "name": "One", "artists": ["A"], "duration_ms": 1, "added_at": "1"},
+                {"id": "t2", "name": "Two", "artists": ["B"], "duration_ms": 1, "added_at": "2"},
+            ]
+
+        def track_id(self, raw):
+            return raw["id"]
+
+    class _SpotifyDst:
+        source = "spotify"
+
+        def playlist_tracks(self, pl):
+            return [
+                {"id": "t1", "name": "", "artists": [""], "duration_ms": 0, "unavailable": True},
+            ]
+
+        def track_id(self, raw):
+            return raw["id"]
+
+        def resolve(self, norm, cache):
+            raise AssertionError("same-provider copy must not call resolve")
+
+        def add(self, pl, ids):
+            added.extend(ids)
+
+    res = transfer(_SpotifySrc(), _SpotifyDst(), {"id": "s"}, {"id": "d"},
+                   {"search": {}, "isrc": {}, "dirty": False}, execute=True, max_adds=100)
+    assert res["added"] == 1
+    assert added == ["t2"]
+
+
 @pytest.mark.parametrize("provider", ["spotify", "ytmusic"])
 def test_transfer_service_builds_both_selected_profiles_for_cross_account_copy(
     monkeypatch, tmp_path, provider

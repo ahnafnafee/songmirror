@@ -390,3 +390,119 @@ def test_a_search_miss_asks_the_provider_resolver_before_calling_a_song_delisted
     assert sorted(tidal.songs) == ["A", "B"], "the resolver proves C is still offered"
     assert archive.get_catalog_checks(conn, "mix", "spotify") == {}
     conn.close()
+
+
+def test_reconcile_preserves_liked_track_when_spotify_hides_metadata_across_passes(tmp_path, monkeypatch):
+    # Spotify keeps returning the saved track's ID with empty metadata when
+    # hidden. A two-pass reconcile where Spotify catalog search finds another
+    # release must not treat that hidden entry as a confirmed deletion.
+    from songmirror.engine import spotify_cookie
+    from songmirror.engine.targets.spotify_target import SpotifyTarget
+
+    monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
+    monkeypatch.setattr("songmirror.engine.targets.spotify_target.polite_sleep", lambda *_: None)
+
+    liked_items = [
+        {
+            "track": {
+                "data": {
+                    "uri": f"spotify:track:spLiked{code}",
+                    "name": TITLES[code],
+                    "artists": {"items": [{"profile": {"name": "A"}}]},
+                    "trackDuration": {"totalMilliseconds": 1000},
+                }
+            },
+            "addedAt": {"isoString": f"2026-01-0{idx}T00:00:00Z"},
+        }
+        for idx, code in enumerate(("A", "B", "C"), 1)
+    ]
+    monkeypatch.setattr(spotify_cookie, "_pf", lambda op, _vars: {
+        "me": {"library": {"tracks": {"items": liked_items, "totalCount": len(liked_items)}}}
+    } if op == "fetchLibraryTracks" else {})
+    monkeypatch.setattr(spotify_cookie, "metadata_isrcs", lambda ids, **_kw: {i: None for i in ids})
+    monkeypatch.setattr(
+        spotify_cookie,
+        "search_tracks",
+        lambda q, limit=8: [{
+            "id": "spAltReleaseA",
+            "name": "Alpha Road",
+            "artists": [{"name": "A"}],
+            "duration_ms": 1000,
+        }] if "alpha road" in q.casefold() else [],
+    )
+
+    conn = archive.connect(str(tmp_path / "liked-hidden.db"))
+    spotify = SpotifyTarget(None, str(tmp_path / "sp-cache.json"), sync_peer=True, songs=conn)
+    apple = Peer("apple", ["A", "B", "C"])
+    resources = {"spotify": spotify.favorite_tracks_resource(), "apple": {"id": "apple"}}
+    caches = {"spotify": {"isrc": {}, "search": {}, "dirty": False}, "apple": {"isrc": {}, "search": {}, "dirty": False}}
+
+    # Pass 1: establish baseline with visible metadata.
+    reconcile([spotify, apple], "Liked Songs", resources, caches, conn,
+              execute=True, max_removals=25, max_adds=200, link_key="collection:liked-tracks")
+    assert sorted(apple.songs) == ["A", "B", "C"]
+
+    # Passes 2 & 3: Spotify hides Alpha Road's title/duration, yet still returns its saved ID.
+    liked_items[0]["track"]["data"].update({
+        "name": "",
+        "artists": {"items": [{"profile": {"name": ""}}]},
+        "trackDuration": {"totalMilliseconds": 0},
+        "playability": {"playable": False, "reason": "COUNTRY_RESTRICTED"},
+    })
+    for _ in range(2):
+        stats = reconcile([spotify, apple], "Liked Songs", resources, caches, conn,
+                          execute=True, max_removals=25, max_adds=200, link_key="collection:liked-tracks")
+        assert sorted(apple.songs) == ["A", "B", "C"], (
+            "Apple Music must keep the hidden track while Spotify still returns its ID"
+        )
+        assert apple.removed == []
+        assert stats["removed"] == 0
+
+    # Passes 4 & 5: user genuinely unlikes the track on Spotify -> propagates once confirmed.
+    liked_items.pop(0)
+    for _ in range(2):
+        reconcile([spotify, apple], "Liked Songs", resources, caches, conn,
+                  execute=True, max_removals=25, max_adds=200, link_key="collection:liked-tracks")
+    assert sorted(apple.songs) == ["B", "C"]
+    assert apple.removed == ["A"]
+    conn.close()
+
+
+def test_reconcile_preserves_hidden_entry_by_track_identity_without_snapshot(tmp_path):
+    conn = archive.connect(str(tmp_path / "identity-only.db"))
+    archive.set_playlist_state(conn, "mix", "spotify", {"i:ISRCA"})
+    archive.set_playlist_state(conn, "mix", "apple", {"i:ISRCA"})
+    archive.set_identities(conn, "spotify", {"spotify-A": "i:ISRCA"})
+
+    class HiddenPeer(Peer):
+        def playlist_tracks(self, _playlist):
+            return [{"id": "spotify-A", "name": "", "artists": [""], "duration_ms": 0, "unavailable": True}]
+
+    spotify = HiddenPeer("spotify", [], catalog="A")
+    apple = Peer("apple", ["A"])
+    for _ in range(2):
+        stats = _sync(conn, [spotify, apple], passes=1)
+        assert apple.songs == ["A"]
+        assert apple.removed == []
+        assert stats["removed"] == 0
+    conn.close()
+
+
+def test_reconcile_holds_removals_when_hidden_entry_cannot_be_identified(tmp_path):
+    conn = archive.connect(str(tmp_path / "unidentified-hidden.db"))
+    archive.set_playlist_state(conn, "mix", "spotify", {"i:ISRCA"})
+    archive.set_playlist_state(conn, "mix", "apple", {"i:ISRCA"})
+
+    class UnidentifiedHiddenPeer(Peer):
+        def playlist_tracks(self, _playlist):
+            return [{"id": "unknown-hidden", "name": "", "artists": [""], "duration_ms": 0, "unavailable": True}]
+
+    spotify = UnidentifiedHiddenPeer("spotify", [], catalog="A")
+    apple = Peer("apple", ["A"])
+    for _ in range(2):
+        stats = _sync(conn, [spotify, apple], passes=1)
+        assert apple.songs == ["A"]
+        assert apple.removed == []
+        assert stats["removed"] == 0
+        assert not stats["clean"]
+    conn.close()

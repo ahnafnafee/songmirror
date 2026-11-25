@@ -595,15 +595,15 @@ def metadata_isrcs(ids, *, should_continue=None, on_progress=None):
             data = response.json()
             if not isinstance(data, dict):
                 raise RuntimeError("Spotify returned incomplete track metadata")
-            if not data.get("name") or data.get("is_metadata_hidden"):
-                isrc = None
-            else:
-                external = data.get("external_id", [])
-                if not isinstance(external, list):
-                    raise RuntimeError("Spotify returned invalid external identifiers")
-                isrc = next((normalize_isrc(item.get("id")) for item in external
-                             if isinstance(item, dict) and str(item.get("type", "")).lower() == "isrc"
-                             and re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", normalize_isrc(item.get("id")))), None)
+            hidden = data.get("is_metadata_hidden") is True
+            if not str(data.get("name") or "").strip() and not hidden:
+                raise RuntimeError("Spotify returned incomplete track metadata")
+            external = data.get("external_id", [])
+            if not isinstance(external, list):
+                raise RuntimeError("Spotify returned invalid external identifiers")
+            isrc = next((normalize_isrc(item.get("id")) for item in external
+                         if isinstance(item, dict) and str(item.get("type", "")).lower() == "isrc"
+                         and re.fullmatch(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", normalize_isrc(item.get("id")))), None)
             _metadata_isrc_cache[tid] = isrc
             if index == 1 or index % 25 == 0 or index == len(ids):
                 log_note(f"Spotify recording metadata: {index}/{len(ids)}", tag="spotify")
@@ -720,16 +720,12 @@ def _normalized_content_tracks(items):
             sources,
             key=lambda candidate: abs(int(candidate.get("width") or 96) - 96),
         )["url"] if sources else ""
-        playability = t.get("playability") or {}
-        unavailable = (
-            playability.get("playable") is False
-            or not t.get("name")
-            or (t.get("trackDuration") or {}).get("totalMilliseconds") == 0
-        )
+        name = t.get("name", "") or ""
+        unavailable = not str(name).strip() or t.get("is_metadata_hidden") is True
         row = {
             "id": uri.rsplit(":", 1)[-1],
             "isrc": None,
-            "name": t.get("name", "") or "",
+            "name": name,
             "artists": [a for a in artists if a] or [""],
             "album": album.get("name"),
             "album_position": t.get("trackNumber"),

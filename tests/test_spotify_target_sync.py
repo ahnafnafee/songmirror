@@ -181,3 +181,50 @@ def test_saved_manual_spotify_reference_adds_once(tmp_path, monkeypatch, backend
         assert load_cache(path)["manual"] == {key}
     finally:
         songs.close()
+
+
+def test_mirror_pair_holds_removals_and_skips_resolve_for_unavailable_source_entry(tmp_path):
+    class _Target:
+        tag = "apple"
+        name = "Apple Music"
+        source = "apple"
+        provider = "apple"
+
+        def track_id(self, track):
+            return track.get("id")
+
+        def playlist_tracks(self, _pl):
+            return [{"id": "apple-1", "name": "Bright Lake", "artists": ["A"], "duration_ms": 1000}]
+
+        def prefetch(self, _tracks, _cache):
+            pass
+
+        def expected_ids(self, _tracks, _links, _cache):
+            return {}
+
+        def resolve(self, _track, _cache):
+            raise AssertionError("must not search for blank unavailable source entry")
+
+        def add(self, _pl, _ids):
+            raise AssertionError("must not add unavailable source entry")
+
+        def remove(self, _pl, _track):
+            raise AssertionError("must not remove destination track when source has unavailable entry")
+
+    target = _Target()
+
+    source_tracks = [
+        {"id": "sp-hidden", "name": "", "artists": [""], "duration_ms": 0, "unavailable": True},
+    ]
+    songs = archive.connect(str(tmp_path / "oneway-hidden.db"))
+    try:
+        stats = base.mirror_pair(
+            target, source_tracks, {"name": "Mix"}, {"id": "dest", "name": "Mix"},
+            {"isrc": {}, "search": {}, "dirty": False}, songs,
+            execute=True, max_removals=25, max_adds=200,
+            source_key="spotify", source_name="Spotify",
+        )
+        assert stats["removed"] == 0
+        assert stats["removals_skipped"] == 1
+    finally:
+        songs.close()

@@ -130,7 +130,40 @@ def test_metadata_isrc_handles_delisted_or_hidden_tracks_without_error(monkeypat
         sc._metadata_isrc_cache.clear()
 
 
-def test_normalized_content_tracks_marks_country_restricted_or_empty_name_as_unavailable():
+def test_metadata_isrc_malformed_empty_dict_is_not_cached_and_remains_retryable(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+    sc._metadata_isrc_cache.clear()
+    payloads = iter([
+        {},
+        {"name": "Creep", "external_id": [{"type": "isrc", "id": "GB-AYE-92-00070"}]},
+    ])
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, body):
+            self._body = body
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._body
+
+    monkeypatch.setattr(sc, "_headers", lambda: {"authorization": "Bearer test"})
+    monkeypatch.setattr(sc, "polite_sleep", lambda _: None)
+    monkeypatch.setattr(sc.requests, "get", lambda *args, **kwargs: Response(next(payloads)))
+    tid = "4uLU6hMCjMI75M1A2tKUQC"
+    try:
+        with pytest.raises(RuntimeError, match="incomplete track metadata"):
+            sc.metadata_isrcs([tid])
+        assert tid not in sc._metadata_isrc_cache
+        assert sc.metadata_isrcs([tid]) == {tid: "GBAYE9200070"}
+    finally:
+        sc._metadata_isrc_cache.clear()
+
+
+def test_normalized_content_tracks_keeps_unplayable_tracks_with_usable_metadata_eligible():
     from songmirror.engine import spotify_cookie as sc
 
     items = [
@@ -148,21 +181,99 @@ def test_normalized_content_tracks_marks_country_restricted_or_empty_name_as_una
         {
             "itemV2": {
                 "data": {
-                    "uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
-                    "name": "Creep",
-                    "trackDuration": {"totalMilliseconds": 238000},
-                    "playability": {"playable": True},
+                    "uri": "spotify:track:1111111111111111111111",
+                    "name": "Region Restricted Song",
+                    "artists": {"items": [{"profile": {"name": "Artist"}}]},
+                    "trackDuration": {"totalMilliseconds": 210000},
+                    "playability": {"playable": False, "reason": "COUNTRY_RESTRICTED"},
                 }
             },
             "uid": "item-2",
         },
+        {
+            "itemV2": {
+                "data": {
+                    "uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
+                    "name": "Creep",
+                    "artists": {"items": [{"profile": {"name": "Radiohead"}}]},
+                    "trackDuration": {"totalMilliseconds": 238000},
+                    "playability": {"playable": True},
+                }
+            },
+            "uid": "item-3",
+        },
     ]
     rows = sc._normalized_content_tracks(items)
-    assert len(rows) == 2
+    assert len(rows) == 3
     assert rows[0]["id"] == "5sGqchimtMV6qdVRo2avJu"
     assert rows[0]["unavailable"] is True
-    assert rows[1]["id"] == "4uLU6hMCjMI75M1A2tKUQC"
+    assert rows[1]["id"] == "1111111111111111111111"
     assert rows[1].get("unavailable") is not True
+    assert rows[2]["id"] == "4uLU6hMCjMI75M1A2tKUQC"
+    assert rows[2].get("unavailable") is not True
+
+
+def test_transfer_from_spotify_cookie_copies_unplayable_matchable_track_and_skips_hidden(monkeypatch):
+    from songmirror.engine import spotify_cookie as sc
+    from songmirror.services.transfers import transfer
+
+    monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
+    items = [
+        {
+            "itemV2": {
+                "data": {
+                    "uri": "spotify:track:5sGqchimtMV6qdVRo2avJu",
+                    "name": "",
+                    "trackDuration": {"totalMilliseconds": 0},
+                    "playability": {"playable": False, "reason": "COUNTRY_RESTRICTED"},
+                }
+            },
+            "uid": "item-hidden",
+        },
+        {
+            "itemV2": {
+                "data": {
+                    "uri": "spotify:track:1111111111111111111111",
+                    "name": "Region Song",
+                    "artists": {"items": [{"profile": {"name": "Artist"}}]},
+                    "trackDuration": {"totalMilliseconds": 210000},
+                    "playability": {"playable": False, "reason": "COUNTRY_RESTRICTED"},
+                }
+            },
+            "uid": "item-unplayable-with-meta",
+        },
+    ]
+    monkeypatch.setattr(sc, "_content_items", lambda _pl: items)
+    enriched_ids = []
+    monkeypatch.setattr(sc, "metadata_isrcs", lambda ids, **_kw: (enriched_ids.extend(ids), {i: "USAAA2600001" for i in ids})[1])
+
+    added = []
+
+    class _AppleDst:
+        source = "apple"
+
+        def playlist_tracks(self, _pl):
+            return []
+
+        def resolve(self, norm, _cache):
+            return ("apple-region-song", "isrc") if norm["name"] == "Region Song" else (None, None)
+
+        def add(self, _pl, ids):
+            added.extend(ids)
+
+    res = transfer(
+        SpotifyTarget(None, "sp-cache.json"),
+        _AppleDst(),
+        {"id": "src"},
+        {"id": "dst"},
+        {"search": {}, "isrc": {}, "dirty": False},
+        execute=True,
+        max_adds=100,
+    )
+    assert enriched_ids == ["1111111111111111111111"]
+    assert res["unavailable"] == 1
+    assert res["added"] == 1
+    assert added == ["apple-region-song"]
 
 
 def _stub_cookie(monkeypatch):
