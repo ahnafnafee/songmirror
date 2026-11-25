@@ -36,7 +36,7 @@ class MusicApi:
         self._session = session or requests
 
     def request(self, method, path, *, headers=None, missing=False, expect_json=True,
-                include_headers=False, **kwargs):
+                include_headers=False, expect_text=False, **kwargs):
         try:
             response = self._session.request(
                 method, self.url + path, headers={**self._headers, **(headers or {})},
@@ -55,6 +55,8 @@ class MusicApi:
             raise TargetTransientError(f"{self.name} returned HTTP {status}.")
         if not 200 <= status < 300:
             raise RuntimeError(f"{self.name} returned HTTP {status}. Check the server URL and configuration.")
+        if expect_text:
+            return response.text
         if not expect_json:
             return None
         try:

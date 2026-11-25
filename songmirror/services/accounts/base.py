@@ -8,7 +8,7 @@ to *obtain* them. One connector per service, keyed to the targets registry, so
 from dataclasses import dataclass
 from typing import Literal
 
-AuthKind = Literal["oauth_redirect", "oauth_device", "token_paste", "api_key"]
+AuthKind = Literal["oauth_redirect", "oauth_device", "token_paste", "api_key", "public_link"]
 # `library_write` is playlist writing. `favorites_write` is the provider's own
 # liked/loved collection, which is a separate grant because a service can have
 # one without the other: Last.fm can love a track but has no playlists at all.

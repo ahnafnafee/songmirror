@@ -14,21 +14,23 @@ In **Accounts → SoundCloud → Connect**, expand **No-quota mode**. Open your
 [SoundCloud playlists](https://soundcloud.com/you/sets) in a signed-in browser.
 Open Developer Tools → **Network**, reload the page, then copy the request to
 `api-v2.soundcloud.com/me/library/all` using **Copy as cURL (bash)**. Paste it
-into SongMirror. To enable automatic renewal, also copy the
-`soundcloud.com/you/sets` document request as **Copy as cURL (bash)** and paste
-it into the renewal field. Paste both requests from the same signed-in browser
-tab. SongMirror saves the authorization header, client ID, and supplied
-SoundCloud page cookies privately for that profile.
+into SongMirror. In **Network → Doc**, copy the `soundcloud.com/you/sets`
+document request as **Copy as cURL (bash)** and paste it into the renewal
+field. Both requests are required and must come from the same signed-in tab.
+SongMirror saves the authorization header, client ID, and supplied site cookies
+privately for that profile.
 
-When the web API rejects the short-lived token, SongMirror opens the
-SoundCloud playlist page in Chromium with the saved page cookies. It checks
-that any new token belongs to the same account before saving it and retrying
-the request once. Paste fresh requests if the website session itself expires
-or SoundCloud asks for browser verification. If you have already set up OAuth,
-**Switch back to OAuth** restores that connection.
+When a token has been stored for about 50 minutes, SongMirror tries to renew it
+before the next web API call. It also attempts renewal after HTTP 401. It opens
+the playlist page in Chromium with the saved site cookies, verifies the account
+of the replacement token, and saves it. Existing connections with only an
+authorization header need both requests to gain automatic renewal. Paste fresh
+requests if the website session expires or SoundCloud asks for browser
+verification. **Switch back to OAuth** restores a previously configured OAuth
+connection.
 
 The browser renewal flow follows the same principle as
-[Trackhop's SoundCloud renewal](https://github.com/xlollx/Trackhop/blob/7b573f5f341354dd9d54e2af263ca578a64dd97c/android/bridge/src/main/java/com/xlollx/songport/ytmbridge/SoundCloudRenewal.kt).
+[Trackhop's SoundCloud renewal](https://github.com/xlollx/Trackhop/blob/d07e51fc80c206b4ba4077fdb31feed160972fce/android/bridge/src/main/java/com/xlollx/songport/ytmbridge/SoundCloudRenewal.kt).
 
 The web client uses these requests:
 

@@ -21,6 +21,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from ..engine.targets.public_playlists import PUBLIC_PLAYLIST_TARGETS
 from .settings import SettingsStore, _ENV_LOCK, _open_private
 
 
@@ -82,7 +83,8 @@ PROVIDER_KEYS = {
     "mopidy": {"MOPIDY_URL", "MOPIDY_CACHE_FILE"},
     "lyrion": {"LYRION_URL", "LYRION_USER", "LYRION_PASSWORD", "LYRION_CACHE_FILE"},
     "anghami": {"ANGHAMI_CLIENT_ID", "ANGHAMI_TOKEN_FILE"},
-    "qqmusic": {"QQMUSIC_API_KEY"},
+    "qqmusic": {"QQMUSIC_API_KEY", "QQMUSIC_PREFER_BROWSER"},
+    **{source: {f"{source.upper()}_PUBLIC_PLAYLIST"} for source in PUBLIC_PLAYLIST_TARGETS},
 }
 
 _FILE_DEFAULTS = {
@@ -575,5 +577,6 @@ class AccountProfileStore:
             "listenbrainz": "ListenBrainz", "subsonic": "Navidrome / Subsonic",
             "emby": "Emby", "plex": "Plex", "mopidy": "Mopidy",
             "lyrion": "Lyrion Music Server", "anghami": "Anghami", "qqmusic": "QQ Music",
+            **{source: cls.name for source, cls in PUBLIC_PLAYLIST_TARGETS.items()},
             "jellyfin": "Jellyfin",
         }.get(provider, provider)

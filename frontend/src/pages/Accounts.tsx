@@ -22,6 +22,8 @@ const PROVIDERS = [
   ['subsonic', 'Navidrome / Subsonic'], ['jellyfin', 'Jellyfin'],
   ['emby', 'Emby'], ['plex', 'Plex'], ['mopidy', 'Mopidy'], ['lyrion', 'Lyrion Music Server'],
   ['anghami', 'Anghami'], ['qqmusic', 'QQ Music'],
+  ['audiomack', 'Audiomack'], ['gaana', 'Gaana'], ['jiosaavn', 'JioSaavn'],
+  ['linemusic', 'LINE MUSIC'], ['netease', 'NetEase Cloud Music'], ['pandora', 'Pandora'], ['vibe', 'Naver Vibe'],
 ] as const
 
 export default function Accounts() {

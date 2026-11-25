@@ -41,6 +41,7 @@ const AUTH_KIND_LABELS: Record<AuthKind, string> = {
   get oauth_device() { return t("DEVICE CODE") },
   get token_paste() { return t("TOKEN PASTE") },
   get api_key() { return t("API KEY") },
+  get public_link() { return t("Public playlist link") },
 }
 
 /** Card border echoes severity: hairline for healthy, dashed for "nothing
@@ -139,7 +140,9 @@ export function AccountCard({ account, onChanged }: {
         <StatusPill state={account.state} className="ms-auto" />
       </div>
 
-      <p className="text-[13px] leading-relaxed text-text-2">{SERVICE_BLURBS[account.provider] ?? ''}</p>
+      <p className="text-[13px] leading-relaxed text-text-2">{account.auth_kind === 'public_link'
+        ? t("Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.")
+        : SERVICE_BLURBS[account.provider] ?? ''}</p>
 
       {editingLabel && (
         <div className="flex items-end gap-2">

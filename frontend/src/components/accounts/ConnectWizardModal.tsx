@@ -45,6 +45,7 @@ const AUTH_KIND_TITLES: Record<Account['auth_kind'], string> = {
   get oauth_device() { return t("Connect with a device code") },
   get token_paste() { return t("Connect from a signed-in browser session") },
   get api_key() { return t("Connect with a server URL and API key") },
+  get public_link() { return t("Connect with a public playlist link") },
 }
 
 /** Inline monospace token for header names / literal values inside the guides. */
@@ -54,7 +55,7 @@ function Code({ children }: { children: ReactNode }) {
 
 /** Inline hyperlink for a guide step's own reference (e.g. "open
  * music.apple.com") — new tab, styled like the guide's standalone CTA link. */
-function GuideLink({ href, children }: { href: string; children: ReactNode }) {
+function GuideLink({ href, children }: { href: string; children?: ReactNode }) {
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
       {children}
@@ -67,6 +68,14 @@ interface ConnectGuideContent {
   steps: ReactNode[]
   note?: string
   link?: { href: string; label: string }
+}
+
+function ServerAddressStep({ port }: { port: number }) {
+  return <Trans i18nKey={"Enter your <strong1>Server URL</strong1>. On the same machine, use <code2/>. If SongMirror runs in Docker and the server runs on the host, use <code3/>."} components={{
+    strong1: <strong />,
+    code2: <Code>{`http://localhost:${port}`}</Code>,
+    code3: <Code>{`http://host.docker.internal:${port}`}</Code>,
+  }} />
 }
 
 // Per-provider "how do I actually get these values" walkthroughs, shown as an
@@ -250,6 +259,52 @@ function connectGuides(): Record<string, ConnectGuideContent> { return {
       </>,
     ],
   },
+  emby: {
+    intro: t("Connect to your server’s web API. You do not need to register a developer app."),
+    steps: [
+      <ServerAddressStep key="address" port={8096} />,
+      <>{t("Open Emby Web. In your browser’s Network tab, enable Preserve log, then sign in to Emby.")}</>,
+      <Trans key="step-1" i18nKey={"Filter for <code1/> and open the response. Copy <code2/> into Access token and <code3/> into User ID."} components={{ code1: <Code>AuthenticateByName</Code>, code2: <Code>AccessToken</Code>, code3: <Code>User.Id</Code> }} />,
+    ],
+  },
+  plex: {
+    intro: t("Connect to your server’s web API. You do not need to register a developer app."),
+    steps: [
+      <ServerAddressStep key="address" port={32400} />,
+      <>{t("In Plex Web, choose a track from your server. Open its menu, select Get Info, then select View XML.")}</>,
+      <Trans key="step-2" i18nKey={"Copy the value of <code1/> from the XML page’s address into Access token."} components={{ code1: <Code>X-Plex-Token</Code> }} />,
+    ],
+  },
+  mopidy: {
+    intro: t("Connect to your server’s web API. You do not need to register a developer app."),
+    steps: [
+      <Trans key="step-3" i18nKey={"In <code1/>, enable <code2/> and make its HTTP address reachable from SongMirror."} components={{ code1: <Code>mopidy.conf</Code>, code2: <Code>[http]</Code> }} />,
+      <ServerAddressStep key="address" port={6680} />,
+      <Trans key="step-4" i18nKey={"To create or edit playlists, also enable <code1/> and set <code2/>."} components={{ code1: <Code>[m3u]</Code>, code2: <Code>playlists_dir</Code> }} />,
+    ],
+  },
+  lyrion: {
+    intro: t("Connect to your server’s web API. You do not need to register a developer app."),
+    steps: [
+      <ServerAddressStep key="address" port={9000} />,
+      <>{t("If your server asks you to sign in, enter its username and password below.")}</>,
+      <>{t("To create or edit playlists, set the Playlist Folder in Lyrion’s Basic Settings.")}</>,
+    ],
+  },
+  anghami: {
+    intro: t("Use Anghami playlists as a source for sync and transfers."),
+    steps: [
+      <Trans key="step-5" i18nKey={"Copy the callback URL shown below. In the <link1>Anghami Developer Portal</link1>, register an app and add that exact URL as its redirect URI."} components={{ link1: <GuideLink href="https://developers.anghami.com" /> }} />,
+      <>{t("Copy the app’s Client ID below and select Save and continue. Sign in to Anghami and approve access when prompted.")}</>,
+    ],
+  },
+  qqmusic: {
+    intro: t("Paste a QQ Music playlist link to use it as a source."),
+    steps: [
+      <Trans key="step-6" i18nKey={"Open <link1>QQ Music Skills</link1>, sign in, and create an API key."} components={{ link1: <GuideLink href="https://y.qq.com/n/ryqq_v2/qqmusic_skills" /> }} />,
+      <Trans key="step-7" i18nKey={"Paste the key starting with <code1/> below and select Connect. Then paste a QQ Music playlist link into Transfers."} components={{ code1: <Code>qmk-</Code> }} />,
+    ],
+  },
 }
 
 }
@@ -316,6 +371,12 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
   const [showSuccess, setShowSuccess] = useState(false)
   const [lastfmMode, setLastfmMode] = useState<'api' | 'public'>('api')
   const isLastfm = account.provider === 'lastfm'
+  const isDirectServer = ['emby', 'plex', 'mopidy', 'lyrion'].includes(account.provider)
+  const description = isLastfm ? t("Choose what to connect")
+    : account.provider === 'listenbrainz' ? t("Read loved recordings and playlists by username; add a user token to receive them.")
+    : account.provider === 'qqmusic' ? t("Connect with a QQ Music API key")
+    : isDirectServer ? t("Connect directly to your server")
+    : AUTH_KIND_TITLES[account.auth_kind]
   const usesLastfmApp = isLastfm && !account.fields.some((field) => field.key === 'LASTFM_API_KEY')
   const setupAccount = useMemo(() => {
     if (!isLastfm) return account
@@ -466,7 +527,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
     }
   }
 
-  // token_paste / api_key: submit field values directly to /connect.
+  // Direct connections send their fields to /connect in one request.
   async function submitDirect() {
     setSaving(true)
     setError(null)
@@ -493,8 +554,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
       open={open}
       onClose={onClose}
       title={t("Connect {{accountName}}", { accountName: account.name })}
-      description={isLastfm ? t("Choose what to connect") : account.provider === 'listenbrainz'
-        ? t("Read loved recordings and playlists by username; add a user token to receive them.") : AUTH_KIND_TITLES[account.auth_kind]}
+      description={description}
     >
       <div className="flex flex-col gap-5">
         {showSuccess ? (
@@ -566,7 +626,9 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
                 />
               ))}
 
-            {(account.auth_kind === 'token_paste' || account.auth_kind === 'api_key') && (
+            {account.provider === 'qqmusic' && <NoQuotaModeSection account={account} onChanged={onChanged} />}
+
+            {(account.auth_kind === 'token_paste' || account.auth_kind === 'api_key' || account.auth_kind === 'public_link') && (
               <>
                 {directResult && directResult.state !== 'connected' && (
                   <p className="rounded-control bg-warning-soft px-3 py-2 text-sm text-warning">
@@ -614,7 +676,13 @@ function FieldsStep({
   guideOverride?: ConnectGuideContent
 }) {
   useTranslation()
-  const guide = guideOverride ?? connectGuides()[account.provider]
+  const guide = guideOverride ?? (account.auth_kind === 'public_link' ? {
+    intro: t("Use public playlists as sources for sync and transfers. No developer key or sign-in is needed."),
+    steps: [
+      t("Open a public playlist in your browser and copy its full address."),
+      t("Paste the link below and select Connect. Then use the link in an aggregate sync or in Transfers."),
+    ],
+  } : connectGuides()[account.provider])
   const canKeepBlank = account.auth_kind === 'oauth_redirect' || account.auth_kind === 'oauth_device'
     || account.provider === 'listenbrainz'
   return (
@@ -810,10 +878,12 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
   useTranslation()
   const soundcloud = account.provider === 'soundcloud'
   const lastfm = account.provider === 'lastfm'
-  const selected = soundcloud || lastfm ? Boolean(account.browser_mode) : account.detail === YTMUSIC_BROWSER_MODE_DETAIL
-  const active = selected && account.state === 'connected'
+  const qqmusic = account.provider === 'qqmusic'
+  const selected = soundcloud || lastfm || qqmusic ? Boolean(account.browser_mode) : account.detail === YTMUSIC_BROWSER_MODE_DETAIL
+  const active = selected && account.state === 'connected' && (!soundcloud || account.browser_renewable !== false)
   const [headers, setHeaders] = useState('')
   const [pageRequest, setPageRequest] = useState('')
+  const [playlistLink, setPlaylistLink] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -822,6 +892,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
   useEffect(() => {
     setHeaders('')
     setPageRequest('')
+    setPlaylistLink('')
     setError(null)
   }, [active])
 
@@ -829,11 +900,12 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     setSaving(true)
     setError(null)
     try {
-      const res = await (soundcloud
+      const res = await (qqmusic ? api.enableQQMusicBrowserMode(account.id, playlistLink) : soundcloud
         ? api.enableSoundcloudBrowserMode(account.id, headers, pageRequest)
         : lastfm ? api.enableLastfmBrowserMode(account.id, headers) : api.enableYtmusicBrowserMode(account.id, headers))
       if (res.state === 'connected') onChanged()
-      else setError(res.detail || t("Could not enable no-quota mode with those headers."))
+      else setError(res.detail || (qqmusic ? t("Could not enable no-quota mode.")
+        : t("Could not enable no-quota mode with those headers.")))
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -845,7 +917,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     setSaving(true)
     setError(null)
     try {
-      const disableMode = lastfm ? api.disableLastfmBrowserMode
+      const disableMode = qqmusic ? api.disableQQMusicBrowserMode : lastfm ? api.disableLastfmBrowserMode
         : soundcloud ? api.disableSoundcloudBrowserMode : api.disableYtmusicBrowserMode
       await disableMode(account.id)
       onChanged()
@@ -873,7 +945,9 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
       </summary>
       <div className="flex flex-col gap-3 border-t border-border px-3.5 py-3">
         <p className="text-xs leading-relaxed text-text-3">
-          {lastfm
+          {qqmusic
+            ? t("Use the QQ Music web player to read public playlists without a developer key.")
+            : lastfm
             ? t("Use your Last.fm browser session without an API key. SongMirror can read your history and love or unlove tracks. Paste fresh headers when the session expires.")
             : soundcloud
             ? t("Use your SoundCloud browser session without a developer API key. Paste a fresh request if the session expires.")
@@ -899,6 +973,17 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
               {t("No-quota mode is on.")}
             </p>
           </>
+        ) : qqmusic ? (
+          <>
+            <p className="text-xs text-text-2">
+              <Trans i18nKey={"Open a public playlist in <link1>QQ Music</link1>, copy its address, and paste it below to check the connection."}
+                components={{ link1: <GuideLink href="https://y.qq.com" /> }} />
+            </p>
+            <TextField label={t("Playlist link")} value={playlistLink} onChange={(event) => setPlaylistLink(event.target.value)} />
+            <Button size="sm" onClick={() => void enable()} loading={saving} disabled={!playlistLink.trim()} className="w-fit">
+              {t("Enable no-quota mode")}
+            </Button>
+          </>
         ) : (
           <>
             <ol className="flex list-decimal flex-col gap-1.5 ps-5 text-[13px] leading-relaxed text-text-2 marker:font-mono marker:text-xs marker:text-text-3">
@@ -916,9 +1001,14 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
                   <Trans i18nKey={"Reload the page. Right-click the <code1/> document request and choose Copy as cURL (bash), or copy its request headers. Paste the result below."} components={{ code1: <Code>home</Code> }} />
                 </li>
               ) : soundcloud ? (
-                <li className="ps-1">
-                  <Trans i18nKey={"Reload the page, then right-click <code1/> and choose Copy as cURL (bash). Paste the request below."} components={{ code1: <Code>/me/library/all</Code> }} />
-                </li>
+                <>
+                  <li className="ps-1">
+                    <Trans i18nKey={"Reload the page, then right-click <code1/> and choose Copy as cURL (bash). Paste the request below."} components={{ code1: <Code>/me/library/all</Code> }} />
+                  </li>
+                  <li className="ps-1">
+                    <Trans i18nKey={"In Network, choose Doc and copy the <code1/> document request as cURL (bash). Paste it into the renewal field."} components={{ code1: <Code>you/sets</Code> }} />
+                  </li>
+                </>
               ) : (
                 <>
                   <li className="ps-1">
@@ -940,7 +1030,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
             />
             {soundcloud && (
               <label className="flex flex-col gap-1.5 text-xs text-text-2">
-                {t("For automatic renewal, also paste the SoundCloud playlist page document request as cURL (bash).")}
+                {t("SoundCloud playlist page request")}
                 <textarea
                   value={pageRequest}
                   onChange={(event) => setPageRequest(event.target.value)}
@@ -949,14 +1039,15 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
                 />
               </label>
             )}
-            <Button size="sm" onClick={() => void enable()} loading={saving} disabled={!headers.trim()} className="w-fit">
+            <Button size="sm" onClick={() => void enable()} loading={saving}
+              disabled={!headers.trim() || (soundcloud && !pageRequest.trim())} className="w-fit">
               {t("Enable no-quota mode")}
             </Button>
           </>
         )}
         {selected && (
           <Button variant="secondary" size="sm" onClick={() => void disable()} loading={saving} className="w-fit">
-            {lastfm ? t("Switch back to API access") : t("Switch back to OAuth")}
+            {lastfm || qqmusic ? t("Switch back to API access") : t("Switch back to OAuth")}
           </Button>
         )}
       </div>

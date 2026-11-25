@@ -29,6 +29,7 @@ from .listenbrainz import ListenBrainzTarget
 from .lyrion import LyrionTarget
 from .mopidy import MopidyTarget
 from .plex import PlexTarget
+from .public_playlists import PUBLIC_PLAYLIST_TARGETS
 from .qobuz import QobuzTarget
 from .qqmusic import QQMusicTarget
 from .soundcloud import SoundCloudTarget
@@ -117,13 +118,15 @@ _REGISTRY = {
     "lyrion": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(LyrionTarget, "Lyrion Music Server"),
     "anghami": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(AnghamiTarget, "Anghami"),
     "qqmusic": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(QQMusicTarget, "QQ Music"),
+    **{provider: (lambda opts, sp, sync_peer=False, songs=None, cls=target: cls())
+       for provider, target in PUBLIC_PLAYLIST_TARGETS.items()},
 }
 # ISRC-rich providers first: they seed cross-provider identity for the rest.
 # History sources come last because their reads may carry no ISRC, so their
 # metadata matching must not pre-empt a provider with catalog identity.
 _SOURCE_ORDER = ["spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
                  "soundcloud", "anghami", "qqmusic", "subsonic", "jellyfin", "emby", "plex",
-                 "mopidy", "lyrion", "lastfm", "listenbrainz"]
+                 "mopidy", "lyrion", *PUBLIC_PLAYLIST_TARGETS, "lastfm", "listenbrainz"]
 
 # The same providers as _REGISTRY, by class rather than by builder, for the
 # class-level facts a caller needs WITHOUT credentials (where the resolution
@@ -149,6 +152,7 @@ _CLASSES = {
     "lyrion": LyrionTarget,
     "anghami": AnghamiTarget,
     "qqmusic": QQMusicTarget,
+    **PUBLIC_PLAYLIST_TARGETS,
 }
 
 

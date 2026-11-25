@@ -54,18 +54,24 @@ class SoundCloudConnector(Connector):
     def _web_file(self):
         return Path(self._store.get("SOUNDCLOUD_WEB_SESSION_FILE") or self._store.data_dir / WEB_SESSION_FILENAME)
 
+    @property
+    def browser_renewable(self):
+        try:
+            return self.browser_active and bool(read_private(self._web_file).get("renewal_cookies"))
+        except SoundCloudError:
+            return False
+
     def enable_browser(self, raw, page_request=""):
         try:
             session = parse_browser_request(raw)
-            if page_request:
-                session["renewal_cookies"] = parse_page_request(page_request)
+            session["renewal_cookies"] = parse_page_request(page_request)
             profile = SoundCloudWeb(session).profile()
             user_id = str(profile["id"])
             with BROWSER_SESSION_LOCK:
                 current_id = read_private(self._web_file).get("user_id") if self.browser_active else None
                 if current_id and current_id != user_id:
                     return ConnStatus("error", "That browser request belongs to a different SoundCloud account")
-                write_private(self._web_file, {**session, "user_id": user_id})
+                write_private(self._web_file, {**session, "user_id": user_id, "captured_at": time.time()})
                 self._store.save({"SOUNDCLOUD_PREFER_BROWSER": "1"})
         except (SoundCloudError, ValueError) as exc:
             return ConnStatus("error", str(exc))

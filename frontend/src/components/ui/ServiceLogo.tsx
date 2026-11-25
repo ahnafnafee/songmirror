@@ -1,4 +1,4 @@
-import { SiApplemusic, SiDeezer, SiEmby, SiJellyfin, SiPlex, SiQq, SiSoundcloud, SiSpotify, SiTidal, SiYoutubemusic } from 'react-icons/si'
+import { SiApplemusic, SiAudiomack, SiDeezer, SiEmby, SiJellyfin, SiPandora, SiPlex, SiQq, SiSoundcloud, SiSpotify, SiTidal, SiYoutubemusic } from 'react-icons/si'
 import { LuMusic, LuServer } from 'react-icons/lu'
 
 import lastfmLogo from '@/assets/providers/lastfm.png'
@@ -10,6 +10,7 @@ const AMAZON_MUSIC_MARK = 'https://m.media-amazon.com/images/G/01/music/logo/1.0
 
 export type ServiceId = 'soundcloud' | 'spotify' | 'tidal' | 'qobuz' | 'deezer' | 'amazon' | 'apple' | 'ytmusic' | 'lastfm' | 'listenbrainz' | 'subsonic' | 'jellyfin'
   | 'emby' | 'plex' | 'mopidy' | 'lyrion' | 'anghami' | 'qqmusic'
+  | 'audiomack' | 'gaana' | 'jiosaavn' | 'linemusic' | 'netease' | 'pandora' | 'vibe'
 
 interface ServiceLogoProps {
   service: ServiceId
@@ -58,10 +59,19 @@ export function ServiceLogo({ service, className }: ServiceLogoProps) {
       return <SiPlex className={className} aria-hidden="true" />
     case 'qqmusic':
       return <SiQq className={className} aria-hidden="true" />
+    case 'audiomack':
+      return <SiAudiomack className={className} aria-hidden="true" />
+    case 'pandora':
+      return <SiPandora className={className} aria-hidden="true" />
     case 'mopidy':
     case 'lyrion':
       return <LuServer className={className} aria-hidden="true" />
     case 'anghami':
+    case 'gaana':
+    case 'jiosaavn':
+    case 'linemusic':
+    case 'netease':
+    case 'vibe':
       return <LuMusic className={className} aria-hidden="true" />
     case 'listenbrainz':
       return <img src={listenbrainzLogo} alt="" className={`${className ?? ''} object-contain`} draggable={false} />

@@ -12,13 +12,18 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .browser_session import selected_headers, urls_in
 from .engine.config import REQUEST_TIMEOUT
-from .soundcloud import SoundCloud, SoundCloudAuthError, SoundCloudTransient, api_result, read_private, write_private
+from .soundcloud import (
+    SoundCloud, SoundCloudAuthError, SoundCloudError, SoundCloudTransient, api_result, read_private, write_private,
+)
 from .soundcloud_renewal import renew_on_site
 
 WEB_API = "https://api-v2.soundcloud.com"
 WEB_SESSION_FILENAME = "soundcloud_browser.json"
 BROWSER_SESSION_LOCK = RLock()
 _renewal_failure = {}
+_proactive_attempt = {}
+_RENEW_AFTER = 50 * 60
+_PROACTIVE_RETRY = 15 * 60
 
 
 class BrowserVerificationRequired(SoundCloudAuthError):
@@ -119,6 +124,10 @@ class SoundCloudWeb:
         except ValueError as exc:
             raise SoundCloudAuthError("Paste a fresh SoundCloud browser request") from exc
         self._user_id = session.get("user_id")
+        captured_at = session.get("captured_at")
+        self._refresh_after = (captured_at + _RENEW_AFTER if self._session_file
+                               and session.get("renewal_cookies")
+                               and isinstance(captured_at, (int, float)) else None)
 
     def _send(self, method, path, credentials, *, params=None, json=None):
         url = WEB_API + path if path.startswith("/") and not path.startswith("//") else path
@@ -131,7 +140,7 @@ class SoundCloudWeb:
         return _request(method, parts._replace(query=urlencode(query, doseq=True)).geturl(),
                         authorization=credentials["authorization"], body=json)
 
-    def _renew(self, rejected):
+    def _renew(self, rejected, *, ahead=False):
         with BROWSER_SESSION_LOCK:
             session = read_private(self._session_file)
             if self._user_id is None or session.get("user_id") != self._user_id:
@@ -147,7 +156,12 @@ class SoundCloudWeb:
                 raise SoundCloudAuthError("Paste fresh SoundCloud requests to reconnect and enable automatic renewal.")
             key = (self._session_file, hash(rejected))
             delay_until = _renewal_failure.get(self._session_file)
-            if delay_until and delay_until[0] == key and time.monotonic() < delay_until[1]:
+            if ahead:
+                previous = _proactive_attempt.get(self._session_file)
+                if previous and previous[0] == key and time.monotonic() < previous[1]:
+                    return current
+                _proactive_attempt[self._session_file] = (key, time.monotonic() + _PROACTIVE_RETRY)
+            elif delay_until and delay_until[0] == key and time.monotonic() < delay_until[1]:
                 raise SoundCloudTransient("SoundCloud browser renewal recently failed. Try again shortly.")
             try:
                 authorization, client_id, cookies = renew_on_site(cookies, rejected, current["client_id"])
@@ -157,17 +171,32 @@ class SoundCloudWeb:
                 profile = self._send("GET", "/me", renewed)
                 if not isinstance(profile, dict) or str(profile.get("id")) != str(self._user_id):
                     raise SoundCloudAuthError("The renewed SoundCloud session belongs to a different account.")
-                write_private(self._session_file, {**session, **renewed, "renewal_cookies": cookies})
+                captured_at = time.time()
+                write_private(self._session_file, {
+                    **session, **renewed, "renewal_cookies": cookies, "captured_at": captured_at,
+                })
+                self._refresh_after = captured_at + _RENEW_AFTER
             except (SoundCloudAuthError, SoundCloudTransient):
-                _renewal_failure[self._session_file] = (key, time.monotonic() + 60)
+                if not ahead:
+                    _renewal_failure[self._session_file] = (key, time.monotonic() + 60)
                 raise
             except (ValueError, OSError):
-                _renewal_failure[self._session_file] = (key, time.monotonic() + 60)
+                if not ahead:
+                    _renewal_failure[self._session_file] = (key, time.monotonic() + 60)
                 raise SoundCloudTransient("Could not validate or save the renewed SoundCloud browser session.") from None
             _renewal_failure.pop(self._session_file, None)
+            _proactive_attempt.pop(self._session_file, None)
             return renewed
 
     def request(self, method, path, *, params=None, json=None):
+        if self._refresh_after is not None and time.time() >= self._refresh_after:
+            self._refresh_after = time.time() + _PROACTIVE_RETRY
+            try:
+                self.credentials = self._renew(self.credentials["authorization"], ahead=True)
+            except SoundCloudError:
+                # A still-valid token can carry the call through a temporary
+                # website failure. A later 401 still triggers the normal retry.
+                pass
         credentials = self.credentials
         try:
             return self._send(method, path, credentials, params=params, json=json)

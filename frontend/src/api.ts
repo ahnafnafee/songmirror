@@ -155,6 +155,8 @@ export const api = {
     request<PollResponse>(`/api/accounts/${id}/soundcloud/browser`,
       json(pageRequest.trim() ? { headers, page_request: pageRequest } : { headers })),
   disableSoundcloudBrowserMode: (id: string) => request<PollResponse>(`/api/accounts/${id}/soundcloud/browser`, { method: 'DELETE' }),
+  enableQQMusicBrowserMode: (id: string, url: string) => request<PollResponse>(`/api/accounts/${id}/qqmusic/browser`, json({ url })),
+  disableQQMusicBrowserMode: (id: string) => request<PollResponse>(`/api/accounts/${id}/qqmusic/browser`, { method: 'DELETE' }),
   enableLastfmBrowserMode: (id: string, headers: string) => request<PollResponse>(`/api/accounts/${id}/lastfm/browser`, json({ headers })),
   disableLastfmBrowserMode: (id: string) => request<PollResponse>(`/api/accounts/${id}/lastfm/browser`, { method: 'DELETE' }),
   /** Spotify signed-in web session: routes library reads, playlist reads/writes,

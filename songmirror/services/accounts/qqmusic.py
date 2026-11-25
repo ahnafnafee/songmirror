@@ -1,8 +1,9 @@
-"""QQ Music API credentials for reading playlists by link."""
+"""QQ Music connections for reading playlists by link."""
 
 import re
 
-from ...engine.targets.qqmusic import QQMusicTarget
+from ...engine.targets.qqmusic import QQMusicTarget, browser_mode
+from ..playlist_links import parse_playlist_link
 from .base import ConnStatus, Connector, Field
 
 
@@ -13,8 +14,12 @@ class QQMusicConnector(Connector):
         Field("QQMUSIC_API_KEY", "API key", secret=True, help="Create an API key on the QQ Music Skills page."),
     ]
 
+    @property
+    def browser_active(self):
+        return browser_mode(self._store.get)
+
     def status(self):
-        if not self._configured("QQMUSIC_API_KEY"):
+        if not self.browser_active and not self._configured("QQMUSIC_API_KEY"):
             return ConnStatus("unconfigured")
         return ConnStatus("connected", capabilities=frozenset({"public_playlist_read"}))
 
@@ -26,5 +31,25 @@ class QQMusicConnector(Connector):
             QQMusicTarget(key).validate_connection()
         except RuntimeError as exc:
             return ConnStatus("error", str(exc))
-        self._store.save({"QQMUSIC_API_KEY": key})
+        self._store.save({"QQMUSIC_API_KEY": key, "QQMUSIC_PREFER_BROWSER": "0"})
         return self.status()
+
+    def enable_browser(self, url):
+        try:
+            link = parse_playlist_link(url) if isinstance(url, str) else None
+            if not link or link[0] != self.id:
+                return ConnStatus("error", "Paste a public QQ Music playlist link.")
+            if QQMusicTarget(web=True).fetch_playlist(link[1]) is None:
+                return ConnStatus("error", "The QQ Music web player could not open that public playlist.")
+        except (RuntimeError, ValueError) as exc:
+            return ConnStatus("error", str(exc))
+        self._store.save({"QQMUSIC_PREFER_BROWSER": "1"})
+        return self.status()
+
+    def disable_browser(self):
+        self._store.save({"QQMUSIC_PREFER_BROWSER": "0"})
+        return self.status()
+
+    def disconnect(self):
+        self._store.save({"QQMUSIC_PREFER_BROWSER": "0"})
+        super().disconnect()

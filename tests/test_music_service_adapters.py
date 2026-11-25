@@ -1,6 +1,7 @@
 """Documented playlist transports exercised with local fixture responses."""
 
 from collections import deque
+import json
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
@@ -14,9 +15,12 @@ from songmirror.engine.targets.emby import EmbyTarget
 from songmirror.engine.targets.lyrion import LyrionTarget
 from songmirror.engine.targets.mopidy import MopidyTarget
 from songmirror.engine.targets.plex import PlexTarget
+from songmirror.engine.targets.public_playlists import (
+    PUBLIC_PLAYLIST_TARGETS, AudiomackTarget, GaanaTarget, JioSaavnTarget, NetEaseTarget, PandoraTarget,
+)
 from songmirror.engine.targets.qqmusic import QQMusicTarget
 from songmirror.oauth import read_token
-from songmirror.services.playlist_links import parse_playlist_link
+from songmirror.services.playlist_links import external_url, parse_playlist_link
 from songmirror.services.settings import SettingsStore
 from songmirror.services.syncs import SyncJob, validate_sync_job
 from songmirror.web import create_app
@@ -35,7 +39,7 @@ class Wire:
         if not isinstance(reply, tuple):
             reply = (200, reply, {})
         status, payload, headers = reply
-        return SimpleNamespace(status_code=status, json=lambda: payload, headers=headers)
+        return SimpleNamespace(status_code=status, json=lambda: payload, headers=headers, text=payload)
 
 
 def _emby_page(*items, total=None, start=0):
@@ -266,6 +270,52 @@ def test_qq_music_reads_pasted_links_across_pages():
         target.browse_playlists()
 
 
+def test_qq_music_web_playlist_requires_actual_identity_and_complete_pages():
+    def page(start, end, playlist_id=13):
+        return {"code": 0, "req_0": {"code": 0, "data": {
+            "dirinfo": {"id": playlist_id, "title": "Public Mix"},
+            "total_song_num": 32,
+            "songlist": [{"mid": str(i), "name": f"Track {i}", "singer": [{"name": "Artist"}]}
+                         for i in range(start, end)],
+        }}}
+
+    wire = Wire(page(0, 0, playlist_id=0), page(0, 30), page(0, 30), page(30, 32), page(0, 29))
+    target = QQMusicTarget(web=True, session=wire)
+    assert target.fetch_playlist("13") is None
+    playlist = target.fetch_playlist("13")
+    assert [row["id"] for row in target.playlist_tracks(playlist)] == [str(i) for i in range(32)]
+    assert wire.calls[3][2]["json"]["req_0"]["param"]["song_begin"] == 30
+    with pytest.raises(RuntimeError, match="incomplete playlist"):
+        target.playlist_tracks(playlist)
+    assert all("Authorization" not in call[2]["headers"] for call in wire.calls)
+
+
+def test_qq_music_web_setup_is_profile_scoped_and_does_not_replace_api_key(tmp_path, monkeypatch):
+    from songmirror.engine.config import parse_args
+    from songmirror.engine.targets import build_one
+
+    app = create_app(settings=SettingsStore(dir=tmp_path))
+    profiles = app.state.account_profiles
+    profile = profiles.create("qqmusic", "Public links")
+    settings = profiles.settings_for(profile.id)
+    settings.save({"QQMUSIC_API_KEY": "qmk-existing"})
+    monkeypatch.setattr(QQMusicTarget, "fetch_playlist", lambda self, pid: {"id": pid} if pid == "13" else None)
+
+    with TestClient(app) as client:
+        route = f"/api/accounts/{profile.id}/qqmusic/browser"
+        invalid = client.post(route, json={"url": "https://i2.y.qq.com/a/playlist/17"})
+        assert invalid.json()["state"] == "error"
+        activated = client.post(route, json={"url": "https://i2.y.qq.com/a/playlist/13"}).json()
+        assert activated["state"] == "connected"
+        assert activated["capabilities"]["public_playlist_read"] and not activated["capabilities"]["library_write"]
+        options = parse_args([])
+        options.account_profiles = profiles
+        assert build_one(profile.id, options)._target._web
+        assert build_one("qqmusic", options) is None
+        assert client.delete(route).json()["state"] == "connected"
+        assert settings.get("QQMUSIC_API_KEY") == "qmk-existing"
+
+
 def test_read_only_playlist_links_reach_the_provider_from_transfers(tmp_path, monkeypatch):
     qq_wire = Wire({"dissId": 13, "dissName": "QQ Mix", "totalNum": 3})
     qq = QQMusicTarget("qmk-fixture", session=qq_wire)
@@ -293,6 +343,133 @@ def test_read_only_playlist_links_reach_the_provider_from_transfers(tmp_path, mo
             assert (preview.json()["name"], preview.json()["count"]) == (name, count)
 
     assert not (qq_wire.replies or anghami_wire.replies)
+
+
+@pytest.mark.parametrize("provider, url, playlist_id", [
+    ("audiomack", "https://audiomack.com/mirror/playlist/mix", "mirror/playlist/mix"),
+    ("gaana", "https://gaana.com/playlist/my-mix", "my-mix"),
+    ("jiosaavn", "https://www.jiosaavn.com/s/playlist/owner/mix/w,Z_", "s/playlist/owner/mix/w,Z_"),
+    ("linemusic", "https://music.line.me/webapp/playlist/my-mix", "my-mix"),
+    ("netease", "https://music.163.com/#/playlist?id=123", "123"),
+    ("pandora", "https://www.pandora.com/playlist/PL:1:2", "PL:1:2"),
+    ("vibe", "https://vibe.naver.com/playlist/my-mix", "my-mix"),
+])
+def test_public_web_links_connect_and_preview_as_sources_only(tmp_path, monkeypatch, provider, url, playlist_id):
+    target_type = PUBLIC_PLAYLIST_TARGETS[provider]
+    monkeypatch.setattr(target_type, "_read", lambda self, key: {"id": key, "name": "Public Mix", "count": 1}
+                        if key == playlist_id else None)
+    app = create_app(settings=SettingsStore(dir=tmp_path))
+    profiles = app.state.account_profiles
+    profile = profiles.create(provider, "Fixture")
+    key = f"{provider.upper()}_PUBLIC_PLAYLIST"
+    assert parse_playlist_link(url) == (provider, playlist_id)
+    assert parse_playlist_link(external_url(provider, "playlist", playlist_id)) == (provider, playlist_id)
+    assert not target_type.supports_playlist_writes and not target_type.supports_playlist_library
+
+    with TestClient(app) as client:
+        response = client.post(f"/api/accounts/{profile.id}/connect", json={key: url + ("&test=1" if "?" in url else "?test=1")})
+        assert response.status_code == 200, response.json()
+        result = response.json()
+        assert result["kind"] == "public_link" and result["state"] == "connected", result
+        assert result["capabilities"]["public_playlist_read"] and not result["capabilities"]["library_write"]
+        assert profiles.settings_for(profile.id).get(key) == external_url(provider, "playlist", playlist_id)
+        assert profiles.settings_for(profiles.default_id(provider)).get(key) is None
+        preview = client.post("/api/transfers/preview", json={"url": url, "source_account": profile.id})
+        assert preview.status_code == 200, preview.json()
+        assert (preview.json()["name"], preview.json()["count"]) == ("Public Mix", 1)
+
+
+@pytest.mark.parametrize("provider", ["linemusic", "vibe"])
+def test_line_and_vibe_guard_public_identity_and_track_count(provider):
+    row = {"trackId": "one", "trackTitle": "Track", "artists": [{"artistName": "Artist"}],
+           "album": {"albumTitle": "Album"}}
+
+    def body(pl_id, count):
+        return {"response": {"result": {"playlist": {"plId": pl_id, "isPublic": True,
+                "title": "Mix", "tracksTotalCount": count, "tracks": [row]}}}}
+
+    wire = Wire(body("other", 1), body("key", 1), body("key", 2))
+    target = PUBLIC_PLAYLIST_TARGETS[provider](session=wire)
+    assert target.fetch_playlist("key") is None
+    assert target.playlist_tracks(target.fetch_playlist("key"))[0]["album"] == "Album"
+    with pytest.raises(RuntimeError, match="incomplete playlist"):
+        target.fetch_playlist("key")
+
+
+def test_gaana_checks_the_public_track_ids_instead_of_the_editorial_total():
+    response = {"count": 1, "playlist": {"seokey": "key", "title": "Mix", "trackids": "102",
+                                        "trackcount": 50, "is_public": 0},
+                "tracks": [{"track_id": "102", "track_title": "Music"}]}
+    wire = Wire(response, {**response, "playlist": {**response["playlist"], "trackids": "103"}})
+    target = GaanaTarget(session=wire)
+    assert target.fetch_playlist("key")["count"] == 1
+    with pytest.raises(RuntimeError, match="playlist order"):
+        target.fetch_playlist("key")
+
+
+def test_jiosaavn_fetches_all_pages_in_order_and_detects_repeated_pages():
+    song = {"id": "one", "title": "First &amp; Best", "more_info": {"duration": "120"}}
+    page = {"id": "42", "type": "playlist", "title": "Mix", "list_count": "2", "list": [song]}
+    wire = Wire(page, {**page, "list": [{**song, "id": "two"}]}, page, page)
+    target = JioSaavnTarget(session=wire)
+    target.page_size = 1
+    key = "featured/test/token"
+    tracks = target.playlist_tracks(target.fetch_playlist(key))
+    assert [(x["id"], x["name"], x["duration_ms"]) for x in tracks] == [
+        ("one", "First & Best", 120_000), ("two", "First & Best", 120_000),
+    ]
+    assert [call[2]["params"]["p"] for call in wire.calls] == [1, 2]
+    with pytest.raises(RuntimeError, match="repeated a playlist page"):
+        target.fetch_playlist(key)
+
+
+def test_audiomack_uses_the_complete_public_player_payload():
+    key = "mirror/playlist/mix"
+    data = {"music": {"type": "playlist", "href": "/" + key, "title": "Mix", "trackCount": 1,
+                      "tracks": [{"id": "9", "title": "Music", "artistName": "Artist", "duration": 61}]}}
+    script_arg = json.dumps([1, "13:" + json.dumps(data) + "\n"])
+    wire = Wire(f"<script>self.__next_f.push({script_arg})</script>")
+    target = AudiomackTarget(session=wire)
+    assert target.playlist_tracks(target.fetch_playlist(key))[0]["duration_ms"] == 61_000
+
+
+def test_netease_reads_public_track_ids_in_order_and_hydrates_missing_metadata():
+    a, b = {"id": 1, "name": "Track 1"}, {"id": 2, "name": "Track 2"}
+    wire = Wire({"code": 200, "playlist": {"id": 123, "name": "Mix", "privacy": 0, "trackCount": 3,
+                "trackIds": [{"id": 2}, {"id": 1}, {"id": 2}], "tracks": [a]}}, {"code": 200, "songs": [b]})
+    target = NetEaseTarget(session=wire)
+    assert [track["id"] for track in target.playlist_tracks(target.fetch_playlist("123"))] == ["2", "1", "2"]
+    assert json.loads(wire.calls[1][2]["params"]["c"]) == [{"id": 2}]
+
+
+def test_pandora_uses_versioned_pages_and_keeps_guest_auth_local():
+    def page(offset, version):
+        aid = f"TR:{offset}"
+        return {"pandoraId": "PL:1:2", "name": "Mix", "version": version, "offset": offset,
+                "totalTracks": 2, "isPrivate": False, "tracks": [{"pandoraId": aid}],
+                "annotations": {aid: {"name": "Track", "artistName": "Artist"}}}
+
+    class Session(Wire):
+        cookies = SimpleNamespace(set=lambda *args, **kwargs: None)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    session = Session({"authToken": "guest-fixture"}, page(0, 7), page(1, 7),
+                      {"authToken": "guest-fixture"}, page(0, 7), {"errorCode": 99000})
+    target = PandoraTarget(session=lambda: session)
+    target.page_size = 1
+    assert [t["id"] for t in target.playlist_tracks(target.fetch_playlist("PL:1:2"))] == ["TR:0", "TR:1"]
+    requests = [call[2]["json"]["request"] for call in session.calls[1:3]]
+    assert [req["playlistVersion"] for req in requests] == [0, 7]
+    assert all(req["bypassPrivacyRules"] is False for req in requests)
+    assert all(req["allowedTypes"] == ["TR"] for req in requests)
+    assert "X-AuthToken" not in session.calls[0][2]["headers"]
+    with pytest.raises(RuntimeError, match="changed during the read"):
+        target.fetch_playlist("PL:1:2")
 
 
 def test_partial_collection_is_never_returned_as_a_shorter_playlist():

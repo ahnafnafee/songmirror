@@ -151,6 +151,7 @@ def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
             "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
             "lastfm", "jellyfin", "listenbrainz", "soundcloud", "subsonic",
             "emby", "plex", "mopidy", "lyrion", "anghami", "qqmusic",
+            "audiomack", "gaana", "jiosaavn", "linemusic", "netease", "pandora", "vibe",
         }
         assert all(a["id"].startswith("profile_default_") for a in accounts)
         assert all(a["id"] != a["provider"] for a in accounts)

@@ -16,6 +16,7 @@ def test_registry_has_all_supported_services():
         "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
         "lastfm", "jellyfin", "listenbrainz", "soundcloud", "subsonic",
         "emby", "plex", "mopidy", "lyrion", "anghami", "qqmusic",
+        "audiomack", "gaana", "jiosaavn", "linemusic", "netease", "pandora", "vibe",
     }
 
 

@@ -94,6 +94,20 @@
   --color-svc-anghami-soft: rgb(132 50 186 / 0.11);
   --color-svc-qqmusic: #00764f;
   --color-svc-qqmusic-soft: rgb(0 118 79 / 0.11);
+  --color-svc-audiomack: #a35b00;
+  --color-svc-audiomack-soft: rgb(163 91 0 / 0.11);
+  --color-svc-gaana: #c6233a;
+  --color-svc-gaana-soft: rgb(198 35 58 / 0.11);
+  --color-svc-jiosaavn: #007363;
+  --color-svc-jiosaavn-soft: rgb(0 115 99 / 0.11);
+  --color-svc-linemusic: #087441;
+  --color-svc-linemusic-soft: rgb(8 116 65 / 0.11);
+  --color-svc-netease: #c32728;
+  --color-svc-netease-soft: rgb(195 39 40 / 0.11);
+  --color-svc-pandora: #235cb4;
+  --color-svc-pandora-soft: rgb(35 92 180 / 0.11);
+  --color-svc-vibe: #a81b6b;
+  --color-svc-vibe-soft: rgb(168 27 107 / 0.11);
 
   /* ---- radii · squarer = steadier ---- */
   --radius-chip: 6px; /* chips, glyph tiles, tracklist numbers */
@@ -185,6 +199,20 @@
   --color-svc-anghami-soft: rgb(210 133 255 / 0.13);
   --color-svc-qqmusic: #38d99b;
   --color-svc-qqmusic-soft: rgb(56 217 155 / 0.13);
+  --color-svc-audiomack: #ffac40;
+  --color-svc-audiomack-soft: rgb(255 172 64 / 0.13);
+  --color-svc-gaana: #ff677c;
+  --color-svc-gaana-soft: rgb(255 103 124 / 0.13);
+  --color-svc-jiosaavn: #36d6bf;
+  --color-svc-jiosaavn-soft: rgb(54 214 191 / 0.13);
+  --color-svc-linemusic: #43d98a;
+  --color-svc-linemusic-soft: rgb(67 217 138 / 0.13);
+  --color-svc-netease: #ff7272;
+  --color-svc-netease-soft: rgb(255 114 114 / 0.13);
+  --color-svc-pandora: #79adff;
+  --color-svc-pandora-soft: rgb(121 173 255 / 0.13);
+  --color-svc-vibe: #ff72ba;
+  --color-svc-vibe-soft: rgb(255 114 186 / 0.13);
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-md: 0 6px 18px -6px rgb(0 0 0 / 0.45);

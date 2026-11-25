@@ -17,6 +17,14 @@ async function main() {
   const base = `http://127.0.0.1:${server.address().port}`
   const browser = await chromium.launch({ headless: true })
   const errors = [], connections = [], saved = [], profiles = []
+  const guideSteps = [
+    ['Emby', 'emby', 'AuthenticateByName'],
+    ['Plex', 'plex', 'X-Plex-Token'],
+    ['Mopidy', 'mopidy', 'playlists_dir'],
+    ['Lyrion Music Server', 'lyrion', 'Playlist Folder'],
+    ['Anghami', 'anghami', 'Anghami Developer Portal'],
+    ['QQ Music', 'qqmusic', 'QQ Music Skills'],
+  ]
   const accounts = [
     { id: 'cloud', provider: 'soundcloud', name: 'SoundCloud', provider_name: 'SoundCloud',
       auth_kind: 'oauth_redirect', fields: [], transferable: true, source_capable: true,
@@ -32,6 +40,13 @@ async function main() {
       fields: [{ key: 'SUBSONIC_URL', label: 'Server URL' }, { key: 'SUBSONIC_USER', label: 'Username' },
         { key: 'SUBSONIC_PASSWORD', label: 'Password', secret: true }].map(field => ({ required: true, ...field })),
       capabilities: { library_read: true, library_write: true, favorites_write: true, public_playlist_read: true } },
+    ...guideSteps.map(([name, provider]) => ({
+      id: provider, provider, name, provider_name: name, fields: [], transferable: true,
+    })),
+    { id: 'gaana', provider: 'gaana', name: 'Gaana', provider_name: 'Gaana', auth_kind: 'public_link',
+      transferable: true, source_capable: false, supports_playlists: true,
+      fields: [{ key: 'GAANA_PUBLIC_PLAYLIST', label: 'Public playlist link', required: true, secret: false }],
+      capabilities: { library_read: false, library_write: false, favorites_write: false, public_playlist_read: true } },
   ].map(account => ({ auth_kind: 'api_key', state: 'unconfigured', label: account.name, detail: '',
     is_default: true, removable: false, preserves_order: false, ...account,
     fields: account.fields.map(field => ({ value: '', configured: false, ...field })) }))
@@ -56,6 +71,12 @@ async function main() {
       account.state = account.browser_mode ? 'connected' : 'unconfigured'
       return send({ state: account.state, detail: '' })
     }
+    if (url.pathname === '/api/accounts/qqmusic/qqmusic/browser') {
+      const account = accounts.find(row => row.id === 'qqmusic')
+      account.browser_mode = request.method() === 'POST'
+      account.state = account.browser_mode ? 'connected' : 'unconfigured'
+      return send({ state: account.state, detail: '' })
+    }
     if (/\/api\/accounts\/[^/]+\/connect$/.test(url.pathname)) {
       const account = accounts.find(account => url.pathname.includes(`/${account.id}/`))
       const values = request.postDataJSON()
@@ -74,7 +95,7 @@ async function main() {
         account.capabilities.library_write = true
       }
       account.state = 'connected'
-      return send({ kind: 'api_key', state: 'connected', detail: account.name })
+      return send({ kind: account.auth_kind, state: 'connected', detail: account.name })
     }
     if (url.pathname === '/api/syncs') {
       if (request.method() === 'POST') {
@@ -100,13 +121,15 @@ async function main() {
     await picker.click()
     let menu = page.getByRole('listbox', { name: 'Provider', exact: true })
     await menu.waitFor()
-    assert.equal(await menu.getByRole('option').count(), 18)
+    assert.equal(await menu.getByRole('option').count(), 25)
     assert.equal(await menu.getByRole('option', { name: 'SoundCloud', exact: true }).count(), 1)
     for (const option of await menu.getByRole('option').all()) {
       assert.ok(await option.locator('svg, img').count() >= 1, `${await option.innerText()} needs its provider mark`)
     }
     const serviceColors = {
       Emby: 'emby', Plex: 'plex', Mopidy: 'mopidy', 'Lyrion Music Server': 'lyrion', Anghami: 'anghami', 'QQ Music': 'qqmusic',
+      Audiomack: 'audiomack', Gaana: 'gaana', JioSaavn: 'jiosaavn', 'LINE MUSIC': 'linemusic',
+      'NetEase Cloud Music': 'netease', Pandora: 'pandora', 'Naver Vibe': 'vibe',
     }
     async function verifyServiceColors(listbox) {
       return Promise.all(Object.entries(serviceColors).map(async ([name, service]) => {
@@ -124,10 +147,10 @@ async function main() {
       }))
     }
     const darkColors = await verifyServiceColors(menu)
-    assert.equal(new Set(darkColors).size, 6, 'The new provider marks have distinct dark-mode colors')
+    assert.equal(new Set(darkColors).size, Object.keys(serviceColors).length)
     await menu.press('End')
     await menu.press('Enter')
-    assert.ok((await picker.innerText()).includes('QQ Music'))
+    assert.ok((await picker.innerText()).includes('Naver Vibe'))
     assert.equal(await picker.evaluate(el => el === document.activeElement), true)
     await picker.press('ArrowDown')
     menu = page.getByRole('listbox', { name: 'Provider', exact: true })
@@ -171,7 +194,7 @@ async function main() {
     await picker.click()
     menu = page.getByRole('listbox', { name: 'Provider', exact: true })
     const lightColors = await verifyServiceColors(menu)
-    assert.equal(new Set(lightColors).size, 6, 'The new provider marks have distinct light-mode colors')
+    assert.equal(new Set(lightColors).size, Object.keys(serviceColors).length)
     lightColors.forEach((color, index) => assert.notEqual(color, darkColors[index]))
     await menu.press('Escape')
     console.log('PASS: provider marks, keyboard selection, typeahead, dismissal, mobile bounds, and selected profile submission')
@@ -186,7 +209,8 @@ async function main() {
     const browserRequest = "curl 'https://api-v2.soundcloud.com/me/library/all?client_id=mock-app' -H 'authorization: OAuth mock-token'"
     const pageRequest = "curl 'https://soundcloud.com/you/sets' -b 'site_session=mock-session'"
     await cloudDialog.getByRole('textbox', { name: 'Raw request headers' }).fill(browserRequest)
-    await cloudDialog.getByRole('textbox', { name: /For automatic renewal/ }).fill(pageRequest)
+    assert.equal(await cloudDialog.getByRole('button', { name: 'Enable no-quota mode' }).isDisabled(), true)
+    await cloudDialog.getByRole('textbox', { name: 'SoundCloud playlist page request' }).fill(pageRequest)
     const enableResponse = page.waitForResponse(r => r.url().endsWith('/cloud/soundcloud/browser') && r.request().method() === 'POST')
     await cloudDialog.getByRole('button', { name: 'Enable no-quota mode' }).click()
     assert.deepEqual((await enableResponse).request().postDataJSON(), { headers: browserRequest, page_request: pageRequest })
@@ -195,6 +219,38 @@ async function main() {
     await cloudDialog.getByRole('button', { name: 'Enable no-quota mode' }).waitFor()
     await page.keyboard.press('Escape')
     await cloudDialog.waitFor({ state: 'hidden' })
+    for (const [name, provider, hint] of guideSteps) {
+      const card = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name, exact: true }) })
+      await card.getByRole('button', { name: 'Connect', exact: true }).click()
+      const dialog = page.getByRole('dialog')
+      const guide = dialog.locator('details[open]').filter({ hasText: 'How to get these' })
+      assert.equal(await guide.getByText(hint, { exact: false }).first().isVisible(), true)
+      if (provider === 'qqmusic') {
+        await dialog.getByText('No-quota mode', { exact: true }).click()
+        const playlist = 'https://y.qq.com/n/ryqq/playlist/7256912512'
+        await dialog.getByRole('textbox', { name: 'Playlist link' }).fill(playlist)
+        const savedMode = page.waitForResponse(r => r.url().endsWith('/qqmusic/qqmusic/browser') && r.request().method() === 'POST')
+        await dialog.getByRole('button', { name: 'Enable no-quota mode' }).click()
+        assert.deepEqual((await savedMode).request().postDataJSON(), { url: playlist })
+        await dialog.getByText('No-quota mode is on.', { exact: true }).waitFor()
+        await dialog.getByRole('button', { name: 'Switch back to API access' }).click()
+        await dialog.getByRole('button', { name: 'Enable no-quota mode' }).waitFor()
+      }
+      await page.keyboard.press('Escape')
+      await dialog.waitFor({ state: 'hidden' })
+    }
+    const gaanaCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'Gaana', exact: true }) })
+    await gaanaCard.getByRole('button', { name: 'Connect', exact: true }).click()
+    const publicDialog = page.getByRole('dialog')
+    await publicDialog.locator('details[open]').getByText('Open a public playlist in your browser', { exact: false }).waitFor()
+    assert.equal(await publicDialog.locator('input[type="password"]').count(), 0)
+    assert.equal(await publicDialog.getByRole('button', { name: 'Connect', exact: true }).isDisabled(), true)
+    const gaanaUrl = 'https://gaana.com/playlist/gaana-dj-gaana-international-top-50'
+    await publicDialog.getByRole('textbox', { name: 'Public playlist link' }).fill(gaanaUrl)
+    await publicDialog.getByRole('button', { name: 'Connect', exact: true }).click()
+    await publicDialog.getByRole('status').filter({ hasText: 'Gaana is connected.' }).waitFor()
+    await publicDialog.waitFor({ state: 'hidden' })
+    assert.deepEqual(connections.pop(), { provider: 'gaana', values: { GAANA_PUBLIC_PLAYLIST: gaanaUrl } })
     const lovesCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'ListenBrainz', exact: true }) })
     const localCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'Navidrome / Subsonic', exact: true }) })
     await lovesCard.getByRole('button', { name: 'Connect', exact: true }).click()

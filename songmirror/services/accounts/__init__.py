@@ -13,6 +13,7 @@ from .jellyfin import JellyfinConnector
 from .lastfm import LastfmConnector
 from .listenbrainz import ListenBrainzConnector
 from .music_servers import EmbyConnector, LyrionConnector, MopidyConnector, PlexConnector
+from .public_playlists import PUBLIC_PLAYLIST_CONNECTORS
 from .subsonic import SubsonicConnector
 from .qobuz import QobuzConnector
 from .qqmusic import QQMusicConnector
@@ -42,4 +43,5 @@ CONNECTORS = {
     "lyrion": LyrionConnector,
     "anghami": AnghamiConnector,
     "qqmusic": QQMusicConnector,
+    **PUBLIC_PLAYLIST_CONNECTORS,
 }

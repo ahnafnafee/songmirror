@@ -64,6 +64,13 @@ const SERVICE_STYLES: Record<string, ServiceStyle> = {
   lyrion: { label: 'Lyrion Music Server', dot: 'bg-svc-lyrion', soft: 'bg-svc-lyrion-soft', text: 'text-svc-lyrion' },
   anghami: { label: 'Anghami', dot: 'bg-svc-anghami', soft: 'bg-svc-anghami-soft', text: 'text-svc-anghami' },
   qqmusic: { label: 'QQ Music', dot: 'bg-svc-qqmusic', soft: 'bg-svc-qqmusic-soft', text: 'text-svc-qqmusic' },
+  audiomack: { label: 'Audiomack', dot: 'bg-svc-audiomack', soft: 'bg-svc-audiomack-soft', text: 'text-svc-audiomack' },
+  gaana: { label: 'Gaana', dot: 'bg-svc-gaana', soft: 'bg-svc-gaana-soft', text: 'text-svc-gaana' },
+  jiosaavn: { label: 'JioSaavn', dot: 'bg-svc-jiosaavn', soft: 'bg-svc-jiosaavn-soft', text: 'text-svc-jiosaavn' },
+  linemusic: { label: 'LINE MUSIC', dot: 'bg-svc-linemusic', soft: 'bg-svc-linemusic-soft', text: 'text-svc-linemusic' },
+  netease: { label: 'NetEase Cloud Music', dot: 'bg-svc-netease', soft: 'bg-svc-netease-soft', text: 'text-svc-netease' },
+  pandora: { label: 'Pandora', dot: 'bg-svc-pandora', soft: 'bg-svc-pandora-soft', text: 'text-svc-pandora' },
+  vibe: { label: 'Naver Vibe', dot: 'bg-svc-vibe', soft: 'bg-svc-vibe-soft', text: 'text-svc-vibe' },
   sync: { get label() { return t("Sync engine") }, dot: 'bg-accent', soft: 'bg-accent-soft', text: 'text-accent' },
   local: { get label() { return t("Download mirror") }, dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },
   transfer: { get label() { return t("Playlist transfers") }, dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },
@@ -114,7 +121,9 @@ export function serviceLogoId(idOrTag: string): ServiceId | null {
   if (idOrTag === 'subsonic') return 'subsonic'
   if (idOrTag === 'jellyfin') return 'jellyfin'
   if (idOrTag === 'emby' || idOrTag === 'plex' || idOrTag === 'qqmusic'
-    || idOrTag === 'mopidy' || idOrTag === 'lyrion' || idOrTag === 'anghami') return idOrTag
+    || idOrTag === 'mopidy' || idOrTag === 'lyrion' || idOrTag === 'anghami'
+    || idOrTag === 'audiomack' || idOrTag === 'gaana' || idOrTag === 'jiosaavn'
+    || idOrTag === 'linemusic' || idOrTag === 'netease' || idOrTag === 'pandora' || idOrTag === 'vibe') return idOrTag
   return null
 }
 
