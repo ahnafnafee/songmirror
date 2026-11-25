@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: songmirror
+    runtime: docker
+    dockerfilePath: ./deploy/render/Dockerfile
+    plan: starter
+    autoDeployTrigger: off
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: SONGMIRROR_AUTH_USERNAME
+        sync: false
+      - key: SONGMIRROR_AUTH_PASSWORD
+        sync: false
+      - key: SONGMIRROR_DOWNLOAD_DIR
+        value: /data/downloads
+    disk:
+      name: songmirror-data
+      mountPath: /data
+      sizeGB: 5

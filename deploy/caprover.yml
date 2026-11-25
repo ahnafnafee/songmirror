@@ -1,0 +1,31 @@
+captainVersion: 4
+services:
+  "$$cap_appname":
+    image: ghcr.io/ahnafnafee/songmirror:latest
+    environment:
+      SONGMIRROR_AUTH_USERNAME: "$$cap_owner"
+      SONGMIRROR_AUTH_PASSWORD: "$$cap_password"
+      SONGMIRROR_PUBLIC_URL: "https://$$cap_appname.$$cap_root_domain"
+      SONGMIRROR_DOWNLOAD_DIR: /music
+    volumes:
+      - "$$cap_appname-data:/data"
+      - "$$cap_appname-music:/music"
+    caproverExtra:
+      containerHttpPort: "8080"
+caproverOneClickApp:
+  displayName: SongMirror
+  isOfficial: true
+  description: Self-hosted playlist sync and transfers across music services.
+  documentation: https://songmirror.ahnafnafee.dev/#install
+  variables:
+    - id: "$$cap_owner"
+      label: Owner username
+      defaultValue: owner
+      validRegex: '/^[a-zA-Z0-9_.-]{1,80}$/'
+    - id: "$$cap_password"
+      label: Owner password
+      defaultValue: "$$cap_gen_random_hex(32)"
+      validRegex: '/^.{15,256}$/'
+  instructions:
+    start: Save the owner password and deploy a single instance. SongMirror stores settings and downloads in separate volumes.
+    end: Enable HTTPS and Force HTTPS in the app settings before opening https://$$cap_appname.$$cap_root_domain. Sign in with the username and password you entered.
