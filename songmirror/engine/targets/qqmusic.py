@@ -1,9 +1,11 @@
 """Read QQ Music playlists by ID using Tencent Music's documented skill API."""
 
 import os
+import re
 
-from .base import ReadOnlyPlaylistTarget, TargetCapabilityError
+from .base import TargetAuthError
 from .music_server import MusicApi, integer, rows
+from .public_playlists import WebPlaylistAccountTarget
 
 _WEB_HOST = "https://u.y.qq.com"
 _WEB_PAGE_SIZE = 30
@@ -25,14 +27,18 @@ def _playlist_id(value):
     return parsed
 
 
-class QQMusicTarget(ReadOnlyPlaylistTarget):
+class QQMusicTarget(WebPlaylistAccountTarget):
     name = "QQ Music"
     tag = source = "qqmusic"
-    supports_playlist_library = False
-    no_playlists_note = "its documented playlist endpoint can only read a playlist by ID."
+    api_url = _WEB_HOST
+    id_pattern = re.compile(r"[1-9][0-9]{0,18}")
+    no_playlists_note = "its playlist integration is read-only."
 
-    def __init__(self, api_key=None, *, web=None, session=None):
-        self._web = browser_mode() if web is None and api_key is None else bool(web)
+    def __init__(self, api_key=None, *, web=None, session=None, web_session=None):
+        if (api_key is not None or web is not None) and web_session is None:
+            web_session = {}
+        super().__init__(session=session, web_session=web_session)
+        self._web = bool(self.web_session) or (browser_mode() if web is None and api_key is None else bool(web))
         if self._web:
             self._api = MusicApi(self.name, _WEB_HOST, headers=_WEB_HEADERS, session=session)
             return
@@ -42,11 +48,28 @@ class QQMusicTarget(ReadOnlyPlaylistTarget):
         self._api = MusicApi(self.name, "https://a.y.qq.com", session=session,
                              headers={"Authorization": f"Bearer {api_key}"})
 
-    def list_playlists(self):
-        raise TargetCapabilityError("Paste a QQ Music playlist link to read its tracks.")
+    def _signed_request(self, module, method, params):
+        credentials = self.web_session
+        return self._signed_api.request("POST", "/cgi-bin/musicu.fcg", headers={
+            **_WEB_HEADERS, "Cookie": credentials["cookie"],
+        }, json={"comm": {"uin": credentials["uin"], "authst": credentials["authst"],
+                           "ct": 19, "cv": 0, "format": "json"},
+                 "req_0": {"module": module, "method": method, "param": params}})
 
-    def find_playlist(self, playlist_id):
-        return None
+    def _read_directory(self):
+        body = self._signed_request("music.musicasset.PlaylistBaseRead", "GetPlaylistByUin",
+                                    {"uin": self.web_session["uin"]})
+        reply = body.get("req_0") or {}
+        if integer(reply.get("code")) == 80030:
+            raise TargetAuthError("Sign in again on QQ Music and import a fresh playlist request.")
+        if integer(body.get("code")) != 0 or integer(reply.get("code")) != 0:
+            raise RuntimeError("QQ Music did not return the signed-in playlist directory.")
+        data = reply.get("data") or {}
+        if data.get("bFinish") is False or data.get("bFinish") == 0:
+            raise RuntimeError("QQ Music returned an incomplete account playlist directory.")
+        entries = self._check_rows(data.get("v_playlist"), data.get("total"))
+        return [self._account_playlist(row.get("tid"), row.get("dirName"), row.get("songNum"), row.get("dirPicUrl"))
+                for row in entries if integer(row.get("tid"))]
 
     def _call(self, path, *, missing=False, **params):
         body = self._api.request("POST", path, missing=missing, json={
@@ -59,9 +82,9 @@ class QQMusicTarget(ReadOnlyPlaylistTarget):
     def validate_connection(self):
         self._call("/discover/search", keyword="music", type="0")
 
-    def _page(self, playlist_id, page, *, missing=False):
+    def _page(self, playlist_id, page, *, missing=False, signed=False):
         if self._web:
-            return self._web_page(playlist_id, page, missing=missing)
+            return self._web_page(playlist_id, page, missing=missing, signed=signed)
         body = self._call("/playlists/detail", missing=missing, dissId=playlist_id, page=page)
         if body is not None and (
             integer(body.get("dissId")) != playlist_id or integer(body.get("totalNum")) is None
@@ -69,14 +92,15 @@ class QQMusicTarget(ReadOnlyPlaylistTarget):
             raise RuntimeError("QQ Music returned an invalid playlist.")
         return body
 
-    def _web_page(self, playlist_id, page, *, missing):
+    def _web_page(self, playlist_id, page, *, missing, signed=False):
         if page >= 334:
             raise RuntimeError("QQ Music exceeded the playlist page limit.")
         begin = page * _WEB_PAGE_SIZE
-        body = self._api.request("POST", "/cgi-bin/musicu.fcg", json={"req_0": {
-            "module": "music.srfDissInfo.aiDissInfo", "method": "uniform_get_Dissinfo",
-            "param": {"disstid": playlist_id, "song_begin": begin, "song_num": _WEB_PAGE_SIZE, "onlysong": 0},
-        }}, missing=missing)
+        module, method = "music.srfDissInfo.aiDissInfo", "uniform_get_Dissinfo"
+        params = {"disstid": playlist_id, "song_begin": begin, "song_num": _WEB_PAGE_SIZE, "onlysong": 0}
+        body = (self._signed_request(module, method, params) if signed else
+                self._api.request("POST", "/cgi-bin/musicu.fcg", missing=missing,
+                                  json={"req_0": {"module": module, "method": method, "param": params}}))
         if body is None:
             return None
         if integer(body.get("code")) != 0 or not isinstance(body.get("req_0"), dict):
@@ -89,6 +113,8 @@ class QQMusicTarget(ReadOnlyPlaylistTarget):
             if missing:
                 return None
             raise RuntimeError("QQ Music's web player could not reopen the public playlist.")
+        if signed and integer(directory.get("dir_show")) == 2 and integer(directory.get("owndir")) != 1:
+            raise TargetAuthError("QQ Music did not confirm access to that private playlist.")
         total = integer(data.get("total_song_num", directory.get("songnum")))
         if total is None:
             raise RuntimeError("QQ Music's web player omitted the playlist size.")
@@ -126,10 +152,15 @@ class QQMusicTarget(ReadOnlyPlaylistTarget):
         return track.get("id")
 
     def playlist_tracks(self, playlist):
+        signed = playlist.get("_account_playlist") is True
+        if signed:
+            playlist = self.find_playlist(playlist["id"])
+            if playlist is None:
+                raise TargetAuthError("That playlist is no longer visible in this QQ Music account.")
         playlist_id = _playlist_id(playlist["id"])
         result, count, page = [], None, 0
         while True:
-            body = self._page(playlist_id, page)
+            body = self._page(playlist_id, page, signed=signed)
             total = integer(body["totalNum"])
             if count is not None and total != count:
                 raise RuntimeError("QQ Music playlist size changed during the read.")

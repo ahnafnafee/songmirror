@@ -5,11 +5,13 @@ import re
 from ...engine.targets.qqmusic import QQMusicTarget, browser_mode
 from ..playlist_links import parse_playlist_link
 from .base import ConnStatus, Connector, Field
+from .playlist_browser import PlaylistBrowserConnection
 
 
-class QQMusicConnector(Connector):
+class QQMusicConnector(PlaylistBrowserConnection, Connector):
     id = "qqmusic"
     name = "QQ Music"
+    target_class = QQMusicTarget
     config_fields = [
         Field("QQMUSIC_API_KEY", "API key", secret=True, help="Create an API key on the QQ Music Skills page."),
     ]
@@ -19,6 +21,8 @@ class QQMusicConnector(Connector):
         return browser_mode(self._store.get)
 
     def status(self):
+        if self.playlist_browser["active"]:
+            return self.browser_status()
         if not self.browser_active and not self._configured("QQMUSIC_API_KEY"):
             return ConnStatus("unconfigured")
         return ConnStatus("connected", capabilities=frozenset({"public_playlist_read"}))
@@ -51,5 +55,5 @@ class QQMusicConnector(Connector):
         return self.status()
 
     def disconnect(self):
-        self._store.save({"QQMUSIC_PREFER_BROWSER": "0"})
+        self._store.save({"QQMUSIC_PREFER_BROWSER": "0", self.target_class.session_key(): ""})
         super().disconnect()

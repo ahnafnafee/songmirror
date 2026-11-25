@@ -5,6 +5,7 @@ import os
 from fastapi import APIRouter, Body, HTTPException, Request
 
 from ...services.accounts import CONNECTORS
+from ...services.accounts.playlist_browser import PLAYLIST_WEB_KEYS
 from ...services.account_profiles import PROVIDER_KEYS
 from ...services.folders import download_directory
 from ...services.settings import VALID_CREATE_PLAYLIST_DEFAULT_SOURCES
@@ -57,7 +58,7 @@ PUBLIC_KEYS = frozenset(CONFIG_KEYS) | {"AUTO_SYNC", "LOCAL_MIRROR_ORDER",
 WRITABLE_KEYS = (frozenset(CONFIG_KEYS) | {"AUTO_SYNC"} | {
     field.key for cls in CONNECTORS.values() for field in cls.config_fields
 } | SECRET_KEYS) - _DEPLOYMENT_CREDENTIAL_KEYS - {"LASTFM_SESSION_APP_KEY", "LASTFM_AUTH_PENDING"}
-MANAGED_KEYS = WRITABLE_KEYS | {
+MANAGED_KEYS = WRITABLE_KEYS | PLAYLIST_WEB_KEYS | {
     "DOWNLOAD_DIR_CONFIRMED", "APPLE_STOREFRONT", "LASTFM_AUTH_PENDING", "LASTFM_SESSION_APP_KEY", "LASTFM_USER",
     "SPOTIFY_AUTH_MODE", "SPOTIFY_WRITE_BACKEND", "SPOTIFY_REDIRECT_URI",
     "TIDAL_CLIENT_ID", "TIDAL_COUNTRY_CODE", "TIDAL_REDIRECT_URI",

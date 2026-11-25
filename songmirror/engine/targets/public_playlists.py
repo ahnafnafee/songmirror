@@ -1,14 +1,15 @@
 """Read public playlists from the services' own web players."""
 
 import json
+import os
 import re
 import secrets
 from html import unescape
 
 import requests
 
-from .base import ReadOnlyPlaylistTarget, TargetCapabilityError
-from .music_server import MusicApi, integer, rows
+from .base import ReadOnlyPlaylistTarget, TargetAuthError, TargetCapabilityError
+from .music_server import MusicApi, counted_pages, integer, rows
 from .provider_utils import chunks
 
 
@@ -76,25 +77,118 @@ class PublicPlaylistTarget(ReadOnlyPlaylistTarget):
                 "images": [{"url": artwork}] if artwork.startswith("https://") else [], "_tracks": tracks}
 
 
-class _LineStylePlaylistTarget(PublicPlaylistTarget):
+class WebPlaylistAccountTarget(PublicPlaylistTarget):
+    """An authenticated playlist library alongside the anonymous link reader."""
+
+    supports_playlist_library = True
+    account_id_pattern = None
+
+    @classmethod
+    def session_key(cls):
+        return f"{cls.source.upper()}_PLAYLIST_WEB_SESSION"
+
+    @classmethod
+    def library_configured(cls, get=os.getenv):
+        return bool(get(cls.session_key()))
+
+    def __init__(self, *, session=None, web_session=None):
+        super().__init__(session=session)
+        if web_session is None:
+            try:
+                web_session = json.loads(os.getenv(self.session_key()) or "{}")
+            except ValueError:
+                raise TargetAuthError(f"Reconnect the {self.name} browser session.") from None
+        if not isinstance(web_session, dict):
+            raise TargetAuthError(f"Reconnect the {self.name} browser session.")
+        self.web_session = web_session
+        self._signed_api = MusicApi(self.name, self.api_url, session=session)
+        self._library = None
+
+    def _requires_session(self):
+        if not self.web_session:
+            raise TargetCapabilityError(f"Connect a signed-in {self.name} session or paste a public playlist link.")
+
+    def browse_playlists(self):
+        self._requires_session()
+        self._library = {row["id"]: row for row in self._read_directory()}
+        return list(self._library.values())
+
+    def list_playlists(self):
+        result = {}
+        for playlist in self.browse_playlists():
+            result.setdefault(playlist["name"].strip().casefold(), playlist)
+        return result
+
+    def find_playlist(self, playlist_id):
+        if not self.web_session:
+            return None
+        if self._library is None:
+            self.browse_playlists()
+        return self._library.get(str(playlist_id))
+
+    def playlist_tracks(self, playlist):
+        if playlist.get("_account_playlist") is not True:
+            return super().playlist_tracks(playlist)
+        owned = self.find_playlist(playlist["id"])
+        if owned is None:
+            raise TargetCapabilityError(f"The playlist is no longer visible in this {self.name} account.")
+        result = self._read_account_playlist(owned)
+        if result is None:
+            raise TargetCapabilityError(f"The playlist is no longer visible in this {self.name} account.")
+        return result["_tracks"]
+
+    def _account_playlist(self, identifier, title, count, image=None, **extra):
+        identifier = str(identifier or "")
+        if not (self.account_id_pattern or self.id_pattern).fullmatch(identifier) or not text(title):
+            raise RuntimeError(f"{self.name} returned an invalid playlist directory entry.")
+        artwork = text(image)
+        return {"id": identifier, "name": text(title), "count": integer(count), "_account_playlist": True,
+                "images": [{"url": artwork}] if artwork.startswith("https://") else [], **extra}
+
+
+class _LineStylePlaylistTarget(WebPlaylistAccountTarget):
     # LINE MUSIC and VIBE expose the same playlist envelope and track fields.
-    def _read(self, key):
-        body = self._api.request("GET", self.playlist_path.format(key), params=self.playlist_params, missing=True)
+    def _read(self, key, *, signed=False):
+        request = self._account_request if signed else self._api.request
+        body = request("GET", self.playlist_path.format(key), params=self.playlist_params, missing=True)
         if body is None:
             return None
-        playlist = (body.get("response") or {}).get("result", {}).get("playlist")
+        playlist = self._result(body).get("playlist")
         if not isinstance(playlist, dict):
             raise RuntimeError(f"{self.name} did not return a playlist.")
-        if playlist.get("plId") != key or playlist.get("isPublic") is not True:
+        if str(playlist.get("plId")) != key or (playlist.get("isPublic") is not True
+                                                and not (signed and playlist.get("isMine") is True)):
             return None
         count = playlist.get("tracksTotalCount")
-        tracks = [track(row.get("trackId"), row.get("trackTitle"),
-                        [artist.get("artistName") for artist in (row.get("artists") or [])],
-                        album=(row.get("album") or {}).get("albumTitle"), seconds=row.get("playTime"))
-                  for row in self._check_rows(playlist.get("tracks"), count)]
+        if signed and self.source == "linemusic" and playlist.get("isMine") is True and integer(count):
+            tracks = self._account_request("GET", f"/api2/user/me/myAlbum/{key}/tracks.v1")
+            tracks = self._result(tracks).get("tracks")
+        else:
+            tracks = playlist.get("tracks")
+        tracks = [self._music_track(row) for row in self._check_rows(tracks, count)]
         return self._playlist(key, playlist.get("title"), tracks, count=count,
                               image=(playlist.get("image") or {}).get("baseImageUrl"),
                               description=playlist.get("desc") or playlist.get("subTitle"))
+
+    def _account_request(self, method, path, **kwargs):
+        return self._signed_api.request(method, path, headers=self._account_headers(), **kwargs)
+
+    def _result(self, body):
+        result = (body.get("response") or {}).get("result")
+        if not isinstance(result, dict):
+            raise RuntimeError(f"{self.name} did not return playlist data.")
+        return result
+
+    @staticmethod
+    def _music_track(row):
+        return track(row.get("trackId"), row.get("trackTitle"),
+                     [artist.get("artistName") for artist in (row.get("artists") or [])],
+                     album=(row.get("album") or {}).get("albumTitle"), seconds=row.get("playTime"))
+
+    def _library_rows(self, entries):
+        return [self._account_playlist(row.get("id"), row.get("title"), row.get("trackCount"), row.get("imageUrl"),
+                                       _library_type=text(row.get("type")).upper()) for row in entries
+                if text(row.get("type")).upper() in {"PLAYLIST", "MYLIST"}]
 
 
 class LineMusicTarget(_LineStylePlaylistTarget):
@@ -105,6 +199,18 @@ class LineMusicTarget(_LineStylePlaylistTarget):
     playlist_path = "/api2/playlist/{}.v2"
     playlist_params = None
 
+    def _account_headers(self):
+        return {"Cookie": self.web_session["cookie"], "Origin": self.api_url, "Referer": self.api_url + "/webapp/",
+                "X-Lang": "ja", "X-Requested-With": "XMLHttpRequest",
+                **({"X-LM-DID": self.web_session["deviceid"]} if self.web_session.get("deviceid") else {})}
+
+    def _read_directory(self):
+        result = self._result(self._account_request("GET", "/api2/user/me/libraries.v1"))
+        return self._library_rows(self._check_rows(result.get("libraries"), result.get("totalCount")))
+
+    def _read_account_playlist(self, playlist):
+        return self._read(playlist["id"], signed=True)
+
 
 class VibeTarget(_LineStylePlaylistTarget):
     name = "Naver Vibe"
@@ -113,31 +219,88 @@ class VibeTarget(_LineStylePlaylistTarget):
     id_pattern = re.compile(r"[A-Za-z0-9_-]{1,120}")
     playlist_path = "/vibeWeb/musicapiweb/vibe/v3/playlist/{}"
     playlist_params = {"includeOthersMix": "false"}
+    _prefix = "/vibeWeb/musicapiweb"
+
+    def _account_headers(self):
+        return {"Cookie": self.web_session["cookie"], "Origin": "https://vibe.naver.com",
+                "Referer": "https://vibe.naver.com/"}
+
+    def _read_directory(self):
+        path = self._prefix + "/vibe/v2/library/PLAYLIST/libraries"
+        entries = counted_pages(lambda start: self._library_page(path, start), self.name)
+        return self._library_rows(entries)
+
+    def _library_page(self, path, start):
+        result = self._result(self._account_request("GET", path, params={"start": start + 1, "display": 20}))
+        return result.get("libraries"), result.get("totalCount")
+
+    def _read_account_playlist(self, playlist):
+        key = playlist["id"]
+        if playlist["_library_type"] != "MYLIST":
+            return self._read(key, signed=True)
+        body = self._account_request("GET", f"{self._prefix}/myMusic/myAlbums/{key}", missing=True)
+        if body is None:
+            return None
+        matches = self._result(body).get("myAlbums")
+        album, = self._check_rows(matches, 1)
+        if str(album.get("myAlbumId")) != key or not (album.get("isMine") is True or album.get("isPublic") is True):
+            return None
+        count = integer(album.get("trackCount"))
+        if count is None or count > 10_000:
+            raise RuntimeError("Naver Vibe returned an invalid playlist track count.")
+        tracks = []
+        for offset in range(0, count, 100):
+            page = self._account_request("GET", f"{self._prefix}/myMusic/myAlbum/{key}/tracks",
+                                         params={"start": offset + 1, "display": 100})
+            tracks.extend(self._music_track(row) for row in self._check_rows(
+                self._result(page).get("tracks"), min(100, count - offset)))
+        return self._playlist(key, album.get("title"), tracks, count=count,
+                              image=album.get("imageUrl"), description=album.get("desc"))
 
 
-class GaanaTarget(PublicPlaylistTarget):
+class GaanaTarget(WebPlaylistAccountTarget):
     name = "Gaana"
     tag = source = "gaana"
     api_url = "https://api.gaana.com"
     id_pattern = re.compile(r"[A-Za-z0-9_-]{1,160}")
 
-    def _read(self, key):
-        body = self._api.request("GET", "/playlist/detail", missing=True,
-                                 params={"seokey": key, "request_type": "playlist"}, headers={
-                                     "Referer": "https://gaana.com/", "Origin": "https://gaana.com",
-                                     "deviceType": "GaanaWapApp", "deviceId": "website", "appVersion": "V6",
-                                     "gaanaAppVersion": "gaanaAndroid-8.60.2",
-                                 })
+    def _headers(self, signed=False):
+        return {"Referer": "https://gaana.com/", "Origin": "https://gaana.com",
+                "deviceType": "GaanaWapApp", "deviceId": self.web_session.get("deviceid", "website") if signed else "website",
+                "appVersion": "V6", "gaanaAppVersion": "gaanaAndroid-8.60.2",
+                **({"COUNTRY": self.web_session["country"]} if signed and self.web_session.get("country") else {})}
+
+    def _read_directory(self):
+        body = self._signed_api.request("GET", "/user.php", headers=self._headers(signed=True), params={
+            "type": "myplaylists", "subtype": "myplaylists", "token": self.web_session["token"],
+        })
+        if integer(body.get("user_token_status")) == 0 or "login needed" in text(body.get("msg")).lower():
+            raise TargetAuthError("Sign in again on Gaana and import a fresh playlist request.")
+        return [self._account_playlist(row.get("playlist_id"), row.get("title") or row.get("name"),
+                                       row.get("trackcount"), row.get("atw"))
+                for row in rows(body.get("playlist"), "Gaana did not return a signed-in playlist directory.")]
+
+    def _read_account_playlist(self, playlist):
+        return self._read(playlist["id"], signed=True)
+
+    def _read(self, key, *, signed=False):
+        api = self._signed_api if signed else self._api
+        body = api.request("GET", "/playlist/detail", missing=True, headers=self._headers(signed), params={
+            ("playlist_id" if signed else "seokey"): key, "request_type": "playlist",
+            **({"token": self.web_session["token"]} if signed else {}),
+        })
         if body is None:
             return None
         playlist = body.get("playlist")
+        if signed and (integer(body.get("user_token_status")) == 0 or "login needed" in text(body.get("msg")).lower()):
+            raise TargetAuthError("Sign in again on Gaana and import a fresh playlist request.")
         if not isinstance(playlist, dict):
             if integer(body.get("error_code")) == 1002:
                 return None
             raise RuntimeError(f"{self.name} did not return a playlist.")
         # Editorial playlists also use is_public=0. A matching playlist and ordered
         # track IDs returned without authentication are the public view.
-        if playlist.get("seokey") != key:
+        if str(playlist.get("playlist_id") if signed else playlist.get("seokey")) != key:
             return None
         ordered_ids = [item.strip() for item in text(playlist.get("trackids")).split(",") if item.strip()]
         tracks = [track(row.get("track_id"), row.get("track_title"),
@@ -150,12 +313,48 @@ class GaanaTarget(PublicPlaylistTarget):
                               image=playlist.get("atw") or playlist.get("artwork"))
 
 
-class JioSaavnTarget(PublicPlaylistTarget):
+class JioSaavnTarget(WebPlaylistAccountTarget):
     name = "JioSaavn"
     tag = source = "jiosaavn"
     api_url = "https://www.jiosaavn.com"
     id_pattern = re.compile(r"(?:featured/[\w.,!~()'%-]{1,200}|s/playlist/[\w.,!~()'%-]{1,160}/[\w.,!~()'%-]{1,200})/[A-Za-z0-9_,=-]{1,100}")
+    account_id_pattern = re.compile(r"[1-9][0-9]{0,18}")
     page_size = 50
+
+    def _account_call(self, method, **params):
+        body = self._signed_api.request("GET", "/api.php", headers={
+            "Cookie": self.web_session["cookie"], "Origin": self.api_url, "Referer": self.api_url + "/my-music",
+        }, params={"__call": method, "api_version": 4, "_format": "json", "_marker": 0, "ctx": "web6dot0", **params})
+        error = body.get("error")
+        if isinstance(error, dict) and error.get("code") == "LOGIN_REQUIRED":
+            raise TargetAuthError("Sign in again on JioSaavn and import a fresh library request.")
+        if error or body.get("status") == "failure":
+            raise RuntimeError("JioSaavn rejected the account playlist request.")
+        return body
+
+    def _read_directory(self):
+        result = self._account_call("library.getAll")
+        entries = []
+        for row in rows(result.get("playlist"), "JioSaavn did not return its playlist library."):
+            identifier = str(row.get("id") or "")
+            if not self.account_id_pattern.fullmatch(identifier):
+                raise RuntimeError("JioSaavn returned an invalid library playlist ID.")
+            if not text(row.get("title")) or integer(row.get("list_count")) is None:
+                row = self._account_call("playlist.getDetails", listid=identifier, p=1, n=1)
+                if str(row.get("id")) != identifier:
+                    raise RuntimeError("JioSaavn returned a different library playlist.")
+            entries.append(self._account_playlist(identifier, row.get("title"), row.get("list_count"), row.get("image")))
+        return entries
+
+    def _read_account_playlist(self, playlist):
+        key = playlist["id"]
+        body = self._account_call("playlist.getDetails", listid=key)
+        count = integer(body.get("list_count"))
+        if (str(body.get("id")) != key or body.get("type") != "playlist" or count is None or count > 10_000):
+            return None
+        entries = self._check_rows(body.get("list"), count)
+        return self._playlist(key, body.get("title"), [self._jio_track(row) for row in entries], count=count,
+                              image=body.get("image"), description=body.get("header_desc"))
 
     def _page(self, key, page):
         return self._api.request("GET", "/api.php", missing=True, params={
@@ -183,17 +382,21 @@ class JioSaavnTarget(PublicPlaylistTarget):
                 raise RuntimeError(f"{self.name} repeated a playlist page. Sync was stopped.")
             signatures.add(signature)
             entries.extend(current)
-        tracks = []
-        for row in entries:
-            info = row.get("more_info") or {}
-            artist_map = info.get("artistMap") or {}
-            performers = (artist_map.get("primary_artists") or []) + (artist_map.get("featured_artists") or [])
-            if not performers:
-                performers = [artist for artist in (artist_map.get("artists") or []) if artist.get("role") == "singer"]
-            tracks.append(track(row.get("id"), row.get("title"), [artist.get("name") for artist in performers],
-                                album=info.get("album"), seconds=info.get("duration")))
+        tracks = [self._jio_track(row) for row in entries]
         return self._playlist(key, first.get("title"), tracks, count=count,
                               image=first.get("image"), description=first.get("header_desc"))
+
+    @staticmethod
+    def _jio_track(row):
+        if row.get("type") not in (None, "song"):
+            raise RuntimeError("JioSaavn returned a playlist entry that was not a song.")
+        info = row.get("more_info") or {}
+        artist_map = info.get("artistMap") or {}
+        performers = (artist_map.get("primary_artists") or []) + (artist_map.get("featured_artists") or [])
+        if not performers:
+            performers = [artist for artist in (artist_map.get("artists") or []) if artist.get("role") == "singer"]
+        return track(row.get("id"), row.get("title"), [artist.get("name") for artist in performers],
+                     album=info.get("album"), seconds=info.get("duration"))
 
 
 _FLIGHT_CHUNK = re.compile(r"self\.__next_f\.push\((\[1,.*?\])\)</script>", re.DOTALL)
@@ -246,15 +449,62 @@ class AudiomackTarget(PublicPlaylistTarget):
                               image=music.get("image"), description=music.get("description"))
 
 
-class PandoraTarget(PublicPlaylistTarget):
+class PandoraTarget(WebPlaylistAccountTarget):
     name = "Pandora"
     tag = source = "pandora"
     api_url = "https://www.pandora.com"
     id_pattern = re.compile(r"PL:[0-9]{1,24}:[0-9]{1,24}")
     page_size = 100
 
-    def __init__(self, *, session=None):
+    def __init__(self, *, session=None, web_session=None, signed_session=None):
+        super().__init__(session=signed_session, web_session=web_session)
         self._make_session = requests.Session if session is None else session
+        self._listener = None
+
+    def _account_headers(self):
+        return {"Origin": self.api_url, "Referer": self.api_url + "/collection/playlists",
+                "X-AuthToken": self.web_session["authorization"], "X-CsrfToken": self.web_session["csrf"],
+                "Cookie": "csrftoken=" + self.web_session["csrf"]}
+
+    def _read_directory(self):
+        offset, total, entries, seen = 0, None, [], set()
+        headers = self._account_headers()
+        while total is None or offset < total:
+            reply = self._signed_api.request("POST", "/api/v6/collections/getSortedPlaylists", headers=headers,
+                                             json={"request": {"sortOrder": "MOST_RECENT_MODIFIED", "offset": offset,
+                                                               "limit": 100, "annotationLimit": 100},
+                                                   "isRecentModifiedPlaylists": False, "allowedTypes": ["TR"]})
+            listener = integer(reply.get("listenerId"))
+            if not listener or reply.get("listenerPandoraId") != f"LI:{listener}":
+                raise TargetAuthError("Pandora did not recognize the browser session.")
+            count = integer(reply.get("totalCount"))
+            if (count is None or count > 10_000 or integer(reply.get("offset")) != offset
+                    or (total is not None and (count != total or listener != self._listener))):
+                raise RuntimeError("Pandora returned an incomplete playlist directory.")
+            self._listener, total = listener, count
+            if count == 0:
+                return []
+            items = reply.get("items")
+            if not isinstance(items, list) or not items or len(items) > total - offset:
+                raise RuntimeError("Pandora returned an incomplete playlist directory.")
+            annotations = reply.get("annotations") or {}
+            for row in items:
+                data = row if isinstance(row, dict) else {}
+                key = data.get("pandoraId") or (row if isinstance(row, str) else "")
+                if not isinstance(key, str) or not self.id_pattern.fullmatch(key) or key in seen:
+                    raise RuntimeError("Pandora returned an invalid collection playlist ID.")
+                seen.add(key)
+                details = annotations.get(key) or data
+                if not text(details.get("name")) or integer(details.get("totalTracks")) is None:
+                    details = self._get_page(self._signed_api, key, headers, 0, 0, 1)
+                    if not self._check_visibility(details, key, signed=True):
+                        raise TargetCapabilityError("Pandora did not confirm access to a collection playlist.")
+                entries.append(self._account_playlist(key, details.get("name"), details.get("totalTracks")))
+            offset += len(items)
+        return entries
+
+    def _read_account_playlist(self, playlist):
+        return self._read_pages(self._signed_api, playlist["id"], self._account_headers(), signed=True)
 
     def _read(self, key):
         # Start a fresh anonymous web session for each read. The guest token and
@@ -268,26 +518,37 @@ class PandoraTarget(PublicPlaylistTarget):
             auth = text(guest.get("authToken"))
             if not auth:
                 raise RuntimeError("Pandora could not start an anonymous web session.")
-            return self._read_pages(api, key, auth)
+            return self._read_pages(api, key, {"X-AuthToken": auth})
 
-    def _read_pages(self, api, key, auth):
+    @staticmethod
+    def _get_page(api, key, headers, version, offset, size):
+        return api.request("POST", "/api/v7/playlists/getTracks", headers=headers, missing=True,
+                           json={"request": {"pandoraId": key, "playlistVersion": version, "offset": offset,
+                                             "limit": size, "annotationLimit": size,
+                                             "allowedTypes": ["TR"], "bypassPrivacyRules": False}})
+
+    def _check_visibility(self, page, key, *, signed):
+        if page is None:
+            return False
+        if integer(page.get("errorCode")) == 99000:
+            raise RuntimeError("The Pandora playlist changed during the read.")
+        if page.get("pandoraId") != key or type(page.get("isPrivate")) is not bool:
+            raise RuntimeError("Pandora did not return the expected playlist.")
+        private = page["isPrivate"] or page.get("secret") is True
+        return not private or (signed and integer(page.get("listenerId")) == self._listener)
+
+    def _read_pages(self, api, key, headers, *, signed=False):
         tracks, count, version, first = [], None, None, None
         while count is None or len(tracks) < count:
             offset = len(tracks)
-            page = api.request("POST", "/api/v7/playlists/getTracks", headers={"X-AuthToken": auth}, missing=True,
-                               json={"request": {"pandoraId": key, "playlistVersion": version or 0, "offset": offset,
-                                                 "limit": self.page_size, "annotationLimit": self.page_size,
-                                                 "allowedTypes": ["TR"], "bypassPrivacyRules": False}})
-            if page is None or page.get("isPrivate") is True or page.get("secret") is True:
+            page = self._get_page(api, key, headers, version or 0, offset, self.page_size)
+            if not self._check_visibility(page, key, signed=signed):
                 if first is None:
                     return None
                 raise RuntimeError("The Pandora playlist changed during the read.")
-            if integer(page.get("errorCode")) == 99000:
-                raise RuntimeError("The Pandora playlist changed during the read.")
             total, current_version = integer(page.get("totalTracks")), integer(page.get("version"))
-            if (page.get("pandoraId") != key or total is None or total > 10_000 or current_version is None
-                    or integer(page.get("offset")) != offset or page.get("isPrivate") is not False):
-                raise RuntimeError("Pandora did not return the expected public playlist.")
+            if (total is None or total > 10_000 or current_version is None or integer(page.get("offset")) != offset):
+                raise RuntimeError("Pandora did not return a complete playlist page.")
             if first is None:
                 first, count, version = page, total, current_version
             elif (count, version) != (total, current_version):
@@ -303,20 +564,50 @@ class PandoraTarget(PublicPlaylistTarget):
         return self._playlist(key, first.get("name"), tracks, count=count, description=first.get("description"))
 
 
-class NetEaseTarget(PublicPlaylistTarget):
+class NetEaseTarget(WebPlaylistAccountTarget):
     name = "NetEase Cloud Music"
     tag = source = "netease"
     api_url = "https://music.163.com"
     id_pattern = re.compile(r"[1-9][0-9]{0,18}")
 
-    def _read(self, key):
-        body = self._api.request("GET", "/api/v6/playlist/detail", params={"id": key, "n": 1000}, missing=True)
+    def _account_request(self, method, path, **kwargs):
+        headers = {"Cookie": self.web_session["cookie"], "Origin": self.api_url, "Referer": self.api_url + "/"}
+        return self._signed_api.request(method, path, headers=headers, **kwargs)
+
+    def _read_directory(self):
+        body = self._account_request("POST", "/api/nuser/account/get")
+        uid = integer((body.get("account") or {}).get("id"))
+        if integer(body.get("code")) != 200 or not uid:
+            raise TargetAuthError("Sign in again on NetEase Cloud Music and import a fresh playlist request.")
+        entries = []
+        for _ in range(200):
+            page = self._account_request("GET", "/api/user/playlist", params={
+                "uid": uid, "offset": len(entries), "limit": 50,
+            })
+            if integer(page.get("code")) != 200:
+                raise RuntimeError("NetEase Cloud Music did not return the account playlist directory.")
+            current = rows(page.get("playlist"), "NetEase Cloud Music returned an invalid playlist directory.")
+            more = page.get("more")
+            entries.extend(current)
+            if more is False:
+                return [self._account_playlist(row.get("id"), row.get("name"), row.get("trackCount"),
+                                               row.get("coverImgUrl")) for row in entries]
+            if more is not True or not current:
+                break
+        raise RuntimeError("NetEase Cloud Music returned an incomplete playlist directory.")
+
+    def _read_account_playlist(self, playlist):
+        return self._read(playlist["id"], signed=True)
+
+    def _read(self, key, *, signed=False):
+        request = self._account_request if signed else self._api.request
+        body = request("GET", "/api/v6/playlist/detail", params={"id": key, "n": 1000}, missing=True)
         if body is None or integer(body.get("code")) == 404:
             return None
         playlist = body.get("playlist")
         if not isinstance(playlist, dict) or integer(body.get("code")) != 200:
             raise RuntimeError("NetEase Cloud Music did not return a playlist.")
-        if integer(playlist.get("id")) != int(key) or integer(playlist.get("privacy")) != 0:
+        if integer(playlist.get("id")) != int(key) or (not signed and integer(playlist.get("privacy")) != 0):
             return None
         count = playlist.get("trackCount")
         ordered_ids = [integer(row.get("id")) for row in self._check_rows(playlist.get("trackIds"), count)]
@@ -325,8 +616,7 @@ class NetEaseTarget(PublicPlaylistTarget):
         supplied = rows(playlist.get("tracks"), "NetEase Cloud Music returned invalid tracks.")
         by_id = {integer(row.get("id")): row for row in supplied}
         for batch in chunks([track_id for track_id in dict.fromkeys(ordered_ids) if track_id not in by_id], 100):
-            body = self._api.request("GET", "/api/v3/song/detail",
-                                     params={"c": json.dumps([{"id": track_id} for track_id in batch])})
+            body = request("GET", "/api/v3/song/detail", params={"c": json.dumps([{"id": track_id} for track_id in batch])})
             if integer(body.get("code")) != 200:
                 raise RuntimeError("NetEase Cloud Music could not supply all playlist tracks.")
             found = rows(body.get("songs"), "NetEase Cloud Music returned invalid tracks.")

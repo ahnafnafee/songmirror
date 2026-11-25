@@ -43,6 +43,7 @@ export interface Account {
   name: string
   auth_kind: AuthKind
   fields: AccountField[]
+  playlist_browser?: { login_url: string; request_hint: string; active: boolean }
   state: AccountState
   detail: string | null
   /** Whether this service can be a sync/transfer peer (reads and writes tracks).

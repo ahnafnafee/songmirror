@@ -374,6 +374,7 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
   const isDirectServer = ['emby', 'plex', 'mopidy', 'lyrion'].includes(account.provider)
   const description = isLastfm ? t("Choose what to connect")
     : account.provider === 'listenbrainz' ? t("Read loved recordings and playlists by username; add a user token to receive them.")
+    : account.playlist_browser ? t("Connect your account or open a public playlist")
     : account.provider === 'qqmusic' ? t("Connect with a QQ Music API key")
     : isDirectServer ? t("Connect directly to your server")
     : AUTH_KIND_TITLES[account.auth_kind]
@@ -627,6 +628,10 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
               ))}
 
             {account.provider === 'qqmusic' && <NoQuotaModeSection account={account} onChanged={onChanged} />}
+            {account.playlist_browser && (
+              <PlaylistBrowserSection account={account} session={account.playlist_browser}
+                onChanged={onChanged} onConnected={() => setShowSuccess(true)} />
+            )}
 
             {(account.auth_kind === 'token_paste' || account.auth_kind === 'api_key' || account.auth_kind === 'public_link') && (
               <>
@@ -653,6 +658,68 @@ export function ConnectWizardModal({ account, open, onClose, onConnected, onChan
         )}
       </div>
     </Modal>
+  )
+}
+
+function PlaylistBrowserSection({ account, session, onChanged, onConnected }: {
+  account: Account
+  session: NonNullable<Account['playlist_browser']>
+  onChanged: () => void
+  onConnected: () => void
+}) {
+  useTranslation()
+  const [browserRequest, setBrowserRequest] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function changeSession(disconnect = false) {
+    setBusy(true)
+    setError(null)
+    try {
+      const response = disconnect ? await api.disablePlaylistBrowser(account.id)
+        : await api.enablePlaylistBrowser(account.id, browserRequest)
+      if (disconnect) onChanged()
+      else if (response.state === 'connected') {
+        setBrowserRequest('')
+        onConnected()
+      } else setError(response.detail || t("Could not connect with those values. Double-check them and try again."))
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <details open={!session.active || account.state === 'expired'} className="rounded-control border border-border bg-surface-2">
+      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-text">
+        {t("Sign in for private playlists")}
+      </summary>
+      <div className="flex flex-col gap-3 border-t border-border px-4 py-3">
+        <ol className="ms-5 list-decimal space-y-2 text-sm leading-relaxed text-text-2">
+          <li><Trans i18nKey={"Open the <player>web player</player> and sign in to your account."}
+            components={{ player: <GuideLink href={session.login_url} /> }} /></li>
+          <li><Trans i18nKey={"Open Developer Tools → Network, then open your playlist library. Find <request/> and choose Copy → Copy as cURL (bash)."}
+            components={{ request: <Code>{session.request_hint}</Code> }} /></li>
+          <li>{t("Paste the copied request below and connect your account.")}</li>
+        </ol>
+        <label htmlFor="playlist-browser-request" className="text-xs font-semibold text-text-2">
+          {t("Signed-in playlist request")}
+        </label>
+        <textarea id="playlist-browser-request" rows={4} maxLength={64_000} autoComplete="off" spellCheck={false} dir="ltr"
+          className="w-full rounded-control border border-border bg-inset px-3 py-2 font-mono text-xs text-text"
+          value={browserRequest} onChange={event => setBrowserRequest(event.target.value)} />
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+        <div className="flex flex-wrap justify-end gap-2">
+          {session.active && <Button variant="ghost" size="sm" disabled={busy} onClick={() => void changeSession(true)}>
+            {t("Disconnect browser session")}
+          </Button>}
+          <Button size="sm" loading={busy} disabled={!browserRequest.trim()} onClick={() => void changeSession()}>
+            {t("Connect account")}
+          </Button>
+        </div>
+      </div>
+    </details>
   )
 }
 

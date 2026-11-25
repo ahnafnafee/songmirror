@@ -83,8 +83,9 @@ PROVIDER_KEYS = {
     "mopidy": {"MOPIDY_URL", "MOPIDY_CACHE_FILE"},
     "lyrion": {"LYRION_URL", "LYRION_USER", "LYRION_PASSWORD", "LYRION_CACHE_FILE"},
     "anghami": {"ANGHAMI_CLIENT_ID", "ANGHAMI_TOKEN_FILE"},
-    "qqmusic": {"QQMUSIC_API_KEY", "QQMUSIC_PREFER_BROWSER"},
-    **{source: {f"{source.upper()}_PUBLIC_PLAYLIST"} for source in PUBLIC_PLAYLIST_TARGETS},
+    "qqmusic": {"QQMUSIC_API_KEY", "QQMUSIC_PREFER_BROWSER", "QQMUSIC_PLAYLIST_WEB_SESSION"},
+    **{source: {f"{source.upper()}_PUBLIC_PLAYLIST", *([target.session_key()] if hasattr(target, "session_key") else [])}
+       for source, target in PUBLIC_PLAYLIST_TARGETS.items()},
 }
 
 _FILE_DEFAULTS = {

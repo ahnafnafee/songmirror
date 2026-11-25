@@ -135,14 +135,17 @@ export function AccountCard({ account, onChanged }: {
           account.provider === 'listenbrainz' ? t("Username")
             : account.provider === 'subsonic' ? t("Password")
             : account.provider === 'mopidy' || account.provider === 'lyrion' ? t("Server URL")
+            : account.playlist_browser?.active ? AUTH_KIND_LABELS.token_paste
             : AUTH_KIND_LABELS[account.auth_kind]
         }</span>
         <StatusPill state={account.state} className="ms-auto" />
       </div>
 
-      <p className="text-[13px] leading-relaxed text-text-2">{account.auth_kind === 'public_link'
-        ? t("Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.")
-        : SERVICE_BLURBS[account.provider] ?? ''}</p>
+      <p className="text-[13px] leading-relaxed text-text-2">{account.playlist_browser
+        ? t("Read playlists from your signed-in account or use a public playlist link.")
+        : account.auth_kind === 'public_link'
+          ? t("Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.")
+          : SERVICE_BLURBS[account.provider] ?? ''}</p>
 
       {editingLabel && (
         <div className="flex items-end gap-2">

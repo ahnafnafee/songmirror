@@ -16,10 +16,12 @@ from songmirror.engine.targets.lyrion import LyrionTarget
 from songmirror.engine.targets.mopidy import MopidyTarget
 from songmirror.engine.targets.plex import PlexTarget
 from songmirror.engine.targets.public_playlists import (
-    PUBLIC_PLAYLIST_TARGETS, AudiomackTarget, GaanaTarget, JioSaavnTarget, NetEaseTarget, PandoraTarget,
+    PUBLIC_PLAYLIST_TARGETS, AudiomackTarget, GaanaTarget, JioSaavnTarget, LineMusicTarget, NetEaseTarget, PandoraTarget,
+    VibeTarget,
 )
 from songmirror.engine.targets.qqmusic import QQMusicTarget
 from songmirror.oauth import read_token
+from songmirror.services.accounts.playlist_browser import parse_playlist_session
 from songmirror.services.playlist_links import external_url, parse_playlist_link
 from songmirror.services.settings import SettingsStore
 from songmirror.services.syncs import SyncJob, validate_sync_job
@@ -364,7 +366,8 @@ def test_public_web_links_connect_and_preview_as_sources_only(tmp_path, monkeypa
     key = f"{provider.upper()}_PUBLIC_PLAYLIST"
     assert parse_playlist_link(url) == (provider, playlist_id)
     assert parse_playlist_link(external_url(provider, "playlist", playlist_id)) == (provider, playlist_id)
-    assert not target_type.supports_playlist_writes and not target_type.supports_playlist_library
+    assert not target_type.supports_playlist_writes
+    assert target_type().find_playlist(playlist_id) is None
 
     with TestClient(app) as client:
         response = client.post(f"/api/accounts/{profile.id}/connect", json={key: url + ("&test=1" if "?" in url else "?test=1")})
@@ -423,6 +426,20 @@ def test_jiosaavn_fetches_all_pages_in_order_and_detects_repeated_pages():
         target.fetch_playlist(key)
 
 
+def test_jiosaavn_reads_numeric_library_ids_only_from_the_signed_in_directory():
+    directory = {"playlist": [{"id": "123", "title": "Private Mix", "list_count": "2"}]}
+    detail = {"id": "123", "type": "playlist", "title": "Private Mix", "list_count": "2", "list": [
+        {"id": "a", "title": "First", "type": "song"}, {"id": "b", "title": "Second", "type": "song"},
+    ]}
+    wire = Wire(directory, detail)
+    raw = "curl 'https://www.jiosaavn.com/api.php?__call=library.getAll' -b 'user=fixture; _ga=metrics'"
+    target = JioSaavnTarget(session=wire, web_session=parse_playlist_session("jiosaavn", raw))
+    assert target.find_playlist("456") is None
+    assert [x["id"] for x in target.playlist_tracks(target.find_playlist("123"))] == ["a", "b"]
+    assert [call[2]["params"]["__call"] for call in wire.calls] == ["library.getAll", "playlist.getDetails"]
+    assert all(call[2]["headers"]["Cookie"] == "user=fixture" for call in wire.calls)
+
+
 def test_audiomack_uses_the_complete_public_player_payload():
     key = "mirror/playlist/mix"
     data = {"music": {"type": "playlist", "href": "/" + key, "title": "Mix", "trackCount": 1,
@@ -440,6 +457,115 @@ def test_netease_reads_public_track_ids_in_order_and_hydrates_missing_metadata()
     target = NetEaseTarget(session=wire)
     assert [track["id"] for track in target.playlist_tracks(target.fetch_playlist("123"))] == ["2", "1", "2"]
     assert json.loads(wire.calls[1][2]["params"]["c"]) == [{"id": 2}]
+
+
+def test_gaana_private_reads_are_scoped_to_signed_in_playlist_directory():
+    directory = {"playlist": [{"playlist_id": 9, "title": "Private Mix", "trackcount": 1}]}
+    detail = {"count": 1, "playlist": {"playlist_id": "9", "title": "Private Mix", "trackids": "102", "is_public": 0},
+              "tracks": [{"track_id": 102, "track_title": "Music"}]}
+    wire = Wire(directory, detail)
+    target = GaanaTarget(session=wire, web_session={"token": "example-token-1234"})
+    assert target.find_playlist("10") is None
+    assert [t["id"] for t in target.playlist_tracks(target.find_playlist("9"))] == ["102"]
+    assert [call[1] for call in wire.calls] == ["/user.php", "/playlist/detail"]
+    assert wire.calls[-1][2]["params"]["playlist_id"] == "9"
+
+
+def test_netease_private_playlist_authenticates_account_and_never_uses_pasted_uid():
+    wire = Wire({"code": 200, "account": {"id": 5}},
+                {"code": 200, "more": False, "playlist": [{"id": 123, "name": "Private Mix", "trackCount": 1}]},
+                {"code": 200, "playlist": {"id": 123, "name": "Private Mix", "privacy": 10, "trackCount": 1,
+                                           "trackIds": [{"id": 7}], "tracks": [{"id": 7, "name": "Song"}]}})
+    target = NetEaseTarget(session=wire, web_session={"cookie": "MUSIC_U=fixture"})
+    assert [t["id"] for t in target.playlist_tracks(target.find_playlist("123"))] == ["7"]
+    assert wire.calls[1][2]["params"]["uid"] == 5
+    assert all(call[2]["headers"]["Cookie"] == "MUSIC_U=fixture" for call in wire.calls)
+    raw = "curl 'https://music.163.com/api/user/playlist?uid=999' -b 'unrelated=abc; MUSIC_U=session; __csrf=token'"
+    assert parse_playlist_session("netease", raw) == {"cookie": "MUSIC_U=session; __csrf=token"}
+    with pytest.raises(ValueError, match="signed-in web player"):
+        parse_playlist_session("netease", raw.replace("music.163.com", "music.163.com.invalid"))
+
+
+@pytest.mark.parametrize("target_type", [LineMusicTarget, VibeTarget])
+def test_line_style_requires_account_visibility_for_private_playlist_reads(target_type):
+    def envelope(**result):
+        return {"response": {"result": result}}
+
+    directory = envelope(libraries=[{"type": "MYLIST", "id": "123", "title": "Private Mix"}], totalCount=1)
+    if target_type is LineMusicTarget:
+        own = envelope(playlist={"plId": "123", "title": "Private Mix", "tracksTotalCount": 1,
+                                 "isMine": True, "isPublic": False})
+    else:
+        own = envelope(myAlbums=[{"myAlbumId": "123", "title": "Private Mix", "trackCount": 1,
+                                 "isMine": True, "isPublic": False}])
+    signed = Wire(directory, own, envelope(tracks=[{"trackId": 4, "trackTitle": "Song"}]))
+    target = target_type(session=signed, web_session={"cookie": "session=fixture"})
+    playlist = target.find_playlist("123")
+    assert playlist["name"] == "Private Mix"
+    assert [t["name"] for t in target.playlist_tracks(playlist)] == ["Song"]
+    assert len(signed.calls) == 3
+    assert all(call[2]["headers"]["Cookie"] == "session=fixture" for call in signed.calls)
+    public = Wire(envelope(playlist={"plId": "123", "isMine": True, "isPublic": False}))
+    assert target_type(session=public).fetch_playlist("123") is None
+    assert "Cookie" not in public.calls[0][2]["headers"]
+
+
+def test_playlist_browser_setup_preserves_public_mode_and_isolates_credentials(monkeypatch, tmp_path):
+    target = GaanaTarget
+    app = create_app(settings=SettingsStore(dir=tmp_path))
+    profiles = app.state.account_profiles
+    profile = profiles.create("gaana", "Private QA")
+    key = target.session_key()
+    captured = "curl 'https://api.gaana.com/user.php?type=myplaylists&subtype=myplaylists&token=fixture-token-safe' -H 'deviceId: device'"
+    store = profiles.settings_for(profile.id)
+    store.save({"GAANA_PUBLIC_PLAYLIST": "https://gaana.com/playlist/example"})
+
+    def read_directory(self):
+        assert self.web_session == {"token": "fixture-token-safe", "deviceid": "device"}
+        return [self._account_playlist("9", "Private Mix", 1)]
+
+    monkeypatch.setattr(target, "_read_directory", read_directory)
+    monkeypatch.setattr(target, "_read_account_playlist", lambda self, playlist:
+                        self._playlist(playlist["id"], "Private Mix", [{"id": "21", "name": "Fixture Track"}], count=1))
+    with TestClient(app) as client:
+        path = f"/api/accounts/{profile.id}/playlist-browser"
+        response = client.post(path, json={"request": captured})
+        assert response.status_code == 200, response.json()
+        caps = response.json()["capabilities"]
+        assert caps["library_read"] and caps["public_playlist_read"] and not caps["library_write"]
+        assert json.loads(profiles.settings_for(profile.id).get(key)) == {"token": "fixture-token-safe", "deviceid": "device"}
+        assert profiles.settings_for("gaana").get(key) is None
+        accounts = client.get("/api/accounts").text
+        assert "fixture-token-safe" not in accounts
+        assert client.put("/api/settings", json={key: "unvalidated"}).status_code == 422
+        assert client.post(path, json={"request": captured.replace("api.gaana.com", "example.org")}).json()["state"] == "error"
+        directory = client.get("/api/playlists", params={"provider": profile.id})
+        assert directory.status_code == 200, directory.json()
+        assert [(row["id"], row["name"]) for row in directory.json()] == [("9", "Private Mix")]
+        detail = client.get(f"/api/playlists/{profile.id}/9")
+        assert detail.status_code == 200 and detail.json()["tracks"][0]["name"] == "Fixture Track"
+        response = client.delete(path)
+        assert response.json()["capabilities"]["public_playlist_read"]
+        assert not response.json()["capabilities"]["library_read"] and not profiles.settings_for(profile.id).get(key)
+
+
+def test_qq_music_browser_library_uses_verified_directory_and_session_only_on_account_reads():
+    signed = {"code": 0, "req_0": {"code": 0, "data": {"total": 1, "bFinish": True, "v_playlist": [
+        {"tid": 93, "dirName": "Private Mix", "songNum": 1},
+    ]}}}
+    page = {"code": 0, "req_0": {"code": 0, "data": {"dirinfo": {"id": 93, "title": "Private Mix", "dir_show": 2,
+                     "owndir": 1}, "total_song_num": 1, "songlist": [{"mid": "a", "name": "Fixture Track"}]}}}
+    missing = {"code": 0, "req_0": {"code": 0, "data": {"dirinfo": {"id": 0}}}}
+    wire = Wire(signed, page, missing)
+    raw = "curl 'https://u.y.qq.com/cgi-bin/musicu.fcg' -b 'uin=o0042; qm_keyst=music-session; unrelated=abc'"
+    credentials = parse_playlist_session("qqmusic", raw)
+    target = QQMusicTarget(session=wire, web_session=credentials)
+    assert target.find_playlist("99") is None
+    assert [track["id"] for track in target.playlist_tracks(target.find_playlist("93"))] == ["a"]
+    assert target.fetch_playlist("93") is None
+    assert wire.calls[0][2]["json"]["req_0"]["param"] == {"uin": "42"}
+    assert wire.calls[1][2]["headers"]["Cookie"] == "uin=o0042; qm_keyst=music-session"
+    assert "comm" not in wire.calls[2][2]["json"] and "Cookie" not in wire.calls[2][2]["headers"]
 
 
 def test_pandora_uses_versioned_pages_and_keeps_guest_auth_local():
@@ -470,6 +596,24 @@ def test_pandora_uses_versioned_pages_and_keeps_guest_auth_local():
     assert "X-AuthToken" not in session.calls[0][2]["headers"]
     with pytest.raises(RuntimeError, match="changed during the read"):
         target.fetch_playlist("PL:1:2")
+
+
+def test_pandora_private_reads_require_the_same_collection_owner():
+    key = "PL:1:2"
+    directory = {"listenerId": 2, "listenerPandoraId": "LI:2", "totalCount": 1, "offset": 0,
+                 "items": [key], "annotations": {key: {"name": "Private Mix", "totalTracks": 1}}}
+    page = {"listenerId": 2, "pandoraId": key, "name": "Private Mix", "isPrivate": True, "version": 1,
+            "offset": 0, "totalTracks": 1, "tracks": [{"pandoraId": "TR:4"}],
+            "annotations": {"TR:4": {"name": "Fixture Track"}}}
+    wire = Wire(directory, page, {**page, "listenerId": 5})
+    raw = "curl 'https://www.pandora.com/api/v6/collections/getSortedPlaylists' -H 'X-AuthToken: local-fixture-session' -H 'X-CsrfToken: fixture-csrf'"
+    target = PandoraTarget(signed_session=wire, web_session=parse_playlist_session("pandora", raw))
+    mix = target.find_playlist(key)
+    assert [track["id"] for track in target.playlist_tracks(mix)] == ["TR:4"]
+    assert wire.calls[1][2]["json"]["request"]["bypassPrivacyRules"] is False
+    assert wire.calls[1][2]["headers"]["X-AuthToken"] == "local-fixture-session"
+    with pytest.raises(TargetCapabilityError, match="no longer visible"):
+        target.playlist_tracks(mix)
 
 
 def test_partial_collection_is_never_returned_as_a_shorter_playlist():

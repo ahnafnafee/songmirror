@@ -92,6 +92,18 @@ VALID_REMOVAL_STRATEGIES = {"append_only", "mirror"}
 _PROVIDER_IDS = frozenset(provider_ids())
 
 
+def _library_allowed(cls, identity, profiles):
+    if not cls.supports_playlist_library:
+        return False
+    configured = getattr(cls, "library_configured", None)
+    if configured is None:
+        return True
+    if profiles is None:
+        return configured()
+    profile = profiles.resolve(identity)
+    return profile is not None and configured(profiles.settings_for(profile.id).get)
+
+
 def source_from_value(value, profiles=None):
     """Normalize an API/stored merge source into :class:`SyncSource`.
 
@@ -227,7 +239,7 @@ def validate_sync_job(job, profiles=None):
             if source.kind not in VALID_SOURCE_KINDS:
                 raise ValueError("merge source kind must be library or public")
             cls = target_class(provider_type)
-            if source.kind == "library" and not cls.supports_playlist_library:
+            if source.kind == "library" and not _library_allowed(cls, source.provider, profiles):
                 raise ValueError(f"{cls.name} requires a public playlist link")
             identity = (source.provider, source.playlist_id)
             if identity in seen:
@@ -261,7 +273,7 @@ def validate_sync_job(job, profiles=None):
     if job.mode == "oneway" and job.sync_playlists:
         provider = profiles.provider_of(job.source) if profiles is not None else job.source
         source_class = target_class(provider)
-        if source_class is not None and not source_class.supports_playlist_library:
+        if source_class is not None and not _library_allowed(source_class, job.source, profiles):
             raise ValueError(f"{source_class.name} requires a public playlist link in an aggregate sync")
     if job.liked_tracks:
         source_provider = profiles.provider_of(job.source) if profiles is not None else job.source

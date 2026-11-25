@@ -45,6 +45,7 @@ async function main() {
     })),
     { id: 'gaana', provider: 'gaana', name: 'Gaana', provider_name: 'Gaana', auth_kind: 'public_link',
       transferable: true, source_capable: false, supports_playlists: true,
+      playlist_browser: { login_url: 'https://gaana.com/', request_hint: 'myplaylists', active: false },
       fields: [{ key: 'GAANA_PUBLIC_PLAYLIST', label: 'Public playlist link', required: true, secret: false }],
       capabilities: { library_read: false, library_write: false, favorites_write: false, public_playlist_read: true } },
   ].map(account => ({ auth_kind: 'api_key', state: 'unconfigured', label: account.name, detail: '',
@@ -76,6 +77,12 @@ async function main() {
       account.browser_mode = request.method() === 'POST'
       account.state = account.browser_mode ? 'connected' : 'unconfigured'
       return send({ state: account.state, detail: '' })
+    }
+    if (url.pathname === '/api/accounts/gaana/playlist-browser') {
+      const account = accounts.find(row => row.id === 'gaana')
+      account.playlist_browser.active = request.method() === 'POST'
+      account.capabilities.library_read = account.playlist_browser.active
+      return send({ state: 'connected', detail: '' })
     }
     if (/\/api\/accounts\/[^/]+\/connect$/.test(url.pathname)) {
       const account = accounts.find(account => url.pathname.includes(`/${account.id}/`))
@@ -251,6 +258,15 @@ async function main() {
     await publicDialog.getByRole('status').filter({ hasText: 'Gaana is connected.' }).waitFor()
     await publicDialog.waitFor({ state: 'hidden' })
     assert.deepEqual(connections.pop(), { provider: 'gaana', values: { GAANA_PUBLIC_PLAYLIST: gaanaUrl } })
+    await gaanaCard.getByRole('button', { name: 'Reconnect', exact: true }).click()
+    await publicDialog.getByText('myplaylists', { exact: true }).waitFor()
+    assert.equal(await publicDialog.getByRole('button', { name: 'Connect account', exact: true }).isDisabled(), true)
+    const privateRequest = "curl 'https://api.gaana.com/user.php?type=myplaylists&token=local-fixture-token'"
+    await publicDialog.getByRole('textbox', { name: 'Signed-in playlist request' }).fill(privateRequest)
+    const privateResponse = page.waitForResponse(r => r.url().endsWith('/gaana/playlist-browser'))
+    await publicDialog.getByRole('button', { name: 'Connect account', exact: true }).click()
+    assert.deepEqual((await privateResponse).request().postDataJSON(), { request: privateRequest })
+    await publicDialog.waitFor({ state: 'hidden' })
     const lovesCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'ListenBrainz', exact: true }) })
     const localCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'Navidrome / Subsonic', exact: true }) })
     await lovesCard.getByRole('button', { name: 'Connect', exact: true }).click()

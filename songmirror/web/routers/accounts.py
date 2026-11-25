@@ -167,6 +167,9 @@ def _status_payload(request, profile):
         status_values = _status_values(profile.provider, status)
         supports_playlists = _supports_playlists(profile.provider)
         source_capable = _source_capable(profile.provider)
+        playlist_browser = getattr(connector, "playlist_browser", None)
+        if playlist_browser:
+            source_capable = status_values["capabilities"]["library_read"]
         transferable = is_peer(profile.provider)
         public_playlists = _public_playlists(profile.provider)
         editable_details = _editable_details(profile.provider)
@@ -201,6 +204,7 @@ def _status_payload(request, profile):
         "authorization_pending": authorization_pending,
         **({"browser_mode": connector.browser_active} if profile.provider in {"soundcloud", "lastfm", "qqmusic"} else {}),
         **({"browser_renewable": connector.browser_renewable} if profile.provider == "soundcloud" else {}),
+        **({"playlist_browser": playlist_browser} if playlist_browser else {}),
     }
 
 
@@ -464,6 +468,27 @@ def _provider_connector(request, account_id, expected):
         raise HTTPException(status_code=422, detail=f"that profile is not a {expected} account")
     request.app.state.connection_attempts.invalidate(profile.id)
     return profile, _conn(request, profile.id)
+
+
+def _playlist_browser_controller(request, account_id, *, raw=None, disconnect=False):
+    profile = _profile(request, account_id)
+    request.app.state.connection_attempts.invalidate(profile.id)
+    with request.app.state.account_profiles.activate(profile.id):
+        connector = _conn(request, profile.id)
+        if not getattr(connector, "playlist_browser", None):
+            raise HTTPException(status_code=422, detail="This provider does not support signed-in playlist access.")
+        status = connector.disable_playlist_browser() if disconnect else connector.enable_playlist_browser(raw)
+    return _status_values(profile.provider, status)
+
+
+@router.post("/api/accounts/{account_id}/playlist-browser")
+def enable_playlist_browser(account_id: str, request: Request, body: dict = Body(...)):
+    return _playlist_browser_controller(request, account_id, raw=body.get("request", ""))
+
+
+@router.delete("/api/accounts/{account_id}/playlist-browser")
+def disable_playlist_browser(account_id: str, request: Request):
+    return _playlist_browser_controller(request, account_id, disconnect=True)
 
 
 @router.post("/api/accounts/{account_id}/soundcloud/browser")
