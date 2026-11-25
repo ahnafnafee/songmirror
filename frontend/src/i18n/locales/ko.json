@@ -71,6 +71,7 @@
   "Find previous imports here. Each row shows the destination, track count, and current status.": "여기에서 이전 가져오기를 찾으세요. 각 행에 대상, 곡 수, 현재 상태가 표시됩니다.",
   "Find your service below and select Connect. Its sign-in dialog explains what you need.": "아래에서 서비스를 찾아 연결을 선택하세요. 로그인 창에서 필요한 정보를 안내합니다.",
   "For a public YouTube playlist, connect only the new account. For a private playlist, connect both accounts on Accounts.": "공개 YouTube 재생목록은 새 계정만 연결하면 됩니다. 비공개 재생목록은 계정 페이지에서 두 계정을 모두 연결하세요.",
+  "For automatic renewal, also paste the SoundCloud playlist page document request as cURL (bash).": "자동 갱신을 사용하려면 SoundCloud 재생목록 페이지의 문서 요청도 cURL (bash)로 붙여넣으세요.",
   "For two accounts on one service, add a profile for each and label them so you can tell them apart.": "같은 서비스에서 두 계정을 사용하려면 계정마다 프로필을 추가하고 구분할 수 있는 이름을 지정하세요.",
   "Hide guide": "가이드 숨기기",
   "Keep playlists or liked tracks updated automatically on a schedule.": "일정에 따라 재생목록이나 좋아요 표시한 곡을 자동으로 업데이트합니다.",

@@ -14,15 +14,21 @@ In **Accounts → SoundCloud → Connect**, expand **No-quota mode**. Open your
 [SoundCloud playlists](https://soundcloud.com/you/sets) in a signed-in browser.
 Open Developer Tools → **Network**, reload the page, then copy the request to
 `api-v2.soundcloud.com/me/library/all` using **Copy as cURL (bash)**. Paste it
-into SongMirror, then enable the mode. The pasted request contains your session
-credential. SongMirror saves the authorization header and client ID privately
-for that profile.
+into SongMirror. To enable automatic renewal, also copy the
+`soundcloud.com/you/sets` document request as **Copy as cURL (bash)** and paste
+it into the renewal field. Paste both requests from the same signed-in browser
+tab. SongMirror saves the authorization header, client ID, and supplied
+SoundCloud page cookies privately for that profile.
 
-This mode uses the browser session for playlist metadata and does not need a
-registered developer app. Paste a fresh request when SoundCloud expires the
-session. If SoundCloud asks for browser verification, complete it on
-SoundCloud before copying a fresh request. If you have already set up OAuth,
+When the web API rejects the short-lived token, SongMirror opens the
+SoundCloud playlist page in Chromium with the saved page cookies. It checks
+that any new token belongs to the same account before saving it and retrying
+the request once. Paste fresh requests if the website session itself expires
+or SoundCloud asks for browser verification. If you have already set up OAuth,
 **Switch back to OAuth** restores that connection.
+
+The browser renewal flow follows the same principle as
+[Trackhop's SoundCloud renewal](https://github.com/xlollx/Trackhop/blob/7b573f5f341354dd9d54e2af263ca578a64dd97c/android/bridge/src/main/java/com/xlollx/songport/ytmbridge/SoundCloudRenewal.kt).
 
 The web client uses these requests:
 

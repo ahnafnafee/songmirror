@@ -813,6 +813,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
   const selected = soundcloud || lastfm ? Boolean(account.browser_mode) : account.detail === YTMUSIC_BROWSER_MODE_DETAIL
   const active = selected && account.state === 'connected'
   const [headers, setHeaders] = useState('')
+  const [pageRequest, setPageRequest] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -820,6 +821,7 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
   // itself flips, whichever side triggered it.
   useEffect(() => {
     setHeaders('')
+    setPageRequest('')
     setError(null)
   }, [active])
 
@@ -827,9 +829,9 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
     setSaving(true)
     setError(null)
     try {
-      const enableMode = lastfm ? api.enableLastfmBrowserMode
-        : soundcloud ? api.enableSoundcloudBrowserMode : api.enableYtmusicBrowserMode
-      const res = await enableMode(account.id, headers)
+      const res = await (soundcloud
+        ? api.enableSoundcloudBrowserMode(account.id, headers, pageRequest)
+        : lastfm ? api.enableLastfmBrowserMode(account.id, headers) : api.enableYtmusicBrowserMode(account.id, headers))
       if (res.state === 'connected') onChanged()
       else setError(res.detail || t("Could not enable no-quota mode with those headers."))
     } catch (err) {
@@ -936,6 +938,17 @@ function NoQuotaModeSection({ account, onChanged }: { account: Account; onChange
               aria-label={t("Raw request headers")}
               className="w-full resize-y rounded-control border border-border-strong bg-field px-3 py-2 font-mono text-xs text-text placeholder:text-text-3 focus:border-accent focus:outline-none"
             />
+            {soundcloud && (
+              <label className="flex flex-col gap-1.5 text-xs text-text-2">
+                {t("For automatic renewal, also paste the SoundCloud playlist page document request as cURL (bash).")}
+                <textarea
+                  value={pageRequest}
+                  onChange={(event) => setPageRequest(event.target.value)}
+                  rows={3}
+                  className="w-full resize-y rounded-control border border-border-strong bg-field px-3 py-2 font-mono text-xs text-text focus:border-accent focus:outline-none"
+                />
+              </label>
+            )}
             <Button size="sm" onClick={() => void enable()} loading={saving} disabled={!headers.trim()} className="w-fit">
               {t("Enable no-quota mode")}
             </Button>

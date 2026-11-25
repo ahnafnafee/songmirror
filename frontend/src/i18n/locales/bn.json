@@ -71,6 +71,7 @@
   "Find previous imports here. Each row shows the destination, track count, and current status.": "আগের ইম্পোর্টগুলো এখানে খুঁজুন। প্রতিটি সারিতে গন্তব্য, গানের সংখ্যা ও বর্তমান অবস্থা দেখায়।",
   "Find your service below and select Connect. Its sign-in dialog explains what you need.": "নিচে আপনার পরিষেবা খুঁজে সংযুক্ত করুন বেছে নিন। সাইন-ইন উইন্ডো জানাবে কী প্রয়োজন।",
   "For a public YouTube playlist, connect only the new account. For a private playlist, connect both accounts on Accounts.": "পাবলিক YouTube প্লেলিস্টের জন্য শুধু নতুন অ্যাকাউন্ট সংযুক্ত করুন। ব্যক্তিগত প্লেলিস্টের জন্য অ্যাকাউন্ট পৃষ্ঠায় উভয় অ্যাকাউন্ট সংযুক্ত করুন।",
+  "For automatic renewal, also paste the SoundCloud playlist page document request as cURL (bash).": "স্বয়ংক্রিয় নবায়নের জন্য SoundCloud প্লেলিস্ট পৃষ্ঠার ডকুমেন্ট অনুরোধটিও cURL (bash) হিসেবে পেস্ট করুন।",
   "For two accounts on one service, add a profile for each and label them so you can tell them apart.": "একই পরিষেবার দুটি অ্যাকাউন্টের জন্য আলাদা প্রোফাইল যোগ করুন এবং চেনার মতো নাম দিন।",
   "Hide guide": "নির্দেশিকা লুকান",
   "Keep playlists or liked tracks updated automatically on a schedule.": "সময়সূচি অনুযায়ী প্লেলিস্ট বা পছন্দের গান স্বয়ংক্রিয়ভাবে হালনাগাদ রাখুন।",

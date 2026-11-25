@@ -71,6 +71,7 @@
   "Find previous imports here. Each row shows the destination, track count, and current status.": "Retrouvez vos imports précédents ici. Chaque ligne indique la destination, le nombre de titres et l’état actuel.",
   "Find your service below and select Connect. Its sign-in dialog explains what you need.": "Trouvez votre service ci-dessous et sélectionnez Connecter. La fenêtre de connexion explique les éléments nécessaires.",
   "For a public YouTube playlist, connect only the new account. For a private playlist, connect both accounts on Accounts.": "Pour une playlist YouTube publique, connectez uniquement le nouveau compte. Pour une playlist privée, connectez les deux comptes sur Comptes.",
+  "For automatic renewal, also paste the SoundCloud playlist page document request as cURL (bash).": "Pour activer le renouvellement automatique, collez aussi la requête du document de la page des playlists SoundCloud au format cURL (bash).",
   "For two accounts on one service, add a profile for each and label them so you can tell them apart.": "Pour deux comptes du même service, ajoutez un profil pour chacun et donnez-leur des noms distinctifs.",
   "Hide guide": "Masquer le guide",
   "Keep playlists or liked tracks updated automatically on a schedule.": "Gardez vos playlists ou titres favoris à jour automatiquement selon une fréquence définie.",

@@ -156,10 +156,12 @@ async function main() {
     await cloudDialog.getByText('No-quota mode', { exact: true }).click()
     await cloudDialog.getByText('/me/library/all', { exact: true }).waitFor()
     const browserRequest = "curl 'https://api-v2.soundcloud.com/me/library/all?client_id=mock-app' -H 'authorization: OAuth mock-token'"
+    const pageRequest = "curl 'https://soundcloud.com/you/sets' -b 'site_session=mock-session'"
     await cloudDialog.getByRole('textbox', { name: 'Raw request headers' }).fill(browserRequest)
+    await cloudDialog.getByRole('textbox', { name: /For automatic renewal/ }).fill(pageRequest)
     const enableResponse = page.waitForResponse(r => r.url().endsWith('/cloud/soundcloud/browser') && r.request().method() === 'POST')
     await cloudDialog.getByRole('button', { name: 'Enable no-quota mode' }).click()
-    assert.deepEqual((await enableResponse).request().postDataJSON(), { headers: browserRequest })
+    assert.deepEqual((await enableResponse).request().postDataJSON(), { headers: browserRequest, page_request: pageRequest })
     await cloudDialog.getByText('No-quota mode is on.', { exact: true }).waitFor()
     await cloudDialog.getByRole('button', { name: 'Switch back to OAuth' }).click()
     await cloudDialog.getByRole('button', { name: 'Enable no-quota mode' }).waitFor()

@@ -71,6 +71,7 @@
   "Find previous imports here. Each row shows the destination, track count, and current status.": "在这里查看以往的导入。每行显示目标、歌曲数量和当前状态。",
   "Find your service below and select Connect. Its sign-in dialog explains what you need.": "在下方找到你的服务并选择连接。登录窗口会说明所需信息。",
   "For a public YouTube playlist, connect only the new account. For a private playlist, connect both accounts on Accounts.": "复制公开的 YouTube 播放列表只需连接新账号。复制私密播放列表则需在账号页面连接两个账号。",
+  "For automatic renewal, also paste the SoundCloud playlist page document request as cURL (bash).": "如需自动续期，请同时以 cURL (bash) 格式粘贴 SoundCloud 播放列表页面的文档请求。",
   "For two accounts on one service, add a profile for each and label them so you can tell them apart.": "如果同一服务有两个账号，请为每个账号添加配置，并使用容易区分的名称。",
   "Hide guide": "收起指南",
   "Keep playlists or liked tracks updated automatically on a schedule.": "按计划自动更新播放列表或喜欢的歌曲。",

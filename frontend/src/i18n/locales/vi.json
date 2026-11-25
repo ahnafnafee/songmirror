@@ -71,6 +71,7 @@
   "Find previous imports here. Each row shows the destination, track count, and current status.": "Tìm các lần nhập trước tại đây. Mỗi hàng hiển thị đích, số bài hát và trạng thái hiện tại.",
   "Find your service below and select Connect. Its sign-in dialog explains what you need.": "Tìm dịch vụ bên dưới và chọn Kết nối. Hộp thoại đăng nhập giải thích những gì cần có.",
   "For a public YouTube playlist, connect only the new account. For a private playlist, connect both accounts on Accounts.": "Với danh sách phát YouTube công khai, chỉ cần kết nối tài khoản mới. Với danh sách riêng tư, kết nối cả hai trên trang Tài khoản.",
+  "For automatic renewal, also paste the SoundCloud playlist page document request as cURL (bash).": "Để tự động gia hạn, hãy dán thêm yêu cầu tài liệu của trang danh sách phát SoundCloud dưới dạng cURL (bash).",
   "For two accounts on one service, add a profile for each and label them so you can tell them apart.": "Với hai tài khoản trên cùng dịch vụ, thêm hồ sơ cho từng tài khoản và đặt tên dễ phân biệt.",
   "Hide guide": "Ẩn hướng dẫn",
   "Keep playlists or liked tracks updated automatically on a schedule.": "Tự động cập nhật danh sách phát hoặc bài hát yêu thích theo lịch.",

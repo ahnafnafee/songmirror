@@ -71,6 +71,7 @@
   "Find previous imports here. Each row shows the destination, track count, and current status.": "Önceki içe aktarımları burada bulun. Her satır hedefi, parça sayısını ve mevcut durumu gösterir.",
   "Find your service below and select Connect. Its sign-in dialog explains what you need.": "Aşağıdan hizmetinizi bulup Bağlan’ı seçin. Oturum açma penceresi gerekenleri açıklar.",
   "For a public YouTube playlist, connect only the new account. For a private playlist, connect both accounts on Accounts.": "Herkese açık bir YouTube çalma listesi için yalnızca yeni hesabı bağlayın. Özel bir liste için Hesaplar’dan iki hesabı da bağlayın.",
+  "For automatic renewal, also paste the SoundCloud playlist page document request as cURL (bash).": "Otomatik yenileme için SoundCloud çalma listesi sayfasının belge isteğini de cURL (bash) olarak yapıştırın.",
   "For two accounts on one service, add a profile for each and label them so you can tell them apart.": "Aynı hizmetteki iki hesap için ayrı profiller ekleyip ayırt edebileceğiniz adlar verin.",
   "Hide guide": "Kılavuzu gizle",
   "Keep playlists or liked tracks updated automatically on a schedule.": "Çalma listelerini veya beğenilen parçaları bir zamanlamaya göre otomatik olarak güncel tutun.",

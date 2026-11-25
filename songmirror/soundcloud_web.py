@@ -3,17 +3,26 @@
 import json
 import os
 import re
+import time
 from pathlib import Path
+from threading import RLock
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .browser_session import selected_headers, urls_in
 from .engine.config import REQUEST_TIMEOUT
-from .soundcloud import SoundCloud, SoundCloudAuthError, SoundCloudTransient, api_result, read_private
+from .soundcloud import SoundCloud, SoundCloudAuthError, SoundCloudTransient, api_result, read_private, write_private
+from .soundcloud_renewal import renew_on_site
 
 WEB_API = "https://api-v2.soundcloud.com"
 WEB_SESSION_FILENAME = "soundcloud_browser.json"
+BROWSER_SESSION_LOCK = RLock()
+_renewal_failure = {}
+
+
+class BrowserVerificationRequired(SoundCloudAuthError):
+    pass
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -52,7 +61,7 @@ def _request(method, url, *, authorization, body=None):
     except HTTPError as exc:
         with exc:
             if _browser_verification_required(exc):
-                raise SoundCloudAuthError(
+                raise BrowserVerificationRequired(
                     "SoundCloud requested browser verification. Complete it on soundcloud.com "
                     "and paste a fresh SoundCloud library request."
                 ) from None
@@ -100,25 +109,75 @@ class SoundCloudWeb:
     collection = SoundCloud.collection
     _linked_partitioning = "1"
 
-    def __init__(self, session=None):
+    def __init__(self, session=None, *, session_file=None):
+        self._session_file = Path(session_file) if session_file is not None else None
         if session is None:
-            session = read_private(browser_session_path())
+            self._session_file = self._session_file or browser_session_path()
+            session = read_private(self._session_file)
         try:
             self.credentials = _credentials(session.get("authorization"), session.get("client_id"))
         except ValueError as exc:
             raise SoundCloudAuthError("Paste a fresh SoundCloud browser request") from exc
+        self._user_id = session.get("user_id")
 
-    def request(self, method, path, *, params=None, json=None):
+    def _send(self, method, path, credentials, *, params=None, json=None):
         url = WEB_API + path if path.startswith("/") and not path.startswith("//") else path
         parts = urlsplit(url)
         if parts.scheme != "https" or parts.netloc != "api-v2.soundcloud.com" or parts.fragment:
             raise SoundCloudTransient("Invalid SoundCloud web API page URL")
         # A pagination URL may carry its own client_id. Keep the one from the
         # selected browser session and preserve the provider's cursor.
-        query = {"client_id": self.credentials["client_id"], **parse_qs(parts.query), **(params or {})}
-        query["client_id"] = self.credentials["client_id"]
+        query = {**parse_qs(parts.query), **(params or {}), "client_id": credentials["client_id"]}
         return _request(method, parts._replace(query=urlencode(query, doseq=True)).geturl(),
-                        authorization=self.credentials["authorization"], body=json)
+                        authorization=credentials["authorization"], body=json)
+
+    def _renew(self, rejected):
+        with BROWSER_SESSION_LOCK:
+            session = read_private(self._session_file)
+            if self._user_id is None or session.get("user_id") != self._user_id:
+                raise SoundCloudAuthError("Reconnect the selected SoundCloud browser account.")
+            try:
+                current = _credentials(session.get("authorization"), session.get("client_id"))
+            except ValueError:
+                raise SoundCloudAuthError("Paste fresh SoundCloud requests to reconnect.") from None
+            if current["authorization"] != rejected:
+                return current
+            cookies = session.get("renewal_cookies")
+            if not cookies:
+                raise SoundCloudAuthError("Paste fresh SoundCloud requests to reconnect and enable automatic renewal.")
+            key = (self._session_file, hash(rejected))
+            delay_until = _renewal_failure.get(self._session_file)
+            if delay_until and delay_until[0] == key and time.monotonic() < delay_until[1]:
+                raise SoundCloudTransient("SoundCloud browser renewal recently failed. Try again shortly.")
+            try:
+                authorization, client_id, cookies = renew_on_site(cookies, rejected, current["client_id"])
+                renewed = _credentials(authorization, client_id)
+                if renewed["authorization"] == rejected:
+                    raise SoundCloudAuthError("SoundCloud did not issue a new browser token.")
+                profile = self._send("GET", "/me", renewed)
+                if not isinstance(profile, dict) or str(profile.get("id")) != str(self._user_id):
+                    raise SoundCloudAuthError("The renewed SoundCloud session belongs to a different account.")
+                write_private(self._session_file, {**session, **renewed, "renewal_cookies": cookies})
+            except (SoundCloudAuthError, SoundCloudTransient):
+                _renewal_failure[self._session_file] = (key, time.monotonic() + 60)
+                raise
+            except (ValueError, OSError):
+                _renewal_failure[self._session_file] = (key, time.monotonic() + 60)
+                raise SoundCloudTransient("Could not validate or save the renewed SoundCloud browser session.") from None
+            _renewal_failure.pop(self._session_file, None)
+            return renewed
+
+    def request(self, method, path, *, params=None, json=None):
+        credentials = self.credentials
+        try:
+            return self._send(method, path, credentials, params=params, json=json)
+        except BrowserVerificationRequired:
+            raise
+        except SoundCloudAuthError:
+            if self._session_file is None:
+                raise
+            self.credentials = self._renew(credentials["authorization"])
+            return self._send(method, path, self.credentials, params=params, json=json)
 
     def profile(self):
         user = self.request("GET", "/me")

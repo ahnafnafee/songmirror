@@ -71,6 +71,7 @@
   "Find previous imports here. Each row shows the destination, track count, and current status.": "اعثر على عمليات الاستيراد السابقة هنا. يعرض كل صف الوجهة وعدد المقاطع والحالة الحالية.",
   "Find your service below and select Connect. Its sign-in dialog explains what you need.": "ابحث عن خدمتك أدناه واختر اتصال. توضح نافذة تسجيل الدخول ما تحتاج إليه.",
   "For a public YouTube playlist, connect only the new account. For a private playlist, connect both accounts on Accounts.": "لقائمة YouTube عامة، اربط الحساب الجديد فقط. للقائمة الخاصة، اربط الحسابين من صفحة الحسابات.",
+  "For automatic renewal, also paste the SoundCloud playlist page document request as cURL (bash).": "للتجديد التلقائي، ألصق أيضًا طلب مستند صفحة قوائم تشغيل SoundCloud بصيغة cURL ‏(bash).",
   "For two accounts on one service, add a profile for each and label them so you can tell them apart.": "لحسابين على الخدمة نفسها، أضف ملفًا لكل حساب وامنحهما اسمين يسهل التمييز بينهما.",
   "Hide guide": "إخفاء الدليل",
   "Keep playlists or liked tracks updated automatically on a schedule.": "حدّث قوائم التشغيل أو المقاطع المفضلة تلقائيًا وفق جدول زمني.",

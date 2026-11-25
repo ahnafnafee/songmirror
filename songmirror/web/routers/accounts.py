@@ -469,7 +469,7 @@ def _provider_connector(request, account_id, expected):
 def soundcloud_enable_browser(account_id: str, request: Request, body: dict = Body(...)):
     profile, connector = _provider_connector(request, account_id, "soundcloud")
     with request.app.state.account_profiles.activate(profile.id):
-        status = connector.enable_browser(body.get("headers", ""))
+        status = connector.enable_browser(body.get("headers", ""), body.get("page_request", ""))
     return _status_values(profile.provider, status)
 
 
