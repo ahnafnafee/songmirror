@@ -28,6 +28,7 @@ from .targets import (
     nway_order_candidates,
     reconcile,
     target_provider,
+    writable_target,
 )
 from .targets.base import _normalize, reconcile_state_key
 from ..services.settings import _ENV_LOCK
@@ -335,6 +336,8 @@ def _run_merge(opts, sp, should_continue=None):
     destination_playlist = None
     destination_id = str(destination_spec.get("playlist_id") or "")
     try:
+        if not writable_target(destination):
+            raise RuntimeError(f"{destination.name} cannot be a playlist destination.")
         if destination_id:
             # A destination must remain a library playlist so its ownership and
             # editability flags are available. Public fetch fallback is source-only.
@@ -700,7 +703,11 @@ def _build_nway_order_authority(opts, sp):
     for provider_id in nway_order_candidates(opts):
         authority = build_one(provider_id, opts, sp)
         if authority is not None:
-            return authority
+            try:
+                if writable_target(authority):
+                    return authority
+            except RuntimeError as exc:
+                log_warn(f"{authority.name} could not check playlist writes: {exc}", tag=authority.tag)
     return None
 
 

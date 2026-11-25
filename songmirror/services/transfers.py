@@ -17,7 +17,7 @@ from ..engine.config import parse_args, spotify_write_backend
 from ..engine.logs import log_add, log_miss, log_note, log_warn
 from ..engine.matching import spotify_track_keys, track_key, tracks_oldest_first
 from ..engine.runner import load_cache, save_cache
-from ..engine.targets import build_one, is_peer, target_class, target_provider
+from ..engine.targets import build_one, is_peer, target_class, target_provider, writable_target
 from ..engine.resolve_cache import load_target_cache
 from ..engine.targets.base import (
     MirrorTarget,
@@ -708,6 +708,8 @@ class TransferService:
             dst = self._build(spec["dest_account"], opts)
             if src is None or dst is None:
                 raise TargetAuthError("source or destination not connected")
+            if not writable_target(dst):
+                raise TargetCapabilityError(f"{dst.name} cannot be a playlist destination.")
             job["_dest_cache_file"] = dst.cache_file
             job["_dest_id_normalizer"] = getattr(dst, "normalize_manual_track_id", MirrorTarget.normalize_manual_track_id)
             src_pl = self._find(src, spec["source_playlist_id"])

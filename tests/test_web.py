@@ -1,5 +1,7 @@
 """Web layer smoke tests (FastAPI TestClient)."""
 
+import base64
+import hashlib
 import pytest
 from urllib.parse import parse_qs, urlsplit
 
@@ -23,6 +25,31 @@ def _start_authorization(client, provider):
 def test_health(tmp_path):
     with TestClient(_app(tmp_path)) as client:
         assert client.get("/health").json() == {"ok": True}
+
+
+def test_anghami_pkce_is_bound_to_the_account_authorization_attempt(tmp_path, monkeypatch):
+    from songmirror.engine.targets.anghami import AnghamiApi
+
+    exchanged = {}
+
+    def authorize(self, code, verifier, redirect_uri):
+        exchanged.update(code=code, verifier=verifier, redirect_uri=redirect_uri)
+
+    monkeypatch.setattr(AnghamiApi, "authorize", authorize)
+    with TestClient(_app(tmp_path)) as client:
+        assert client.post("/api/accounts/anghami/config", json={"ANGHAMI_CLIENT_ID": "fixture-app"}).status_code == 200
+        started = client.post("/api/accounts/anghami/connect").json()
+        redirect = client.get(started["url"], follow_redirects=False)
+        params = parse_qs(urlsplit(redirect.headers["Location"]).query)
+        assert params["scope"] == ["read"]
+        assert params["code_challenge_method"] == ["S256"]
+        callback = started["redirect_uri"] + f"?code=fixture-code&state={params['state'][0]}"
+        assert client.get(callback).status_code == 200
+        assert client.get(callback).status_code == 400
+    digest = hashlib.sha256(exchanged["verifier"].encode()).digest()
+    assert params["code_challenge"] == [base64.urlsafe_b64encode(digest).decode().rstrip("=")]
+    assert exchanged["code"] == "fixture-code"
+    assert exchanged["redirect_uri"] == started["redirect_uri"]
 
 
 def test_transfer_conflict_resolution_returns_manual_id_validation_error(tmp_path):
@@ -122,7 +149,8 @@ def test_accounts_list_all_unconfigured(tmp_path, monkeypatch):
         accounts = client.get("/api/accounts").json()
         assert {a["provider"] for a in accounts} == {
             "spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
-            "lastfm", "jellyfin", "listenbrainz", "soundcloud", "subsonic"
+            "lastfm", "jellyfin", "listenbrainz", "soundcloud", "subsonic",
+            "emby", "plex", "mopidy", "lyrion", "anghami", "qqmusic",
         }
         assert all(a["id"].startswith("profile_default_") for a in accounts)
         assert all(a["id"] != a["provider"] for a in accounts)

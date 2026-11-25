@@ -8,6 +8,8 @@ export function playlistExternalUrl(providerId: string, kind: 'playlist' | 'trac
     qobuz: `https://open.qobuz.com/${kind}/${encoded}`,
     deezer: `https://www.deezer.com/${kind}/${encoded}`,
     amazon: `https://music.amazon.com/${kind}s/${encoded}`,
+    anghami: `https://play.anghami.com/${kind === 'track' ? 'song' : 'playlist'}/${encoded}`,
+    qqmusic: `https://i2.y.qq.com/a/${kind === 'track' ? 'song' : 'playlist'}/${encoded}`,
     apple:
       kind === 'playlist'
         ? `https://music.apple.com/library/playlist/${encoded}`

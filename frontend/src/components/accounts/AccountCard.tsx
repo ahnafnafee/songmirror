@@ -28,6 +28,12 @@ const SERVICE_BLURBS: Record<string, string> = {
   get listenbrainz() { return t("Read loved recordings and playlists by username; add a user token to receive them.") },
   get subsonic() { return t("Syncs playlists and starred songs already stored on your music server.") },
   get jellyfin() { return t("Syncs playlists with music already in your Jellyfin library and can push playlist cover art.") },
+  get emby() { return t("Syncs playlists using music from your server library.") },
+  get plex() { return t("Syncs playlists using music from your server library.") },
+  get mopidy() { return t("Reads server playlists. Enable Mopidy’s M3U backend to write playlists.") },
+  get lyrion() { return t("Reads server playlists. Set a playlist folder in Lyrion to write playlists.") },
+  get anghami() { return t("Use Anghami playlists as a source for sync and transfers.") },
+  get qqmusic() { return t("Paste a QQ Music playlist link to use it as a source.") },
 }
 
 const AUTH_KIND_LABELS: Record<AuthKind, string> = {
@@ -126,7 +132,9 @@ export function AccountCard({ account, onChanged }: {
         <h3 className="text-base font-bold text-text">{account.name}</h3>
         <span className="font-mono text-[10px] tracking-wide text-text-3">{
           account.provider === 'listenbrainz' ? t("Username")
-            : account.provider === 'subsonic' ? t("Password") : AUTH_KIND_LABELS[account.auth_kind]
+            : account.provider === 'subsonic' ? t("Password")
+            : account.provider === 'mopidy' || account.provider === 'lyrion' ? t("Server URL")
+            : AUTH_KIND_LABELS[account.auth_kind]
         }</span>
         <StatusPill state={account.state} className="ms-auto" />
       </div>

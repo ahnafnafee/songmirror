@@ -100,6 +100,8 @@ class Options:
 
 
 def parse_args(argv=None):
+    from .targets import provider_ids, target_class
+
     p = argparse.ArgumentParser(
         prog="songmirror",
         description="Mirror playlists across supported streaming services.",
@@ -136,8 +138,8 @@ def parse_args(argv=None):
     p.add_argument("--providers", default=os.getenv("PROVIDERS", DEFAULT_PROVIDERS),
                    help=f"Providers participating in sync, comma-separated (default: {DEFAULT_PROVIDERS}).")
     p.add_argument("--sync-source", default=os.getenv("SYNC_SOURCE", DEFAULT_SYNC_SOURCE),
-                   choices=("spotify", "tidal", "qobuz", "deezer", "amazon", "apple", "ytmusic",
-                            "soundcloud", "lastfm", "listenbrainz", "subsonic", "jellyfin"),
+                   choices=tuple(provider for provider in provider_ids()
+                                 if target_class(provider).supports_playlist_library),
                    help=f"One-way source or group order authority (default: {DEFAULT_SYNC_SOURCE}).")
     p.add_argument("--authorities", default=os.getenv("SYNC_AUTHORITIES", ""),
                    help="Authoritative-group providers, comma-separated (group mode only).")

@@ -77,6 +77,12 @@ PROVIDER_KEYS = {
     "jellyfin": {"JELLYFIN_URL", "JELLYFIN_API_KEY", "JELLYFIN_USER_ID", "JELLYFIN_CACHE_FILE"},
     "listenbrainz": {"LISTENBRAINZ_USER", "LISTENBRAINZ_TOKEN", "LISTENBRAINZ_CACHE_FILE"},
     "subsonic": {"SUBSONIC_URL", "SUBSONIC_USER", "SUBSONIC_PASSWORD", "SUBSONIC_CACHE_FILE"},
+    "emby": {"EMBY_URL", "EMBY_USER_ID", "EMBY_TOKEN", "EMBY_CACHE_FILE"},
+    "plex": {"PLEX_URL", "PLEX_TOKEN", "PLEX_CACHE_FILE"},
+    "mopidy": {"MOPIDY_URL", "MOPIDY_CACHE_FILE"},
+    "lyrion": {"LYRION_URL", "LYRION_USER", "LYRION_PASSWORD", "LYRION_CACHE_FILE"},
+    "anghami": {"ANGHAMI_CLIENT_ID", "ANGHAMI_TOKEN_FILE"},
+    "qqmusic": {"QQMUSIC_API_KEY"},
 }
 
 _FILE_DEFAULTS = {
@@ -115,6 +121,11 @@ _FILE_DEFAULTS = {
     "listenbrainz": {"LISTENBRAINZ_CACHE_FILE": "listenbrainz_resolve_cache.json"},
     "subsonic": {"SUBSONIC_CACHE_FILE": "subsonic_resolve_cache.json"},
     "jellyfin": {"JELLYFIN_CACHE_FILE": "jellyfin_resolve_cache.json"},
+    "emby": {"EMBY_CACHE_FILE": "emby_resolve_cache.json"},
+    "plex": {"PLEX_CACHE_FILE": "plex_resolve_cache.json"},
+    "mopidy": {"MOPIDY_CACHE_FILE": "mopidy_resolve_cache.json"},
+    "lyrion": {"LYRION_CACHE_FILE": "lyrion_resolve_cache.json"},
+    "anghami": {"ANGHAMI_TOKEN_FILE": "anghami_oauth.json"},
 }
 
 _ACTIVE_SPOTIFY_PROFILE: str | None = None
@@ -195,7 +206,7 @@ class ProfileSettings:
         values = self._local.load()
         if self.profile.is_default:
             values.update(self._fallback_values())
-        if not self.profile.is_default or self.profile.provider == "soundcloud":
+        if not self.profile.is_default or self.profile.provider in {"soundcloud", "anghami"}:
             root = self.data_dir
             for key, filename in _FILE_DEFAULTS.get(self.profile.provider, {}).items():
                 values.setdefault(key, str(root / filename))
@@ -562,5 +573,7 @@ class AccountProfileStore:
             "deezer": "Deezer", "amazon": "Amazon Music", "apple": "Apple Music",
             "ytmusic": "YouTube Music", "lastfm": "Last.fm", "soundcloud": "SoundCloud",
             "listenbrainz": "ListenBrainz", "subsonic": "Navidrome / Subsonic",
+            "emby": "Emby", "plex": "Plex", "mopidy": "Mopidy",
+            "lyrion": "Lyrion Music Server", "anghami": "Anghami", "qqmusic": "QQ Music",
             "jellyfin": "Jellyfin",
         }.get(provider, provider)

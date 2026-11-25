@@ -62,6 +62,7 @@ class Connector:
     id: str = ""
     name: str = ""
     auth_kind: AuthKind = "api_key"
+    redirect_pkce = False
     config_fields: list[Field] = []
 
     def __init__(self, store):

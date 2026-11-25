@@ -107,7 +107,9 @@ def _source_capable(provider):
     ID) cannot read tracks until that account is completed.
     """
     cls = target_class(provider)
-    return cls is not None and (targets_supports_playlists(provider) or cls.supports_playlists is False)
+    return cls is not None and cls.supports_playlist_library and (
+        targets_supports_playlists(provider) or cls.supports_playlists is False
+    )
 
 
 def _status_values(provider, status):
@@ -313,6 +315,10 @@ async def connect(account_id: str, request: Request, body: dict | None = Body(de
                     url = connector.begin_redirect(uri, state=nonce)
                 elif profile.provider == "lastfm":
                     url = connector.begin_redirect(with_query(uri, state=nonce))
+                elif connector.redirect_pkce:
+                    verifier = secrets.token_urlsafe(48)
+                    url = with_query(connector.begin_redirect(uri, code_verifier=verifier), state=nonce)
+                    attempts.configure(nonce, code_verifier=verifier)
                 else:
                     url = with_query(connector.begin_redirect(uri), state=nonce)
                 attempts.configure(nonce, url=url)
@@ -381,7 +387,7 @@ def oauth_callback(account_id: str, request: Request):
     profiles = request.app.state.account_profiles
     connector = _conn(request, profile.id)
     try:
-        request.app.state.connection_attempts.get(
+        pending = request.app.state.connection_attempts.get(
             state, profile.id,
             browser=request.cookies.get(COOKIE, ""), owner_session=_owner_session(request), consume=True)
     except ValueError as exc:
@@ -395,7 +401,10 @@ def oauth_callback(account_id: str, request: Request):
     else:
         try:
             with profiles.activate(profile.id):
-                status = connector.complete_redirect({"url": str(request.url)})
+                params = {"url": str(request.url)}
+                if connector.redirect_pkce:
+                    params.update(code_verifier=pending["code_verifier"], redirect_uri=pending["redirect_uri"])
+                status = connector.complete_redirect(params)
         except Exception as exc:
             status = ConnStatus("error", f"could not finish authorization ({redact_text(exc)})")
     return HTMLResponse(

@@ -100,14 +100,14 @@ async function main() {
     await picker.click()
     let menu = page.getByRole('listbox', { name: 'Provider', exact: true })
     await menu.waitFor()
-    assert.equal(await menu.getByRole('option').count(), 12)
+    assert.equal(await menu.getByRole('option').count(), 18)
     assert.equal(await menu.getByRole('option', { name: 'SoundCloud', exact: true }).count(), 1)
     for (const option of await menu.getByRole('option').all()) {
       assert.ok(await option.locator('svg, img').count() >= 1, `${await option.innerText()} needs its provider mark`)
     }
     await menu.press('End')
     await menu.press('Enter')
-    assert.ok((await picker.innerText()).includes('Jellyfin'))
+    assert.ok((await picker.innerText()).includes('QQ Music'))
     assert.equal(await picker.evaluate(el => el === document.activeElement), true)
     await picker.press('ArrowDown')
     menu = page.getByRole('listbox', { name: 'Provider', exact: true })

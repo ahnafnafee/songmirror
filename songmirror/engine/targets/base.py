@@ -78,6 +78,8 @@ class MirrorTarget:
     # a target is excluded from playlist mirroring and from N-way, but its
     # native favorites collection stays usable.
     supports_playlists = True
+    supports_playlist_library = True
+    supports_playlist_writes = True
     supports_favorites = True
     supports_saved_albums = True
     favorite_tracks_name = "Liked Tracks"
@@ -547,6 +549,20 @@ class MirrorTarget:
             if self.remove(playlist, raw) is not False:
                 removed += 1
         return removed
+
+
+class ReadOnlyPlaylistTarget(MirrorTarget):
+    supports_playlist_writes = False
+    supports_favorites = supports_favorite_writes = supports_saved_albums = False
+    replay_chronology = None
+
+    def is_editable(self, playlist):
+        return False
+
+    def _reject_write(self, *_args):
+        raise TargetCapabilityError(f"{self.name} only supports playlist reads.")
+
+    create = add = remove = _reject_write
 
 
 def _resource_call(target, method_name, playlist_method_name, resource, *args):

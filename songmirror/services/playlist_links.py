@@ -21,7 +21,7 @@ from ..engine.targets.deezer import SHARE_LINK_HOSTS as _DEEZER_SHARE_HOSTS
 # Shown when a paste does not resolve to a playlist on any known service.
 PLAYLIST_LINK_HINT = (
     "That does not look like a playlist link. Paste a playlist URL from Spotify, "
-    "Apple Music, YouTube Music, TIDAL, Deezer, Qobuz, or Amazon Music."
+    "Apple Music, YouTube Music, TIDAL, Deezer, Qobuz, Amazon Music, Anghami, or QQ Music."
 )
 
 
@@ -47,6 +47,9 @@ _HOSTS = {
     "open.qobuz.com": "qobuz",
     "play.qobuz.com": "qobuz",
     "music.amazon.com": "amazon",
+    "play.anghami.com": "anghami",
+    "i2.y.qq.com": "qqmusic",
+    "y.qq.com": "qqmusic",
 }
 
 # Amazon runs one host per marketplace (music.amazon.co.uk, .de, .co.jp, ...),
@@ -60,6 +63,8 @@ _TIDAL_PATH_RE = re.compile(r"/playlist/([0-9a-fA-F-]{16,})")
 _DEEZER_PATH_RE = re.compile(r"/playlist/(\d+)")
 _QOBUZ_PATH_RE = re.compile(r"/playlist/(?:[^/]*?-)?(\d+)")
 _AMAZON_PATH_RE = re.compile(r"/(?:user-playlists|playlists)/([A-Za-z0-9._-]+)")
+_ANGHAMI_PATH_RE = re.compile(r"^/playlist/([A-Za-z0-9_-]+)/?$")
+_QQMUSIC_PATH_RE = re.compile(r"^/(?:a/playlist|n/ryqq(?:_v2)?/playlist)/(\d+)/?$")
 
 
 def _host(parts):
@@ -167,6 +172,8 @@ def _playlist_id(provider, parts):
         "deezer": _DEEZER_PATH_RE,
         "qobuz": _QOBUZ_PATH_RE,
         "amazon": _AMAZON_PATH_RE,
+        "anghami": _ANGHAMI_PATH_RE,
+        "qqmusic": _QQMUSIC_PATH_RE,
     }[provider]
     match = pattern.search(parts.path)
     return match.group(1) if match else None
@@ -185,6 +192,8 @@ _LABELS = {
     "subsonic": "Navidrome / Subsonic",
     "lastfm": "Last.fm",
     "soundcloud": "SoundCloud",
+    "emby": "Emby", "plex": "Plex", "mopidy": "Mopidy", "lyrion": "Lyrion Music Server",
+    "anghami": "Anghami", "qqmusic": "QQ Music",
 }
 
 
@@ -201,6 +210,8 @@ def external_url(provider_id, kind, item_id):
         "qobuz": f"https://open.qobuz.com/{kind}/{item_id}",
         "deezer": f"https://www.deezer.com/{kind}/{item_id}",
         "amazon": f"https://music.amazon.com/{kind}s/{item_id}",
+        "anghami": f"https://play.anghami.com/{'song' if kind == 'track' else 'playlist'}/{item_id}",
+        "qqmusic": f"https://i2.y.qq.com/a/{'song' if kind == 'track' else 'playlist'}/{item_id}",
         "apple": (
             f"https://music.apple.com/library/playlist/{item_id}"
             if kind == "playlist"

@@ -20,6 +20,8 @@ const PROVIDERS = [
   ['amazon', 'Amazon Music'], ['apple', 'Apple Music'], ['ytmusic', 'YouTube Music'],
   ['soundcloud', 'SoundCloud'], ['lastfm', 'Last.fm'], ['listenbrainz', 'ListenBrainz'],
   ['subsonic', 'Navidrome / Subsonic'], ['jellyfin', 'Jellyfin'],
+  ['emby', 'Emby'], ['plex', 'Plex'], ['mopidy', 'Mopidy'], ['lyrion', 'Lyrion Music Server'],
+  ['anghami', 'Anghami'], ['qqmusic', 'QQ Music'],
 ] as const
 
 export default function Accounts() {

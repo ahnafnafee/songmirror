@@ -223,8 +223,43 @@ async function main() {
     assert.ok(!destinations.includes('Living room Jellyfin'), 'A browse-only Jellyfin profile cannot be a destination')
     await destination.selectOption('jf')
     assert.equal(await destination.inputValue(), 'jf')
+    const serverProfiles = [
+      ['emby', 'Emby'], ['plex', 'Plex'], ['mopidy', 'Mopidy'], ['lyrion', 'Lyrion Music Server'],
+    ]
+    ACCOUNTS.push(
+      ...serverProfiles.map(([id, name]) => ({
+        ...BASE, id, name, provider: id, provider_name: name, label: name, transferable: true,
+        supports_favorites: false, public_playlists: false,
+        capabilities: { library_read: true, library_write: true, public_playlist_read: false },
+      })),
+      { ...BASE, id: 'mopidy-ro', name: 'Read-only Mopidy', provider: 'mopidy', provider_name: 'Mopidy',
+        label: 'Read-only Mopidy', transferable: true, supports_favorites: false,
+        capabilities: { library_read: true, library_write: false, public_playlist_read: false } },
+      { ...BASE, id: 'anghami', provider: 'anghami', name: 'Anghami', provider_name: 'Anghami',
+        label: 'Anghami', transferable: true, supports_favorites: false,
+        capabilities: { library_read: true, library_write: false, public_playlist_read: true } },
+      { ...BASE, id: 'qqmusic', provider: 'qqmusic', name: 'QQ Music', provider_name: 'QQ Music',
+        label: 'QQ Music', transferable: true, supports_favorites: false, source_capable: false,
+        capabilities: { library_read: false, library_write: false, public_playlist_read: true } },
+    )
+    await page.goto(base + '/accounts')
+    for (const [, name] of [...serverProfiles, ['anghami', 'Anghami'], ['qqmusic', 'QQ Music']]) {
+      await page.getByRole('heading', { name, exact: true }).waitFor()
+    }
+    await page.goto(base + '/transfers')
+    await sourceService.locator('option[value="anghami"]').waitFor({ state: 'attached' })
+    const library = await sourceService.locator('option').allTextContents()
+    assert.ok(library.includes('Anghami') && library.includes('Read-only Mopidy'))
+    assert.ok(!library.includes('QQ Music'))
+    for (const [, name] of serverProfiles) assert.ok(library.includes(name))
+    await page.getByRole('radio', { name: 'Paste a link' }).click()
+    const links = await page.getByLabel('Open with account').locator('option').allTextContents()
+    assert.ok(links.includes('QQ Music') && links.includes('Anghami'), links.join(', '))
+    const writers = await destination.locator('option').allTextContents()
+    for (const [, name] of serverProfiles) assert.ok(writers.includes(name))
+    for (const name of ['Anghami', 'QQ Music', 'Read-only Mopidy']) assert.ok(!writers.includes(name))
     assert.deepEqual(errors, [])
-    console.log('PASS: the transfer form lists both services as sources and destinations, excluding browse-only Jellyfin')
+    console.log('PASS: the transfer form separates library sources, pasted-link sources, and writable destinations')
   } finally {
     await page.close()
     await browser.close()

@@ -1,4 +1,4 @@
-"""Every provider pair can carry albums, including playlist/love-only routes."""
+"""Every album-capable provider pair can carry albums."""
 
 from types import SimpleNamespace
 
@@ -9,7 +9,11 @@ from songmirror.engine.album_library import AlbumLibrary, AlbumManifest, album_k
 from songmirror.engine.album_native import NativeAlbums, native_available
 from songmirror.engine.config import parse_args
 from songmirror.engine.runner import run_pass
-from songmirror.engine.targets import provider_ids
+from songmirror.engine.targets import provider_ids, target_class
+
+
+ALBUM_PROVIDERS = tuple(provider for provider in provider_ids()
+                        if target_class(provider).supports_saved_albums)
 
 
 def album(identity="album"):
@@ -124,7 +128,7 @@ def seed_source(source, manifest):
 
 
 @pytest.mark.parametrize("source_id,target_id", [
-    (source, target) for source in provider_ids() for target in provider_ids() if source != target
+    (source, target) for source in ALBUM_PROVIDERS for target in ALBUM_PROVIDERS if source != target
 ])
 def test_all_provider_pairs_transfer_albums_without_repeat_writes(
     source_id, target_id, tmp_path, monkeypatch, native_protocols,
