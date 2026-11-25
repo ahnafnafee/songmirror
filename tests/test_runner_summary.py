@@ -1995,6 +1995,43 @@ def test_authoritative_group_preserves_a_skipped_mirror_read_failure(monkeypatch
     assert entry["failures"] == [failure]
 
 
+@pytest.mark.parametrize("step", ["list_playlists", "playlist_tracks", "add"])
+def test_authoritative_group_keeps_other_destinations_running_during_mirror_verification(
+    monkeypatch, tmp_path, step,
+):
+    from songmirror.engine.targets.base import TargetAuthError
+
+    spotify = _RecreatedPeer("spotify", ["A", "B"])
+    apple = _RecreatedPeer("apple", ["A"])
+    soundcloud = _RecreatedPeer("soundcloud", ["A"])
+    soundcloud.name = "SoundCloud"
+    tidal = _RecreatedPeer("tidal", ["A"])
+    monkeypatch.setattr(runner, "build_peers", lambda *args, **kwargs: [spotify, apple, soundcloud, tidal])
+    monkeypatch.setattr(runner, "load_cache", lambda path: {})
+    monkeypatch.setattr(runner, "save_cache", lambda path, cache: None)
+
+    def require_verification(*_args):
+        raise TargetAuthError("SoundCloud requested browser verification.")
+
+    monkeypatch.setattr(soundcloud, step, require_verification)
+    with archive.connect(str(tmp_path / "mirror-verification.db")) as songs:
+        key = "group:apple,spotify:aurora"
+        archive.set_playlist_state(songs, key, "soundcloud", {"i:A"})
+        entry = runner._run_authoritative_group(
+            _opts(
+                execute=True, sync_mode="group", sync_source="spotify",
+                authorities="spotify,apple", providers="spotify,apple,soundcloud,tidal",
+            ),
+            object(), [{"name": "Aurora"}], songs,
+        )[0]
+        assert archive.get_playlist_state(songs, key, "soundcloud") == {"i:A"}
+
+    assert entry["failed"] == 1
+    assert "SoundCloud requested browser verification." in entry["failures"][0]["error"]
+    assert tidal.added == ["B"]
+    assert soundcloud.added == []
+
+
 def test_authoritative_group_reports_a_disconnected_authority(monkeypatch):
     monkeypatch.setattr(
         runner, "build_peers", lambda opts, sp, songs=None: [_Peer("spotify")],

@@ -1229,6 +1229,12 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
 
     spotify_cookie.take_singles_used()   # drop any residue from a pass that died mid-read
     liked_routes = getattr(opts, "liked_routes", None) or {}
+    total = {"added": 0, "removed": 0, "missing": 0, "held": 0,
+             "uncertain_matches": 0, "deferred": 0,
+             "removals_skipped": 0, "chronology_replayed": 0,
+             "failed": 0, "identity_changes": 0,
+             "unconfirmed_absences": 0, "confirmed_absences": 0, "read_anomalies": 0}
+    failures = []
     dirs = {}
     for peer in peers:
         liked_route = (
@@ -1241,17 +1247,21 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
             and liked_route
             and liked_route.get("kind") == "playlist"
         )
-        dirs[peer.source] = peer.list_playlists() if needs_playlist_directory else {}
+        try:
+            dirs[peer.source] = peer.list_playlists() if needs_playlist_directory else {}
+        except TargetAuthError as exc:
+            if authority_sources is None or peer.source in authority_sources:
+                raise
+            error = f"{peer.name} mirror playlist directory unavailable: {exc}"
+            _collect_failure(total, failures, "Playlist directory", error)
+            log_warn(error, tag=peer.tag)
+    # An unreadable directory is different from an empty one. Leaving that
+    # mirror out prevents creation of duplicates or changes to its baseline.
+    peers = [peer for peer in peers if peer.source in dirs]
     caches = {p.source: load_target_cache(p) for p in peers}
-    total = {"added": 0, "removed": 0, "missing": 0, "held": 0,
-             "uncertain_matches": 0, "deferred": 0,
-             "removals_skipped": 0, "chronology_replayed": 0,
-             "failed": 0, "identity_changes": 0,
-             "unconfirmed_absences": 0, "confirmed_absences": 0, "read_anomalies": 0}
     # Both lists stay out of `total` so the scalar accumulate loop stays scalar.
     held_detail = []
     change_diagnostics = []
-    failures = []
     try:
         for order_playlist in selected:
             if should_continue and should_continue() != "run":
@@ -1277,9 +1287,9 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                         # a bootstrap peer rather than a collapsed old playlist.
                         archive.reset_playlist_peer_state(songs, state_key, p.source)
                         log_note(f"created {p.name} playlist '{name}'", tag=p.tag)
-                    except TargetAuthError:
-                        raise
                     except Exception as e:
+                        if isinstance(e, TargetAuthError) and (authority_sources is None or p.source in authority_sources):
+                            raise
                         _collect_failure(total, failures, name, e)
                         if authority_sources is not None and p.source in authority_sources:
                             authority_failure_recorded = True
@@ -1378,9 +1388,9 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                     if not editable_fn(resource):
                         raise RuntimeError(f"{peer.name} liked-track destination is not editable")
                     resources[peer.source] = resource
-                except TargetAuthError:
-                    raise
                 except Exception as exc:
+                    if isinstance(exc, TargetAuthError) and (authority_sources is None or peer.source in authority_sources):
+                        raise
                     _collect_failure(total, failures, name, exc)
                     if authority_sources is None or peer.source in authority_sources:
                         authority_failure_recorded = True
