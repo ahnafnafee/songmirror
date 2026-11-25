@@ -271,6 +271,11 @@ class GaanaTarget(WebPlaylistAccountTarget):
         super().__init__(session=session, web_session=web_session)
         self.supports_playlist_writes = bool(self.web_session)
         self._search = MusicApi(self.name, "https://gsearch.gaana.com", session=session)
+        self.cache_file = self.resolve_cache_path()
+
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        return os.getenv("GAANA_CACHE_FILE", "gaana_resolve_cache.json")
 
     def _headers(self, signed=False):
         return {"Referer": "https://gaana.com/", "Origin": "https://gaana.com",

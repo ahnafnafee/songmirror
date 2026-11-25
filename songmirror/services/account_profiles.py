@@ -88,6 +88,7 @@ PROVIDER_KEYS = {
     **{source: {f"{source.upper()}_PUBLIC_PLAYLIST", *([target.session_key()] if hasattr(target, "session_key") else [])}
        for source, target in PUBLIC_PLAYLIST_TARGETS.items()},
 }
+PROVIDER_KEYS["gaana"].add("GAANA_CACHE_FILE")
 
 _FILE_DEFAULTS = {
     "spotify": {
@@ -130,6 +131,7 @@ _FILE_DEFAULTS = {
     "mopidy": {"MOPIDY_CACHE_FILE": "mopidy_resolve_cache.json"},
     "lyrion": {"LYRION_CACHE_FILE": "lyrion_resolve_cache.json"},
     "anghami": {"ANGHAMI_TOKEN_FILE": "anghami_oauth.json"},
+    "gaana": {"GAANA_CACHE_FILE": "gaana_resolve_cache.json"},
 }
 
 _ACTIVE_SPOTIFY_PROFILE: str | None = None
