@@ -1,6 +1,6 @@
 import { t, Trans, useTranslation } from '@/i18n'
 import { Fragment, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
-import { LuArrowLeft, LuArrowRight, LuCheck, LuInfo } from 'react-icons/lu'
+import { LuArrowLeft, LuArrowRight, LuCheck, LuInfo, LuTriangleAlert, LuX } from 'react-icons/lu'
 
 import { api, errorMessage } from '@/api'
 import { Button } from '@/components/ui/Button'
@@ -986,22 +986,34 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, acco
             ) : (
               <>
               {accountsReady && unavailableIds.size > 0 && (
-                <div className="flex flex-col gap-1.5 rounded-control border border-border bg-surface-2/40 px-3 py-2">
-                  <h3 className="text-xs font-semibold text-text-2">{t("Unavailable accounts")}</h3>
-                  <ul className="divide-y divide-border">
+                <section aria-labelledby="sync-unavailable-heading"
+                  className="overflow-hidden rounded-control border border-warning/35 border-s-[3px] border-s-warning bg-warning-soft">
+                  <div className="flex items-center gap-2.5 px-3 py-2.5">
+                    <span className="grid size-7 shrink-0 place-items-center rounded-control bg-warning text-surface">
+                      <LuTriangleAlert aria-hidden="true" className="size-4" />
+                    </span>
+                    <h3 id="sync-unavailable-heading" className="text-sm font-bold text-text">{t("Unavailable accounts")}</h3>
+                  </div>
+                  <ul className="divide-y divide-border border-t border-warning/25 bg-surface">
                     {[...unavailableIds].map((id) => {
-                      const name = accounts.find((account) => account.id === id)?.name ?? tagLabel(id)
+                      const account = accounts.find((account) => account.id === id)
+                      const name = account?.name ?? tagLabel(id)
+                      const logo = serviceLogoId(account?.provider ?? id)
                       const required = id === syncSource && lockedProviderIds.has(id)
                       return (
-                        <li key={id} className="flex items-center justify-between gap-2 py-1 text-sm text-text-2">
-                          <span className="min-w-0 break-words">{name}</span>
+                        <li key={id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 py-2 text-sm text-text">
+                          <span className="flex min-w-0 flex-1 basis-28 items-center gap-2 font-semibold">
+                            {logo && <ServiceLogo service={logo} className="size-4 shrink-0" />}
+                            <span className="min-w-0 break-words">{name}</span>
+                          </span>
                           {required ? (
-                            <Button variant="ghost" size="sm" className="shrink-0" onClick={() => goToStep(form.mode === 'nway' ? 2 : 0)}>
+                            <Button variant="secondary" size="sm" className="ms-auto max-w-full" onClick={() => goToStep(form.mode === 'nway' ? 2 : 0)}>
                               {form.mode === 'nway' ? t("Playlists") : t("Choose a new source")}
                             </Button>
                           ) : (
-                            <Button variant="ghost" size="sm" className="shrink-0" aria-label={t("Remove {{sourceName}}", { sourceName: name })}
-                              onClick={() => removeUnavailableProvider(id)}>
+                            <Button variant="secondary" size="sm" className="ms-auto max-w-full"
+                              icon={<LuX aria-hidden="true" className="size-3.5 shrink-0" />}
+                              aria-label={t("Remove {{sourceName}}", { sourceName: name })} onClick={() => removeUnavailableProvider(id)}>
                               {t("Remove")}
                             </Button>
                           )}
@@ -1009,7 +1021,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, acco
                       )
                     })}
                   </ul>
-                </div>
+                </section>
               )}
               <ServiceGroups accounts={syncPeers.filter((account) => !unavailableIds.has(account.id) &&
                 (account.state !== 'connected' || availableIds.has(account.id)))}>

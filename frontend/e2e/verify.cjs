@@ -3018,6 +3018,7 @@ async function main() {
     // A saved sync can still reference a disconnected or deleted profile.
     {
       const context = await browser.newContext({ viewport: { width: 375, height: 812 } })
+      await context.addInitScript(() => window.localStorage.setItem('songmirror-theme', 'dark'))
       const page = await context.newPage()
       const accounts = ACCOUNTS.map((account) =>
         account.id === 'tidal' ? { ...account, state: 'connected' } : account)
@@ -3035,10 +3036,23 @@ async function main() {
       await card.getByRole('button', { name: 'Edit', exact: true }).click()
       const dialog = page.getByRole('dialog')
       await dialog.getByRole('radio', { name: 'Services', exact: true }).click()
-      await dialog.getByRole('heading', { name: 'Unavailable accounts' }).waitFor()
+      const unavailable = dialog.getByRole('region', { name: 'Unavailable accounts' })
+      await unavailable.waitFor()
+      const removeLastFm = unavailable.getByRole('button', { name: 'Remove Last.fm', exact: true })
+      const warningVisible = await unavailable.evaluate(panel => {
+        const style = getComputedStyle(panel)
+        return parseFloat(style.borderInlineStartWidth) > parseFloat(style.borderInlineEndWidth)
+      })
+      const removeVisible = await removeLastFm.evaluate(button => {
+        const style = getComputedStyle(button)
+        return parseFloat(style.borderTopWidth) > 0 && button.getBoundingClientRect().height >= 44
+      })
       await dialog.getByRole('button', { name: 'TIDAL', exact: true }).click()
-      await dialog.getByRole('button', { name: 'Remove Last.fm', exact: true }).click()
       await dialog.getByRole('button', { name: 'Remove Retired Mirror', exact: true }).click()
+      await dialog.getByRole('button', { name: 'Remove Amazon Music', exact: true }).waitFor()
+      await unavailable.scrollIntoViewIfNeeded()
+      await shot(page, 'sync-unavailable-accounts-mobile')
+      await removeLastFm.click()
       await dialog.getByRole('button', { name: 'Remove Amazon Music', exact: true }).waitFor()
       await checkOverflow(page, 'Unavailable sync accounts @ 375', results)
       const update = page.waitForResponse(response => response.url().endsWith('/api/syncs/job1') && response.request().method() === 'PUT')
@@ -3050,7 +3064,7 @@ async function main() {
       await dialog.getByRole('radio', { name: 'Services', exact: true }).click()
       await dialog.getByRole('button', { name: 'Remove Amazon Music', exact: true }).waitFor()
       const removed = (await dialog.getByRole('button', { name: /Remove (Last\.fm|Retired Mirror)/ }).count()) === 0
-      const ok = dashboardClean && syncClean && removed && saved.authorities === 'spotify,apple' &&
+      const ok = dashboardClean && syncClean && removed && warningVisible && removeVisible && saved.authorities === 'spotify,apple' &&
         saved.providers === 'spotify,tidal,apple,amazon'
       console.log(`${ok ? 'ok        ' : 'FAIL      '} Saved syncs omit unavailable accounts in summaries and let you remove stale selections individually`)
       if (!ok) results.push({ label: 'remove unavailable sync account', overflow: true })
