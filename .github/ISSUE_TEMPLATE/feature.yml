@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest a change to SongMirror
+title: '[Feature] '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Explain the problem or workflow you want to improve.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: What would help?
+      description: Describe the change you want and any relevant details.
+    validations:
+      required: true
+  - type: input
+    id: services
+    attributes:
+      label: Affected music services
+      description: Name the services involved, if any.

@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a reproducible problem with SongMirror
+title: '[Bug] '
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe what happened and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open Sync or Transfers.\n2. Choose the source and destination.\n3. Describe the action that triggers the problem."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: SongMirror version or image tag
+      description: Include the version, Docker image tag, or image digest.
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - Docker Compose
+        - Standalone Docker container
+        - Portainer
+        - CapRover
+        - Render
+        - Python install
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: services
+    attributes:
+      label: Affected music services
+      description: Name the services involved, if any.
+  - type: input
+    id: area
+    attributes:
+      label: Affected area
+      description: For example, transfers, sync, playlist backups, or local mirror.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Remove tokens, passwords, and cookies before posting.
+      render: text
