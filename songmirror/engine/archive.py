@@ -541,11 +541,15 @@ def _migrate_profile_namespaces(conn, source_aliases):
 
 
 def upsert_many(conn, source, tracks):
-    """Archive the sync's own snapshot dicts (any service shape). first_seen is
-    preserved on refresh; meta keeps the full snapshot as JSON."""
+    """Archive usable sync snapshots, retaining the last known details for hidden entries.
+
+    first_seen is preserved on refresh; meta keeps the full snapshot as JSON.
+    """
     now = _now()
     rows = []
     for track in tracks:
+        if track.get("unavailable") or (track.get("_raw") or {}).get("unavailable"):
+            continue
         song_id = track.get("id") or track.get("catalog_id") or track.get("relationship_id")
         if not song_id:
             continue

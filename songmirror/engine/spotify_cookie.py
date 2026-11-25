@@ -593,7 +593,10 @@ def metadata_isrcs(ids, *, should_continue=None, on_progress=None):
                 raise RuntimeError(f"Spotify metadata rate limited; Retry-After: {retry}. Retry later.")
             response.raise_for_status()
             data = response.json()
-            if not isinstance(data, dict) or not data.get("name"):
+            if not isinstance(data, dict):
+                raise RuntimeError("Spotify returned incomplete track metadata")
+            hidden = data.get("is_metadata_hidden") is True
+            if not str(data.get("name") or "").strip() and not hidden:
                 raise RuntimeError("Spotify returned incomplete track metadata")
             external = data.get("external_id", [])
             if not isinstance(external, list):
@@ -717,19 +720,24 @@ def _normalized_content_tracks(items):
             sources,
             key=lambda candidate: abs(int(candidate.get("width") or 96) - 96),
         )["url"] if sources else ""
-        out.append({
+        name = t.get("name", "") or ""
+        unavailable = not str(name).strip() or t.get("is_metadata_hidden") is True
+        row = {
             "id": uri.rsplit(":", 1)[-1],
             "isrc": None,
-            "name": t.get("name", "") or "",
+            "name": name,
             "artists": [a for a in artists if a] or [""],
             "album": album.get("name"),
             "album_position": t.get("trackNumber"),
             "duration_ms": (t.get("trackDuration") or {}).get("totalMilliseconds"),
             "added_at": (it.get("addedAt") or {}).get("isoString") or "",
             "image": image,
-        })
+        }
+        if unavailable:
+            row["unavailable"] = True
         if it.get("uid"):
-            out[-1]["playlistItemId"] = it["uid"]
+            row["playlistItemId"] = it["uid"]
+        out.append(row)
     return out
 
 

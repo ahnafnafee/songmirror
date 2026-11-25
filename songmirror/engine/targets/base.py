@@ -707,9 +707,14 @@ def _fit_chronology_writes(ordered_keys, current_by_key, additions, addition_key
 
     full_by_key = {addition_key(item): addition_target_id(item) for item in additions}
     full_replay = _chronology_replay_tail(ordered_keys, current_by_key, full_by_key)
-    full_cost = replay_write_cost(full_replay) if full_replay else len(additions)
-
     selected = additions[:max(0, max_writes)]
+    if any(original is not None and original[1].get("unavailable")
+           for _target_id, original in full_replay):
+        # A replay stages a new copy of every original. Append the additions
+        # when a hidden original in the suffix may no longer be addable.
+        return selected, [], len(additions) - len(selected), len(additions)
+
+    full_cost = replay_write_cost(full_replay) if full_replay else len(additions)
     replay = []
     while selected:
         selected_by_key = {
@@ -902,7 +907,13 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
                 if validator:
                     tid, method = validator(track, tid, cache)
             if not tid:
-                tid, method = target.resolve(track, cache)
+                is_unusable = (
+                    track.get("unavailable")
+                    or (track.get("_raw") or {}).get("unavailable")
+                    or not str(track.get("name") or "").strip()
+                )
+                if not is_unusable:
+                    tid, method = target.resolve(track, cache)
         except TargetAuthError:
             raise
         except TargetTransientError as e:
@@ -1017,7 +1028,10 @@ def mirror_pair(target, sp_tracks, sp_playlist, tgt_playlist, cache, songs, *, e
     held = [existing for existing, _unresolved in uncertain_matches]
     removals_skipped, held_back = 0, []
     incomplete_metadata = any(
-        track.get("_metadata_incomplete") or (track.get("_raw") or {}).get("_metadata_incomplete")
+        track.get("_metadata_incomplete")
+        or (track.get("_raw") or {}).get("_metadata_incomplete")
+        or track.get("unavailable")
+        or (track.get("_raw") or {}).get("unavailable")
         for track in sp_tracks
     )
     empty_source = not sp_tracks and tgt_tracks and not allow_empty_source
@@ -1597,6 +1611,77 @@ def reconcile_state_key(name, *, link_key=None, authority_sources=None):
     return f"group:{authority_key}:{logical_key}"
 
 
+def _archive_sources_for_peer(peer):
+    """Archive namespaces that can identify a catalog entry for ``peer``."""
+    sources = [peer.source]
+    archive_sources = getattr(peer, "archive_sources", None)
+    if callable(archive_sources) and getattr(peer, "catalog_ids_global", True):
+        for alt in archive_sources(_target_provider(peer)):
+            if alt and alt not in sources:
+                sources.append(alt)
+    return sources
+
+
+def _partition_reconcile_rows(songs, peer, provider_rows):
+    """Return usable rows by position, identified hidden rows, and an unknown count."""
+    rows = dict(enumerate(provider_rows))
+    hidden_rows = [
+        (position, track)
+        for position, track in rows.items()
+        if not isinstance(track, dict)
+        or not str(track.get("name") or "").strip()
+        or track.get("unavailable")
+    ]
+    if not hidden_rows:
+        return rows, [], 0
+
+    hidden_ids = list(dict.fromkeys(
+        tid for _, track in hidden_rows
+        if isinstance(track, dict) and (tid := peer.track_id(track))
+    ))
+    snapshots, known_cids = {}, {}
+    if songs is not None and hidden_ids:
+        sources = _archive_sources_for_peer(peer)
+        remaining = list(hidden_ids)
+        for src in sources:
+            if not remaining:
+                break
+            snapshots.update(archive.get_snapshots(songs, src, remaining))
+            remaining = [tid for tid in remaining if tid not in snapshots]
+        for src in sources:
+            if not remaining:
+                break
+            found = archive.get_identities(songs, src, remaining)
+            for tid, cid in found.items():
+                known_cids.setdefault(tid, normalize_canonical_id(cid))
+            remaining = [tid for tid in remaining if tid not in known_cids]
+
+    preserved_hidden = []
+    unidentified_hidden = 0
+    for position, track in hidden_rows:
+        tid = peer.track_id(track) if isinstance(track, dict) else None
+        if tid and tid in snapshots:
+            snapshot = snapshots[tid]
+            # The archive is keyed by catalog track, so occurrence IDs and
+            # dates belong exclusively to the current playlist response.
+            rows[position] = {
+                **track,
+                **{field: snapshot[field] for field in (
+                    "name", "artist", "artists", "album", "album_position",
+                    "duration_ms", "isrc", "image",
+                ) if field in snapshot},
+                "unavailable": True,
+            }
+            continue
+
+        del rows[position]
+        if tid and tid in known_cids:
+            preserved_hidden.append((position, known_cids[tid], {**track, "unavailable": True}))
+        else:
+            unidentified_hidden += 1
+    return rows, preserved_hidden, unidentified_hidden
+
+
 def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, max_adds,
               drain_removals=False, should_continue=None, link_key=None,
               authority_sources=None):
@@ -1668,7 +1753,9 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     learned_identities = {}  # source -> physical id -> newly proven hard canonical id
     present = {}       # source -> set of ALL current target ids (not canonical-deduped)
     key2isrc = {}      # track_key -> [(ISRC, metadata)], retaining conflicting recordings for validation
-    raw_by_source = {}
+    positioned_by_source = {}
+    preserved_hidden_by_source = {}
+    unidentified_hidden_by_source = {}
     unreadable = {}
     for p in peers:
         try:
@@ -1686,35 +1773,41 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             if authorities is None or p.source in authorities:
                 raise
             unreadable[p.source] = f"{p.name} mirror read failed: {e}"
-            raw_by_source[p.source] = []
+            positioned_by_source[p.source] = {}
+            preserved_hidden_by_source[p.source] = []
+            unidentified_hidden_by_source[p.source] = 0
             present[p.source] = set()
             log_warn(f"{p.name}/{name}: playlist read failed ({e!r}); "
                      "syncing the other providers without it", tag=p.tag)
             continue
-        raw = [
-            track for track in provider_rows
-            if isinstance(track, dict) and str(track.get("name") or "").strip()
-        ]
-        ignored = len(provider_rows) - len(raw)
-        if ignored:
+        positioned, preserved_hidden, unidentified_hidden = _partition_reconcile_rows(
+            songs, p, provider_rows
+        )
+        if unidentified_hidden:
             log_warn(
-                f"{p.name}/{name}: ignored {ignored} malformed playlist "
-                f"entr{'y' if ignored == 1 else 'ies'} without a usable title",
+                f"{p.name}/{name}: ignored {unidentified_hidden} malformed playlist "
+                f"entr{'y' if unidentified_hidden == 1 else 'ies'} without a usable title",
                 tag=p.tag,
             )
-        raw_by_source[p.source] = raw
+        positioned_by_source[p.source] = positioned
+        raw = positioned.values()
+        preserved_hidden_by_source[p.source] = preserved_hidden
+        unidentified_hidden_by_source[p.source] = unidentified_hidden
         archive.upsert_many(songs, p.source, raw)
         archive.record_order(songs, key, p.source,
                              [[p.track_id(t), t.get("name", ""),
                                t.get("artist") or ", ".join(t.get("artists") or [])] for t in raw])
-        present[p.source] = {p.track_id(t) for t in raw if p.track_id(t)}
+        present[p.source] = (
+            {p.track_id(t) for t in raw if p.track_id(t)}
+            | {p.track_id(t) for _position, _cid, t in preserved_hidden if p.track_id(t)}
+        )
 
     # Read every peer before assigning identities. Tracks still missing native
     # ISRCs can learn them from exact title/artist keys in this same snapshot,
     # without making peer ordering part of correctness.
     for p in peers:
         native = p.native_isrc_map(caches[p.source])
-        for track in raw_by_source[p.source]:
+        for track in positioned_by_source[p.source].values():
             norm = _normalize(track, _target_provider(p))
             isrc = normalize_isrc(norm.get("isrc") or native.get(p.track_id(track)))
             if isrc:
@@ -1722,11 +1815,19 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
                     key2isrc.setdefault(key_, []).append((isrc, norm))
 
     for p in peers:
-        raw = raw_by_source[p.source]
+        positioned = positioned_by_source[p.source]
         changes, learned = {}, {}
-        per_entry[p.source] = _entry_cids(
-            p, raw, songs, caches[p.source], key2isrc,
+        entries = _entry_cids(
+            p, positioned.values(), songs, caches[p.source], key2isrc,
             rebindings=changes, remember=False, learned_out=learned)
+        for position, (_cid, norm) in zip(positioned, entries, strict=True):
+            norm["_playlist_position"] = position
+        for position, hidden_cid, hidden_track in preserved_hidden_by_source[p.source]:
+            norm = _normalize(hidden_track, _target_provider(p))
+            norm["_playlist_position"] = position
+            norm["_hidden_placeholder"] = True
+            entries.append((hidden_cid, norm))
+        per_entry[p.source] = entries
         if changes:
             rebindings[p.source] = changes
         if learned:
@@ -1747,7 +1848,8 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
         if any(norm.get("_identity_conflict") for _cid, norm in entries)
     }
     alias = _unify_aliases({src: [(cid, norm) for cid, norm in entries
-                                if not norm.get("_identity_conflict")]
+                                if not norm.get("_identity_conflict")
+                                and not norm.get("_hidden_placeholder")]
                             for src, entries in per_entry.items()})
     conflicting_cids = {alias.get(cid, cid) for entries in per_entry.values()
                         for cid, norm in entries if norm.get("_identity_conflict")}
@@ -1789,9 +1891,10 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
         src, by_key, by_name, by_tid = p.source, {}, {}, {}
         for cid, norm in per_entry[src]:
             cid = alias.get(cid, cid)
-            for track_match_key in spotify_track_keys(norm):
-                by_key.setdefault(track_match_key, set()).add(cid)
-            by_name.setdefault(catalog_name(norm["name"]), []).append((cid, norm))
+            if not norm.get("_hidden_placeholder"):
+                for track_match_key in spotify_track_keys(norm):
+                    by_key.setdefault(track_match_key, set()).add(cid)
+                by_name.setdefault(catalog_name(norm["name"]), []).append((cid, norm))
             tid = p.track_id(norm["_raw"])
             if tid:
                 by_tid.setdefault(tid, set()).add(cid)
@@ -1803,7 +1906,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     repr_ = {}  # canonical_id -> representative track (peers are ordered spotify-first for ISRC-rich reprs)
     for p in peers:
         for cid, norm in canon[p.source].items():
-            if not norm.get("_identity_conflict"):
+            if not norm.get("_identity_conflict") and not norm.get("_hidden_placeholder"):
                 repr_.setdefault(cid, norm)
 
     collapsed = set(unreadable)
@@ -1909,6 +2012,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     missing_by_source, first_seen_removals, confirmed_removals = {}, {}, {}
     effective_cur = {src: set(ids) for src, ids in cur.items()}
     confirmation_sources = initialized if authorities is None else initialized & authorities
+    held_unidentified = False
     for src in confirmation_sources:
         if src in collapsed or src not in cur:
             continue
@@ -1917,6 +2021,25 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
             for cid in archive.get_pending_removals(songs, key, src)
         }
         missing = prev.get(src, set()) - cur[src] - conflicting_cids
+        if missing and unidentified_hidden_by_source.get(src):
+            effective_cur[src] |= missing
+            held_unidentified = True
+            read_anomalies += len(missing)
+            hidden_count = unidentified_hidden_by_source[src]
+            diagnostics.append({
+                "category": "hidden_unidentified", "playlist": name,
+                "provider": peer_names.get(src, src), "count": len(missing),
+                "evidence": (
+                    f"{hidden_count} hidden or unnamed entr{'y' if hidden_count == 1 else 'ies'} "
+                    "could not be identified; removals from this provider are held"
+                ),
+            })
+            log_warn(
+                f"{peer_names.get(src, src)}/{name}: holding {len(missing)} removal(s) because "
+                f"{hidden_count} hidden entr{'y' if hidden_count == 1 else 'ies'} could not be identified",
+                tag=next((p.tag for p in peers if p.source == src), "sync"),
+            )
+            continue
         first_seen = missing - pending
         confirmed = missing & pending
         # A confirmed absence is a deletion only if this provider still offers
@@ -1998,7 +2121,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
         if peer.source in collapsed or (authorities is not None and peer.source not in authorities):
             continue
         for raw_cid, norm in per_entry[peer.source]:
-            if norm.get("_identity_conflict"):
+            if norm.get("_identity_conflict") or norm.get("_hidden_placeholder"):
                 continue
             cid = alias.get(raw_cid, raw_cid)
             position_evidence.setdefault(cid, {}).setdefault(
@@ -2014,7 +2137,8 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
     confirmed_absence_count = sum(len(ids) for ids in confirmed_removals.values())
     authority_bootstrap = authorities is not None and bool(authorities - initialized)
     stats = {"clean": execute and not collapsed and not conflicting_cids
-                      and not awaiting_confirmation and not authority_bootstrap,
+                      and not awaiting_confirmation and not authority_bootstrap
+                      and not held_unidentified,
              "added": 0, "removed": 0, "missing": 0,
              "held": 0, "uncertain_matches": 0, "chronology_replayed": 0,
              "deferred": 0, "removals_skipped": 0, "held_removals": [],
@@ -2024,7 +2148,7 @@ def reconcile(peers, name, playlists, caches, songs, *, execute, max_removals, m
              "read_anomalies": read_anomalies,
              "failed": len(read_failures), "failures": read_failures,
              "change_diagnostics": diagnostics}
-    baseline_blocked = bool(awaiting_confirmation or authority_bootstrap)
+    baseline_blocked = bool(awaiting_confirmation or authority_bootstrap or held_unidentified)
     if authority_bootstrap:
         initializing = ", ".join(sorted(peer_names.get(src, src) for src in authorities - initialized))
         diagnostics.append({

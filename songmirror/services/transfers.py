@@ -86,11 +86,7 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
         "playlist_tracks_for_transfer",
         dest.playlist_tracks,
     )
-    raw_destination = [
-        track
-        for track in read_destination(dest_pl)
-        if not track.get("unavailable")
-    ]
+    destination_entries = list(read_destination(dest_pl))
     target_id_of = getattr(
         dest,
         "track_id",
@@ -98,9 +94,14 @@ def transfer(source, dest, src_pl, dest_pl, cache, *, execute, max_adds, preserv
     )
     destination_ids = {
         str(target_id)
-        for track in raw_destination
-        if (target_id := target_id_of(track)) is not None
+        for track in destination_entries
+        if (target_id := target_id_of(track)) is not None and str(target_id)
     }
+    raw_destination = [
+        track
+        for track in destination_entries
+        if not track.get("unavailable")
+    ]
     dst = [
         _normalize(track, target_provider(dest))
         for track in raw_destination

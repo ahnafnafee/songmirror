@@ -181,3 +181,103 @@ def test_saved_manual_spotify_reference_adds_once(tmp_path, monkeypatch, backend
         assert load_cache(path)["manual"] == {key}
     finally:
         songs.close()
+
+
+@pytest.mark.parametrize("normalized", [False, True], ids=["raw", "normalized"])
+def test_mirror_pair_holds_removals_and_preserves_archived_metadata_for_unavailable_source(
+    tmp_path, normalized,
+):
+    class _Target:
+        tag = "apple"
+        name = "Apple Music"
+        source = "apple"
+        provider = "apple"
+
+        def track_id(self, track):
+            return track.get("id")
+
+        def playlist_tracks(self, _pl):
+            return [{"id": "apple-1", "name": "Bright Lake", "artists": ["A"], "duration_ms": 1000}]
+
+        def prefetch(self, _tracks, _cache):
+            pass
+
+        def expected_ids(self, _tracks, _links, _cache):
+            return {}
+
+        def resolve(self, _track, _cache):
+            raise AssertionError("must not search for blank unavailable source entry")
+
+        def add(self, _pl, _ids):
+            raise AssertionError("must not add unavailable source entry")
+
+        def remove(self, _pl, _track):
+            raise AssertionError("must not remove destination track when source has unavailable entry")
+
+    target = _Target()
+
+    source_tracks = [
+        {"id": "sp-hidden", "name": "", "artists": [""], "duration_ms": 0, "unavailable": True},
+    ]
+    if normalized:
+        source_tracks = [{**base._normalize(row, "spotify"), "id": row["id"]} for row in source_tracks]
+    previous = {
+        "id": "sp-hidden", "name": "Alpha Road", "artists": ["A"],
+        "duration_ms": 1000, "isrc": "USAAA2600001",
+    }
+    songs = archive.connect(str(tmp_path / "oneway-hidden.db"))
+    try:
+        archive.upsert_many(songs, "spotify", [previous])
+        stats = base.mirror_pair(
+            target, source_tracks, {"name": "Mix"}, {"id": "dest", "name": "Mix"},
+            {"isrc": {}, "search": {}, "dirty": False}, songs,
+            execute=True, max_removals=25, max_adds=200,
+            source_key="spotify", source_name="Spotify",
+        )
+        assert stats["removed"] == 0
+        assert stats["removals_skipped"] == 1
+        assert archive.get_snapshots(songs, "spotify", ["sp-hidden"]) == {"sp-hidden": previous}
+        assert archive.get_isrcs(songs, "spotify", ["sp-hidden"]) == {"sp-hidden": "USAAA2600001"}
+    finally:
+        songs.close()
+
+
+@pytest.mark.parametrize("has_live_occurrence", [False, True], ids=["missing", "present"])
+def test_restored_spotify_track_keeps_live_occurrence_fields(tmp_path, monkeypatch, has_live_occurrence):
+    monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
+    remove_uids, remove_positions = Mock(), Mock()
+    monkeypatch.setattr(spotify_cookie, "remove_uids", remove_uids)
+    monkeypatch.setattr(spotify_cookie, "remove_positions", remove_positions)
+    target = SpotifyTarget(None, "unused")
+    track_id = "sp-hidden"
+    archived = {
+        "id": track_id, "name": "Alpha Road", "artists": ["A"], "isrc": "USAAA2600001",
+        "playlistItemId": "archived-uid", "added_at": "2025-01-01T00:00:00Z",
+    }
+    live = {"id": track_id, "name": "", "unavailable": True}
+    if has_live_occurrence:
+        live.update(playlistItemId="live-uid", added_at="2026-01-01T00:00:00Z")
+
+    songs = archive.connect(str(tmp_path / "restored-occurrence.db"))
+    try:
+        archive.upsert_many(songs, "spotify", [archived])
+        rows, preserved, unidentified = base._partition_reconcile_rows(
+            songs, target, [{"name": ""}, {"id": "sp-other", "name": "Bright Lake"}, live],
+        )
+        assert not preserved and unidentified == 1
+        assert list(rows) == [1, 2]
+        restored = rows[2]
+        assert restored["name"] == archived["name"]
+        assert restored["isrc"] == archived["isrc"]
+        assert restored.get("playlistItemId") == live.get("playlistItemId")
+        assert restored.get("added_at") == live.get("added_at")
+
+        target.remove_occurrences({"id": "live-playlist"}, [(2, restored)])
+        if has_live_occurrence:
+            remove_uids.assert_called_once_with("live-playlist", ["live-uid"])
+            remove_positions.assert_not_called()
+        else:
+            remove_positions.assert_called_once_with("live-playlist", [2], expected_track_ids=[track_id])
+            remove_uids.assert_not_called()
+    finally:
+        songs.close()
