@@ -126,6 +126,8 @@ SongMirror hỗ trợ tiếng Anh, tiếng Ả Rập, tiếng Thổ Nhĩ Kỳ, t
 
 ## Dịch vụ được hỗ trợ
 
+Mở **Tài khoản → Thêm tài khoản** và tìm dịch vụ. Chọn dịch vụ để mở phần thiết lập, đặt tên cho hồ sơ tài khoản rồi làm theo hướng dẫn kết nối.
+
 | Dịch vụ | Hỗ trợ đồng bộ và chuyển |
 | --- | --- |
 | [Spotify](#spotify) | Danh sách phát và bài hát yêu thích |
@@ -140,6 +142,11 @@ SongMirror hỗ trợ tiếng Anh, tiếng Ả Rập, tiếng Thổ Nhĩ Kỳ, t
 | [ListenBrainz](../listenbrainz-subsonic.md) | Danh sách phát và bản thu yêu thích. Mã thông báo người dùng cho phép chỉnh sửa. |
 | [Navidrome / Subsonic](../listenbrainz-subsonic.md) | Danh sách phát và bài hát yêu thích |
 | [Jellyfin](../jellyfin-compatibility.md) | Danh sách phát trên máy chủ. Nhập ID người dùng để đồng bộ hoặc chuyển. |
+| Anghami, Audiomack, Gaana, JioSaavn | Tài khoản đã đăng nhập có thể đọc và tạo danh sách phát riêng tư, cũng như thêm hoặc xóa bài hát trong danh sách phát do bạn sở hữu. |
+| Emby, Plex, Mopidy, Lyrion Music Server | Đọc và chỉnh sửa danh sách phát với nhạc mà máy chủ đã lập chỉ mục. Danh sách phát thông minh của Plex chỉ dùng làm nguồn. Mopidy cần trình quản lý danh sách phát có quyền ghi, còn Lyrion cần thư mục danh sách phát đã được thiết lập. |
+| QQ Music, LINE MUSIC, Pandora, Naver Vibe và NetEase Cloud Music | Dùng liên kết danh sách phát công khai hoặc thư viện của tài khoản đã đăng nhập làm nguồn. Liên kết công khai dùng được trong mục Chuyển và khi đồng bộ gộp nhiều nguồn. |
+
+LiveOne, MOOV và Yandex Music đang chờ xác minh. Xem [hướng dẫn bộ kết nối danh sách phát](../music-service-adapters.md) để biết cách thiết lập và kết quả kiểm thử.
 
 <a id="features"></a>
 
@@ -449,7 +456,7 @@ Không cần có sự phê duyệt của nhà phát triển đối với trình 
 1. Đăng nhập trên trang Amazon Music của khu vực bạn và mở DevTools → Mạng.
 2. Tải lại trang, lọc `config.json` và chọn yêu cầu đăng nhập. (`pandaToken` cũng hoạt động khi nó xuất hiện nhưng không bắt buộc.)
 3. Chọn Sao chép tiêu đề yêu cầu hoặc Sao chép dưới dạng cURL, sau đó dán vào trường gia hạn. Giữ các tiêu đề `User-Agent`, `Referer` và `Cookie` hoàn chỉnh để SongMirror có thể phát lại cùng một ngữ cảnh trình duyệt.
-4. Tùy chọn sao chép Phản hồi `config.json` đã đăng nhập vào trường bootstrap; SongMirror thường có thể tìm nạp bối cảnh thiết bị đó bằng phiên gia hạn.
+4. Tùy chọn sao chép Phản hồi `config.json` đã đăng nhập vào trường bootstrap; SongMirror thường có thể tìm nạp bối cảnh thiết bị đó bằng phiên gia hạn. Để trống trường khởi tạo tùy chọn nếu phản hồi có thông tin thiết bị nhưng thiếu `accessToken`.
 
 SongMirror lấy cùng một giá trị ủy quyền `AmznMusic` cục bộ và làm mới nó thông qua `/pandaToken` trước khi hết hạn hoặc một lần sau khi từ chối xác thực. Trong quá trình kết nối, nó sử dụng yêu cầu cấu hình kiểu trình duyệt hiện tại khi cần ngữ cảnh của thiết bị, yêu cầu `/pandaToken` tạo mã thông báo truy cập và từ chối kết nối nếu Amazon thu hồi cookie gia hạn Âm nhạc. Nó chỉ lưu trữ tác nhân người dùng trình duyệt, ngôn ngữ, tham chiếu Âm nhạc, danh sách cho phép có tên của cookie phiên/xác thực Amazon và ngữ cảnh giới hạn của thiết bị Music-client; phân tích, thử nghiệm, bảng điều khiển AWS, CSRF và dữ liệu trình duyệt không liên quan khác sẽ bị loại bỏ. Những cookie được giữ lại đó vẫn nhạy cảm, vì vậy hãy giữ SongMirror ở chế độ riêng tư trên LAN của bạn. Đăng xuất, thay đổi mật khẩu/bảo mật hoặc thu hồi từ phía Amazon vẫn có thể yêu cầu một lần chụp mới.
 
@@ -489,6 +496,8 @@ Nói chuyện với [YouTube Data API v3](https://developers.google.com/youtube/
 ### SoundCloud
 
 Kết nối dịch vụ tại **Tài khoản → SoundCloud**. Dùng **Chế độ không hạn ngạch** với phiên trình duyệt đã đăng nhập hoặc dùng OAuth với ứng dụng được cấu hình trên máy chủ. Bạn có thể duyệt, sao chép và đồng bộ các danh sách phát của mình. [Hướng dẫn kết nối](../provider-application-credentials.md)
+
+Tại `soundcloud.com/you/sets`, sao chép yêu cầu `/me/library/all` và yêu cầu tải trang `you/sets` từ bảng Mạng dưới dạng cURL (bash). Trình duyệt có thể ghi loại yêu cầu tải trang là Doc hoặc Document. Yêu cầu tải trang cho phép SongMirror thử gia hạn phiên. Nếu SoundCloud yêu cầu xác minh, hãy hoàn tất trong trình duyệt rồi kết nối lại. Nếu SoundCloud là bản sao trong nhóm nguồn chính, các đích khác có thể tiếp tục đồng bộ.
 
 <a id="lastfm"></a>
 

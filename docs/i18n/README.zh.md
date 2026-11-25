@@ -126,6 +126,8 @@ SongMirror支持英语、阿拉伯语、土耳其语、西班牙语、简体中�
 
 ## 支持的服务
 
+打开 **账户 → 添加账户** 并搜索服务。选择服务以打开设置，为账号配置命名，然后按连接指南操作。
+
 | 服务 | 同步和转移支持 |
 | --- | --- |
 | [Spotify](#spotify) | 播放列表和收藏 |
@@ -140,6 +142,11 @@ SongMirror支持英语、阿拉伯语、土耳其语、西班牙语、简体中�
 | [ListenBrainz](../listenbrainz-subsonic.md) | 播放列表和喜爱录音。用户令牌可启用写入。 |
 | [Navidrome / Subsonic](../listenbrainz-subsonic.md) | 播放列表和收藏 |
 | [Jellyfin](../jellyfin-compatibility.md) | 服务器播放列表。提供用户 ID 后即可同步或转移。 |
+| Anghami, Audiomack, Gaana, JioSaavn | 登录账号后可读取和创建私密歌单，也可以在自己拥有的歌单中添加或移除歌曲。 |
+| Emby, Plex, Mopidy, Lyrion Music Server | 使用服务器已索引的音乐读取和编辑歌单。Plex 智能歌单仅可用作来源。Mopidy 需要可写入的歌单后端，Lyrion 需要已配置的歌单文件夹。 |
+| QQ Music、LINE MUSIC、Pandora、Naver Vibe 和 NetEase Cloud Music | 可将公开歌单链接或已登录账号的音乐库用作来源。公开链接适用于迁移和多源合并同步。 |
+
+LiveOne、MOOV 和 Yandex Music 仍待验证。请参阅[歌单适配器指南](../music-service-adapters.md)了解设置步骤和测试结果。
 
 <a id="features"></a>
 
@@ -449,7 +456,7 @@ OAuth 客户端 ID 是请求元数据，而不是 TIDAL 访问令牌内的数字
 1. 登录您所在地区的 Amazon Music 网站并打开DevTools→网络。
 2. 重新加载页面，筛选 `config.json`，然后选择登录请求。 （`pandaToken`出现时也可以工作，但不是必需的。）
 3. 选择复制请求标头或复制为 cURL，然后将其粘贴到续订字段中。保留完整的 `User-Agent`、`Referer` 和 `Cookie` 标头，以便 SongMirror 可以重播相同的浏览器上下文。
-4. （可选）将登录的 `config.json` 响应复制到引导字段中； SongMirror 可以正常使用更新会话获取该设备上下文。
+4. （可选）将登录的 `config.json` 响应复制到引导字段中； SongMirror 可以正常使用更新会话获取该设备上下文。 如果响应含有设备信息但没有 `accessToken`，请将可选的初始化字段留空。
 
 SongMirror在本地导出相同的`AmznMusic`授权值，并在到期前或身份验证拒绝后通过`/pandaToken`刷新它。在连接过程中，当需要设备上下文时，它会使用当前浏览器样式的配置请求，需要 `/pandaToken` 创建访问令牌，并在 Amazon 撤销音乐续订 cookie 时拒绝连接。它仅存储浏览器用户代理、语言、音乐引用、亚马逊身份验证/会话 cookie 的指定允许列表以及有限的音乐客户端设备上下文；分析、实验、AWS 控制台、CSRF 和其他不相关的浏览器数据将被丢弃。这些保留的 cookie 仍然很敏感，因此请在您的 LAN 上保留 SongMirror 的私密性。注销、密码/安全更改或亚马逊端撤销仍可能需要一次新的捕获。
 
@@ -489,6 +496,8 @@ SongMirror在本地导出相同的`AmznMusic`授权值，并在到期前或身�
 ### SoundCloud
 
 在 **账户 → SoundCloud** 中连接服务。选择 **无配额模式** 使用已登录的浏览器会话，或通过服务器配置的应用使用 OAuth。你可以浏览、复制播放列表，并同步自己拥有的播放列表。 [连接指南](../provider-application-credentials.md)
+
+在 `soundcloud.com/you/sets` 的网络面板中，将 `/me/library/all` 请求和 `you/sets` 网页请求都复制为 cURL (bash)。浏览器可能将网页请求的类型标为 Doc 或 Document。SongMirror 可使用网页请求尝试续期。如果 SoundCloud 要求验证，请在浏览器中完成验证后重新连接。如果 SoundCloud 在权威组中是镜像服务，其他目标可以继续同步。
 
 <a id="lastfm"></a>
 
