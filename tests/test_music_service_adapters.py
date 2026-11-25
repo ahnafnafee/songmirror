@@ -489,6 +489,52 @@ def test_audiomack_private_cookie_session_reads_only_playlists_from_its_director
     assert len(wire.calls) == 1
 
 
+def test_audiomack_writes_only_owned_playlists_and_confirms_track_order(monkeypatch):
+    module = "songmirror.engine.targets.public_playlists"
+    entries = [{"id": "12", "title": "Followed", "type": "playlist", "track_count": 0}]
+    membership = []
+    changes = []
+
+    def directory(_cookies):
+        return [dict(row, track_count=len(membership) if row.get("_owned") else 0) for row in entries]
+
+    def detail(_cookies, identifier):
+        assert identifier == "91"
+        return {"id": identifier, "title": "Private Mix", "type": "playlist", "track_count": len(membership),
+                "tracks": [{"id": key, "title": f"Track {key}", "artist": "Artist"} for key in membership]}
+
+    def write(_cookies, method, endpoint, *, data=None):
+        changes.append((method, endpoint, data))
+        if endpoint == "playlist":
+            entries.append({"id": "91", "title": data["title"], "type": "playlist", "_owned": True})
+            return {"id": 91, "private": "yes"}
+        if method == "POST":
+            membership.extend(data["music_id"].split(","))
+        else:
+            membership.remove(endpoint.split("/")[-1])
+
+    monkeypatch.setattr(f"{module}.audiomack_library", directory)
+    monkeypatch.setattr(f"{module}.audiomack_playlist", detail)
+    monkeypatch.setattr(f"{module}.audiomack_write", write)
+    target = AudiomackTarget(web_session={"otoken": "fixture", "osecret": "fixture"})
+    followed = target.find_playlist("12")
+    assert not target.is_editable(followed)
+    with pytest.raises(TargetCapabilityError, match="Only playlists owned"):
+        target.add(followed, ["101"])
+    with pytest.raises(TargetCapabilityError, match="can't create public"):
+        target.create({"name": "Public Mix", "_create_public": True})
+    playlist = target.create({"name": "Private Mix"})
+    assert target.add(playlist, ["101", "102", "103"]) == ["101", "102", "103"]
+    assert target.add(playlist, ["103"]) == []
+    assert target.remove(playlist, {"id": "102"})
+    assert membership == ["101", "103"]
+    membership.append("101")
+    assert not target.remove(playlist, {"id": "101"})
+    assert changes == [("POST", "playlist", {"title": "Private Mix", "genre": "other", "private": "yes"}),
+                       ("POST", "playlist/91/track", {"music_id": "101,102,103"}),
+                       ("DELETE", "playlist/91/track/102", None)]
+
+
 def test_netease_reads_public_track_ids_in_order_and_hydrates_missing_metadata():
     a, b = {"id": 1, "name": "Track 1"}, {"id": 2, "name": "Track 2"}
     wire = Wire({"code": 200, "playlist": {"id": 123, "name": "Mix", "privacy": 0, "trackCount": 3,

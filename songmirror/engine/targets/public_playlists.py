@@ -9,6 +9,7 @@ from html import unescape
 import requests
 
 from .audiomack_browser import read_library as audiomack_library, read_playlist as audiomack_playlist
+from .audiomack_browser import search_music as audiomack_search, write_playlist as audiomack_write
 from .base import ReadOnlyPlaylistTarget, TargetAuthError, TargetCapabilityError
 from .music_server import MusicApi, counted_pages, integer, resolve_catalog_track, rows
 from .provider_utils import chunks, source_playlist_details
@@ -528,6 +529,16 @@ class AudiomackTarget(WebPlaylistAccountTarget):
     api_url = "https://audiomack.com"
     id_pattern = re.compile(r"[A-Za-z0-9_-]{1,150}/playlist/[A-Za-z0-9_-]{1,150}")
     account_id_pattern = re.compile(r"[1-9][0-9]{0,23}")
+    supports_playlist_writes = True
+
+    def __init__(self, *, session=None, web_session=None):
+        super().__init__(session=session, web_session=web_session)
+        self.supports_playlist_writes = bool(self.web_session)
+        self.cache_file = self.resolve_cache_path()
+
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        return os.getenv("AUDIOMACK_CACHE_FILE", "audiomack_resolve_cache.json")
 
     def _read_directory(self):
         entries = {}
@@ -535,27 +546,103 @@ class AudiomackTarget(WebPlaylistAccountTarget):
             count = integer(row.get("track_count"))
             if row.get("type") != "playlist" or count is None:
                 raise RuntimeError("Audiomack returned an invalid playlist entry.")
-            entry = self._account_playlist(row.get("id"), row.get("title"), count, row.get("image"))
+            entry = self._account_playlist(row.get("id"), row.get("title"), count, row.get("image"),
+                                           _owned=row.get("_owned") is True)
             if entry["id"] in entries:
                 raise RuntimeError("Audiomack returned a repeated playlist entry.")
             entries[entry["id"]] = entry
         return list(entries.values())
 
     def _read_account_playlist(self, playlist):
-        key = playlist["id"]
+        result = self._snapshot(playlist["id"])
+        if result is not None and result["count"] != playlist["count"]:
+            raise RuntimeError("Audiomack's playlist changed since the directory loaded. Retry the read.")
+        return result
+
+    def _snapshot(self, key):
         record = audiomack_playlist(self.web_session, key)
         if record is None or str(record.get("id")) != key or record.get("type") != "playlist":
             return None
         count = integer(record.get("track_count"))
-        if count != playlist["count"]:
-            raise RuntimeError("Audiomack's playlist changed since the directory loaded. Retry the read.")
-        tracks = [
-            track(row.get("id"), row.get("title"), [row.get("artist")], album=row.get("album"),
-                  seconds=row.get("duration"), isrc=row.get("isrc"))
-            for row in self._check_rows(record.get("tracks"), count)
-        ]
+        tracks = [self._music_track(row) for row in self._check_rows(record.get("tracks"), count)]
         return self._playlist(key, record.get("title"), tracks, count=count,
                               image=record.get("image"), description=record.get("description"))
+
+    @staticmethod
+    def _music_track(row):
+        return track(row.get("id"), row.get("title"), [row.get("artist")], album=row.get("album"),
+                     seconds=row.get("duration"), isrc=row.get("isrc"))
+
+    def is_editable(self, playlist):
+        return self.supports_playlist_writes and playlist.get("_owned") is True
+
+    def _owned_snapshot(self, playlist):
+        key = str(playlist.get("id") or "")
+        if not self.account_id_pattern.fullmatch(key) or not self.is_editable(playlist):
+            raise TargetCapabilityError("Only playlists owned by the connected Audiomack account can be edited.")
+        self.browse_playlists()
+        current = self.find_playlist(key)
+        if current is None or not self.is_editable(current):
+            raise TargetCapabilityError("Audiomack could not confirm that this account owns the destination playlist.")
+        snapshot = self._read_account_playlist(current)
+        if snapshot is None:
+            raise TargetCapabilityError("Audiomack could not open the destination playlist.")
+        return snapshot
+
+    def create(self, playlist):
+        self._requires_session()
+        self._create_public(playlist)
+        name, _ = source_playlist_details(playlist)
+        result = audiomack_write(self.web_session, "POST", "playlist",
+                                 data={"title": name, "genre": "other", "private": "yes"})
+        key = str(result.get("id") or "")
+        if not self.account_id_pattern.fullmatch(key) or result.get("private") != "yes":
+            raise RuntimeError("Audiomack did not confirm the new private playlist.")
+        self.browse_playlists()
+        owned = self.find_playlist(key)
+        if owned is None or not self.is_editable(owned) or owned["name"] != text(name):
+            raise RuntimeError("Audiomack did not confirm ownership of the newly created playlist.")
+        return owned
+
+    def add(self, playlist, target_ids):
+        desired = list(dict.fromkeys(map(str, target_ids)))
+        if not all(self.account_id_pattern.fullmatch(key) for key in desired):
+            raise ValueError("Expected valid Audiomack track IDs.")
+        current = self._owned_snapshot(playlist)
+        expected = [row["id"] for row in current["_tracks"]]
+        existing = set(expected)
+        added = [key for key in desired if key not in existing]
+        for batch in chunks(added, 50):
+            audiomack_write(self.web_session, "POST", f"playlist/{current['id']}/track",
+                            data={"music_id": ",".join(batch)})
+        if added:
+            self._verify_tracks(current["id"], expected + added)
+        return added
+
+    def remove(self, playlist, track):
+        current = self._owned_snapshot(playlist)
+        key = str(track.get("id") or "")
+        expected = [row["id"] for row in current["_tracks"]]
+        if not self.account_id_pattern.fullmatch(key) or expected.count(key) != 1:
+            return False
+        audiomack_write(self.web_session, "DELETE", f"playlist/{current['id']}/track/{key}")
+        expected.remove(key)
+        self._verify_tracks(current["id"], expected)
+        return True
+
+    def _verify_tracks(self, key, expected):
+        snapshot = self._snapshot(key)
+        if snapshot is None or [row["id"] for row in snapshot["_tracks"]] != expected:
+            raise RuntimeError("Audiomack did not confirm the expected playlist tracks after the change.")
+
+    def search_candidates(self, query, *, limit=5):
+        self._requires_session()
+        candidates = audiomack_search(self.web_session, query, limit)
+        return [self._music_track(row) for row in candidates if row.get("type") == "song"
+                and self.account_id_pattern.fullmatch(str(row.get("id") or "")) and text(row.get("title"))][:limit]
+
+    def resolve(self, track, cache):
+        return resolve_catalog_track(self, track, cache)
 
     def _read(self, key):
         path = "/" + key
