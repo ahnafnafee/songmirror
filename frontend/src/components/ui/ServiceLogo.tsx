@@ -1,81 +1,66 @@
-import { SiApplemusic, SiAudiomack, SiDeezer, SiEmby, SiJellyfin, SiPandora, SiPlex, SiQq, SiSoundcloud, SiSpotify, SiTidal, SiYoutubemusic } from 'react-icons/si'
-import { LuMusic, LuServer } from 'react-icons/lu'
+import { SiDeezer, SiJellyfin, SiSoundcloud, SiSpotify, SiTidal, SiYoutubemusic } from 'react-icons/si'
 
-import lastfmLogo from '@/assets/providers/lastfm.png'
+import amazonLogo from '@/assets/providers/amazon.svg'
+import anghamiLogo from '@/assets/providers/anghami.svg'
+import appleLogo from '@/assets/providers/apple.svg'
+import audiomackLogo from '@/assets/providers/audiomack.svg'
+import embyLogo from '@/assets/providers/emby.svg'
+import gaanaLogo from '@/assets/providers/gaana.svg'
+import jiosaavnLogo from '@/assets/providers/jiosaavn.svg'
+import lastfmLogo from '@/assets/providers/lastfm.svg'
+import lineMusicLogo from '@/assets/providers/linemusic.svg'
 import listenbrainzLogo from '@/assets/providers/listenbrainz.svg'
+import lyrionLogo from '@/assets/providers/lyrion.svg'
+import mopidyLogo from '@/assets/providers/mopidy.svg'
 import navidromeLogo from '@/assets/providers/navidrome.svg'
+import neteaseLogo from '@/assets/providers/netease.svg'
+import pandoraLogo from '@/assets/providers/pandora.svg'
+import plexLogo from '@/assets/providers/plex.svg'
 import qobuzLogo from '@/assets/providers/qobuz.svg'
+import qqMusicLogo from '@/assets/providers/qqmusic.svg'
+import vibeLogo from '@/assets/providers/vibe.svg'
 
-const AMAZON_MUSIC_MARK = 'https://m.media-amazon.com/images/G/01/music/logo/1.0/smile_256x256.png'
+const logos = {
+  amazon: amazonLogo,
+  anghami: anghamiLogo,
+  apple: appleLogo,
+  audiomack: audiomackLogo,
+  deezer: SiDeezer,
+  emby: embyLogo,
+  gaana: gaanaLogo,
+  jellyfin: SiJellyfin,
+  jiosaavn: jiosaavnLogo,
+  lastfm: lastfmLogo,
+  linemusic: lineMusicLogo,
+  listenbrainz: listenbrainzLogo,
+  lyrion: lyrionLogo,
+  mopidy: mopidyLogo,
+  netease: neteaseLogo,
+  pandora: pandoraLogo,
+  plex: plexLogo,
+  qobuz: qobuzLogo,
+  qqmusic: qqMusicLogo,
+  soundcloud: SiSoundcloud,
+  spotify: SiSpotify,
+  subsonic: navidromeLogo,
+  tidal: SiTidal,
+  vibe: vibeLogo,
+  ytmusic: SiYoutubemusic,
+}
 
-export type ServiceId = 'soundcloud' | 'spotify' | 'tidal' | 'qobuz' | 'deezer' | 'amazon' | 'apple' | 'ytmusic' | 'lastfm' | 'listenbrainz' | 'subsonic' | 'jellyfin'
-  | 'emby' | 'plex' | 'mopidy' | 'lyrion' | 'anghami' | 'qqmusic'
-  | 'audiomack' | 'gaana' | 'jiosaavn' | 'linemusic' | 'netease' | 'pandora' | 'vibe'
+export type ServiceId = keyof typeof logos
 
 interface ServiceLogoProps {
   service: ServiceId
   className?: string
 }
 
-/** Simple Icon marks inherit the provider color; the other providers use
- * first-party artwork with its original colors. Qobuz and Amazon have no Simple
- * Icon; Last.fm has one, but it is the bare monochrome 'as' monogram, which
- * reads as a generic pink glyph next to Apple Music, so the official red app
- * icon is vendored instead.
- * Every mark is decorative because visible provider text sits beside it.
- * Size via `className` (e.g. `size-4`). */
+/** Provider marks are decorative because the service name appears alongside them. */
 export function ServiceLogo({ service, className }: ServiceLogoProps) {
-  switch (service) {
-    case 'spotify':
-      return <SiSpotify className={className} aria-hidden="true" />
-    case 'tidal':
-      return <SiTidal className={className} aria-hidden="true" />
-    case 'qobuz':
-      return <img src={qobuzLogo} alt="" className={`${className ?? ''} object-contain`} draggable={false} />
-    case 'deezer':
-      return <SiDeezer className={className} aria-hidden="true" />
-    case 'amazon':
-      return (
-        <img
-          src={AMAZON_MUSIC_MARK}
-          alt=""
-          className={`${className ?? ''} rounded-[20%] object-contain`}
-          draggable={false}
-        />
-      )
-    case 'apple':
-      return <SiApplemusic className={className} aria-hidden="true" />
-    case 'ytmusic':
-      return <SiYoutubemusic className={className} aria-hidden="true" />
-    case 'soundcloud':
-      return <SiSoundcloud className={className} aria-hidden="true" />
-    case 'lastfm':
-      return <img src={lastfmLogo} alt="" className={`${className ?? ''} object-contain`} draggable={false} />
-    case 'jellyfin':
-      return <SiJellyfin className={className} aria-hidden="true" />
-    case 'emby':
-      return <SiEmby className={className} aria-hidden="true" />
-    case 'plex':
-      return <SiPlex className={className} aria-hidden="true" />
-    case 'qqmusic':
-      return <SiQq className={className} aria-hidden="true" />
-    case 'audiomack':
-      return <SiAudiomack className={className} aria-hidden="true" />
-    case 'pandora':
-      return <SiPandora className={className} aria-hidden="true" />
-    case 'mopidy':
-    case 'lyrion':
-      return <LuServer className={className} aria-hidden="true" />
-    case 'anghami':
-    case 'gaana':
-    case 'jiosaavn':
-    case 'linemusic':
-    case 'netease':
-    case 'vibe':
-      return <LuMusic className={className} aria-hidden="true" />
-    case 'listenbrainz':
-      return <img src={listenbrainzLogo} alt="" className={`${className ?? ''} object-contain`} draggable={false} />
-    case 'subsonic':
-      return <img src={navidromeLogo} alt="" className={`${className ?? ''} object-contain`} draggable={false} />
+  const Logo = logos[service]
+  if (typeof Logo === 'string') {
+    // SVG color schemes follow SongMirror's theme, including a manual theme choice.
+    return <img src={Logo} alt="" className={`${className ?? ''} object-contain scheme-light dark:scheme-dark`} draggable={false} />
   }
+  return <Logo className={className} aria-hidden="true" />
 }

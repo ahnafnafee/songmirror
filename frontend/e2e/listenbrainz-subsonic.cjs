@@ -133,28 +133,39 @@ async function main() {
     for (const option of await menu.getByRole('option').all()) {
       assert.ok(await option.locator('svg, img').count() >= 1, `${await option.innerText()} needs its provider mark`)
     }
-    const serviceColors = {
-      Emby: 'emby', Plex: 'plex', Mopidy: 'mopidy', 'Lyrion Music Server': 'lyrion', Anghami: 'anghami', 'QQ Music': 'qqmusic',
-      Audiomack: 'audiomack', Gaana: 'gaana', JioSaavn: 'jiosaavn', 'LINE MUSIC': 'linemusic',
-      'NetEase Cloud Music': 'netease', Pandora: 'pandora', 'Naver Vibe': 'vibe',
-    }
-    async function verifyServiceColors(listbox) {
-      return Promise.all(Object.entries(serviceColors).map(async ([name, service]) => {
-        const mark = listbox.getByRole('option', { name, exact: true }).locator('svg')
-        const { actual, expected } = await mark.evaluate((el, id) => {
-          const probe = document.createElement('span')
-          probe.style.color = `var(--color-svc-${id})`
-          el.parentElement.append(probe)
-          const styles = { actual: getComputedStyle(el).color, expected: getComputedStyle(probe).color }
-          probe.remove()
-          return styles
-        }, service)
-        assert.equal(actual, expected, `${name} needs its provider color`)
-        return actual
+    const customMarks = [
+      'Amazon Music', 'Apple Music', 'Last.fm', 'Qobuz', 'Emby', 'Plex', 'Mopidy', 'Lyrion Music Server',
+      'Anghami', 'QQ Music', 'Audiomack', 'Gaana', 'JioSaavn', 'LINE MUSIC', 'NetEase Cloud Music', 'Pandora', 'Naver Vibe',
+    ]
+    async function verifyServiceMarks(listbox, theme) {
+      const marks = await Promise.all(customMarks.map(async name => {
+        const mark = listbox.getByRole('option', { name, exact: true }).locator('img')
+        const { src, colorScheme, outerPixelAlpha, hasArtwork } = await mark.evaluate(async img => {
+          await img.decode()
+          const canvas = document.createElement('canvas')
+          canvas.width = canvas.height = 64
+          const context = canvas.getContext('2d')
+          context.drawImage(img, 0, 0, 64, 64)
+          const pixels = context.getImageData(0, 0, 64, 64).data
+          const outerPixelAlpha = [0, 63, 63 * 64, 64 * 64 - 1].map(i => pixels[i * 4 + 3])
+          return {
+            src: img.currentSrc,
+            colorScheme: getComputedStyle(img).colorScheme,
+            outerPixelAlpha,
+            hasArtwork: pixels.some((value, index) => index % 4 === 3 && value === 255),
+          }
+        })
+        assert.ok(src.startsWith('data:image/svg+xml') || (src.startsWith(base + '/') && src.endsWith('.svg')),
+          `${name} uses a bundled SVG`)
+        assert.equal(colorScheme, theme, `${name} follows SongMirror's theme`)
+        assert.deepEqual(outerPixelAlpha, [0, 0, 0, 0], `${name} has transparent corners`)
+        assert.ok(hasArtwork, `${name} has a visible mark`)
+        return src
       }))
+      assert.equal(new Set(marks).size, customMarks.length, 'Every provider has distinct artwork')
+      return marks
     }
-    const darkColors = await verifyServiceColors(menu)
-    assert.equal(new Set(darkColors).size, Object.keys(serviceColors).length)
+    const darkMarks = await verifyServiceMarks(menu, 'dark')
     await menu.press('End')
     await menu.press('Enter')
     assert.ok((await picker.innerText()).includes('Naver Vibe'))
@@ -200,9 +211,11 @@ async function main() {
     await page.reload()
     await picker.click()
     menu = page.getByRole('listbox', { name: 'Provider', exact: true })
-    const lightColors = await verifyServiceColors(menu)
-    assert.equal(new Set(lightColors).size, Object.keys(serviceColors).length)
-    lightColors.forEach((color, index) => assert.notEqual(color, darkColors[index]))
+    assert.deepEqual(await verifyServiceMarks(menu, 'light'), darkMarks)
+    if (screenshotDir) {
+      await menu.getByRole('option', { name: 'Naver Vibe', exact: true }).scrollIntoViewIfNeeded()
+      await page.screenshot({ path: path.join(screenshotDir, 'provider-icons-light.png'), fullPage: true })
+    }
     await menu.press('Escape')
     console.log('PASS: provider marks, keyboard selection, typeahead, dismissal, mobile bounds, and selected profile submission')
     const cloudCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'SoundCloud', exact: true }) })
