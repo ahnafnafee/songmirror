@@ -17,6 +17,9 @@ async function main() {
   const base = `http://127.0.0.1:${server.address().port}`
   const browser = await chromium.launch({ headless: true })
   const errors = [], connections = [], saved = [], profiles = []
+  const providersWithArtwork = {
+    emby: 'Emby', plex: 'Plex', mopidy: 'Mopidy', lyrion: 'Lyrion Music Server', anghami: 'Anghami', qqmusic: 'QQ Music',
+  }
   const accounts = [
     { id: 'cloud', provider: 'soundcloud', name: 'SoundCloud', provider_name: 'SoundCloud',
       auth_kind: 'oauth_redirect', fields: [], transferable: true, source_capable: true,
@@ -32,6 +35,9 @@ async function main() {
       fields: [{ key: 'SUBSONIC_URL', label: 'Server URL' }, { key: 'SUBSONIC_USER', label: 'Username' },
         { key: 'SUBSONIC_PASSWORD', label: 'Password', secret: true }].map(field => ({ required: true, ...field })),
       capabilities: { library_read: true, library_write: true, favorites_write: true, public_playlist_read: true } },
+    ...Object.entries(providersWithArtwork).map(([provider, name]) => ({
+      id: provider, provider, name, provider_name: name, fields: [], transferable: true,
+    })),
   ].map(account => ({ auth_kind: 'api_key', state: 'unconfigured', label: account.name, detail: '',
     is_default: true, removable: false, preserves_order: false, ...account,
     fields: account.fields.map(field => ({ value: '', configured: false, ...field })) }))
@@ -105,29 +111,31 @@ async function main() {
     for (const option of await menu.getByRole('option').all()) {
       assert.ok(await option.locator('svg, img').count() >= 1, `${await option.innerText()} needs its provider mark`)
     }
-    const serviceColors = {
-      Emby: 'emby', Plex: 'plex', Mopidy: 'mopidy', 'Lyrion Music Server': 'lyrion', Anghami: 'anghami', 'QQ Music': 'qqmusic',
-    }
-    async function verifyServiceColors(listbox) {
-      return Promise.all(Object.entries(serviceColors).map(async ([name, service]) => {
-        const mark = listbox.getByRole('option', { name, exact: true }).locator('svg')
-        const { actual, expected } = await mark.evaluate((el, id) => {
-          const probe = document.createElement('span')
-          probe.style.color = `var(--color-svc-${id})`
-          el.parentElement.append(probe)
-          const styles = { actual: getComputedStyle(el).color, expected: getComputedStyle(probe).color }
-          probe.remove()
-          return styles
-        }, service)
-        assert.equal(actual, expected, `${name} needs its provider color`)
-        return actual
+    async function verifyProviderArtwork(listbox) {
+      await Promise.all(Object.entries(providersWithArtwork).map(async ([provider, name]) => {
+        const option = listbox.getByRole('option', { name, exact: true })
+        const card = page.locator('[data-tour="account-card"]').filter({
+          has: page.getByRole('heading', { name, exact: true }),
+        })
+        for (const surface of [option, card]) {
+          const mark = surface.locator('img')
+          const artwork = await mark.evaluate(async img => {
+            await img.decode()
+            return { src: img.currentSrc, alt: img.alt, filter: getComputedStyle(img).filter }
+          })
+          const url = new URL(artwork.src)
+          assert.equal(url.origin, base, `${name} artwork is bundled locally`)
+          assert.match(url.pathname, new RegExp(`^/assets/${provider}-[^/]+\\.png$`))
+          assert.equal(artwork.alt, '')
+          assert.equal(artwork.filter, 'none')
+        }
       }))
     }
-    const darkColors = await verifyServiceColors(menu)
-    assert.equal(new Set(darkColors).size, 6, 'The new provider marks have distinct dark-mode colors')
+    await verifyProviderArtwork(menu)
     await menu.press('End')
     await menu.press('Enter')
     assert.ok((await picker.innerText()).includes('QQ Music'))
+    assert.match(await picker.locator('img').getAttribute('src'), /\/assets\/qqmusic-.*\.png$/)
     assert.equal(await picker.evaluate(el => el === document.activeElement), true)
     await picker.press('ArrowDown')
     menu = page.getByRole('listbox', { name: 'Provider', exact: true })
@@ -148,7 +156,7 @@ async function main() {
       await picker.click()
       menu = page.getByRole('listbox', { name: 'Provider', exact: true })
       await menu.waitFor()
-      await menu.getByRole('option', { name: 'Navidrome / Subsonic', exact: true }).scrollIntoViewIfNeeded()
+      await menu.getByRole('option', { name: 'QQ Music', exact: true }).scrollIntoViewIfNeeded()
       const box = await menu.boundingBox()
       assert.ok(box.x >= 0 && box.x + box.width <= width, 'Provider menu fits the viewport')
       assert.ok(box.y >= 0 && box.y + box.height <= 812, 'Provider menu fits vertically')
@@ -170,9 +178,11 @@ async function main() {
     await page.reload()
     await picker.click()
     menu = page.getByRole('listbox', { name: 'Provider', exact: true })
-    const lightColors = await verifyServiceColors(menu)
-    assert.equal(new Set(lightColors).size, 6, 'The new provider marks have distinct light-mode colors')
-    lightColors.forEach((color, index) => assert.notEqual(color, darkColors[index]))
+    await verifyProviderArtwork(menu)
+    if (screenshotDir) {
+      await menu.getByRole('option', { name: 'QQ Music', exact: true }).scrollIntoViewIfNeeded()
+      await menu.screenshot({ path: path.join(screenshotDir, 'provider-icons-light.png') })
+    }
     await menu.press('Escape')
     console.log('PASS: provider marks, keyboard selection, typeahead, dismissal, mobile bounds, and selected profile submission')
     const cloudCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'SoundCloud', exact: true }) })
