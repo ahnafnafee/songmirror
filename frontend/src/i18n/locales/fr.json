@@ -800,6 +800,7 @@
   "Disconnect browser session": "Déconnecter la session du navigateur",
   "Connect account": "Connecter le compte",
   "Read playlists from your signed-in account or use a public playlist link.": "Lisez les playlists de votre compte connecté ou utilisez le lien d’une playlist publique.",
+  "Sync playlists with your signed-in account or import a public playlist link.": "Synchronisez vos playlists avec votre compte connecté ou importez le lien d’une playlist publique.",
   "Connect with a public playlist link": "Se connecter avec le lien d’une playlist publique",
   "Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.": "Utilisez les playlists publiques comme sources de synchronisation et de transfert. Aucune clé développeur ni connexion requise.",
   "Open a public playlist in your browser and copy its full address.": "Ouvrez une playlist publique dans votre navigateur et copiez son adresse complète.",

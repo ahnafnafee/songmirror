@@ -795,6 +795,7 @@
   "Disconnect browser session": "ব্রাউজার সেশন বিচ্ছিন্ন করুন",
   "Connect account": "অ্যাকাউন্ট সংযোগ করুন",
   "Read playlists from your signed-in account or use a public playlist link.": "সাইন-ইন করা অ্যাকাউন্টের প্লেলিস্ট পড়ুন বা পাবলিক প্লেলিস্টের লিংক ব্যবহার করুন।",
+  "Sync playlists with your signed-in account or import a public playlist link.": "সাইন ইন করা অ্যাকাউন্টের সঙ্গে প্লেলিস্ট সিঙ্ক করুন অথবা একটি পাবলিক প্লেলিস্টের লিঙ্ক ইমপোর্ট করুন।",
   "Connect with a public playlist link": "পাবলিক প্লেলিস্টের লিংক দিয়ে সংযোগ করুন",
   "Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.": "সিঙ্ক ও স্থানান্তরের উৎস হিসেবে পাবলিক প্লেলিস্ট ব্যবহার করুন। ডেভেলপার কী বা সাইন-ইন দরকার নেই।",
   "Open a public playlist in your browser and copy its full address.": "ব্রাউজারে একটি পাবলিক প্লেলিস্ট খুলে তার সম্পূর্ণ ঠিকানাটি কপি করুন।",

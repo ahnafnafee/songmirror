@@ -795,6 +795,7 @@
   "Disconnect browser session": "Putuskan sesi peramban",
   "Connect account": "Hubungkan akun",
   "Read playlists from your signed-in account or use a public playlist link.": "Baca daftar putar dari akun yang telah masuk atau gunakan tautan daftar putar publik.",
+  "Sync playlists with your signed-in account or import a public playlist link.": "Sinkronkan playlist dengan akun yang sudah masuk atau impor tautan playlist publik.",
   "Connect with a public playlist link": "Hubungkan dengan tautan daftar putar publik",
   "Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.": "Gunakan daftar putar publik sebagai sumber sinkronisasi dan transfer. Kunci pengembang atau masuk akun tidak diperlukan.",
   "Open a public playlist in your browser and copy its full address.": "Buka daftar putar publik di peramban dan salin alamat lengkapnya.",

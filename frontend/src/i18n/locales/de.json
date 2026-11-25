@@ -795,6 +795,7 @@
   "Disconnect browser session": "Browsersitzung trennen",
   "Connect account": "Konto verbinden",
   "Read playlists from your signed-in account or use a public playlist link.": "Lies Playlists aus deinem angemeldeten Konto oder verwende einen öffentlichen Playlist-Link.",
+  "Sync playlists with your signed-in account or import a public playlist link.": "Synchronisiere Playlists mit deinem angemeldeten Konto oder importiere einen öffentlichen Playlist-Link.",
   "Connect with a public playlist link": "Mit einem öffentlichen Playlist-Link verbinden",
   "Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.": "Verwende öffentliche Playlists als Quellen für Synchronisierung und Übertragungen. Ein Entwicklerschlüssel oder eine Anmeldung ist nicht erforderlich.",
   "Open a public playlist in your browser and copy its full address.": "Öffne eine öffentliche Playlist im Browser und kopiere ihre vollständige Adresse.",

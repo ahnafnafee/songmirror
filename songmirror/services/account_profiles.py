@@ -89,6 +89,7 @@ PROVIDER_KEYS = {
        for source, target in PUBLIC_PLAYLIST_TARGETS.items()},
 }
 PROVIDER_KEYS["gaana"].add("GAANA_CACHE_FILE")
+PROVIDER_KEYS["jiosaavn"].add("JIOSAAVN_CACHE_FILE")
 PROVIDER_KEYS["audiomack"].add("AUDIOMACK_CACHE_FILE")
 
 _FILE_DEFAULTS = {
@@ -133,6 +134,7 @@ _FILE_DEFAULTS = {
     "lyrion": {"LYRION_CACHE_FILE": "lyrion_resolve_cache.json"},
     "anghami": {"ANGHAMI_TOKEN_FILE": "anghami_oauth.json", "ANGHAMI_CACHE_FILE": "anghami_resolve_cache.json"},
     "gaana": {"GAANA_CACHE_FILE": "gaana_resolve_cache.json"},
+    "jiosaavn": {"JIOSAAVN_CACHE_FILE": "jiosaavn_resolve_cache.json"},
     "audiomack": {"AUDIOMACK_CACHE_FILE": "audiomack_resolve_cache.json"},
 }
 

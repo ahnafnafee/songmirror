@@ -427,7 +427,9 @@ def test_jiosaavn_fetches_all_pages_in_order_and_detects_repeated_pages():
 
 
 def test_jiosaavn_reads_numeric_library_ids_only_from_the_signed_in_directory():
-    directory = {"playlist": [{"id": "123", "title": "Private Mix", "list_count": "2"}]}
+    directory = {"user": {"uid": "viewer"}, "playlist": [
+        {"id": "123", "title": "Private Mix", "list_count": "2", "more_info": {"uid": "viewer"}},
+    ]}
     detail = {"id": "123", "type": "playlist", "title": "Private Mix", "list_count": "2", "list": [
         {"id": "a", "title": "First", "type": "song"}, {"id": "b", "title": "Second", "type": "song"},
     ]}
@@ -438,6 +440,38 @@ def test_jiosaavn_reads_numeric_library_ids_only_from_the_signed_in_directory():
     assert [x["id"] for x in target.playlist_tracks(target.find_playlist("123"))] == ["a", "b"]
     assert [call[2]["params"]["__call"] for call in wire.calls] == ["library.getAll", "playlist.getDetails"]
     assert all(call[2]["headers"]["Cookie"] == "user=fixture" for call in wire.calls)
+
+
+def test_jiosaavn_creates_private_playlists_and_verifies_ordered_track_edits():
+    directory = {"user": {"uid": "viewer"}, "playlist": []}
+    empty = {"id": "123", "type": "playlist", "title": "Private Mix", "list_count": "0", "list": "",
+             "more_info": {"uid": "viewer", "share": "0"}}
+    first = {"id": "track_a", "title": "First", "type": "song", "language": "hindi"}
+    second = {"id": "track_b", "title": "Second", "type": "song", "language": "tamil"}
+    full = {**empty, "list_count": "2", "list": [first, second]}
+    trimmed = {**full, "list_count": "1", "list": [second]}
+    wire = Wire(
+        directory, {"status": "ok", "details": {"id": "123"}}, empty,
+        empty, {"songs": [second, first]}, {"status": "ok"}, full,
+        full, {"details": {"more_info": {"contents": "track_b"}}}, trimmed,
+        {**trimmed, "more_info": {"uid": "different-viewer", "share": "0"}},
+    )
+    target = JioSaavnTarget(session=wire, web_session={"cookie": "user=fixture"})
+    with pytest.raises(TargetCapabilityError, match="can.t create public"):
+        target.create({"name": "Public Mix", "_create_public": True})
+    assert target.list_playlists() == {}
+    playlist = target.create({"name": "Private Mix"})
+    assert target.is_editable(playlist)
+    assert target.find_playlist("123") == playlist
+    assert target.add(playlist, ["track_a", "track_b", "track_a"]) == ["track_a", "track_b"]
+    assert target.remove(playlist, {"id": "track_a"})
+    with pytest.raises(TargetCapabilityError, match="confirm ownership"):
+        target.remove(playlist, {"id": "track_b"})
+    calls = {kwargs["params"]["__call"]: kwargs["params"] for _, _, kwargs in wire.calls}
+    assert calls["playlist.create"]["share"] == "false"
+    assert calls["playlist.add"]["contents"] == "~~track_a~hindi^~~track_b~tamil"
+    assert calls["playlist.remove"]["pid"] == "track_a"
+    assert not wire.replies
 
 
 def test_audiomack_uses_the_complete_public_player_payload():

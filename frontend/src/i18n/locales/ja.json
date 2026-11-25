@@ -795,6 +795,7 @@
   "Disconnect browser session": "ブラウザーセッションの接続を解除",
   "Connect account": "アカウントを接続",
   "Read playlists from your signed-in account or use a public playlist link.": "ログインしたアカウントのプレイリストを読み取るか、公開プレイリストのリンクを使います。",
+  "Sync playlists with your signed-in account or import a public playlist link.": "ログイン済みのアカウントとプレイリストを同期するか、公開プレイリストのリンクをインポートします。",
   "Connect with a public playlist link": "公開プレイリストのリンクで接続",
   "Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.": "公開プレイリストを同期や転送のソースとして使います。開発者キーやログインは不要です。",
   "Open a public playlist in your browser and copy its full address.": "ブラウザーで公開プレイリストを開き、アドレス全体をコピーします。",

@@ -427,9 +427,26 @@ class JioSaavnTarget(WebPlaylistAccountTarget):
     api_url = "https://www.jiosaavn.com"
     id_pattern = re.compile(r"(?:featured/[\w.,!~()'%-]{1,200}|s/playlist/[\w.,!~()'%-]{1,160}/[\w.,!~()'%-]{1,200})/[A-Za-z0-9_,=-]{1,100}")
     account_id_pattern = re.compile(r"[1-9][0-9]{0,18}")
+    track_id_pattern = re.compile(r"[A-Za-z0-9_-]{1,32}")
     page_size = 50
+    supports_playlist_writes = True
+
+    def __init__(self, *, session=None, web_session=None):
+        super().__init__(session=session, web_session=web_session)
+        self.supports_playlist_writes = bool(self.web_session.get("cookie"))
+        self.cache_file = self.resolve_cache_path()
+        self._viewer_id = ""
+
+    @classmethod
+    def playlist_writes_configured(cls):
+        return cls.library_configured()
+
+    @classmethod
+    def resolve_cache_path(cls, opts=None):
+        return os.getenv("JIOSAAVN_CACHE_FILE", "jiosaavn_resolve_cache.json")
 
     def _account_call(self, method, **params):
+        self._requires_session()
         body = self._signed_api.request("GET", "/api.php", headers={
             "Cookie": self.web_session["cookie"], "Origin": self.api_url, "Referer": self.api_url + "/my-music",
         }, params={"__call": method, "api_version": 4, "_format": "json", "_marker": 0, "ctx": "web6dot0", **params})
@@ -442,17 +459,25 @@ class JioSaavnTarget(WebPlaylistAccountTarget):
 
     def _read_directory(self):
         result = self._account_call("library.getAll")
+        self._viewer_id = str((result.get("user") or {}).get("uid") or "")
+        if not self._viewer_id:
+            raise TargetAuthError("Sign in again on JioSaavn and import a fresh library request.")
         entries = []
         for row in rows(result.get("playlist"), "JioSaavn did not return its playlist library."):
             identifier = str(row.get("id") or "")
             if not self.account_id_pattern.fullmatch(identifier):
                 raise RuntimeError("JioSaavn returned an invalid library playlist ID.")
-            if not text(row.get("title")) or integer(row.get("list_count")) is None:
+            if (not text(row.get("title")) or integer(row.get("list_count")) is None
+                    or not (row.get("more_info") or {}).get("uid")):
                 row = self._account_call("playlist.getDetails", listid=identifier, p=1, n=1)
                 if str(row.get("id")) != identifier:
                     raise RuntimeError("JioSaavn returned a different library playlist.")
-            entries.append(self._account_playlist(identifier, row.get("title"), row.get("list_count"), row.get("image")))
+            entries.append(self._account_playlist(identifier, row.get("title"), row.get("list_count"),
+                                                  row.get("image"), _owned=self._owns(row)))
         return entries
+
+    def _owns(self, playlist):
+        return bool(self._viewer_id and str((playlist.get("more_info") or {}).get("uid")) == self._viewer_id)
 
     def _read_account_playlist(self, playlist):
         key = playlist["id"]
@@ -460,9 +485,105 @@ class JioSaavnTarget(WebPlaylistAccountTarget):
         count = integer(body.get("list_count"))
         if (str(body.get("id")) != key or body.get("type") != "playlist" or count is None or count > 10_000):
             return None
-        entries = self._check_rows(body.get("list"), count)
-        return self._playlist(key, body.get("title"), [self._jio_track(row) for row in entries], count=count,
-                              image=body.get("image"), description=body.get("header_desc"))
+        # The web player encodes the list of tracks as an empty string for a new playlist.
+        returned = body.get("list")
+        entries = self._check_rows([] if count == 0 and returned == "" else returned, count)
+        snapshot = self._playlist(key, body.get("title"), [self._jio_track(row) for row in entries], count=count,
+                                  image=body.get("image"), description=body.get("header_desc"))
+        return {**snapshot, "_owned": self._owns(body),
+                "_private": str((body.get("more_info") or {}).get("share")).lower() in {"0", "false"}}
+
+    def list_playlists(self):
+        result = {}
+        for playlist in self.browse_playlists():
+            key = playlist["name"].casefold()
+            if key not in result or (self.is_editable(playlist) and not self.is_editable(result[key])):
+                result[key] = playlist
+        return result
+
+    def is_editable(self, playlist):
+        return (self.supports_playlist_writes and playlist.get("_account_playlist") is True
+                and playlist.get("_owned") is True)
+
+    def _owned_snapshot(self, playlist):
+        if not self.is_editable(playlist) or not self.account_id_pattern.fullmatch(str(playlist.get("id") or "")):
+            raise TargetCapabilityError("Only playlists owned by the connected JioSaavn account can be edited.")
+        if not self._viewer_id:
+            self.browse_playlists()
+        snapshot = self._read_account_playlist(playlist)
+        if snapshot is None or not snapshot["_owned"]:
+            raise TargetCapabilityError("JioSaavn could not confirm ownership of the destination playlist.")
+        return snapshot
+
+    def create(self, playlist):
+        self._create_public(playlist)
+        self._requires_session()
+        if not self._viewer_id:
+            self.browse_playlists()
+        name, _ = source_playlist_details(playlist)
+        response = self._account_call("playlist.create", listname=name, contents="", share="false")
+        details = response.get("details") or {}
+        key = str(details.get("id") or details.get("listid") or (details.get("more_info") or {}).get("listid") or "")
+        if response.get("status") != "ok" or not self.account_id_pattern.fullmatch(key):
+            raise RuntimeError("JioSaavn did not identify the new playlist.")
+        snapshot = self._read_account_playlist({"id": key})
+        if snapshot is None or not snapshot["_owned"] or not snapshot["_private"] or snapshot["name"] != text(name):
+            raise RuntimeError("JioSaavn did not confirm the new private playlist.")
+        created = self._account_playlist(key, snapshot["name"], snapshot["count"], _owned=True)
+        if self._library is not None:
+            self._library[key] = created
+        return created
+
+    def add(self, playlist, target_ids):
+        wanted = list(dict.fromkeys(map(str, target_ids)))
+        if not all(self.track_id_pattern.fullmatch(key) for key in wanted):
+            raise ValueError("Expected valid JioSaavn track IDs.")
+        current = self._owned_snapshot(playlist)
+        expected = [row["id"] for row in current["_tracks"]]
+        existing = set(expected)
+        added = [key for key in wanted if key not in existing]
+        for batch in chunks(added, 25):
+            metadata = self._account_call("song.getDetails", pids=",".join(batch))
+            details = rows(metadata.get("songs"), "JioSaavn did not return catalog track details.")
+            languages = {row.get("id"): text(row.get("language")) for row in details}
+            if any(not re.fullmatch(r"[A-Za-z][A-Za-z_-]{0,31}", languages.get(key, "")) for key in batch):
+                raise RuntimeError("JioSaavn did not identify a language for every track to add.")
+            contents = "^".join(f"~~{key}~{languages[key]}" for key in batch)
+            response = self._account_call("playlist.add", listid=current["id"], contents=contents)
+            if response.get("status") != "ok":
+                raise RuntimeError("JioSaavn did not confirm the playlist additions.")
+            expected.extend(batch)
+        if added:
+            self._verify_tracks(playlist, expected)
+        return added
+
+    def remove(self, playlist, track):
+        current = self._owned_snapshot(playlist)
+        key = str(track.get("id") or "")
+        expected = [row["id"] for row in current["_tracks"]]
+        if not self.track_id_pattern.fullmatch(key) or expected.count(key) != 1:
+            return False  # The web API can only remove by catalog ID.
+        self._account_call("playlist.remove", listid=current["id"], pid=key)
+        expected.remove(key)
+        self._verify_tracks(playlist, expected)
+        return True
+
+    def _verify_tracks(self, playlist, expected):
+        snapshot = self._owned_snapshot(playlist)
+        if [row["id"] for row in snapshot["_tracks"]] != expected:
+            raise RuntimeError("JioSaavn did not confirm the expected playlist tracks after the change.")
+
+    def search_candidates(self, query, *, limit=5):
+        body = self._api.request("GET", "/api.php", params={
+            "__call": "search.getResults", "q": query, "p": 1, "n": min(limit, 30),
+            "api_version": 4, "_format": "json", "_marker": 0, "ctx": "web6dot0",
+        })
+        return [self._jio_track(row) for row in rows(body.get("results"), "JioSaavn did not return track results.")
+                if row.get("type") == "song" and self.track_id_pattern.fullmatch(str(row.get("id") or ""))
+                and text(row.get("title"))][:limit]
+
+    def resolve(self, track, cache):
+        return resolve_catalog_track(self, track, cache)
 
     def _page(self, key, page):
         return self._api.request("GET", "/api.php", missing=True, params={

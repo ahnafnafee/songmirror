@@ -819,6 +819,7 @@
   "Disconnect browser session": "افصل جلسة المتصفح",
   "Connect account": "اربط الحساب",
   "Read playlists from your signed-in account or use a public playlist link.": "اقرأ قوائم تشغيل حسابك بعد تسجيل الدخول أو استخدم رابط قائمة تشغيل عامة.",
+  "Sync playlists with your signed-in account or import a public playlist link.": "زامن قوائم التشغيل مع حسابك المسجّل الدخول إليه أو استورد رابطًا لقائمة تشغيل عامة.",
   "Connect with a public playlist link": "الاتصال عبر رابط قائمة تشغيل عامة",
   "Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.": "استخدم قوائم التشغيل العامة كمصادر للمزامنة والنقل. لا يلزم مفتاح مطوّر أو تسجيل الدخول.",
   "Open a public playlist in your browser and copy its full address.": "افتح قائمة تشغيل عامة في متصفحك وانسخ عنوانها الكامل.",

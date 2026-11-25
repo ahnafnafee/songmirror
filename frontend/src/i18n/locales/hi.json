@@ -795,6 +795,7 @@
   "Disconnect browser session": "ब्राउज़र सत्र डिस्कनेक्ट करें",
   "Connect account": "खाता कनेक्ट करें",
   "Read playlists from your signed-in account or use a public playlist link.": "साइन-इन किए गए खाते की प्लेलिस्ट पढ़ें या सार्वजनिक प्लेलिस्ट का लिंक इस्तेमाल करें।",
+  "Sync playlists with your signed-in account or import a public playlist link.": "अपने साइन-इन किए गए खाते के साथ प्लेलिस्ट सिंक करें या किसी सार्वजनिक प्लेलिस्ट का लिंक इंपोर्ट करें।",
   "Connect with a public playlist link": "सार्वजनिक प्लेलिस्ट के लिंक से कनेक्ट करें",
   "Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.": "सिंक और ट्रांसफ़र के स्रोत के रूप में सार्वजनिक प्लेलिस्ट का उपयोग करें। डेवलपर कुंजी या साइन इन की ज़रूरत नहीं है।",
   "Open a public playlist in your browser and copy its full address.": "ब्राउज़र में कोई सार्वजनिक प्लेलिस्ट खोलें और उसका पूरा पता कॉपी करें।",

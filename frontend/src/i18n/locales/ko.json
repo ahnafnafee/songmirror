@@ -795,6 +795,7 @@
   "Disconnect browser session": "브라우저 세션 연결 해제",
   "Connect account": "계정 연결",
   "Read playlists from your signed-in account or use a public playlist link.": "로그인한 계정에서 재생목록을 읽거나 공개 재생목록 링크를 사용하세요.",
+  "Sync playlists with your signed-in account or import a public playlist link.": "로그인한 계정과 재생목록을 동기화하거나 공개 재생목록 링크를 가져오세요.",
   "Connect with a public playlist link": "공개 재생목록 링크로 연결",
   "Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.": "공개 재생목록을 동기화 및 전송의 소스로 사용하세요. 개발자 키나 로그인은 필요하지 않습니다.",
   "Open a public playlist in your browser and copy its full address.": "브라우저에서 공개 재생목록을 열고 전체 주소를 복사하세요.",

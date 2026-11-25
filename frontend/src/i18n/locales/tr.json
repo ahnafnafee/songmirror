@@ -795,6 +795,7 @@
   "Disconnect browser session": "Tarayıcı oturumunun bağlantısını kes",
   "Connect account": "Hesabı bağla",
   "Read playlists from your signed-in account or use a public playlist link.": "Oturum açtığınız hesabın çalma listelerini okuyun veya herkese açık bir çalma listesi bağlantısı kullanın.",
+  "Sync playlists with your signed-in account or import a public playlist link.": "Çalma listelerini oturum açtığınız hesapla eşitleyin veya herkese açık bir çalma listesi bağlantısını içe aktarın.",
   "Connect with a public playlist link": "Herkese açık çalma listesi bağlantısıyla bağlan",
   "Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.": "Herkese açık çalma listelerini eşitleme ve aktarım kaynağı olarak kullanın. Geliştirici anahtarı veya oturum açma gerekmez.",
   "Open a public playlist in your browser and copy its full address.": "Tarayıcınızda herkese açık bir çalma listesi açın ve tam adresini kopyalayın.",

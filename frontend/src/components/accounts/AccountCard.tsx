@@ -151,7 +151,9 @@ export function AccountCard({ account, updating, onChanged }: {
       <p className="text-[13px] leading-relaxed text-text-2">{account.provider === 'anghami' && account.auth_kind === 'token_paste'
         ? t("Sync playlists through the signed-in Anghami web player.")
         : account.playlist_browser
-        ? t("Read playlists from your signed-in account or use a public playlist link.")
+        ? capabilities.library_write
+          ? t("Sync playlists with your signed-in account or import a public playlist link.")
+          : t("Read playlists from your signed-in account or use a public playlist link.")
         : account.auth_kind === 'public_link'
           ? t("Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.")
           : SERVICE_BLURBS[account.provider] ?? ''}</p>

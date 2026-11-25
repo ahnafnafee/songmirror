@@ -795,6 +795,7 @@
   "Disconnect browser session": "断开浏览器会话",
   "Connect account": "连接账户",
   "Read playlists from your signed-in account or use a public playlist link.": "读取已登录账户中的歌单，或使用公开歌单链接。",
+  "Sync playlists with your signed-in account or import a public playlist link.": "与已登录的账号同步歌单，或导入公开歌单链接。",
   "Connect with a public playlist link": "使用公开歌单链接连接",
   "Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.": "将公开歌单用作同步和转移的来源。无需开发者密钥或登录。",
   "Open a public playlist in your browser and copy its full address.": "在浏览器中打开公开歌单并复制完整地址。",

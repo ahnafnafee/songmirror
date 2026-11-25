@@ -806,6 +806,7 @@
   "Disconnect browser session": "Disconnect browser session",
   "Connect account": "Connect account",
   "Read playlists from your signed-in account or use a public playlist link.": "Read playlists from your signed-in account or use a public playlist link.",
+  "Sync playlists with your signed-in account or import a public playlist link.": "Sync playlists with your signed-in account or import a public playlist link.",
   "Connect with a public playlist link": "Connect with a public playlist link",
   "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.": "This removes the account from SongMirror and clears its saved sign-in. Syncs can continue if their remaining accounts support them.",
   "Unavailable accounts": "Unavailable accounts",

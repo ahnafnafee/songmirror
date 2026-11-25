@@ -795,6 +795,7 @@
   "Disconnect browser session": "Ngắt kết nối phiên trình duyệt",
   "Connect account": "Kết nối tài khoản",
   "Read playlists from your signed-in account or use a public playlist link.": "Đọc danh sách phát từ tài khoản đã đăng nhập hoặc dùng liên kết danh sách phát công khai.",
+  "Sync playlists with your signed-in account or import a public playlist link.": "Đồng bộ danh sách phát với tài khoản đã đăng nhập hoặc nhập liên kết đến danh sách phát công khai.",
   "Connect with a public playlist link": "Kết nối bằng liên kết danh sách phát công khai",
   "Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.": "Dùng danh sách phát công khai làm nguồn đồng bộ và chuyển danh sách. Không cần khóa nhà phát triển hay đăng nhập.",
   "Open a public playlist in your browser and copy its full address.": "Mở danh sách phát công khai trong trình duyệt rồi sao chép địa chỉ đầy đủ.",
