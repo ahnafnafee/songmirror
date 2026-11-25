@@ -42,8 +42,8 @@ const DEFAULT_SERVICE_STYLE: ServiceStyle = {
   text: 'text-neutral',
 }
 
-/** Service/source identity — dots + soft-tinted badges only, never buttons
- * (the app accent is teal). Engine events historically used a few shortened
+/** Service/source identity for marks, dots, and soft-tinted badges.
+ * Engine events historically used a few shortened
  * tags, so normalize them before presenting or filtering them. */
 const SERVICE_STYLES: Record<string, ServiceStyle> = {
   spotify: { label: 'Spotify', dot: 'bg-svc-spotify', soft: 'bg-svc-spotify-soft', text: 'text-svc-spotify' },
@@ -58,12 +58,12 @@ const SERVICE_STYLES: Record<string, ServiceStyle> = {
   listenbrainz: { label: 'ListenBrainz', dot: 'bg-svc-listenbrainz', soft: 'bg-svc-listenbrainz-soft', text: 'text-svc-listenbrainz' },
   subsonic: { label: 'Navidrome / Subsonic', dot: 'bg-svc-subsonic', soft: 'bg-svc-subsonic-soft', text: 'text-svc-subsonic' },
   jellyfin: { label: 'Jellyfin', dot: 'bg-svc-jellyfin', soft: 'bg-svc-jellyfin-soft', text: 'text-svc-jellyfin' },
-  emby: { ...DEFAULT_SERVICE_STYLE, label: 'Emby' },
-  plex: { ...DEFAULT_SERVICE_STYLE, label: 'Plex' },
-  mopidy: { ...DEFAULT_SERVICE_STYLE, label: 'Mopidy' },
-  lyrion: { ...DEFAULT_SERVICE_STYLE, label: 'Lyrion Music Server' },
-  anghami: { ...DEFAULT_SERVICE_STYLE, label: 'Anghami' },
-  qqmusic: { ...DEFAULT_SERVICE_STYLE, label: 'QQ Music' },
+  emby: { label: 'Emby', dot: 'bg-svc-emby', soft: 'bg-svc-emby-soft', text: 'text-svc-emby' },
+  plex: { label: 'Plex', dot: 'bg-svc-plex', soft: 'bg-svc-plex-soft', text: 'text-svc-plex' },
+  mopidy: { label: 'Mopidy', dot: 'bg-svc-mopidy', soft: 'bg-svc-mopidy-soft', text: 'text-svc-mopidy' },
+  lyrion: { label: 'Lyrion Music Server', dot: 'bg-svc-lyrion', soft: 'bg-svc-lyrion-soft', text: 'text-svc-lyrion' },
+  anghami: { label: 'Anghami', dot: 'bg-svc-anghami', soft: 'bg-svc-anghami-soft', text: 'text-svc-anghami' },
+  qqmusic: { label: 'QQ Music', dot: 'bg-svc-qqmusic', soft: 'bg-svc-qqmusic-soft', text: 'text-svc-qqmusic' },
   sync: { get label() { return t("Sync engine") }, dot: 'bg-accent', soft: 'bg-accent-soft', text: 'text-accent' },
   local: { get label() { return t("Download mirror") }, dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },
   transfer: { get label() { return t("Playlist transfers") }, dot: 'bg-info', soft: 'bg-info-soft', text: 'text-info' },

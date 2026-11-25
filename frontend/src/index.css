@@ -57,7 +57,7 @@
   --color-info: #2f66a8;
   --color-info-soft: rgb(47 102 168 / 0.11);
 
-  /* ---- service identity · dots + badges only, never buttons ---- */
+  /* ---- service identity · marks, dots, and badges ---- */
   --color-svc-spotify: #128f43;
   --color-svc-spotify-soft: rgb(18 143 67 / 0.11);
   --color-svc-tidal: #171717;
@@ -82,6 +82,18 @@
   --color-svc-subsonic-soft: rgb(36 100 155 / 0.1);
   --color-svc-jellyfin: #7a58c5;
   --color-svc-jellyfin-soft: rgb(122 88 197 / 0.11);
+  --color-svc-emby: #2b7428;
+  --color-svc-emby-soft: rgb(43 116 40 / 0.11);
+  --color-svc-plex: #886300;
+  --color-svc-plex-soft: rgb(136 99 0 / 0.11);
+  --color-svc-mopidy: #2c64b8;
+  --color-svc-mopidy-soft: rgb(44 100 184 / 0.11);
+  --color-svc-lyrion: #4c6d21;
+  --color-svc-lyrion-soft: rgb(76 109 33 / 0.11);
+  --color-svc-anghami: #8432ba;
+  --color-svc-anghami-soft: rgb(132 50 186 / 0.11);
+  --color-svc-qqmusic: #00764f;
+  --color-svc-qqmusic-soft: rgb(0 118 79 / 0.11);
 
   /* ---- radii · squarer = steadier ---- */
   --radius-chip: 6px; /* chips, glyph tiles, tracklist numbers */
@@ -161,6 +173,18 @@
   --color-svc-subsonic-soft: rgb(117 182 237 / 0.13);
   --color-svc-jellyfin: #ae8cec;
   --color-svc-jellyfin-soft: rgb(174 140 236 / 0.13);
+  --color-svc-emby: #64ca57;
+  --color-svc-emby-soft: rgb(100 202 87 / 0.13);
+  --color-svc-plex: #f4c226;
+  --color-svc-plex-soft: rgb(244 194 38 / 0.13);
+  --color-svc-mopidy: #79aeff;
+  --color-svc-mopidy-soft: rgb(121 174 255 / 0.13);
+  --color-svc-lyrion: #b9e682;
+  --color-svc-lyrion-soft: rgb(185 230 130 / 0.13);
+  --color-svc-anghami: #d285ff;
+  --color-svc-anghami-soft: rgb(210 133 255 / 0.13);
+  --color-svc-qqmusic: #38d99b;
+  --color-svc-qqmusic-soft: rgb(56 217 155 / 0.13);
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-md: 0 6px 18px -6px rgb(0 0 0 / 0.45);

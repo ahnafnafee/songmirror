@@ -105,6 +105,26 @@ async function main() {
     for (const option of await menu.getByRole('option').all()) {
       assert.ok(await option.locator('svg, img').count() >= 1, `${await option.innerText()} needs its provider mark`)
     }
+    const serviceColors = {
+      Emby: 'emby', Plex: 'plex', Mopidy: 'mopidy', 'Lyrion Music Server': 'lyrion', Anghami: 'anghami', 'QQ Music': 'qqmusic',
+    }
+    async function verifyServiceColors(listbox) {
+      return Promise.all(Object.entries(serviceColors).map(async ([name, service]) => {
+        const mark = listbox.getByRole('option', { name, exact: true }).locator('svg')
+        const { actual, expected } = await mark.evaluate((el, id) => {
+          const probe = document.createElement('span')
+          probe.style.color = `var(--color-svc-${id})`
+          el.parentElement.append(probe)
+          const styles = { actual: getComputedStyle(el).color, expected: getComputedStyle(probe).color }
+          probe.remove()
+          return styles
+        }, service)
+        assert.equal(actual, expected, `${name} needs its provider color`)
+        return actual
+      }))
+    }
+    const darkColors = await verifyServiceColors(menu)
+    assert.equal(new Set(darkColors).size, 6, 'The new provider marks have distinct dark-mode colors')
     await menu.press('End')
     await menu.press('Enter')
     assert.ok((await picker.innerText()).includes('QQ Music'))
@@ -146,6 +166,14 @@ async function main() {
     await page.getByRole('button', { name: 'Add profile', exact: true }).click()
     await addedProfile
     assert.deepEqual(profiles, [{ provider: 'listenbrainz', label: 'Test listener' }])
+    await page.evaluate(() => localStorage.setItem('songmirror-theme', 'light'))
+    await page.reload()
+    await picker.click()
+    menu = page.getByRole('listbox', { name: 'Provider', exact: true })
+    const lightColors = await verifyServiceColors(menu)
+    assert.equal(new Set(lightColors).size, 6, 'The new provider marks have distinct light-mode colors')
+    lightColors.forEach((color, index) => assert.notEqual(color, darkColors[index]))
+    await menu.press('Escape')
     console.log('PASS: provider marks, keyboard selection, typeahead, dismissal, mobile bounds, and selected profile submission')
     const cloudCard = page.locator('[data-tour="account-card"]').filter({ has: page.getByRole('heading', { name: 'SoundCloud', exact: true }) })
     await cloudCard.getByRole('button', { name: 'Connect', exact: true }).click()
