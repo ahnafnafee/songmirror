@@ -52,6 +52,27 @@ def test_anghami_pkce_is_bound_to_the_account_authorization_attempt(tmp_path, mo
     assert exchanged["redirect_uri"] == started["redirect_uri"]
 
 
+def test_anghami_account_prefers_web_player_and_only_accepts_local_browser_addresses(tmp_path, monkeypatch):
+    from songmirror.engine.targets.anghami_web import AnghamiBrowserClient
+
+    def request(self, operation):
+        assert operation == "GETplaylists"
+        return {"sections": []}
+
+    monkeypatch.setattr(AnghamiBrowserClient, "request", request)
+    with TestClient(_app(tmp_path)) as client:
+        account = next(row for row in client.get("/api/accounts").json() if row["provider"] == "anghami")
+        assert account["auth_kind"] == "token_paste" and account["callback_url"] is None
+        assert [field["key"] for field in account["fields"]] == ["ANGHAMI_BROWSER_ENDPOINT"]
+        endpoint = "/api/accounts/anghami/connect"
+        bad = client.post(endpoint, json={"ANGHAMI_BROWSER_ENDPOINT": "http://remote.example:9222"})
+        assert bad.json()["state"] == "error"
+        good = client.post(endpoint, json={"ANGHAMI_BROWSER_ENDPOINT": "http://host.docker.internal:9222"})
+        assert good.json()["capabilities"]["library_write"]
+        account = next(row for row in client.get("/api/accounts").json() if row["provider"] == "anghami")
+        assert account["fields"][0]["configured"] and not account["fields"][0]["value"]
+
+
 def test_transfer_conflict_resolution_returns_manual_id_validation_error(tmp_path):
     app = _app(tmp_path)
 

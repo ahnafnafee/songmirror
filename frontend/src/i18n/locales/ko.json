@@ -1,4 +1,9 @@
 {
+  "Chrome DevTools address": "Chrome DevTools 주소",
+  "Sync playlists through the signed-in Anghami web player. Keep its playlist tab open during sync.": "로그인한 Anghami 웹 플레이어에서 재생목록을 동기화합니다. 동기화하는 동안 재생목록 탭을 열어 두세요.",
+  "Open a dedicated Chrome profile with a local DevTools port enabled.": "로컬 DevTools 포트가 활성화된 전용 Chrome 프로필을 엽니다.",
+  "Sign in to <player>Anghami</player> and leave Your Library open.": "<player>Anghami</player>에 로그인하고 내 라이브러리를 열어 두세요.",
+  "Enter the Chrome DevTools address, for example <local/> or <docker/> from Docker.": "Chrome DevTools 주소를 입력하세요. 예를 들면 <local/>, Docker에서는 <docker/>입니다.",
   "Choose a new source": "새 소스 선택",
   "Connected accounts": "연결된 계정",
   "Leave blank if the config.json response has no accessToken.": "config.json 응답에 accessToken이 없으면 비워 두세요.",

@@ -1,4 +1,9 @@
 {
+  "Chrome DevTools address": "عنوان أدوات مطوّري Chrome",
+  "Sync playlists through the signed-in Anghami web player. Keep its playlist tab open during sync.": "زامن قوائم التشغيل عبر مشغّل Anghami على الويب بعد تسجيل الدخول. أبقِ تبويب قوائم التشغيل مفتوحًا أثناء المزامنة.",
+  "Open a dedicated Chrome profile with a local DevTools port enabled.": "افتح ملفًا شخصيًا مخصصًا في Chrome مع تمكين منفذ محلي لأدوات المطوّرين.",
+  "Sign in to <player>Anghami</player> and leave Your Library open.": "سجّل الدخول إلى <player>Anghami</player> واترك قسم مكتبتك مفتوحًا.",
+  "Enter the Chrome DevTools address, for example <local/> or <docker/> from Docker.": "أدخل عنوان أدوات مطوّري Chrome، مثل <local/> أو <docker/> عند استخدام Docker.",
   "Choose a new source": "اختر مصدرًا جديدًا",
   "Connected accounts": "الحسابات المتصلة",
   "Leave blank if the config.json response has no accessToken.": "اترك الحقل فارغًا إذا كانت استجابة config.json لا تحتوي على accessToken.",

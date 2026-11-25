@@ -176,7 +176,7 @@ def _status_payload(request, profile):
         editable_details = _editable_details(profile.provider)
         authorization_pending = connector.authorization_pending
         fields = []
-        for field in connector.config_fields:
+        for field in connector.setup_fields:
             data = asdict(field)
             current = store.get(field.key) or ""
             data["value"] = "" if field.secret else current
@@ -299,7 +299,7 @@ def save_config(account_id: str, request: Request, values: dict = Body(...)):
 
 
 @router.post("/api/accounts/{account_id}/connect")
-async def connect(account_id: str, request: Request, body: dict | None = Body(default=None)):
+def connect(account_id: str, request: Request, body: dict | None = Body(default=None)):
     profile = _profile(request, account_id)
     request.app.state.connection_attempts.invalidate(profile.id)
     profiles = request.app.state.account_profiles

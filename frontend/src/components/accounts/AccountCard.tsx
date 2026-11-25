@@ -149,7 +149,9 @@ export function AccountCard({ account, updating, onChanged }: {
         ) : <StatusPill state={account.state} className="ms-auto" />}
       </div>
 
-      <p className="text-[13px] leading-relaxed text-text-2">{account.playlist_browser
+      <p className="text-[13px] leading-relaxed text-text-2">{account.provider === 'anghami' && account.auth_kind === 'token_paste'
+        ? t("Sync playlists through the signed-in Anghami web player. Keep its playlist tab open during sync.")
+        : account.playlist_browser
         ? t("Read playlists from your signed-in account or use a public playlist link.")
         : account.auth_kind === 'public_link'
           ? t("Use public playlists as sources for sync and transfers. No developer key or sign-in is needed.")

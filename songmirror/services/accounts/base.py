@@ -70,6 +70,10 @@ class Connector:
 
     authorization_pending = False
 
+    @property
+    def setup_fields(self):
+        return self.config_fields
+
     def status(self) -> ConnStatus:
         raise NotImplementedError
 

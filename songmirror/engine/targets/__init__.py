@@ -9,8 +9,11 @@ Everything else — one-way mirroring, N-way reconcile, canonical identity,
 caching, safety rails — is provider-agnostic and needs no change.
 """
 
+import os
+
 from .amazon_music import AmazonMusicTarget
 from .anghami import AnghamiTarget
+from .anghami_web import AnghamiBrowserClient, AnghamiWebTarget
 from .apple import AppleMusicTarget
 from .base import (
     MirrorTarget,
@@ -71,6 +74,16 @@ def _rest_provider(target_cls, label, **kwargs):
         return None
 
 
+def _anghami():
+    endpoint = os.getenv("ANGHAMI_BROWSER_ENDPOINT")
+    if endpoint:
+        try:
+            return AnghamiWebTarget(AnghamiBrowserClient(endpoint))
+        except ValueError:
+            return None
+    return _rest_provider(AnghamiTarget, "Anghami")
+
+
 def _spotify(opts, sp, *, sync_peer=False, songs=None):
     """Build Spotify from OAuth or from a standalone signed-in web session."""
     if sp is None:
@@ -116,7 +129,7 @@ _REGISTRY = {
     "plex": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(PlexTarget, "Plex"),
     "mopidy": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(MopidyTarget, "Mopidy"),
     "lyrion": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(LyrionTarget, "Lyrion Music Server"),
-    "anghami": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(AnghamiTarget, "Anghami"),
+    "anghami": lambda opts, sp, sync_peer=False, songs=None: _anghami(),
     "qqmusic": lambda opts, sp, sync_peer=False, songs=None: _rest_provider(QQMusicTarget, "QQ Music"),
     **{provider: (lambda opts, sp, sync_peer=False, songs=None, cls=target: cls())
        for provider, target in PUBLIC_PLAYLIST_TARGETS.items()},
@@ -150,7 +163,7 @@ _CLASSES = {
     "plex": PlexTarget,
     "mopidy": MopidyTarget,
     "lyrion": LyrionTarget,
-    "anghami": AnghamiTarget,
+    "anghami": AnghamiWebTarget,
     "qqmusic": QQMusicTarget,
     **PUBLIC_PLAYLIST_TARGETS,
 }
@@ -200,9 +213,9 @@ def _writable(identity, opts):
     """
     profiles = _profiles(opts)
     provider = profiles.provider_of(identity) if profiles is not None else identity
-    if playlists_for(identity, opts) and supports_playlist_writes(provider):
-        return True
     cls = _CLASSES.get(provider)
+    if playlists_for(identity, opts) and playlist_writes_for(identity, profiles):
+        return True
     return bool(getattr(opts, "liked_tracks", False)) and bool(
         getattr(cls, "supports_favorite_writes", True)
     )
@@ -211,6 +224,17 @@ def _writable(identity, opts):
 def supports_playlist_writes(provider_id):
     """Whether the provider has a playlist write protocol, independent of its connection."""
     return getattr(_CLASSES.get(provider_id), "supports_playlist_writes", True) is not False
+
+
+def playlist_writes_for(identity, profiles=None):
+    provider = profiles.provider_of(identity) if profiles is not None else identity
+    configured = getattr(_CLASSES.get(provider), "playlist_writes_configured", None)
+    if configured is None:
+        return supports_playlist_writes(provider)
+    if profiles is not None and profiles.resolve(identity) is not None:
+        with profiles.activate(identity):
+            return configured()
+    return configured()
 
 
 def writable_target(target):

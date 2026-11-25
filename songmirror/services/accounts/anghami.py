@@ -1,4 +1,4 @@
-"""Anghami OAuth with a read-only playlist grant."""
+"""Connect a signed-in Anghami web player or an existing OAuth grant."""
 
 import base64
 import hashlib
@@ -6,6 +6,7 @@ import os
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from ...engine.targets.anghami import API, TOKEN_FILE, AnghamiApi
+from ...engine.targets.anghami_web import AnghamiBrowserClient, AnghamiWebTarget, normalize_browser_endpoint
 from ...engine.targets.base import TargetAuthError, TargetCapabilityError
 from .base import ConnStatus, Connector, Field
 
@@ -13,11 +14,46 @@ from .base import ConnStatus, Connector, Field
 class AnghamiConnector(Connector):
     id = "anghami"
     name = "Anghami"
-    auth_kind = "oauth_redirect"
     redirect_pkce = True
     config_fields = [
+        Field("ANGHAMI_BROWSER_ENDPOINT", "Chrome DevTools address", secret=True),
         Field("ANGHAMI_CLIENT_ID", "Client ID", help="Register the callback URL in the Anghami Developer Portal."),
     ]
+
+    @property
+    def auth_kind(self):
+        if not self._store.get("ANGHAMI_BROWSER_ENDPOINT") and self._store.get("ANGHAMI_CLIENT_ID"):
+            return "oauth_redirect"
+        return "token_paste"
+
+    @property
+    def setup_fields(self):
+        return [self.config_fields[1 if self.auth_kind == "oauth_redirect" else 0]]
+
+    def normalize_config(self, values):
+        if values.get("ANGHAMI_BROWSER_ENDPOINT"):
+            return {**values, "ANGHAMI_BROWSER_ENDPOINT": normalize_browser_endpoint(values["ANGHAMI_BROWSER_ENDPOINT"])}
+        return values
+
+    @staticmethod
+    def _browser_status(endpoint):
+        try:
+            target = AnghamiWebTarget(AnghamiBrowserClient(endpoint))
+            target.browse_playlists()
+        except TargetAuthError as exc:
+            return ConnStatus("expired", str(exc))
+        except (RuntimeError, ValueError) as exc:
+            return ConnStatus("error", str(exc))
+        return ConnStatus("connected", capabilities=frozenset({"library_read", "library_write", "public_playlist_read"}))
+
+    def submit(self, values):
+        endpoint = values.get("ANGHAMI_BROWSER_ENDPOINT") or self._store.get("ANGHAMI_BROWSER_ENDPOINT")
+        if not endpoint:
+            return ConnStatus("error", "Enter the local Chrome DevTools address.")
+        status = self._browser_status(endpoint)
+        if status.state == "connected":
+            self._store.save({"ANGHAMI_BROWSER_ENDPOINT": normalize_browser_endpoint(endpoint)})
+        return status
 
     def _client(self):
         client_id = (self._store.get("ANGHAMI_CLIENT_ID") or "").strip()
@@ -27,6 +63,9 @@ class AnghamiConnector(Connector):
         return AnghamiApi(client_id, path)
 
     def status(self):
+        endpoint = self._store.get("ANGHAMI_BROWSER_ENDPOINT")
+        if endpoint:
+            return self._browser_status(endpoint)
         client = self._client()
         if client is None or not client.configured():
             return ConnStatus("unconfigured")

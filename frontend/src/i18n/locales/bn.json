@@ -1,4 +1,9 @@
 {
+  "Chrome DevTools address": "Chrome DevTools ঠিকানা",
+  "Sync playlists through the signed-in Anghami web player. Keep its playlist tab open during sync.": "সাইন ইন করা Anghami ওয়েব প্লেয়ারের মাধ্যমে প্লেলিস্ট সিঙ্ক করুন। সিঙ্ক চলার সময় প্লেলিস্টের ট্যাবটি খোলা রাখুন।",
+  "Open a dedicated Chrome profile with a local DevTools port enabled.": "স্থানীয় DevTools পোর্ট চালু করে একটি নির্দিষ্ট Chrome প্রোফাইল খুলুন।",
+  "Sign in to <player>Anghami</player> and leave Your Library open.": "<player>Anghami</player>-তে সাইন ইন করুন এবং আপনার লাইব্রেরি খোলা রাখুন।",
+  "Enter the Chrome DevTools address, for example <local/> or <docker/> from Docker.": "Chrome DevTools-এর ঠিকানা দিন, যেমন <local/> অথবা Docker থেকে <docker/>।",
   "Choose a new source": "নতুন উৎস বেছে নিন",
   "Connected accounts": "সংযুক্ত অ্যাকাউন্ট",
   "Leave blank if the config.json response has no accessToken.": "config.json প্রতিক্রিয়ায় accessToken না থাকলে ঘরটি ফাঁকা রাখুন।",

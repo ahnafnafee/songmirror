@@ -424,7 +424,7 @@ export function ConnectWizardModal({ account, editName = false, open, onClose, o
   // OAuth credentials and ListenBrainz's optional token can be reused on
   // reconnect. Other direct-submit providers require the actual values.
   const canKeepBlank = account.auth_kind === 'oauth_redirect' || account.auth_kind === 'oauth_device'
-    || account.provider === 'listenbrainz'
+    || account.provider === 'listenbrainz' || account.provider === 'anghami'
 
   // Briefly confirm success before handing control back to the parent, which
   // closes the wizard — so "Connected!" is actually visible for a beat
@@ -807,7 +807,18 @@ function FieldsStep({
   guideOverride?: ConnectGuideContent
 }) {
   useTranslation()
-  const guide = guideOverride ?? (account.auth_kind === 'public_link' ? {
+  const anghamiBrowser = account.provider === 'anghami' && account.auth_kind === 'token_paste'
+  const guide = guideOverride ?? (anghamiBrowser ? {
+    intro: t("Sync playlists through the signed-in Anghami web player. Keep its playlist tab open during sync."),
+    steps: [
+      <span key="chrome">{t("Open a dedicated Chrome profile with a local DevTools port enabled.")}{' '}
+        <Code>--remote-debugging-port=9222</Code>{' '}<Code>--user-data-dir=…</Code></span>,
+      <Trans key="player" i18nKey="Sign in to <player>Anghami</player> and leave Your Library open."
+        components={{ player: <GuideLink href="https://play.anghami.com/playlists" /> }} />,
+      <Trans key="address" i18nKey="Enter the Chrome DevTools address, for example <local/> or <docker/> from Docker."
+        components={{ local: <Code>http://127.0.0.1:9222</Code>, docker: <Code>http://host.docker.internal:9222</Code> }} />,
+    ],
+  } : account.auth_kind === 'public_link' ? {
     intro: t("Use public playlists as sources for sync and transfers. No developer key or sign-in is needed."),
     steps: [
       t("Open a public playlist in your browser and copy its full address."),
@@ -815,7 +826,7 @@ function FieldsStep({
     ],
   } : connectGuides()[account.provider])
   const canKeepBlank = account.auth_kind === 'oauth_redirect' || account.auth_kind === 'oauth_device'
-    || account.provider === 'listenbrainz'
+    || account.provider === 'listenbrainz' || anghamiBrowser
   return (
     <form
       className="flex flex-col gap-4"

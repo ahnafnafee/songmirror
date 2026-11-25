@@ -743,6 +743,49 @@ def test_partial_collection_is_never_returned_as_a_shorter_playlist():
         target.playlist_tracks({"id": "2"})
 
 
+def test_anghami_web_playlist_writes_exclude_recommendations_and_require_ownership():
+    from songmirror.engine.targets.anghami_web import AnghamiWebTarget
+
+    class Player:
+        members = []
+        owned = True
+
+        def request(self, operation, *, params=None, form=None):
+            if operation == "GETplaylists":
+                return {"sections": [{"type": "playlist", "group": "playlists", "data": [
+                    {"id": "91", "name": "Private Mix", "count": len(self.members), "public": "false"},
+                ]}]}
+            if operation == "GETplaylistdata":
+                return {"playlistid": int(params["playlistid"]), "name": "Private Mix", "canedit": self.owned,
+                        "PlaylistCount": len(self.members), "sections": [
+                            {"type": "song", "show_recommendations": 0,
+                             "data": [{"id": key, "title": key, "artist": "Artist"} for key in self.members]},
+                            {"type": "song", "suggestionstoadd": 1,
+                             "data": [{"id": "19", "title": "Suggested", "artist": "Artist"}]},
+                        ]}
+            assert operation == "PUTplaylist"
+            if form == {"name": "Private Mix", "public": "false"}:
+                return {"playlist": {"id": 91}}
+            assert self.owned and form["playlistid"] == "91"
+            if form["action"] == "append":
+                self.members.append(form["songID"])
+            else:
+                assert form["action"] == "delete"
+                self.members.remove(form["songid"])
+            return {"status": "ok"}
+
+    transport = Player()
+    target = AnghamiWebTarget(transport)
+    playlist = target.create({"name": "Private Mix"})
+    assert playlist["_private"]
+    assert target.add(playlist, ["101", "102", "103"]) == ["101", "102", "103"]
+    assert target.remove(playlist, {"id": "102"})
+    assert [row["id"] for row in target.playlist_tracks(target.fetch_playlist("91"))] == ["101", "103"]
+    transport.owned = False
+    with pytest.raises(TargetCapabilityError, match="confirm ownership"):
+        target.add(playlist, ["104"])
+
+
 def test_read_only_providers_are_available_for_transfers_but_excluded_as_targets(monkeypatch):
     opts = SimpleNamespace(providers="anghami,qqmusic,mopidy", sync_source="spotify")
     node = SimpleNamespace(supports_playlist_writes=False, name="Mopidy", tag="mopidy")

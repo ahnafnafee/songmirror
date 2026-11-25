@@ -83,7 +83,7 @@ PROVIDER_KEYS = {
     "plex": {"PLEX_URL", "PLEX_TOKEN", "PLEX_CACHE_FILE"},
     "mopidy": {"MOPIDY_URL", "MOPIDY_CACHE_FILE"},
     "lyrion": {"LYRION_URL", "LYRION_USER", "LYRION_PASSWORD", "LYRION_CACHE_FILE"},
-    "anghami": {"ANGHAMI_CLIENT_ID", "ANGHAMI_TOKEN_FILE"},
+    "anghami": {"ANGHAMI_CLIENT_ID", "ANGHAMI_TOKEN_FILE", "ANGHAMI_BROWSER_ENDPOINT", "ANGHAMI_CACHE_FILE"},
     "qqmusic": {"QQMUSIC_API_KEY", "QQMUSIC_PREFER_BROWSER", "QQMUSIC_PLAYLIST_WEB_SESSION"},
     **{source: {f"{source.upper()}_PUBLIC_PLAYLIST", *([target.session_key()] if hasattr(target, "session_key") else [])}
        for source, target in PUBLIC_PLAYLIST_TARGETS.items()},
@@ -131,7 +131,7 @@ _FILE_DEFAULTS = {
     "plex": {"PLEX_CACHE_FILE": "plex_resolve_cache.json"},
     "mopidy": {"MOPIDY_CACHE_FILE": "mopidy_resolve_cache.json"},
     "lyrion": {"LYRION_CACHE_FILE": "lyrion_resolve_cache.json"},
-    "anghami": {"ANGHAMI_TOKEN_FILE": "anghami_oauth.json"},
+    "anghami": {"ANGHAMI_TOKEN_FILE": "anghami_oauth.json", "ANGHAMI_CACHE_FILE": "anghami_resolve_cache.json"},
     "gaana": {"GAANA_CACHE_FILE": "gaana_resolve_cache.json"},
     "audiomack": {"AUDIOMACK_CACHE_FILE": "audiomack_resolve_cache.json"},
 }

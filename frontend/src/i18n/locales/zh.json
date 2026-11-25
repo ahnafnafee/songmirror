@@ -1,4 +1,9 @@
 {
+  "Chrome DevTools address": "Chrome 开发者工具地址",
+  "Sync playlists through the signed-in Anghami web player. Keep its playlist tab open during sync.": "通过已登录的 Anghami 网页播放器同步歌单。同步期间请保持歌单标签页打开。",
+  "Open a dedicated Chrome profile with a local DevTools port enabled.": "打开已启用本地开发者工具端口的专用 Chrome 个人资料。",
+  "Sign in to <player>Anghami</player> and leave Your Library open.": "登录 <player>Anghami</player>，然后保持资料库页面打开。",
+  "Enter the Chrome DevTools address, for example <local/> or <docker/> from Docker.": "输入 Chrome 开发者工具地址，例如 <local/>，在 Docker 中使用 <docker/>。",
   "Choose a new source": "选择新的来源",
   "Connected accounts": "已连接的账户",
   "Leave blank if the config.json response has no accessToken.": "如果 config.json 响应不含 accessToken，请留空。",

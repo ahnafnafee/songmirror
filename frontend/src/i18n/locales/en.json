@@ -1,4 +1,9 @@
 {
+  "Chrome DevTools address": "Chrome DevTools address",
+  "Sync playlists through the signed-in Anghami web player. Keep its playlist tab open during sync.": "Sync playlists through the signed-in Anghami web player. Keep its playlist tab open during sync.",
+  "Open a dedicated Chrome profile with a local DevTools port enabled.": "Open a dedicated Chrome profile with a local DevTools port enabled.",
+  "Sign in to <player>Anghami</player> and leave Your Library open.": "Sign in to <player>Anghami</player> and leave Your Library open.",
+  "Enter the Chrome DevTools address, for example <local/> or <docker/> from Docker.": "Enter the Chrome DevTools address, for example <local/> or <docker/> from Docker.",
   " (large removals drained in batches)": " (large removals drained in batches)",
   "\"{{source}}\" will be copied from {{sourceAccount}} to \"{{destination}}\" on {{destinationAccount}}. Existing tracks on the destination are kept, this only adds.": "\"{{source}}\" will be copied from {{sourceAccount}} to \"{{destination}}\" on {{destinationAccount}}. Existing tracks on the destination are kept, this only adds.",
   "\"{{source}}\" will be copied from {{sourceAccount}} to a new playlist named \"{{destination}}\" on {{destinationAccount}}. Existing tracks on the destination are kept, this only adds.": "\"{{source}}\" will be copied from {{sourceAccount}} to a new playlist named \"{{destination}}\" on {{destinationAccount}}. Existing tracks on the destination are kept, this only adds.",

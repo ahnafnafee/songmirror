@@ -1,4 +1,9 @@
 {
+  "Chrome DevTools address": "Chrome DevTools adresi",
+  "Sync playlists through the signed-in Anghami web player. Keep its playlist tab open during sync.": "Oturum açtığınız Anghami web oynatıcısı üzerinden çalma listelerini eşitleyin. Eşitleme sırasında çalma listesi sekmesini açık tutun.",
+  "Open a dedicated Chrome profile with a local DevTools port enabled.": "Yerel DevTools bağlantı noktası etkin olan ayrı bir Chrome profili açın.",
+  "Sign in to <player>Anghami</player> and leave Your Library open.": "<player>Anghami</player> hesabınızda oturum açın ve kitaplığınızı açık bırakın.",
+  "Enter the Chrome DevTools address, for example <local/> or <docker/> from Docker.": "Chrome DevTools adresini girin. Örneğin <local/> veya Docker içinden <docker/>.",
   "Choose a new source": "Yeni bir kaynak seçin",
   "Connected accounts": "Bağlı hesaplar",
   "Leave blank if the config.json response has no accessToken.": "config.json yanıtında accessToken yoksa boş bırakın.",
