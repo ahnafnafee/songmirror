@@ -69,13 +69,24 @@ def _next(items, token=None):
 class _Response:
     status_code = 200
 
-    def __init__(self, payload, *, html=False):
+    def __init__(self, payload, *, page_format=None):
         self.payload = payload
-        self.text = "" if not html else (
-            'ytcfg.set({"unrelated":true}); ytcfg.set(' + json.dumps({
+        self.text = ""
+        if page_format is None:
+            return
+        self.text = (
+            '<script>ytcfg.set({"unrelated":true}); ytcfg.set(' + json.dumps({
                 "INNERTUBE_CONTEXT": {"client": {"clientName": "WEB", "clientVersion": "test"}},
-            }) + '); var ytInitialData = ' + json.dumps(payload) + ";"
+            }) + ');</script>'
         )
+        data = json.dumps(payload)
+        if page_format == "json-script":
+            self.text += (
+                f'<script type="application/json" id="yt-initial-data" nonce="test">\n  {data}\n</script>'
+                "<script>window['ytInitialData'] = JSON.parse(ytDataEl.textContent);</script>"
+            )
+        else:
+            self.text += f"<script>var ytInitialData = {data};</script>"
 
     def json(self):
         return self.payload
@@ -90,7 +101,8 @@ def _api(handler, account="0"):
     )
 
 
-def test_video_library_pages_keep_duplicate_names_and_ownership(monkeypatch):
+@pytest.mark.parametrize("page_format", ["legacy", "json-script"])
+def test_video_library_pages_keep_duplicate_names_and_ownership(monkeypatch, page_format):
     calls = []
     monkeypatch.setattr(web.time, "time", lambda: 100)
 
@@ -108,7 +120,7 @@ def test_video_library_pages_keep_duplicate_names_and_ownership(monkeypatch):
         if method == "GET":
             return _Response({"contents": {"richGridRenderer": {"contents": [
                 _playlist("one", "Same name", True), _continuation("more-library"),
-            ]}}}, html=True)
+            ]}}}, page_format=page_format)
         assert kwargs["json"]["continuation"] == "more-library"
         assert kwargs["json"]["context"]["client"]["clientName"] == "WEB"
         return _Response(_next([_playlist("two", "Same name", False)]))
@@ -137,7 +149,7 @@ def test_transfer_reads_all_795_entries_and_skips_existing_videos(monkeypatch, t
                 795 if playlist_id == "old" else len(ids),
                 "old-100" if playlist_id == "old" else ("new-100" if len(ids) > 100 else None),
                 hidden=playlist_id == "old",
-            ), html=True)
+            ), page_format="json-script")
         token = kwargs["json"]["continuation"]
         continuations.append(token)
         kind, offset = token.split("-")
@@ -195,7 +207,7 @@ def test_incomplete_reads_never_look_like_completed_transfers(problem):
                 page["responseContext"]["mainAppWebResponseContext"]["loggedOut"] = True
             if problem == "malformed":
                 page["contents"] = {"unknownRenderer": {}}
-            return _Response(page, html=True)
+            return _Response(page, page_format="legacy")
         return _Response(_next([_video("two")], "more") if problem == "loop" else _next([]))
 
     with pytest.raises((TargetAuthError, TargetTransientError)):
@@ -208,7 +220,7 @@ def test_empty_playlist_is_a_successful_zero_count_read():
     page["contents"]["sectionListRenderer"]["contents"][0]["itemSectionRenderer"]["contents"] = [
         {"messageRenderer": {"text": {"simpleText": "No videos in this playlist yet"}}},
     ]
-    client = web.YouTubeBrowser(_api(lambda *_args, **_kwargs: _Response(page, html=True)))
+    client = web.YouTubeBrowser(_api(lambda *_args, **_kwargs: _Response(page, page_format="legacy")))
     assert client.tracks("empty") == []
 
 
@@ -279,7 +291,7 @@ def test_empty_library_continuation_is_not_silently_accepted():
         if method == "GET":
             return _Response({"contents": {"richGridRenderer": {"contents": [
                 _playlist("one", "First page", True), _continuation("missing-page"),
-            ]}}}, html=True)
+            ]}}}, page_format="legacy")
         return _Response(_next([]))
 
     with pytest.raises(TargetTransientError):

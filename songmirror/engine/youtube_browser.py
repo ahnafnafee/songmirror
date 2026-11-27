@@ -90,7 +90,12 @@ class YouTubeBrowser:
 
     def _pages(self, path):
         response = self._response("GET", path, params={"hl": "en"})
-        data = _embedded(response.text, r"(?:var\s+)?ytInitialData\s*=\s*")
+        try:
+            data = _embedded(
+                response.text, r"""<script(?=\s)[^>]*\s+id\s*=\s*(["'])yt-initial-data\1(?=\s|>)[^>]*>\s*""",
+            )
+        except TargetTransientError:
+            data = _embedded(response.text, r"(?:var\s+)?ytInitialData\s*=\s*")
         config = _embedded(response.text, r"ytcfg\.set\(\s*", "INNERTUBE_CONTEXT")
         context = config.get("INNERTUBE_CONTEXT")
         if not isinstance(context, dict):
