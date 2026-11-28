@@ -11,6 +11,7 @@ import type {
   ImportJob,
   ImportJobResponse,
   ImportListResponse,
+  ImportSearchResult,
   LinkUpsertRequest,
   OkResponse,
   PlaylistBackupJob,
@@ -484,13 +485,15 @@ export const importApi = {
   async searchTrack(
     account: string,
     query: string,
-  ): Promise<Array<{ id: string; name: string; artist: string; album?: string; duration_ms?: number; image?: string; external_url?: string }>> {
+    signal?: AbortSignal,
+  ): Promise<ImportSearchResult[]> {
     const params = new URLSearchParams({
       account,
       query,
     })
-    const res = await request<{ results: Array<{ id: string; name: string; artist: string; album?: string; duration_ms?: number; image?: string; external_url?: string }> }>(
+    const res = await request<{ results: ImportSearchResult[] }>(
       `/api/imports/search-track?${params.toString()}`,
+      { signal },
     )
     return res.results
   },

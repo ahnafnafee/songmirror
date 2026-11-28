@@ -815,6 +815,17 @@ export interface ImportTrack {
   write_error?: string
 }
 
+export interface ImportSearchResult {
+  id: string
+  name: string
+  artist: string
+  album?: string
+  duration_ms?: number
+  image?: string
+  external_url?: string
+  is_playable?: boolean
+}
+
 export interface ImportCandidate {
   import_id: string
   position: number

@@ -50,12 +50,22 @@ async function main() {
       }
       if (url.pathname === '/api/imports/text') return send(job, 201)
       if (url.pathname === '/api/imports/review/match') return send({ ...job, status: 'matching', matched_tracks: 0 }, 202)
+      if (url.pathname === '/api/imports/search-track') {
+        assert.equal(url.searchParams.get('account'), job.destination_account)
+        if (url.searchParams.get('query') !== state.spotifyLink) return send({ results: [] })
+        return send({ results: [{ id: '5gYvPf8SQBXm6ogGsyWhaG', name: 'Love of My Life - Live',
+          artist: 'Scorpions', album: 'CAPITAL ROCK 100 X 100' }] })
+      }
+      if (url.pathname === '/api/imports/review/tracks/0') {
+        state.decision = req.postDataJSON()
+        return send({ ...state.track, ...state.decision, resolved_method: 'manual', score: 1 })
+      }
       if (url.pathname === '/api/imports/review') {
         if (req.method() === 'DELETE') { state.jobs = []; return send({ ok: true }) }
         state.jobReads = (state.jobReads || 0) + 1
         state.onJobRead?.()
         if (url.search) await new Promise(resolve => setTimeout(resolve, state.jobDelay || 100))
-        return send({ job, tracks: [track], candidates: {} })
+        return send({ job: state.reviewJob || job, tracks: [state.track || track], candidates: state.candidates || {} })
       }
       return send({})
     })
@@ -134,6 +144,46 @@ async function main() {
     await history.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
     await history.getByText('No imports yet', { exact: true }).waitFor()
     console.log('PASS: history failure recovery, repeated resume, cached rows on refresh failure, deletion')
+
+    const shazam = {
+      reviewJob: { ...job, source_kind: 'file', matched_tracks: 0, unmatched_tracks: 1, needs_review: 1 },
+      track: { ...track, title: 'Love of My Life (Live)', artist: 'Scorpions',
+        decision: 'unmatched', resolved_target_id: null, score: null },
+      spotifyLink: 'https://open.spotify.com/track/5gYvPf8SQBXm6ogGsyWhaG?si=shared',
+    }
+    const review = await makePage(shazam)
+    await review.goto(base + '/create-playlist?resume=review')
+    await review.getByRole('button', { name: 'Search & Assign', exact: true }).click()
+    const search = review.getByRole('dialog', { name: 'Search for Track' })
+    await search.getByText('You can also paste a Spotify track link or ID.', { exact: true }).waitFor()
+    await search.getByRole('button', { name: 'Search', exact: true }).click()
+    await search.getByText('No matching tracks found', { exact: true }).waitFor()
+    await search.getByRole('textbox', { name: 'Search', exact: true }).fill(shazam.spotifyLink)
+    await search.getByRole('textbox', { name: 'Search', exact: true }).press('Enter')
+    await search.getByRole('button', { name: /Love of My Life - Live.*CAPITAL ROCK 100 X 100/ }).click()
+    await search.waitFor({ state: 'hidden' })
+    assert.deepEqual(shazam.decision, { decision: 'selected', resolved_target_id: '5gYvPf8SQBXm6ogGsyWhaG' })
+    console.log('PASS: unmatched Shazam row can be assigned by a Spotify track link')
+    await review.close()
+
+    const tied = {
+      reviewJob: { ...job, matched_tracks: 0, needs_review: 1 },
+      track: { ...track, title: 'Wish You Were Here (Live)', artist: 'Pink Floyd',
+        resolved_target_id: null, score: 0.9 },
+      candidates: { '0': [
+        { target_id: 'pulse', title: 'Wish You Were Here - Live', artist: 'Pink Floyd',
+          album: 'Pulse (Live)', duration_ms: 395920, score: 0.9, reason: 'spotify_unavailable' },
+        { target_id: 'thunder', title: 'Wish You Were Here - Live', artist: 'Pink Floyd',
+          album: 'Delicate Sound of Thunder (Live)', duration_ms: 289093, score: 0.9 },
+      ] },
+    }
+    const tiedReview = await makePage(tied)
+    await tiedReview.goto(base + '/create-playlist?resume=review')
+    await tiedReview.getByRole('button', { name: 'Review Match', exact: true }).click()
+    await tiedReview.getByText(/Pink Floyd · Pulse \(Live\).*Unavailable/).waitFor()
+    await tiedReview.getByText(/Pink Floyd · Delicate Sound of Thunder \(Live\)/).waitFor()
+    await tiedReview.close()
+    console.log('PASS: tied high scores open review with album, duration and availability')
 
     const pending = { jobDelay: 1000 }
     const started = new Promise(resolve => { pending.onJobRead = resolve })

@@ -558,6 +558,19 @@ def search_tracks(query, limit=8):
     return out
 
 
+def track_metadata(track_id):
+    """Look up a single Spotify catalog track for import review."""
+    track = _catalog_client().get_track(track_id)
+    return {
+        "id": track.id,
+        "name": track.name,
+        "artists": [{"name": artist.name} for artist in track.artists],
+        "album": {"name": track.album.name if track.album else ""},
+        "images": [{"url": image.url} for image in track.images],
+        "duration_ms": track.duration_ms,
+    }
+
+
 def metadata_isrcs(ids, *, should_continue=None, on_progress=None):
     """Native recording identifiers without the developer REST API.
 
