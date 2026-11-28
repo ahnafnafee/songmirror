@@ -9,6 +9,7 @@ import json
 import os
 import threading
 import time
+from collections import Counter
 from contextlib import nullcontext
 
 from dotenv import load_dotenv
@@ -438,22 +439,26 @@ def _run_merge(opts, sp, should_continue=None):
     return [per_target], aggregate, ok, error
 
 
-def _load_links(opts=None):
-    """Enabled explicit pairings (empty when none configured, so behavior is
-    unchanged). Late import keeps the engine's module graph free of the web tier."""
+def _playlist_link_store(opts=None):
     from ..services.playlists import LinkStore
 
     profiles = getattr(opts, "account_profiles", None) if opts is not None else None
     directory = profiles.settings.data_dir if profiles is not None else "data"
-    return [
-        link for link in LinkStore(dir=directory, profiles=profiles).list()
-        if link.enabled
-    ]
+    return LinkStore(dir=directory, profiles=profiles)
+
+
+def _load_links(opts=None):
+    return _playlist_link_store(opts).list()
 
 
 def _target_activation(target):
     activate = getattr(target, "activate", None)
     return activate() if activate is not None else nullcontext()
+
+
+def _has_playlists(target):
+    declared = getattr(target, "supports_playlists", True)
+    return bool(declared() if callable(declared) else declared)
 
 
 def _archive_connection(path, profiles=None):
@@ -465,7 +470,8 @@ def _archive_connection(path, profiles=None):
     return archive.connect(path, source_aliases=profiles.archive_aliases())
 
 
-def run_target(target, selected, get_source_tracks, songs, opts, links=None, source=None, should_continue=None):
+def run_target(target, selected, get_source_tracks, songs, opts, links=None, source=None,
+               should_continue=None, *, link_store=None):
     """Mirror every selected source playlist to one target. Returns an aggregate
     dict. Fatal target errors abort the whole target before unsafe writes.
 
@@ -487,9 +493,7 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
     # than failing once per selected playlist. The flag can be evaluated (a
     # classmethod answering from the account's own settings), so a plain
     # truthiness read would see the bound method and never fire.
-    declared_playlists = getattr(target, "supports_playlists", True)
-    has_playlists = declared_playlists() if callable(declared_playlists) else declared_playlists
-    if not has_playlists and selected:
+    if not _has_playlists(target) and selected:
         log_note(f"{target.name} has no playlists; {len(selected)} skipped "
                  "(liked tracks still sync)", tag=target.tag)
         selected = []
@@ -503,29 +507,62 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
             liked_route and liked_route.get("kind") == "playlist"
         )
         tgt_by_name = target.list_playlists() if needs_playlist_directory else {}
-        by_id = {target.playlist_id(pl): pl for pl in tgt_by_name.values() if target.playlist_id(pl)}
-        link_by_src = {link.members[src_key]: link for link in (links or [])
-                       if link.members.get(src_key) and target.source in link.members}
+        target_links = [link for link in (links or []) if target.source in link.members]
+        full_directories = {}
         for sp_playlist in selected:
             if should_continue and should_continue() != "run":
                 break  # Stop/Pause requested — leave the rest for a re-run
             name = source.playlist_name(sp_playlist)
-            link = link_by_src.get(source.playlist_id(sp_playlist))
+            source_id = source.playlist_id(sp_playlist)
+            linked = [link for link in target_links if src_key in link.members and (
+                str(link.members[src_key]) == str(source_id) if link.members[src_key] is not None
+                else link.name.strip().casefold() == name.strip().casefold()
+            )]
+            allowed = [link for link in linked if link.enabled and link.direction == "oneway" and link.source == src_key]
+            if linked and not allowed:
+                log_note(f"{name}: pairing is paused or requires a different sync direction or source", tag=target.tag)
+                continue
+            if len(allowed) > 1:
+                error = f"{target.name} playlist has multiple enabled one-way pairings"
+                _collect_failure(agg, agg["failures"], name, error)
+                log_warn(f"{name}: {error}", tag=target.tag)
+                continue
+            link = allowed[0] if allowed else None
             state_key = link.id if link else name.strip().casefold()
             paired_id = link.members.get(target.source) if link else None
-            if paired_id:                       # explicitly paired to a specific target playlist
-                tgt = by_id.get(paired_id)
+            target_name = link.name if link else name
+            if paired_id is not None:
+                tgt = _library_playlist_by_id(target, paired_id, tgt_by_name, full_directories)
                 if not tgt:
-                    log_warn(f"{name}: paired {target.name} playlist not found - skipped", tag=target.tag)
+                    error = f"paired {target.name} playlist was not found"
+                    _collect_failure(agg, agg["failures"], name, error)
+                    log_warn(f"{name}: {error}", tag=target.tag)
                     continue
-            else:                               # unlinked, or linked with "create by name"
-                tgt = tgt_by_name.get(name.strip().casefold())
+            elif link:
+                try:
+                    tgt = _pairing_playlist_by_name(target, target_name.strip().casefold(), full_directories)
+                except RuntimeError as exc:
+                    _collect_failure(agg, agg["failures"], name, exc)
+                    log_warn(f"{name}: {exc}", tag=target.tag)
+                    continue
+            else:
+                tgt = tgt_by_name.get(target_name.strip().casefold())
+            if target_links:
+                target_id = target.playlist_id(tgt) if tgt else None
+                other_links = [other for other in target_links if other is not link and (
+                    str(other.members[target.source]) == str(target_id) if other.members[target.source] is not None
+                    else other.name.strip().casefold() == target_name.strip().casefold()
+                )]
+                if other_links:
+                    log_note(f"{name}: {target.name} playlist is reserved for another pairing", tag=target.tag)
+                    continue
             if not tgt:
                 if not opts.execute:
-                    log_note(f"{name}: no {target.name} playlist yet - would create on --execute", tag=target.tag)
+                    log_note(f"{target_name}: no {target.name} playlist yet - would create on --execute", tag=target.tag)
                     continue
                 try:
-                    tgt = target.create(sp_playlist)
+                    seed = {"name": target_name, "description": source.playlist_description(sp_playlist)} if link else sp_playlist
+                    tgt = target.create(seed)
                     archive.reset_playlist_peer_state(songs, state_key, target.source)
                     created_id = target.playlist_id(tgt)
                     if created_id is not None:
@@ -533,12 +570,28 @@ def run_target(target, selected, get_source_tracks, songs, opts, links=None, sou
                             songs, target.source, created_id
                         )
                     agg["created"] += 1
-                    log_note(f"created {target.name} playlist '{name}' (name + description copied)", tag=target.tag)
+                    log_note(f"created {target.name} playlist '{target_name}'", tag=target.tag)
                 except TargetAuthError:
                     raise
                 except Exception as e:
                     _collect_failure(agg, agg["failures"], name, e)
                     log_warn(f"create '{name}' failed: {e!r}", tag=target.tag)
+                    continue
+
+            if link is not None and (not opts.execute or paired_id is None) and not target.is_editable(tgt):
+                error = f"paired {target.name} playlist is not editable"
+                _collect_failure(agg, agg["failures"], name, error)
+                log_warn(f"{name}: {error}", tag=target.tag)
+                continue
+            if link is not None and paired_id is None and link_store is not None and opts.execute:
+                try:
+                    resolved_id = target.playlist_id(tgt)
+                    if not resolved_id:
+                        raise RuntimeError(f"could not bind a {target.name} playlist without a stable ID")
+                    link_store.bind_member(link, target.source, resolved_id)
+                except Exception as exc:
+                    _collect_failure(agg, agg["failures"], name, exc)
+                    log_warn(f"{name}: could not update pairing ({exc})", tag=target.tag)
                     continue
 
             snapshot = sp_playlist.get("snapshot_id")
@@ -870,7 +923,9 @@ def run_pass(opts, should_continue=None):
             log_warn(error, indent="  ")
             return _summary(opts, [], pass_started, ok=False, error=error)
         if opts.sync_mode == "nway":
-            log_warn("no configured N-way provider can supply playlist names and ordering", indent="  ")
+            error = "No available N-way provider can supply playlist names and ordering"
+            log_warn(error, indent="  ")
+            return _summary(opts, [], pass_started, ok=False, error=error)
         else:
             log_warn(f"sync source '{source_provider}' is not connected", indent="  ")
         return _summary(opts, [], pass_started)
@@ -878,11 +933,9 @@ def run_pass(opts, should_continue=None):
     src_by_name = source.list_playlists() if sync_playlists else {}
 
     wanted = (
-        {n.strip().casefold() for n in opts.playlists.split(",") if n.strip()}
-        if sync_playlists and opts.playlists
-        else None
+        _playlist_name_filter(opts) if sync_playlists else set()
     )
-    selected = [src_by_name[n] for n in sorted(src_by_name) if wanted is None or n in wanted]
+    selected = [src_by_name[n] for n in sorted(src_by_name) if not wanted or n in wanted]
 
     mode = paint("EXECUTE", "green", "bold") if opts.execute else paint("DRY RUN", "yellow", "bold")
     log(paint("═══ Omni playlist mirror ═══", "bold", "cyan"))
@@ -891,10 +944,11 @@ def run_pass(opts, should_continue=None):
         paint("   ⇆ AUTHORITY GROUP", "magenta", "bold") if opts.sync_mode == "group" else ""
     )
     log(f"  mode: {mode}{mode_label}")
-    log(f"  source: {paint(source.name, 'cyan')}")
+    source_role = "playlist order" if opts.sync_mode == "nway" else "source"
+    log(f"  {source_role}: {paint(source.name, 'cyan')}")
     log(f"  playlists: {paint(str(len(selected)), 'bold')} selected"
         + (paint(f" ({', '.join(source.playlist_name(p) for p in selected)})", "grey") if selected else ""))
-    if wanted:
+    if wanted and (opts.sync_mode != "nway" or opts.refresh_local):
         missing = wanted - {source.playlist_name(p).strip().casefold() for p in selected}
         if missing:
             log_warn(f"not found on {source.name}: {', '.join(sorted(missing))}", indent="  ")
@@ -1016,9 +1070,8 @@ def run_pass(opts, should_continue=None):
                 tracks_state["dirty"] = True
             return tracks
 
-    links = (
-        _load_links(opts) if profiles is not None else _load_links()
-    )  # explicit pairings override same-name matching (one-way)
+    links = _load_links(opts) if profiles is not None else _load_links()
+    link_store = _playlist_link_store(opts) if links else None
     results, errors = {}, []
 
     def worker(target, songs):
@@ -1026,7 +1079,10 @@ def run_pass(opts, should_continue=None):
             binder = getattr(target, "bind_archive", None)
             if binder is not None:
                 binder(songs)
-            results[target.tag] = run_target(target, selected, get_source_tracks, songs, opts, links, source, ctrl)
+            results[target.tag] = run_target(
+                target, selected, get_source_tracks, songs, opts, links, source, ctrl,
+                link_store=link_store,
+            )
         except _SourceAuthError as e:
             # A one-way source is shared by every destination. Its failure
             # invalidates the pass and must also suppress post-sync work.
@@ -1187,6 +1243,97 @@ def _run_authoritative_group(opts, sp, selected, songs, should_continue=None):
     )
 
 
+def _playlist_name_filter(opts):
+    return {name.strip().casefold() for name in (opts.playlists or "").split(",") if name.strip()}
+
+
+def _full_library_by_id(peer, full_directories):
+    if peer.source not in full_directories:
+        full_directories[peer.source] = {
+            str(playlist_id): playlist for playlist in peer.browse_playlists()
+            if (playlist_id := peer.playlist_id(playlist)) not in (None, "")
+        }
+    return full_directories[peer.source]
+
+
+def _library_playlist_by_id(peer, playlist_id, directory, full_directories):
+    wanted = str(playlist_id)
+    for playlist in directory.values():
+        candidate_id = peer.playlist_id(playlist)
+        if candidate_id is not None and str(candidate_id) == wanted:
+            return playlist
+    return _full_library_by_id(peer, full_directories).get(wanted)
+
+
+def _pairing_playlist_by_name(peer, name_key, full_directories):
+    matches = [
+        playlist for playlist in _full_library_by_id(peer, full_directories).values()
+        if (peer.playlist_name(playlist) or "").strip().casefold() == name_key
+    ]
+    if len(matches) > 1:
+        matches = [playlist for playlist in matches if peer.is_editable(playlist)]
+        if len(matches) != 1:
+            raise RuntimeError(f"multiple {peer.name} playlists have the pairing name. Choose a playlist explicitly")
+    return matches[0] if matches else None
+
+
+def _nway_pairing_plans(links, peers, directories, wanted, order_source):
+    """Resolve every reference before running any linked or same-name writes."""
+    peer_by_source = {peer.source: peer for peer in peers}
+    full_directories = {}
+    claims = Counter()
+    reserved = set()
+    order_names = set()
+    plans = []
+    matched = set()
+    for link, members in links:
+        label_key = link.name.strip().casefold()
+        names, refs, playlists, errors = {label_key}, set(), {}, []
+        for source in members:
+            playlist_id = link.members[source]
+            peer = peer_by_source.get(source)
+            if playlist_id is not None:
+                refs.add((source, "id", str(playlist_id)))
+            else:
+                reserved.add((source, "name", label_key))
+            if peer is None:
+                errors.append(f"paired account {source} is unavailable")
+                continue
+            directory = directories[source]
+            try:
+                playlist = (
+                    _pairing_playlist_by_name(peer, label_key, full_directories) if playlist_id is None else
+                    _library_playlist_by_id(peer, playlist_id, directory, full_directories)
+                )
+                if playlist is None and playlist_id is not None:
+                    errors.append(f"paired {peer.name} playlist was not found")
+                    continue
+                playlists[source] = playlist
+                if playlist is None:
+                    refs.add((source, "name", label_key))
+                    continue
+                name_key = (peer.playlist_name(playlist) or "").strip().casefold()
+                names.add(name_key)
+                if source == order_source:
+                    order_names.add(name_key)
+                refs.add((source, "id", str(peer.playlist_id(playlist))))
+                if not peer.is_editable(playlist):
+                    errors.append(f"paired {peer.name} playlist is not editable")
+            except Exception as exc:
+                errors.append(f"could not resolve paired {peer.name} playlist: {exc}")
+        reserved.update(refs)
+        if link.enabled:
+            claims.update(refs)
+        if not wanted or wanted & names:
+            matched.update(wanted & names)
+            if link.enabled:
+                plans.append((link, members, playlists, refs, errors))
+    for _link, _members, _playlists, refs, errors in plans:
+        if any(claims[ref] > 1 for ref in refs):
+            errors.append("a playlist belongs to multiple enabled bidirectional pairings")
+    return plans, reserved, order_names, matched
+
+
 def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                         label, authority_sources):
     """Shared ordered playlist loop for N-way and authoritative-group syncs."""
@@ -1213,8 +1360,11 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                 "failures": [{"playlist": "Configuration", "error": error}],
             })]
     if len(peers) < 2:
-        log_warn(f"{label} sync needs at least two configured music providers", indent="  ")
-        return []
+        error = f"{label} sync needs at least two available music providers"
+        log_warn(error, indent="  ")
+        return [_summary_entry(label, {
+            "failed": 1, "failures": [{"playlist": "Configuration", "error": error}],
+        })]
     order_peer = next((peer for peer in peers if peer.source == order_source), None)
     if order_peer is None:
         error = (f"order provider '{order_source}' is not connected" if order_source else
@@ -1229,6 +1379,21 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
 
     spotify_cookie.take_singles_used()   # drop any residue from a pass that died mid-read
     liked_routes = getattr(opts, "liked_routes", None) or {}
+    favorites_source = opts.sync_source if getattr(opts, "liked_tracks", False) else None
+    link_store = None
+    links = []
+    if authority_sources is None and getattr(opts, "sync_playlists", True):
+        link_store = _playlist_link_store(opts)
+        participants = _wanted_providers(opts)
+        for link in link_store.list():
+            if link.direction == "nway":
+                members = set(link.members)
+                if participants:
+                    members &= participants
+                if len(members) >= 2:
+                    links.append((link, members))
+    playlist_peers = [peer for peer in peers if _has_playlists(peer)]
+    playlist_sources = {peer.source for peer in playlist_peers}
     total = {"added": 0, "removed": 0, "missing": 0, "held": 0,
              "uncertain_matches": 0, "deferred": 0,
              "removals_skipped": 0, "chronology_replayed": 0,
@@ -1239,18 +1404,26 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
     for peer in peers:
         liked_route = (
             {"kind": "native"}
-            if peer.source == order_source
+            if peer.source == favorites_source
             else liked_routes.get(peer.source)
         )
-        needs_playlist_directory = bool(selected) or (
+        needs_playlist_directory = (peer.source in playlist_sources and bool(selected or links)) or (
             getattr(opts, "liked_tracks", False)
             and liked_route
             and liked_route.get("kind") == "playlist"
         )
         try:
             dirs[peer.source] = peer.list_playlists() if needs_playlist_directory else {}
-        except TargetAuthError as exc:
-            if authority_sources is None or peer.source in authority_sources:
+        except Exception as exc:
+            # A saved pairing has its own required accounts. If a directory
+            # fails, allow unrelated pairings to continue and suspend the
+            # implicit groups, whose membership still needs every directory.
+            if authority_sources is None and links and peer.source in playlist_sources:
+                error = f"{peer.name} playlist directory unavailable: {exc}"
+                _collect_failure(total, failures, "Playlist directory", error)
+                log_warn(error, tag=peer.tag)
+                continue
+            if not isinstance(exc, TargetAuthError) or authority_sources is None or peer.source in authority_sources:
                 raise
             error = f"{peer.name} mirror playlist directory unavailable: {exc}"
             _collect_failure(total, failures, "Playlist directory", error)
@@ -1258,23 +1431,105 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
     # An unreadable directory is different from an empty one. Leaving that
     # mirror out prevents creation of duplicates or changes to its baseline.
     peers = [peer for peer in peers if peer.source in dirs]
+    playlist_peers = [peer for peer in playlist_peers if peer.source in dirs]
+    if authority_sources is None and not playlist_sources <= dirs.keys():
+        selected = []
     caches = {p.source: load_target_cache(p) for p in peers}
     # Both lists stay out of `total` so the scalar accumulate loop stays scalar.
     held_detail = []
     change_diagnostics = []
+
+    def reconcile_playlist(active, name, playlists, link_key=None):
+        stats = reconcile(
+            active, name, playlists, caches, songs,
+            execute=opts.execute, max_removals=opts.max_removals, max_adds=opts.max_adds,
+            drain_removals=opts.apply_large_removals, should_continue=should_continue,
+            link_key=link_key, authority_sources=authority_sources,
+        )
+        for key in total:
+            total[key] += stats.get(key, 0)
+        _collect_held(held_detail, stats.get("held_removals", []))
+        _collect_diagnostics(change_diagnostics, stats.get("change_diagnostics", []))
+        failures.extend(stats.get("failures", [])[:max(0, FAILURE_DETAIL - len(failures))])
+
     try:
+        wanted = _playlist_name_filter(opts)
+        plans, reserved, linked_order_names, matched = _nway_pairing_plans(
+            links, playlist_peers, dirs, wanted, order_source,
+        )
+        if wanted and authority_sources is None:
+            found = {order_peer.playlist_name(pl).strip().casefold() for pl in selected}
+            missing = wanted - found - matched
+            if missing:
+                log_warn(f"playlists or pairings not found: {', '.join(sorted(missing))}", tag="sync")
+        for link, members, playlists, _refs, errors in plans:
+            if should_continue and should_continue() != "run":
+                break
+            name = link.name
+            if errors:
+                error = ", ".join(errors)
+                _collect_failure(total, failures, name, error)
+                log_warn(f"{name}: {error}", tag="sync")
+                continue
+            active = [peer for peer in playlist_peers if peer.source in members]
+            # A differently scoped job must bootstrap its own membership history.
+            link_key = f"pairing:{link.id}:{','.join(sorted(members))}"
+            missing_peers = [peer for peer in active if playlists[peer.source] is None]
+            if len(missing_peers) == len(active):
+                _collect_failure(total, failures, name, "pairing needs an existing playlist")
+                log_warn(f"{name}: pairing needs an existing playlist", tag="sync")
+                continue
+            if missing_peers and not opts.execute:
+                services = ", ".join(peer.name for peer in missing_peers)
+                log_note(f"{name}: would create paired playlists on {services}", tag="sync")
+                continue
+            try:
+                if opts.execute:
+                    seed_peer = next(peer for peer in active if playlists[peer.source] is not None)
+                    seed = {"name": name, "description": seed_peer.playlist_description(playlists[seed_peer.source])}
+                    for peer in active:
+                        if should_continue and should_continue() != "run":
+                            break
+                        if link.members[peer.source] is not None:
+                            continue
+                        playlist = playlists[peer.source]
+                        if playlist is None:
+                            playlist = peer.create(seed)
+                            playlists[peer.source] = playlist
+                            dirs[peer.source][name.strip().casefold()] = playlist
+                            archive.reset_playlist_peer_state(songs, link_key, peer.source)
+                            log_note(f"created {peer.name} playlist '{name}'", tag=peer.tag)
+                        playlist_id = peer.playlist_id(playlist)
+                        if not playlist_id or not peer.is_editable(playlist):
+                            raise RuntimeError(f"could not bind an editable {peer.name} playlist")
+                        link_store.bind_member(link, peer.source, playlist_id)
+                        reserved.add((peer.source, "id", str(playlist_id)))
+                    if should_continue and should_continue() != "run":
+                        break
+                reconcile_playlist(active, name, playlists, link_key)
+            except TargetAuthError:
+                raise
+            except Exception as exc:
+                _collect_failure(total, failures, name, exc)
+                log_warn(f"'{name}' pairing failed: {exc!r}", tag="sync")
+
         for order_playlist in selected:
             if should_continue and should_continue() != "run":
                 break  # Stop/Pause requested — leave the rest for a re-run
             name = (order_peer.playlist_name(order_playlist)
                     if hasattr(order_peer, "playlist_name") else order_playlist["name"])
             key = name.strip().casefold()
-            state_key = reconcile_state_key(
-                name, authority_sources=authority_sources)
+            if key in linked_order_names:
+                continue
+            state_key = reconcile_state_key(name, authority_sources=authority_sources)
             playlists = {}
             authority_failure_recorded = False
-            for p in peers:
+            for p in playlist_peers:
                 pl = dirs[p.source].get(key)
+                if reserved:
+                    ref = (p.source, "id", str(p.playlist_id(pl))) if pl else (p.source, "name", key)
+                    if ref in reserved or (p.source, "name", key) in reserved:
+                        continue
                 if not pl:
                     if not opts.execute:
                         log_note(f"{name}: no {p.name} playlist yet - would create on --execute", tag=p.tag)
@@ -1304,7 +1559,7 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                     continue
                 playlists[p.source] = pl
 
-            active = [p for p in peers if p.source in playlists]
+            active = [p for p in playlist_peers if p.source in playlists]
             if authority_sources is not None and not authority_sources <= set(playlists):
                 missing = ", ".join(sorted(authority_sources - set(playlists)))
                 log_warn(f"{name}: authoritative playlist unavailable on {missing} - skipped", tag="sync")
@@ -1318,27 +1573,21 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                 log_note(f"{name}: fewer than 2 providers have this playlist - skipped", tag="sync")
                 continue
             try:
-                stats = reconcile(active, name, playlists, caches, songs,
-                                  execute=opts.execute, max_removals=opts.max_removals, max_adds=opts.max_adds,
-                                  drain_removals=opts.apply_large_removals, should_continue=should_continue,
-                                  authority_sources=authority_sources)
-                for k in total:
-                    total[k] += stats.get(k, 0)
-                _collect_held(held_detail, stats.get("held_removals", []))
-                _collect_diagnostics(change_diagnostics, stats.get("change_diagnostics", []))
-                # Reconcile reports a skipped mirror itself: it keeps the other
-                # providers in sync, so the pass survives, but the summary must
-                # still name what did not get read.
-                failures.extend(stats.get("failures", [])[:max(0, FAILURE_DETAIL - len(failures))])
+                reconcile_playlist(active, name, playlists)
             except TargetAuthError:
                 raise
             except Exception as e:
                 _collect_failure(total, failures, name, e)
                 log_warn(f"'{name}' reconcile failed, continuing: {e!r}", tag="sync")
 
-        if getattr(opts, "liked_tracks", False):
-            order_resource = order_peer.favorite_tracks_resource()
-            name = order_resource.get("name") or f"{order_peer.name} liked tracks"
+        favorites_peer = next((peer for peer in peers if peer.source == favorites_source), None)
+        if favorites_source and favorites_peer is None:
+            error = "Liked-track source account is unavailable"
+            _collect_failure(total, failures, "Liked tracks", error)
+            log_warn(error, tag="sync")
+        if favorites_peer is not None and (not should_continue or should_continue() == "run"):
+            source_resource = favorites_peer.favorite_tracks_resource()
+            name = source_resource.get("name") or f"{favorites_peer.name} liked tracks"
             state_key = reconcile_state_key(
                 name,
                 link_key="collection:liked-tracks",
@@ -1349,7 +1598,7 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
             for peer in peers:
                 route = (
                     {"kind": "native"}
-                    if peer.source == order_source
+                    if peer.source == favorites_source
                     else liked_routes.get(peer.source)
                 )
                 resource = None
@@ -1364,11 +1613,16 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                     elif route and route.get("kind") == "playlist":
                         destination_name = str(route.get("name") or "").strip()
                         resource = dirs[peer.source].get(destination_name.casefold())
+                        if reserved:
+                            ref = ((peer.source, "id", str(peer.playlist_id(resource))) if resource else
+                                   (peer.source, "name", destination_name.casefold()))
+                            if ref in reserved or (peer.source, "name", destination_name.casefold()) in reserved:
+                                raise RuntimeError(f"{peer.name} liked-track playlist is reserved for a pairing")
                         if resource is None and opts.execute:
                             resource = peer.create({
                                 "name": destination_name,
                                 "description": (
-                                    f"Liked tracks synced from {order_peer.name} by SongMirror."
+                                    f"Liked tracks synced from {favorites_peer.name} by SongMirror."
                                 ),
                             })
                             archive.reset_playlist_peer_state(
@@ -1397,6 +1651,7 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                     log_warn(f"{peer.name}/{name}: destination unavailable ({exc!r})", tag=peer.tag)
 
             active = [peer for peer in peers if peer.source in resources]
+            active.sort(key=lambda peer: peer.source != favorites_source)
             required = peer_sources if authority_sources is None else authority_sources
             if not required <= set(resources):
                 missing = ", ".join(sorted(required - set(resources)))
@@ -1410,29 +1665,7 @@ def _run_peer_reconcile(opts, sp, selected, songs, should_continue=None, *,
                     )
             elif len(active) >= 2:
                 try:
-                    stats = reconcile(
-                        active,
-                        name,
-                        resources,
-                        caches,
-                        songs,
-                        execute=opts.execute,
-                        max_removals=opts.max_removals,
-                        max_adds=opts.max_adds,
-                        drain_removals=opts.apply_large_removals,
-                        should_continue=should_continue,
-                        link_key="collection:liked-tracks",
-                        authority_sources=authority_sources,
-                    )
-                    for key in total:
-                        total[key] += stats.get(key, 0)
-                    _collect_held(held_detail, stats.get("held_removals", []))
-                    _collect_diagnostics(
-                        change_diagnostics, stats.get("change_diagnostics", [])
-                    )
-                    failures.extend(
-                        stats.get("failures", [])[:max(0, FAILURE_DETAIL - len(failures))]
-                    )
+                    reconcile_playlist(active, name, resources, "collection:liked-tracks")
                 except TargetAuthError:
                     raise
                 except Exception as exc:

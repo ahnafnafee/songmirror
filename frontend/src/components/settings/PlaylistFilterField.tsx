@@ -214,6 +214,7 @@ interface PlaylistFilterFieldProps {
   /** The sync wizard can opt into the source provider's built-in liked
    * collection in addition to ordinary playlists. */
   includeLikedTracks?: boolean
+  likedTracksAccount?: Account
   likedTracksSelected?: boolean
   syncAllRegularPlaylists?: boolean
   onLikedTracksChange?: (selected: boolean) => void
@@ -230,6 +231,7 @@ export function PlaylistFilterField({
   onChange,
   preferredProviderId,
   includeLikedTracks = false,
+  likedTracksAccount,
   likedTracksSelected = false,
   syncAllRegularPlaylists = false,
   onLikedTracksChange,
@@ -261,8 +263,13 @@ export function PlaylistFilterField({
     onChange(joinCsv(selectedNames.filter((n) => casefold(n) !== key)))
   }
 
-  const likedTracksLabel = providerLikedTracksLabel(source.provider, source.providerLabel)
-  const showLikedTracks = includeLikedTracks && source.supportsFavorites && Boolean(source.providerId) && Boolean(onLikedTracksChange)
+  const likedTracksLabel = likedTracksAccount
+    ? providerLikedTracksLabel(likedTracksAccount.provider, likedTracksAccount.name)
+    : providerLikedTracksLabel(source.provider, source.providerLabel)
+  const canChooseLikedTracks = likedTracksAccount
+    ? canReadLikedTracks(likedTracksAccount)
+    : source.supportsFavorites && Boolean(source.providerId)
+  const showLikedTracks = includeLikedTracks && canChooseLikedTracks && Boolean(onLikedTracksChange)
   const isEmpty = selectedNames.length === 0 && !likedTracksSelected
   const syncingAllWithLiked = likedTracksSelected && syncAllRegularPlaylists && selectedNames.length === 0
   const selectedCount = selectedNames.length + (likedTracksSelected ? 1 : 0)

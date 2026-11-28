@@ -12,6 +12,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
+from threading import RLock
 from urllib.parse import quote
 
 from ..engine import archive, spotify, spotify_cookie
@@ -21,7 +22,7 @@ from ..engine.targets import TargetCapabilityError, build_one, target_provider
 from ..engine.targets.provider_utils import source_playlist_details
 from .playlist_exports import render_backup
 from .playlist_links import external_url, provider_label
-from .settings import _open_private
+from .private_files import write_private
 
 
 MAX_PLAYLIST_NAME = 200
@@ -762,18 +763,33 @@ class LinkStore:
     """Explicit pairings persisted to data/links.json (owner-only, alongside the
     other data-dir state)."""
 
+    _lock = RLock()
+
     def __init__(self, dir="data", profiles=None):
         self._path = Path(dir) / "links.json"
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._profiles = profiles
 
     def list(self):
+        with self._lock:
+            return self._read()
+
+    def _read(self):
         try:
             with open(self._path, encoding="utf-8") as f:
                 rows = json.load(f)
+            if not isinstance(rows, list):
+                return []
             links = []
             migrated = False
             for row in rows:
+                if (
+                    not isinstance(row, dict)
+                    or not isinstance(row.get("name"), str)
+                    or not row["name"].strip()
+                    or not isinstance(row.get("members", {}), dict)
+                ):
+                    continue
                 data = dict(row)
                 if self._profiles is not None:
                     members = {
@@ -793,16 +809,28 @@ class LinkStore:
             return []
 
     def upsert(self, link):
-        if not link.id:
-            link.id = uuid.uuid4().hex[:8]
-        links = [l for l in self.list() if l.id != link.id]
-        links.append(link)
-        self._save(links)
+        with self._lock:
+            if not link.id:
+                link.id = uuid.uuid4().hex[:8]
+            links = [l for l in self._read() if l.id != link.id]
+            links.append(link)
+            self._save(links)
         return link
 
+    def bind_member(self, link, source, playlist_id):
+        """Persist a resolved create-by-name member without overwriting a concurrent edit."""
+        with self._lock:
+            links = self._read()
+            current = next((saved for saved in links if saved.id == link.id), None)
+            if current != link or source not in current.members or current.members[source] is not None:
+                raise RuntimeError("Pairing changed during sync. Recheck its playlists and run again.")
+            current.members[source] = str(playlist_id)
+            self._save(links)
+            link.members[source] = str(playlist_id)
+
     def delete(self, link_id):
-        self._save([l for l in self.list() if l.id != link_id])
+        with self._lock:
+            self._save([l for l in self._read() if l.id != link_id])
 
     def _save(self, links):
-        with _open_private(self._path) as f:
-            json.dump([asdict(l) for l in links], f, indent=2)
+        write_private(self._path, [asdict(link) for link in links])

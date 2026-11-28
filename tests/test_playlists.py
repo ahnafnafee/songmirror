@@ -769,3 +769,17 @@ def test_linkstore_roundtrip(tmp_path):
     assert len(got) == 1 and got[0].name == "My Pair"
     store.delete(link.id)
     assert store.list() == []
+
+
+def test_linkstore_preserves_an_edit_made_before_binding_a_created_playlist(tmp_path):
+    from songmirror.services.playlists import LinkStore, PlaylistLink
+
+    store = LinkStore(dir=tmp_path)
+    original = store.upsert(PlaylistLink(name="Before", members={"spotify": "s1", "tidal": None}))
+    edited = store.list()[0]
+    edited.name = "After"
+    store.upsert(edited)
+
+    with pytest.raises(RuntimeError, match="Pairing changed during sync"):
+        store.bind_member(original, "tidal", "t1")
+    assert store.list() == [edited]

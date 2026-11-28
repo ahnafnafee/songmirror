@@ -305,6 +305,8 @@ Việc xóa phải được bật rõ ràng và vẫn chịu giới hạn số l
 
 Theo mặc định, một nhà cung cấp là nguồn thông tin chính xác và các chỉnh sửa sẽ diễn ra theo một chiều. Trong chế độ N-way, mỗi nhà cung cấp được chọn đều là một nhà cung cấp ngang hàng: thêm hoặc xóa một bản nhạc trên bất kỳ nhà cung cấp nào và thay đổi sẽ lan truyền tới những nhà cung cấp khác.
 
+Với các danh sách phát có tên khác nhau, hãy lưu một cặp **Hai chiều (N-way)** trong **Danh sách phát → Cặp đôi** và đưa cả hai tài khoản vào một tác vụ đồng bộ hai chiều. Khi lọc tác vụ theo tên danh sách phát, hãy nhập tên của cặp hoặc tên của một danh sách phát trong cặp. SongMirror lưu ID của danh sách phát sau khi tạo nên việc đổi tên không làm mất liên kết. Cặp một chiều chỉ chạy trong tác vụ một chiều có cùng nguồn.
+
 Không thể đồng bộ hóa hai chiều một cách không trạng thái, vì vậy tư cách thành viên chuẩn của mỗi danh sách phát hợp lý sẽ được chụp nhanh sau mỗi lần vượt qua rõ ràng. Mỗi lần vượt qua sẽ làm khác biệt giữa mỗi nhà cung cấp với ảnh chụp nhanh đó, kết hợp các thay đổi và điều chỉnh mọi người với kết quả:
 
 - Không có tiếng vang — phần bổ sung được lan truyền sẽ trở thành một phần của ảnh chụp nhanh nên nó không bao giờ bị trả lại.

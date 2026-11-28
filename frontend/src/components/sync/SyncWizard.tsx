@@ -618,19 +618,16 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, acco
     })
   }
 
-  // Step 3's playlist picker has to browse whichever provider is actually
-  // meaningful for this job, not always Spotify (the picker's original,
-  // single-sync-era default): the one-way source of truth in one-way mode,
-  // or — N-way has no single source — Spotify if it's a participating peer,
-  // else the first participating peer in syncPeers order. Recomputed on
-  // every render, so going back to Direction/Services and changing the
-  // source/participants immediately reflects here too.
-  const playlistPickerProviderId = form.liked_tracks
+  // Match the runner's N-way playlist ordering. The saved liked-track source
+  // supplies the native collection and can be a different account.
+  const playlistAccounts = availablePeers.filter((account) =>
+    enabledProviders.has(account.id) && canSyncAccount(account))
+  const playlistPickerProviderId = form.mode !== 'nway'
     ? syncSource
-    : form.mode !== 'nway'
-      ? syncSource
-      : (syncPeers.find((account) => account.provider === 'spotify' && enabledProviders.has(account.id))?.id
-        ?? syncPeers.find((account) => enabledProviders.has(account.id))?.id) || null
+    : playlistAccounts.find((account) => account.provider === 'spotify')?.id
+      ?? playlistAccounts.find((account) => account.id === syncSource)?.id
+      ?? playlistAccounts[0]?.id
+      ?? null
 
   const likedSourceName = syncPeers.find((account) => account.id === syncSource)?.name ?? syncSource
   const likedPlaylistSuggestion = providerLikedTracksLabel(sourceAccount?.provider, likedSourceName)
@@ -1098,6 +1095,7 @@ export function SyncWizard({ open, onClose, job, otherSyncs = [], accounts, acco
                 onChange={setPlaylistFilter}
                 preferredProviderId={playlistPickerProviderId}
                 includeLikedTracks
+                likedTracksAccount={form.liked_tracks ? sourceAccount : undefined}
                 likedTracksSelected={form.liked_tracks}
                 syncAllRegularPlaylists={form.sync_playlists}
                 onLikedTracksChange={setLikedTracks}

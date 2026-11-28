@@ -305,6 +305,8 @@ Las eliminaciones requieren activación explícita y están sujetas a un límite
 
 De forma predeterminada, un proveedor es la fuente de la verdad y las ediciones fluyen en una dirección. En el modo N-way, cada proveedor seleccionado es un par: agregue o elimine una pista en cualquiera y el cambio se propaga a los demás.
 
+Si las listas tienen nombres distintos, guarda un emparejamiento **Bidireccional (N-way)** en **Listas de reproducción → Emparejamientos** e incluye ambas cuentas en una tarea de sincronización bidireccional. Si filtras la tarea por nombre de lista, introduce el nombre del emparejamiento o el de cualquiera de sus listas. SongMirror guarda los identificadores de las listas al crearlas, de modo que cambiarles el nombre conserva el emparejamiento. Un emparejamiento unidireccional solo se ejecuta en una tarea unidireccional con la misma fuente.
+
 La sincronización bidireccional es imposible sin estado, por lo que se toma una instantánea de la membresía canónica de cada lista de reproducción lógica después de cada pase limpio. Cada paso diferencia a cada proveedor con esa instantánea, une los cambios y reconcilia a todos con el resultado:
 
 - Sin eco: un anuncio propagado pasa a formar parte de la instantánea, por lo que nunca se recupera.

@@ -305,6 +305,8 @@ Penghapusan harus diaktifkan secara eksplisit dan tetap dibatasi jumlahnya. Akti
 
 Secara default, satu penyedia adalah sumber kebenaran dan pengeditan mengalir satu arah. Dalam mode N-way, setiap penyedia yang dipilih adalah rekan: menambah atau menghapus trek pada salah satu penyedia dan perubahan akan menyebar ke penyedia lainnya.
 
+Untuk daftar putar dengan nama berbeda, simpan pasangan **Dua arah (N-arah)** di **Daftar putar → Berpasangan** dan sertakan kedua akun dalam tugas sinkronisasi dua arah. Saat memfilter tugas berdasarkan nama daftar putar, masukkan nama pasangan atau nama salah satu daftar putarnya. SongMirror menyimpan ID daftar putar setelah dibuat sehingga pasangan tetap terhubung saat nama daftar putar diubah. Pasangan satu arah hanya berjalan dalam tugas satu arah dengan sumber yang sama.
+
 Sinkronisasi dua arah tidak mungkin dilakukan tanpa negara, sehingga keanggotaan kanonik setiap daftar putar logis diambil setelah setiap clean pass. Setiap pass membedakan setiap penyedia dengan snapshot tersebut, menyatukan perubahan, dan merekonsiliasi semua orang dengan hasilnya:
 
 - Bebas gema — penambahan yang disebarkan menjadi bagian dari cuplikan, sehingga tidak pernah dikembalikan lagi.

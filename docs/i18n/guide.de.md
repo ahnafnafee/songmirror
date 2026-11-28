@@ -305,6 +305,8 @@ Löschungen müssen ausdrücklich aktiviert werden und unterliegen weiterhin ein
 
 Standardmäßig ist ein Anbieter die Quelle der Wahrheit und Änderungen erfolgen in eine Richtung. Im N-Wege-Modus ist jeder ausgewählte Anbieter ein Peer: Fügen Sie auf einem beliebigen Anbieter einen Track hinzu oder entfernen Sie ihn, und die Änderung wird auf die anderen übertragen.
 
+Wenn Wiedergabelisten unterschiedliche Namen haben, speichere unter **Wiedergabelisten → Paarungen** eine Paarung vom Typ **Bidirektional (N-Weg)** und nimm beide Konten in einen bidirektionalen Auftrag auf. Wenn du nach Wiedergabelistennamen filterst, gib den Namen der Paarung oder einer ihrer Wiedergabelisten ein. SongMirror speichert die IDs beim Erstellen der Wiedergabelisten, sodass eine Umbenennung die Paarung beibehält. Eine einseitige Paarung läuft nur in einem einseitigen Auftrag mit derselben Quelle.
+
 Eine bidirektionale Synchronisierung ist zustandslos nicht möglich, daher wird die kanonische Mitgliedschaft jeder logischen Wiedergabeliste nach jedem sauberen Durchgang erfasst. Jeder Durchgang vergleicht jeden Anbieter mit diesem Snapshot, vereint die Änderungen und gleicht alle mit dem Ergebnis ab:
 
 - Echofrei – ein propagiertes Hinzufügen wird Teil des Snapshots, sodass es nie zurückgesendet wird.

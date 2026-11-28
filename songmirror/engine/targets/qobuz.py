@@ -175,7 +175,10 @@ class QobuzTarget(MirrorTarget):
         raise TargetTransientError("Qobuz request retry budget exhausted")
 
     def list_playlists(self):
-        out, offset = {}, 0
+        return self._first_playlists_by_name(self.browse_playlists())
+
+    def browse_playlists(self):
+        out, offset = [], 0
         while True:
             params = {"limit": 100, "offset": offset}
             if self._user_id:
@@ -189,9 +192,8 @@ class QobuzTarget(MirrorTarget):
                 image = playlist.get("image_rectangle") or playlist.get("image")
                 if image and not playlist.get("images"):
                     playlist = {**playlist, "images": [{"url": image}]}
-                key = (playlist.get("name") or "").strip().casefold()
-                if key and key not in out:
-                    out[key] = playlist
+                if (playlist.get("name") or "").strip():
+                    out.append(playlist)
             offset += len(items)
             total = container.get("total")
             if total is not None:

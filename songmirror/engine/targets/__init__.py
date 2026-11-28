@@ -390,8 +390,12 @@ def nway_order_candidates(opts):
     profiles = _profiles(opts)
     # A read-only source can never hold order authority: the role requires the
     # holder to be a writable peer.
-    participants = [identity for identity in _participant_ids(opts)
-                    if _writable(identity, opts)]
+    participants = [
+        identity for identity in _participant_ids(opts)
+        if _writable(identity, opts) and (
+            not getattr(opts, "sync_playlists", True) or playlists_for(identity, opts)
+        )
+    ]
     if profiles is None:
         preferred = ("spotify", getattr(opts, "sync_source", None))
     else:

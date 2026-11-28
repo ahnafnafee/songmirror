@@ -1,14 +1,102 @@
-"""One-way sync against Spotify's real parsed playlist-track shape."""
+"""Sync against Spotify's real playlist target with provider requests stubbed."""
 
 from unittest.mock import Mock
 
 import pytest
 
-from songmirror.engine import archive, spotify, spotify_cookie
+from songmirror.engine import archive, runner, spotify, spotify_cookie
+from songmirror.engine.config import parse_args
 from songmirror.engine.matching import track_key
 from songmirror.engine.runner import load_cache, save_cache
 from songmirror.engine.targets import base
 from songmirror.engine.targets.spotify_target import SpotifyTarget
+from songmirror.engine.targets.tidal import TidalTarget
+
+
+def test_tidal_and_spotify_adapters_sync_same_name_playlist_in_both_directions(tmp_path, monkeypatch):
+    recordings = {
+        "1": ("Morning Light", "USAAA2600001", "0123456789abcdefghijkl"),
+        "2": ("Midnight Drive", "USAAA2600002", "0123456789abcdefghijkm"),
+        "3": ("Ocean Breeze", "USAAA2600003", "0123456789abcdefghijkn"),
+    }
+    spotify_members, tidal_members = ["1"], ["1"]
+    spotify_writes, tidal_writes = [], []
+    spotify_playlist = {"id": "spotify-mix", "name": "Mix", "_editable": True}
+    tidal_playlist = {"id": "tidal-mix", "attributes": {"name": "Mix"}}
+
+    def spotify_tracks(_playlist_id, **_kwargs):
+        return [
+            {"id": recordings[key][2], "name": recordings[key][0], "artists": ["Artist"],
+             "isrc": recordings[key][1], "duration_ms": 180_000, "added_at": f"2026-11-0{key}T00:00:00Z"}
+            for key in spotify_members
+        ]
+
+    def spotify_search(query, **_kwargs):
+        return [
+            {"id": track_id, "name": title, "artists": [{"name": "Artist"}], "duration_ms": 180_000}
+            for title, isrc, track_id in recordings.values() if query == f"isrc:{isrc}"
+        ]
+
+    def spotify_add(playlist_id, track_ids):
+        assert playlist_id == spotify_playlist["id"]
+        spotify_writes.extend(track_ids)
+        spotify_members.extend(key for key, row in recordings.items() if row[2] in track_ids)
+
+    def tidal_track(key):
+        return {"type": "tracks", "id": key,
+                "attributes": {"title": recordings[key][0], "isrc": recordings[key][1], "duration": "PT3M"},
+                "relationships": {"artists": {"data": [{"type": "artists", "id": "artist"}]}}}
+
+    def tidal_pages(path, params, **_kwargs):
+        artist = {"type": "artists", "id": "artist", "attributes": {"name": "Artist"}}
+        if path == "playlists":
+            yield {"data": [tidal_playlist]}
+        elif path == "tracks":
+            isrcs = params["filter[isrc]"].split(",")
+            yield {"data": [tidal_track(key) for key, row in recordings.items() if row[1] in isrcs],
+                   "included": [artist]}
+        else:
+            assert path == "playlists/tidal-mix/relationships/items"
+            yield {"data": [{"type": "tracks", "id": key, "meta": {
+                "itemId": f"entry-{key}", "addedAt": f"2026-11-0{key}T00:00:00Z",
+            }} for key in tidal_members], "included": [artist, *(tidal_track(key) for key in tidal_members)]}
+
+    def tidal_request(method, path, *, json_body):
+        assert method == "POST" and path == "playlists/tidal-mix/relationships/items"
+        keys = [item["id"] for item in json_body["data"]]
+        tidal_writes.extend(keys)
+        tidal_members.extend(keys)
+
+    monkeypatch.setenv("SPOTIFY_WRITE_BACKEND", "cookie")
+    monkeypatch.setattr(runner, "load_dotenv", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(spotify_cookie, "configured", lambda: True)
+    monkeypatch.setattr(spotify_cookie, "library_directory", lambda: spotify_cookie.LibraryDirectory([spotify_playlist], False))
+    monkeypatch.setattr(spotify_cookie, "playlist_tracks", spotify_tracks)
+    monkeypatch.setattr(spotify_cookie, "search_tracks", spotify_search)
+    monkeypatch.setattr(spotify_cookie, "add", spotify_add)
+    monkeypatch.setattr("songmirror.engine.targets.spotify_target.polite_sleep", lambda *_: None)
+    monkeypatch.setattr("songmirror.engine.targets.tidal.polite_sleep", lambda *_: None)
+
+    spotify_target = SpotifyTarget(None, str(tmp_path / "spotify.json"), sync_peer=True)
+    tidal_target = TidalTarget.__new__(TidalTarget)
+    tidal_target.country = "US"
+    tidal_target.cache_file = str(tmp_path / "tidal.json")
+    tidal_target._pages = tidal_pages
+    tidal_target._request = tidal_request
+    monkeypatch.setattr(runner, "build_one", lambda *args, **kwargs: spotify_target)
+    monkeypatch.setattr(runner, "build_peers", lambda *args, **kwargs: [spotify_target, tidal_target])
+    opts = parse_args(["--execute", "--sync-mode", "nway", "--providers", "spotify,tidal", "--playlists", "Mix"])
+    opts.song_cache_file = str(tmp_path / "songs.db")
+    opts.download_dir = ""
+
+    assert runner.run_pass(opts)["per_target"][0]["added"] == 0
+    tidal_members.append("2")
+    assert runner.run_pass(opts)["per_target"][0]["added"] == 1
+    spotify_members.append("3")
+    assert runner.run_pass(opts)["per_target"][0]["added"] == 1
+    assert runner.run_pass(opts)["per_target"][0]["added"] == 0
+    assert spotify_writes == [recordings["2"][2]]
+    assert tidal_writes == ["3"]
 
 
 @pytest.mark.parametrize("execute", [False, True], ids=["preview", "execute"])

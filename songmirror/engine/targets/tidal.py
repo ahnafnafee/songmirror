@@ -241,7 +241,10 @@ class TidalTarget(MirrorTarget):
 
     # -- MirrorTarget --------------------------------------------------------
     def list_playlists(self):
-        out = {}
+        return self._first_playlists_by_name(self.browse_playlists())
+
+    def browse_playlists(self):
+        out = []
         params = {"filter[owners.id]": "me", "countryCode": self.country, "include": ["coverArt"]}
         for body in self._pages("playlists", params):
             artworks = {
@@ -251,8 +254,7 @@ class TidalTarget(MirrorTarget):
             }
             for playlist in body.get("data") or []:
                 attrs = playlist.get("attributes") or {}
-                key = (attrs.get("name") or "").strip().casefold()
-                if key and key not in out:
+                if (attrs.get("name") or "").strip():
                     references = (
                         (((playlist.get("relationships") or {}).get("coverArt") or {}).get("data")) or []
                     )
@@ -273,7 +275,7 @@ class TidalTarget(MirrorTarget):
                             image_urls.append({"url": best["href"]})
                     if image_urls:
                         playlist = {**playlist, "images": image_urls}
-                    out[key] = playlist
+                    out.append(playlist)
         return out
 
     @classmethod

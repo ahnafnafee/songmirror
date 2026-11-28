@@ -5,6 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from ...services.playlists import (
     MAX_PLAYLIST_DESCRIPTION, MAX_PLAYLIST_NAME, PlaylistLink, PlaylistService,
@@ -254,16 +255,21 @@ def list_links(request: Request):
     return [asdict(link) for link in request.app.state.links.list()]
 
 
+class PlaylistLinkInput(BaseModel):
+    name: str = Field(min_length=1, max_length=MAX_PLAYLIST_NAME)
+    members: dict[str, str | None] = Field(default_factory=dict)
+    direction: Literal["oneway", "nway"] = "oneway"
+    source: str | None = "spotify"
+    enabled: bool = True
+    id: str = ""
+
+
 @router.put("/api/links")
-def upsert_link(request: Request, body: dict = Body(...)):
-    link = PlaylistLink(
-        name=body["name"],
-        members=body.get("members", {}),
-        direction=body.get("direction", "oneway"),
-        source=body.get("source", "spotify"),
-        enabled=body.get("enabled", True),
-        id=body.get("id", ""),
-    )
+def upsert_link(request: Request, body: PlaylistLinkInput):
+    body.name = body.name.strip()
+    if not body.name or any(not member or playlist_id == "" for member, playlist_id in body.members.items()):
+        raise HTTPException(status_code=422, detail="Pairing names, accounts, and selected playlist IDs cannot be blank.")
+    link = PlaylistLink(**body.model_dump())
     return asdict(request.app.state.links.upsert(link))
 
 
