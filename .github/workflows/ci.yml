@@ -104,3 +104,52 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ steps.cache-playwright.outputs.cache-primary-key }}
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'ahnafnafee/songmirror'
+    needs: [test, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: release-${{ github.sha }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare release notes and archive the tested commit
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/release-notes.md"
+          tag=$(python3 .github/release_notes.py "$GITHUB_SHA" --notes "$notes" --output "$GITHUB_OUTPUT")
+          filename="songmirror-${tag}.tar.gz"
+          path="$RUNNER_TEMP/$filename"
+          git archive --format=tar.gz --prefix="songmirror-${tag}/" --output="$path" "$GITHUB_SHA"
+          printf 'path=%s\nnotes=%s\n' "$path" "$notes" >> "$GITHUB_OUTPUT"
+
+      - name: Sign source archive provenance
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.archive.outputs.path }}
+
+      - name: Verify and publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.archive.outputs.tag }}
+          RELEASE_TITLE: ${{ steps.archive.outputs.title }}
+          RELEASE_NOTES: ${{ steps.archive.outputs.notes }}
+          RELEASE_PREVIOUS_TAG: ${{ steps.archive.outputs.previous_tag }}
+          RELEASE_ARCHIVE: ${{ steps.archive.outputs.path }}
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: bash .github/publish-release.sh
