@@ -9,14 +9,14 @@ const languages = [...languageSource.matchAll(/\{\s*code:\s*['"]([^'"]+)['"],\s*
   .map(([, code, label]) => ({ code, label }))
 assert.equal(languages.length, 15, 'Expected the complete supported-language registry')
 
-const overviewFile = 'README.md'
-const guideFor = (code) => code === 'en' ? 'docs/user-guide.md' : `docs/i18n/README.${code}.md`
-const navigationTarget = (code) => code === 'en' ? overviewFile : guideFor(code)
+const readmeFor = (code) => code === 'en' ? 'README.md' : `docs/i18n/README.${code}.md`
+const guideFor = (code) => code === 'en' ? 'docs/user-guide.md' : `docs/i18n/guide.${code}.md`
 const normalized = (text) => text.replace(/\r\n/g, '\n')
 const matches = (text, regex, group = 1) => [...text.matchAll(regex)].map((match) => match[group])
 const sorted = (values) => [...values].sort()
 const codeBlocks = (text) => matches(text, /^(```[^\n]*\n[\s\S]*?^```)[ \t]*$/gm)
 const withoutCode = (text) => text.replace(/^```[^\n]*\n[\s\S]*?^```[ \t]*$/gm, '')
+const translatableProse = (text) => withoutCode(text).replace(/^\|[^|\n]*\]\(https?:\/\/[^|\n]*\|/gm, '|')
 const inlineCode = (text) => matches(withoutCode(text), /`([^`\n]+)`/g)
 const anchorIds = (text) => matches(withoutCode(text), /<a\s+(?:id|name)="([^"]+)"[^>]*>/g)
 const referenceLinks = (text) => new Map([...withoutCode(text).matchAll(/^\[([^\]]+)\]:\s*(\S+)/gm)]
@@ -24,7 +24,7 @@ const referenceLinks = (text) => new Map([...withoutCode(text).matchAll(/^\[([^\
 const brands = ['SongMirror', 'Spotify', 'TIDAL', 'Qobuz', 'Deezer', 'Amazon Music', 'Apple Music', 'YouTube Music', 'Jellyfin', 'Soundiiz', 'TuneMyMusic', 'FreeYourMusic', 'RapidFuzz', 'anyascii']
 
 function phraseSignatures(text) {
-  const prose = withoutCode(text).replace(/`[^`\n]*`/g, '')
+  const prose = translatableProse(text).replace(/`[^`\n]*`/g, '')
     .replace(/^\[[^\]]+\]:.*$/gm, '')
     .replace(/<!-- LANGUAGE NAVIGATION -->[\s\S]*?<!-- \/LANGUAGE NAVIGATION -->/g, '')
     .replace(/<[^>]*>/g, '').replace(/\]\([^)]*\)/g, ']')
@@ -57,7 +57,15 @@ function resolveLink(file, target) {
   return `${relative}${fragment ? `#${decodeURIComponent(fragment)}` : ''}`
 }
 
-const comparableLink = (file, target) => target.startsWith('#') ? target : resolveLink(file, target)
+function comparableLink(file, target, code) {
+  if (target.startsWith('#')) return target
+  const resolved = resolveLink(file, target)
+  const guide = guideFor(code)
+  if (resolved === guide || resolved.startsWith(`${guide}#`)) {
+    return '@user-guide' + resolved.slice(guide.length)
+  }
+  return resolved
+}
 
 function layout(text) {
   const body = withoutCode(text)
@@ -97,15 +105,13 @@ function verifyLinks(file, document, files, links) {
   return checkedLinks
 }
 
-function verify(files) {
-  const overview = files.get(overviewFile)
-  assert(overview, 'Project README is missing')
-  const englishFile = guideFor('en')
+function verify(files, filenameFor) {
+  const englishFile = filenameFor('en')
   const english = files.get(englishFile)
-  assert(english, 'English user guide is missing')
+  assert(english, `${englishFile}: English reference is missing`)
   const englishAnchors = anchorIds(english)
   const englishSections = sections(english)
-  const englishLinks = sorted(destinations(english).map((target) => comparableLink(englishFile, target)))
+  const englishLinks = sorted(destinations(english).map((target) => comparableLink(englishFile, target, 'en')))
   const englishBlocks = codeBlocks(english)
   const englishInline = sorted(inlineCode(english))
   const englishLayout = layout(english)
@@ -119,12 +125,12 @@ function verify(files) {
     return text.match(pattern)?.length ?? 0
   }
   const englishRemovalLabels = removalLabelCount(english, REMOVAL_LABELS)
-  const longEnglishLines = new Set(withoutCode(english).split('\n')
+  const longEnglishLines = new Set(translatableProse(english).split('\n')
     .filter((line) => line.length > 120 && !/^<|^\[|^<!--/.test(line)))
-  let checkedLinks = verifyLinks(overviewFile, overview, files, destinations(overview))
+  let checkedLinks = 0
 
   for (const { code, label } of languages) {
-    const file = guideFor(code)
+    const file = filenameFor(code)
     const text = files.get(file)
     assert(text, `${file}: missing localized README`)
     assert(!/@@(?:DOC|LANGUAGE)|⟦|⟧|\b(?:TODO_TRANSLATE|TRANSLATION_PENDING|TBD|undefined)\b/.test(text), `${file}: untranslated placeholder`)
@@ -148,12 +154,12 @@ function verify(files) {
         .find(([, , navCode]) => navCode === language.code)
       assert(link, `${file}: missing ${language.label} navigation`)
       assert.equal(link[3], language.label, `${file}: language name must use its native spelling`)
-      assert.equal(resolveLink(file, link[1]), navigationTarget(language.code), `${file}: wrong language destination`)
+      assert.equal(resolveLink(file, link[1]), readmeFor(language.code), `${file}: wrong language destination`)
     }
     assert(text.includes(label), `${file}: native language name is missing`)
 
     const links = destinations(text)
-    assert.deepEqual(sorted(links.map((target) => comparableLink(file, target))), englishLinks, `${file}: documentation links or asset destinations differ from English`)
+    assert.deepEqual(sorted(links.map((target) => comparableLink(file, target, code))), englishLinks, `${file}: documentation links or asset destinations differ from English`)
     checkedLinks += verifyLinks(file, text, files, links)
     const localizedSections = sections(text)
     for (const [id, body] of englishSections) {
@@ -167,7 +173,7 @@ function verify(files) {
     assert(languageGuide.includes(catalog['Automatic (browser)']), `${file}: automatic language option differs from the app`)
     assert.equal(removalLabelCount(text, REMOVAL_LABELS.map((label) => catalog[label])), englishRemovalLabels, `${file}: deletion setting references must match the app`)
     if (code !== 'en') {
-      for (const line of withoutCode(text).split('\n')) {
+      for (const line of translatableProse(text).split('\n')) {
         assert(!longEnglishLines.has(line), `${file}: untranslated English paragraph: ${line.slice(0, 90)}`)
       }
       for (const phrase of phraseSignatures(text)) {
@@ -176,35 +182,41 @@ function verify(files) {
     }
     if (code === 'ar') assert(text.startsWith('<div lang="ar" dir="rtl">'), `${file}: Arabic reading direction is missing`)
   }
-  return { documents: languages.length, translations: languages.length - 1, sections: englishSections.size, codeBlocks: englishBlocks.length, checkedLinks }
+  return { documents: languages.length, checkedLinks }
 }
 
-const files = new Map([overviewFile, ...languages.map(({ code }) => guideFor(code))]
+const files = new Map(languages.flatMap(({ code }) => [readmeFor(code), guideFor(code)])
   .map((file) => [file, existsSync(path.join(root, file)) ? normalized(readFileSync(path.join(root, file), 'utf8')) : undefined]))
 assert.deepEqual(
-  sorted(readdirSync(path.join(root, 'docs/i18n')).filter((file) => /^README\.[^.]+\.md$/.test(file))),
-  sorted(languages.filter(({ code }) => code !== 'en').map(({ code }) => `README.${code}.md`)),
-  'Localized README files must match the supported languages',
+  sorted(readdirSync(path.join(root, 'docs/i18n')).filter((file) => /^(README|guide)\.[^.]+\.md$/.test(file))),
+  sorted(languages.filter(({ code }) => code !== 'en').flatMap(({ code }) => [`README.${code}.md`, `guide.${code}.md`])),
+  'Localized README and guide files must match the supported languages',
 )
-const result = verify(files)
+const overviewResult = verify(files, readmeFor)
+const guideResult = verify(files, guideFor)
 
 if (process.argv.includes('--self-test')) {
+  const frenchReadme = readmeFor('fr')
+  const frenchGuide = guideFor('fr')
   const checks = [
-    ['broken overview link', (docs) => docs.set(overviewFile, docs.get(overviewFile) + '\n[Missing guide section](docs/user-guide.md#missing)\n')],
-    ['missing translation', (docs) => docs.delete('docs/i18n/README.fr.md')],
-    ['changed command', (docs) => docs.set('docs/i18n/README.fr.md', docs.get('docs/i18n/README.fr.md').replace('docker compose up -d\n', 'docker compose down\n'))],
-    ['broken language link', (docs) => docs.set('docs/i18n/README.fr.md', docs.get('docs/i18n/README.fr.md').replace('href="README.ar.md"', 'href="README.missing.md"'))],
-    ['missing section', (docs) => docs.set('docs/i18n/README.fr.md', docs.get('docs/i18n/README.fr.md').replace('<a id="safety-rails"></a>', ''))],
-    ['untranslated placeholder', (docs) => docs.set('docs/i18n/README.fr.md', docs.get('docs/i18n/README.fr.md') + '\n@@DOC123@@\n')],
-    ['untranslated sentence', (docs) => docs.set('docs/i18n/README.fr.md', docs.get('docs/i18n/README.fr.md') + '\nThe default source of truth is Spotify, but one-way mode is provider-agnostic.\n')],
-    ['changed provider name', (docs) => docs.set('docs/i18n/README.fr.md', docs.get('docs/i18n/README.fr.md').replace('Spotify, TIDAL', 'Spotifly, TIDAL'))],
+    ['broken overview link', readmeFor, (docs) => docs.set('README.md', docs.get('README.md') + '\n[Missing guide section](docs/user-guide.md#missing)\n')],
+    ['missing translation', readmeFor, (docs) => docs.delete(frenchReadme)],
+    ['changed command', readmeFor, (docs) => docs.set(frenchReadme, docs.get(frenchReadme).replace('docker compose up -d\n', 'docker compose down\n'))],
+    ['broken language link', readmeFor, (docs) => docs.set(frenchReadme, docs.get(frenchReadme).replace('href="README.ar.md"', 'href="README.missing.md"'))],
+    ['changed service link', readmeFor, (docs) => docs.set(frenchReadme, docs.get(frenchReadme).replace('https://open.spotify.com/', 'https://spotify.com/'))],
+    ['guide in the wrong language', readmeFor, (docs) => docs.set(frenchReadme, docs.get(frenchReadme).replace('guide.fr.md#screenshots', 'guide.it.md#screenshots'))],
+    ['English guide in a translation', readmeFor, (docs) => docs.set(frenchReadme, docs.get(frenchReadme).replace('guide.fr.md#screenshots', '../user-guide.md#screenshots'))],
+    ['missing section', guideFor, (docs) => docs.set(frenchGuide, docs.get(frenchGuide).replace('<a id="safety-rails"></a>', ''))],
+    ['untranslated placeholder', guideFor, (docs) => docs.set(frenchGuide, docs.get(frenchGuide) + '\n@@DOC123@@\n')],
+    ['untranslated sentence', guideFor, (docs) => docs.set(frenchGuide, docs.get(frenchGuide) + '\nThe default source of truth is Spotify, but one-way mode is provider-agnostic.\n')],
+    ['changed provider name', guideFor, (docs) => docs.set(frenchGuide, docs.get(frenchGuide).replace('Spotify, TIDAL', 'Spotifly, TIDAL'))],
   ]
-  for (const [name, mutate] of checks) {
+  for (const [name, filenameFor, mutate] of checks) {
     const damaged = new Map(files)
     mutate(damaged)
-    assert.throws(() => verify(damaged), undefined, `Negative control did not reject ${name}`)
+    assert.throws(() => verify(damaged, filenameFor), undefined, `Negative control did not reject ${name}`)
   }
   console.log(`README checker negative controls passed (${checks.length})`)
 }
 
-console.log(`localized READMEs verified: ${result.documents} languages (${result.translations} translations), ${result.sections} sections and ${result.codeBlocks} unchanged code blocks each, ${result.checkedLinks} local links`)
+console.log(`localized READMEs and guides verified: ${overviewResult.documents} languages, ${overviewResult.checkedLinks + guideResult.checkedLinks} local links`)

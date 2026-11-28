@@ -130,21 +130,21 @@ Open **Accounts → Add account** and search for a service. Select it to open se
 
 | Service | Sync and transfer support |
 | --- | --- |
-| [Spotify](#spotify) | Playlists and favorites |
-| [TIDAL](#tidal) | Playlists and favorites |
-| [Qobuz](#qobuz) | Playlists and favorites |
-| [Deezer](#deezer) | Playlists and favorites |
-| [Amazon Music](#amazon-music) | Playlists and favorites |
-| [Apple Music](#apple-music) | Playlists and favorites |
-| [YouTube Music](#youtube-music) | Playlists and favorites |
-| [SoundCloud](#soundcloud) | Playlists |
-| [Last.fm](#lastfm) | Loved tracks, top tracks, and scrobbles. Authorize writes to loved tracks. |
-| [ListenBrainz](listenbrainz-subsonic.md) | Playlists and loved recordings. A user token enables writes. |
-| [Navidrome / Subsonic](listenbrainz-subsonic.md) | Playlists and favorites |
-| [Jellyfin](jellyfin-compatibility.md) | Server playlists. Provide a user ID to sync or transfer. |
-| Anghami, Audiomack, Gaana, JioSaavn | Signed-in profiles read private playlists, create private playlists, and add or remove tracks in playlists you own. |
-| Emby, Plex, Mopidy, Lyrion Music Server | Read and edit playlists using music already indexed by your server. Plex smart playlists are sources only. Mopidy needs a writable playlist backend, and Lyrion needs a configured playlist folder. |
-| QQ Music, LINE MUSIC, Pandora, Naver Vibe, and NetEase Cloud Music | Use public playlist links or the signed-in library as a source. Public links work in Transfers and multi-source merge sync. |
+| [Spotify](https://open.spotify.com/) | Playlists and favorites |
+| [TIDAL](https://tidal.com/) | Playlists and favorites |
+| [Qobuz](https://play.qobuz.com/) | Playlists and favorites |
+| [Deezer](https://www.deezer.com/) | Playlists and favorites |
+| [Amazon Music](https://music.amazon.com/) | Playlists and favorites |
+| [Apple Music](https://music.apple.com/) | Playlists and favorites |
+| [YouTube Music](https://music.youtube.com/) | Playlists and favorites |
+| [SoundCloud](https://soundcloud.com/) | Playlists |
+| [Last.fm](https://www.last.fm/) | Loved tracks, top tracks, and scrobbles. Authorize writes to loved tracks. |
+| [ListenBrainz](https://listenbrainz.org/) | Playlists and loved recordings. A user token enables writes. |
+| [Navidrome](https://www.navidrome.org/) / [Subsonic](https://www.subsonic.org/) | Playlists and favorites |
+| [Jellyfin](https://jellyfin.org/) | Server playlists. Provide a user ID to sync or transfer. |
+| [Anghami](https://play.anghami.com/), [Audiomack](https://audiomack.com/), [Gaana](https://gaana.com/), [JioSaavn](https://www.jiosaavn.com/) | Signed-in profiles read private playlists, create private playlists, and add or remove tracks in playlists you own. |
+| [Emby](https://emby.media/), [Plex](https://www.plex.tv/media-server-downloads/), [Mopidy](https://mopidy.com/), [Lyrion Music Server](https://lyrion.org/) | Read and edit playlists using music already indexed by your server. Plex smart playlists are sources only. Mopidy needs a writable playlist backend, and Lyrion needs a configured playlist folder. |
+| [QQ Music](https://y.qq.com/), [LINE MUSIC](https://music.line.me/), [Pandora](https://www.pandora.com/), [Naver Vibe](https://vibe.naver.com/), and [NetEase Cloud Music](https://music.163.com/) | Use public playlist links or the signed-in library as a source. Public links work in Transfers and multi-source merge sync. |
 
 LiveOne, MOOV, and Yandex Music are pending verification. See the [playlist adapter guide](music-service-adapters.md) for setup details and test results.
 
