@@ -1,8 +1,14 @@
 """HTTP-layer tests for Create Playlist import routes."""
 
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import pytest
 from fastapi.testclient import TestClient
+from spotify_scraper.errors import NotFoundError
 
+from songmirror.engine import spotify_cookie
+from songmirror.engine.targets.spotify_target import SpotifyTarget
 from songmirror.services.settings import SettingsStore
 from songmirror.web import create_app
 
@@ -95,6 +101,41 @@ class TestImportsRouter:
     def test_search_track_missing_params(self, client):
         response = client.get("/api/imports/search-track")
         assert response.status_code == 422  # Missing required params
+
+    def test_search_track_resolves_spotify_references_without_text_search(self, client, monkeypatch):
+        account = client.app.state.account_profiles.default_id("spotify")
+        track_id = "5gYvPf8SQBXm6ogGsyWhaG"
+        track = SimpleNamespace(
+            id=track_id, name="Love of My Life - Live",
+            artists=[SimpleNamespace(name="Scorpions")],
+            album=SimpleNamespace(name="CAPITAL ROCK 100 X 100"),
+            images=[], duration_ms=145586,
+        )
+        catalog = Mock()
+        catalog.get_track.return_value = track
+        monkeypatch.setattr(spotify_cookie, "_catalog_client", lambda: catalog)
+        monkeypatch.setattr(client.app.state.imports, "_build_target", lambda *args: SpotifyTarget(None, None))
+
+        def search(query):
+            return client.get("/api/imports/search-track", params={"account": account, "query": query})
+
+        for query in (
+            track_id, f"spotify:track:{track_id}",
+            f"https://open.spotify.com/intl-de/track/{track_id}?si=shared",
+        ):
+            response = search(query)
+            assert response.status_code == 200
+            hit, = response.json()["results"]
+            assert (hit["id"], hit["name"], hit["artist"]) == (track_id, track.name, "Scorpions")
+            catalog.get_track.assert_called_with(track_id)
+
+        assert search(f"https://open.spotify.com/album/{track_id}").status_code == 422
+        assert search(f"https://example.com/track/{track_id}").status_code == 422
+        assert catalog.get_track.call_count == 3
+
+        catalog.get_track.side_effect = NotFoundError("Missing track")
+        assert search(track_id).json() == {"results": []}
+        catalog.search.assert_not_called()
 
     def test_update_track_decision_nonexistent(self, client):
         response = client.patch(

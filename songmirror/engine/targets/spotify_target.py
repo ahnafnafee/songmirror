@@ -7,15 +7,17 @@ needs no developer app; OAuth remains a compatible fallback.
 """
 
 import os
+import re
 
 import requests
 import spotipy
+from spotify_scraper.errors import NotFoundError, SpotifyScraperError
 
 from .. import archive, spotify, spotify_cookie
 from ..config import (
     DEFAULT_SPOTIFY_CACHE_FILE, polite_sleep, spotify_write_backend,
 )
-from ..matching import normalize_text, romanized, score_candidate, track_key
+from ..matching import normalize_text, romanized, score_candidate, search_title_without_version, track_key
 from ..spotify_ids import track_id as spotify_track_id
 from .base import (
     MirrorTarget,
@@ -24,6 +26,10 @@ from .base import (
     TargetTransientError,
 )
 from .provider_utils import source_playlist_details
+
+
+_SEARCH_PAGE_SIZE = 10
+_IMPORT_PRIMARY_LIMIT = 25
 
 
 def _uri(track_id):
@@ -334,11 +340,16 @@ class SpotifyTarget(MirrorTarget):
         return None, None
 
     def _query(self, q, *, limit=8):
+        items, _ = self._query_page(q, limit=limit)
+        return items
+
+    def _query_page(self, q, *, limit, offset=0):
         try:
             if spotify_write_backend() == "cookie" or self._sp is None:
-                return spotify_cookie.search_tracks(q, limit=limit)
+                return spotify_cookie.search_tracks(q, limit=limit), False
+            paging = {"offset": offset} if offset else {}
             res = spotify._retry(
-                lambda: self._sp.search(q=q, type="track", limit=limit),
+                lambda: self._sp.search(q=q, type="track", limit=limit, **paging),
                 "search",
             )
         except requests.RequestException as exc:
@@ -353,21 +364,28 @@ class SpotifyTarget(MirrorTarget):
                 raise TargetTransientError(
                     f"Spotify search temporary failure ({status})."
                 ) from e
-            return []
-        return (res.get("tracks") or {}).get("items", [])
+            return [], False
+        page = res.get("tracks") or {}
+        return page.get("items") or [], bool(page.get("next"))
 
     def _normalize_search_item(self, item):
+        if not isinstance(item, dict):
+            return None
         target_id = item.get("id")
         if not target_id:
             return None
         arts = [a.get("name", "") for a in item.get("artists", []) if a.get("name")]
-        album = item.get("album") or {}
-        images = album.get("images") or item.get("images") or []
+        album = item.get("album")
+        album_images = album.get("images") if isinstance(album, dict) else None
+        images = album_images or item.get("images") or []
         image = ""
         if images and isinstance(images[0], dict):
             image = images[0].get("url") or ""
         elif isinstance(images, list) and images and isinstance(images[0], str):
             image = images[0]
+        is_playable = item.get("is_playable")
+        if not isinstance(is_playable, bool):
+            is_playable = False if (item.get("restrictions") or {}).get("reason") else None
         return {
             "id": str(target_id),
             "name": item.get("name", ""),
@@ -377,30 +395,123 @@ class SpotifyTarget(MirrorTarget):
             "duration_ms": item.get("duration_ms"),
             "image": image or None,
             "external_url": f"https://open.spotify.com/track/{target_id}",
-            "isrc": ((item.get("external_ids") or {}).get("isrc") if isinstance(item, dict) else None),
+            "isrc": (item.get("external_ids") or {}).get("isrc"),
+            "is_playable": is_playable,
         }
 
     def search_candidates(self, query, *, limit=5):
+        return [item for page in self._candidate_pages(query, limit=limit) for item in page]
+
+    def _candidate_pages(self, query, *, limit):
         query = str(query or "").strip()
-        if not query:
-            return []
-        out = []
+        if not query or limit < 1:
+            return
+        web_player = spotify_write_backend() == "cookie" or self._sp is None
         seen = set()
-        for item in self._query(query, limit=max(limit, 1)):
-            normalized = self._normalize_search_item(item)
-            if not normalized or normalized["id"] in seen:
-                continue
-            seen.add(normalized["id"])
-            out.append(normalized)
-            if len(out) >= limit:
+        page_size = limit if web_player else min(limit, _SEARCH_PAGE_SIZE)
+        for offset in range(0, limit, page_size):
+            count = min(page_size, limit - offset)
+            try:
+                items, has_next = self._query_page(query, limit=count, offset=offset)
+            except SpotifyScraperError as exc:
+                raise TargetTransientError(f"Spotify web player search failed: {exc}") from exc
+            page = []
+            for item in items[:count]:
+                normalized = self._normalize_search_item(item)
+                if not normalized or normalized["id"] in seen:
+                    continue
+                seen.add(normalized["id"])
+                page.append(normalized)
+            if page:
+                yield page
+            if not has_next:
                 break
-        return out
+
+    def iter_import_candidates(self, track):
+        """Yield bounded sets of import hits in query and page order."""
+        title = str(track.get("name") or "").strip()
+        artist = str(next(iter(track.get("artists") or []), "")).strip()
+        album = str(track.get("album") or "").strip()
+        if not title and not artist:
+            return
+
+        base = search_title_without_version(title)
+        queries = [(f"{title} {artist}", _IMPORT_PRIMARY_LIMIT)]
+        web_player = spotify_write_backend() == "cookie" or self._sp is None
+        fallback_limit = _IMPORT_PRIMARY_LIMIT if web_player else _SEARCH_PAGE_SIZE
+        if not web_player and base and artist:
+            queries.append((f"track:{base} artist:{artist}", fallback_limit))
+        queries.append((f"{artist} {normalize_text(title)}", fallback_limit))
+        if base != title:
+            queries.append((f"{base} {artist}", fallback_limit))
+        if album and album.casefold() != "n/a":
+            queries.append((f"{artist} {base} {album}", fallback_limit))
+        queries.append((f"{romanized(title)} {romanized(artist)}", fallback_limit))
+        if artist and base != title:
+            queries.append((title, fallback_limit))
+
+        seen_queries = set()
+        for query, limit in queries:
+            query = " ".join(query.split())
+            key = query.casefold()
+            if key and key not in seen_queries:
+                seen_queries.add(key)
+                yield from self._candidate_pages(query, limit=limit)
+
+    def search_import_catalog(self, query, *, limit):
+        """Look up an explicit Spotify track reference or search free text."""
+        reference = (
+            re.fullmatch(r"[A-Za-z0-9]{22}", query)
+            or query.casefold().startswith((
+                "spotify:", "https://", "http://", "open.spotify.com/", "play.spotify.com/",
+            ))
+        )
+        if not reference:
+            return self.search_candidates(query, limit=limit)
+
+        target_id = spotify_track_id(query)
+        if not re.fullmatch(r"[A-Za-z0-9]{22}", target_id):
+            raise ValueError("Paste a Spotify track link, track URI, or 22-character track ID.")
+        try:
+            if spotify_write_backend() == "cookie" or self._sp is None:
+                item = spotify_cookie.track_metadata(target_id)
+            else:
+                item = spotify._retry(lambda: self._sp.track(target_id), "track lookup")
+        except NotFoundError:
+            return []
+        except spotipy.SpotifyException as exc:
+            if exc.http_status == 404:
+                return []
+            raise
+        match = self._normalize_search_item(item) if item else None
+        return [match] if match else []
 
     def search_by_isrc(self, isrc):
         isrc = str(isrc or "").strip()
         if not isrc:
             return []
         return self.search_candidates(f"isrc:{isrc}", limit=5)
+
+    def search_import_recording(self, track, isrc, album):
+        """Find and independently verify Spotify editions of an inferred ISRC."""
+        hits = {item["id"]: item for item in self.search_by_isrc(isrc)}
+        if spotify_write_backend() == "cookie" or self._sp is None:
+            artist = track["artists"][0]
+            title = search_title_without_version(track["name"])
+            if album:
+                for item in self.search_candidates(f"{artist} {title} {album}", limit=10):
+                    hits.setdefault(item["id"], item)
+            shortlist = [
+                item["id"] for item in hits.values()
+                if re.fullmatch(r"[A-Za-z0-9]{22}", item["id"]) and score_candidate(
+                    track["name"], track["artists"], track["duration_ms"],
+                    item["name"], item["artist"], item["duration_ms"],
+                )[1]
+            ][:5]
+            verified = spotify_cookie.metadata_isrcs(shortlist)
+            for target_id, value in verified.items():
+                hits[target_id]["isrc"] = value
+        return [item for item in hits.values() if item.get("isrc") == isrc]
 
     def _best(self, track, items):
         best_id, best_score = None, -1.0
