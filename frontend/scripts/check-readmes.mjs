@@ -9,7 +9,9 @@ const languages = [...languageSource.matchAll(/\{\s*code:\s*['"]([^'"]+)['"],\s*
   .map(([, code, label]) => ({ code, label }))
 assert.equal(languages.length, 15, 'Expected the complete supported-language registry')
 
-const filenameFor = (code) => code === 'en' ? 'README.md' : `docs/i18n/README.${code}.md`
+const overviewFile = 'README.md'
+const guideFor = (code) => code === 'en' ? 'docs/user-guide.md' : `docs/i18n/README.${code}.md`
+const navigationTarget = (code) => code === 'en' ? overviewFile : guideFor(code)
 const normalized = (text) => text.replace(/\r\n/g, '\n')
 const matches = (text, regex, group = 1) => [...text.matchAll(regex)].map((match) => match[group])
 const sorted = (values) => [...values].sort()
@@ -73,12 +75,37 @@ function sections(text) {
     .map(([, id, body]) => [id, withoutCode(body)]))
 }
 
+function verifyLinks(file, document, files, links) {
+  const refs = referenceLinks(document)
+  for (const ref of matches(withoutCode(document), /\[[^\]\n]*\]\[([^\]\n]+)\]/g)) {
+    assert(refs.has(ref.toLowerCase()), `${file}: unresolved reference link [${ref}]`)
+  }
+
+  let checkedLinks = 0
+  for (const target of links) {
+    const resolved = resolveLink(file, target)
+    if (/^[a-z][a-z\d+.-]*:/i.test(resolved)) continue
+    const [destination, fragment] = resolved.split('#')
+    const content = files.get(destination)
+    assert(content !== undefined || existsSync(path.join(root, destination)), `${file}: broken local link ${target}`)
+    if (fragment) {
+      const linkedText = content ?? readFileSync(path.join(root, destination), 'utf8')
+      assert(anchorIds(linkedText).includes(fragment), `${file}: broken section link ${target}`)
+    }
+    checkedLinks++
+  }
+  return checkedLinks
+}
+
 function verify(files) {
-  const english = files.get('README.md')
-  assert(english, 'English README is missing')
+  const overview = files.get(overviewFile)
+  assert(overview, 'Project README is missing')
+  const englishFile = guideFor('en')
+  const english = files.get(englishFile)
+  assert(english, 'English user guide is missing')
   const englishAnchors = anchorIds(english)
   const englishSections = sections(english)
-  const englishLinks = sorted(destinations(english).map((target) => comparableLink('README.md', target)))
+  const englishLinks = sorted(destinations(english).map((target) => comparableLink(englishFile, target)))
   const englishBlocks = codeBlocks(english)
   const englishInline = sorted(inlineCode(english))
   const englishLayout = layout(english)
@@ -94,10 +121,10 @@ function verify(files) {
   const englishRemovalLabels = removalLabelCount(english, REMOVAL_LABELS)
   const longEnglishLines = new Set(withoutCode(english).split('\n')
     .filter((line) => line.length > 120 && !/^<|^\[|^<!--/.test(line)))
-  let checkedLinks = 0
+  let checkedLinks = verifyLinks(overviewFile, overview, files, destinations(overview))
 
   for (const { code, label } of languages) {
-    const file = filenameFor(code)
+    const file = guideFor(code)
     const text = files.get(file)
     assert(text, `${file}: missing localized README`)
     assert(!/@@(?:DOC|LANGUAGE)|⟦|⟧|\b(?:TODO_TRANSLATE|TRANSLATION_PENDING|TBD|undefined)\b/.test(text), `${file}: untranslated placeholder`)
@@ -121,28 +148,13 @@ function verify(files) {
         .find(([, , navCode]) => navCode === language.code)
       assert(link, `${file}: missing ${language.label} navigation`)
       assert.equal(link[3], language.label, `${file}: language name must use its native spelling`)
-      assert.equal(resolveLink(file, link[1]), filenameFor(language.code), `${file}: wrong language destination`)
+      assert.equal(resolveLink(file, link[1]), navigationTarget(language.code), `${file}: wrong language destination`)
     }
     assert(text.includes(label), `${file}: native language name is missing`)
 
-    const refs = referenceLinks(text)
-    for (const ref of matches(withoutCode(text), /\[[^\]\n]*\]\[([^\]\n]+)\]/g)) {
-      assert(refs.has(ref.toLowerCase()), `${file}: unresolved reference link [${ref}]`)
-    }
     const links = destinations(text)
     assert.deepEqual(sorted(links.map((target) => comparableLink(file, target))), englishLinks, `${file}: documentation links or asset destinations differ from English`)
-    for (const target of links) {
-      const resolved = resolveLink(file, target)
-      if (/^[a-z][a-z\d+.-]*:/i.test(resolved)) continue
-      const [destination, fragment] = resolved.split('#')
-      const content = files.get(destination)
-      assert(content !== undefined || existsSync(path.join(root, destination)), `${file}: broken local link ${target}`)
-      if (fragment) {
-        const linkedText = content ?? readFileSync(path.join(root, destination), 'utf8')
-        assert(anchorIds(linkedText).includes(fragment), `${file}: broken section link ${target}`)
-      }
-      checkedLinks++
-    }
+    checkedLinks += verifyLinks(file, text, files, links)
     const localizedSections = sections(text)
     for (const [id, body] of englishSections) {
       const localized = localizedSections.get(id)
@@ -167,10 +179,8 @@ function verify(files) {
   return { documents: languages.length, translations: languages.length - 1, sections: englishSections.size, codeBlocks: englishBlocks.length, checkedLinks }
 }
 
-const files = new Map(languages.map(({ code }) => {
-  const file = filenameFor(code)
-  return [file, existsSync(path.join(root, file)) ? normalized(readFileSync(path.join(root, file), 'utf8')) : undefined]
-}))
+const files = new Map([overviewFile, ...languages.map(({ code }) => guideFor(code))]
+  .map((file) => [file, existsSync(path.join(root, file)) ? normalized(readFileSync(path.join(root, file), 'utf8')) : undefined]))
 assert.deepEqual(
   sorted(readdirSync(path.join(root, 'docs/i18n')).filter((file) => /^README\.[^.]+\.md$/.test(file))),
   sorted(languages.filter(({ code }) => code !== 'en').map(({ code }) => `README.${code}.md`)),
@@ -180,6 +190,7 @@ const result = verify(files)
 
 if (process.argv.includes('--self-test')) {
   const checks = [
+    ['broken overview link', (docs) => docs.set(overviewFile, docs.get(overviewFile) + '\n[Missing guide section](docs/user-guide.md#missing)\n')],
     ['missing translation', (docs) => docs.delete('docs/i18n/README.fr.md')],
     ['changed command', (docs) => docs.set('docs/i18n/README.fr.md', docs.get('docs/i18n/README.fr.md').replace('docker compose up -d\n', 'docker compose down\n'))],
     ['broken language link', (docs) => docs.set('docs/i18n/README.fr.md', docs.get('docs/i18n/README.fr.md').replace('href="README.ar.md"', 'href="README.missing.md"'))],
