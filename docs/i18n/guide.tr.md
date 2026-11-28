@@ -305,6 +305,8 @@ Silme işlemlerinin açıkça etkinleştirilmesi gerekir ve bu işlemler bir üs
 
 Varsayılan olarak tek bir sağlayıcı gerçeğin kaynağıdır ve düzenlemeler tek yönlü olarak akar. **N-way modunda** seçilen her sağlayıcı bir eştir: herhangi birine bir parça eklenir veya kaldırılır ve değişiklik diğerlerine de yayılır.
 
+Adları farklı çalma listeleri için **Çalma listeleri → Eşleştirmeler** bölümünde **Çift Yönlü (Çoklu servis)** eşleştirmesi kaydedin ve her iki hesabı çift yönlü bir eşitleme görevine dahil edin. Görevi çalma listesi adına göre filtrelerken eşleştirme adını veya eşleştirmedeki çalma listelerinden birinin adını girin. SongMirror, oluşturduğu çalma listelerinin kimliklerini kaydeder, böylece adları değişse de eşleştirme korunur. Tek yönlü bir eşleştirme yalnızca aynı kaynağı kullanan tek yönlü bir görevde çalışır.
+
 Çift yönlü senkronizasyon durum bilgisi olmadan imkansızdır, bu nedenle her mantıksal çalma listesinin kanonik üyeliğinin her temiz geçişten sonra anlık görüntüsü alınır. Her geçiş, her sağlayıcıyı bu anlık görüntüye göre farklılaştırır, değişiklikleri birleştirir ve herkesi sonuç konusunda uzlaştırır:
 
 - **Yankısız** — yayılan bir ekleme, anlık görüntünün parçası haline gelir, böylece asla geri dönmez.

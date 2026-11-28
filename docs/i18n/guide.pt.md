@@ -305,6 +305,8 @@ As exclusões exigem ativação explícita e continuam sujeitas a um limite. Ati
 
 Por padrão, um provedor é a fonte da verdade e as edições fluem em uma direção. No modo N-way, cada provedor selecionado é um par: adicione ou remova uma trilha em qualquer um e a mudança se propaga para os outros.
 
+Se as playlists tiverem nomes diferentes, salve um emparelhamento **Bidirecional (N-way)** em **Playlists → Emparelhamentos** e inclua as duas contas em uma tarefa de sincronização bidirecional. Ao filtrar a tarefa pelo nome da playlist, informe o nome do emparelhamento ou de qualquer uma das playlists que fazem parte dele. O SongMirror guarda os IDs das playlists após criá-las, então o emparelhamento continua válido se você mudar o nome delas. Um emparelhamento unidirecional só é executado em uma tarefa unidirecional com a mesma fonte.
+
 A sincronização bidirecional é impossível sem estado, portanto, a associação canônica de cada lista de reprodução lógica é capturada após cada passagem limpa. Cada passagem compara cada provedor com aquele instantâneo, une as alterações e reconcilia todos com o resultado:
 
 - Sem eco — uma adição propagada torna-se parte do instantâneo, portanto nunca é devolvida.

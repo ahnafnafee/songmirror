@@ -305,6 +305,8 @@ Le eliminazioni richiedono un’attivazione esplicita e restano soggette a un li
 
 Per impostazione predefinita, un fornitore è la fonte della verità e le modifiche fluiscono in un senso. Nella modalità N-way ogni provider selezionato è un peer: aggiungi o rimuovi una traccia su uno qualsiasi e il cambiamento si propaga agli altri.
 
+Per le playlist con nomi diversi, salva un abbinamento **Bidirezionale (N-direzione)** in **Playlist → Abbinamenti** e includi entrambi gli account in un’attività di sincronizzazione bidirezionale. Se filtri l’attività per nome della playlist, inserisci il nome dell’abbinamento o di una delle sue playlist. SongMirror salva gli ID delle playlist dopo averle create, così l’abbinamento resta valido se le rinomini. Un abbinamento unidirezionale si esegue solo in un’attività unidirezionale con la stessa sorgente.
+
 La sincronizzazione bidirezionale è impossibile senza stato, quindi l'appartenenza canonica di ogni playlist logica viene catturata dopo ogni passaggio pulito. Ogni passaggio differenzia ogni fornitore rispetto a quell'istantanea, unisce le modifiche e riconcilia tutti con il risultato:
 
 - Senza eco: un'aggiunta propagata diventa parte dell'istantanea, quindi non viene mai restituita.

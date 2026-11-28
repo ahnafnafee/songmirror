@@ -305,6 +305,8 @@ Les suppressions nécessitent une activation explicite et restent plafonnées. A
 
 Par défaut, un fournisseur est la source de vérité et les modifications s'effectuent dans un sens. En mode N-way, chaque fournisseur sélectionné est un homologue : ajoutez ou supprimez une piste sur l'un d'entre eux et le changement se propage aux autres.
 
+Si les listes de lecture portent des noms différents, enregistrez un appariement **Bidirectionnel (N-way)** dans **Listes de lecture → Appariements** et incluez les deux comptes dans une tâche de synchronisation bidirectionnelle. Pour filtrer la tâche par nom de liste, saisissez le nom de l’appariement ou de l’une de ses listes. SongMirror conserve les identifiants des listes après leur création, ce qui préserve l’appariement si vous les renommez. Un appariement unidirectionnel s’exécute uniquement dans une tâche unidirectionnelle qui utilise la même source.
+
 La synchronisation bidirectionnelle est impossible sans état, de sorte que l'appartenance canonique de chaque liste de lecture logique est instantanée après chaque passe propre. Chaque passe compare chaque fournisseur à cet instantané, regroupe les modifications et réconcilie tout le monde avec le résultat :
 
 - Sans écho : un ajout propagé devient partie intégrante de l'instantané et n'est donc jamais renvoyé.
