@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
 from songmirror.engine.matching import track_key
 from songmirror.engine.targets.base import MirrorTarget
+from songmirror.engine.targets.spotify_target import SpotifyTarget
 from songmirror.services.import_matching import ImportMatcher, MatchResult
+from songmirror.services.import_musicbrainz import MusicBrainzImportLookup
 
 
 class FakeTarget(MirrorTarget):
@@ -54,6 +58,155 @@ def _track(**kwargs):
     }
     base.update(kwargs)
     return base
+
+
+def _spotify_live_candidates():
+    return [
+        {"id": "studio", "name": "Love of My Life", "artists": [{"name": "Scorpions"}]},
+        {"id": "live-cover", "name": "Love of My Life - Live", "artists": [{"name": "Queen"}]},
+        {"id": "other-live", "name": "Love of My Life - Live in Berlin", "artists": [{"name": "Scorpions"}]},
+    ]
+
+
+def test_spotify_import_scores_later_oauth_pages_and_stops_on_match(monkeypatch):
+    monkeypatch.setattr("songmirror.engine.targets.spotify_target.spotify_write_backend", lambda: "oauth")
+    spotify = Mock()
+    live = {"id": "5gYvPf8SQBXm6ogGsyWhaG", "name": "Love of My Life - Live",
+            "artists": [{"name": "Scorpions"}], "duration_ms": 145586}
+    rejected = _spotify_live_candidates()
+    spotify.search.side_effect = [
+        {"tracks": {"items": rejected, "next": "next"}},
+        {"tracks": {"items": [rejected[0], live], "next": "next"}},
+    ]
+    result = ImportMatcher(SpotifyTarget(spotify, None)).match_track(
+        {"title": "Love of My Life (Live)", "artist": "Scorpions",
+         "duration_ms": 145586, "source_isrc": "N/A"}
+    )
+
+    assert result.status == "high"
+    assert result.best.target_id == live["id"]
+    assert [item.target_id for item in result.candidates].count("studio") == 1
+    assert all(not item.acceptable for item in result.candidates[1:])
+    assert [call.kwargs for call in spotify.search.call_args_list] == [
+        {"q": "Love of My Life (Live) Scorpions", "type": "track", "limit": 10},
+        {"q": "Love of My Life (Live) Scorpions", "type": "track", "limit": 10, "offset": 10},
+    ]
+
+
+@pytest.mark.parametrize("include_live", [True, False])
+def test_spotify_web_import_retries_with_simplified_title(monkeypatch, include_live):
+    queries = []
+
+    def search(query, limit):
+        queries.append((query, limit))
+        hits = _spotify_live_candidates()
+        if include_live and query == "Love of My Life Scorpions":
+            hits.append({"id": "3sKBmOlFXwNlKIeheAma3r", "name": "Love of My Life - Live",
+                         "artists": [{"name": "Scorpions"}]})
+        return hits
+
+    monkeypatch.setattr("songmirror.engine.spotify_cookie.search_tracks", search)
+    result = ImportMatcher(SpotifyTarget(None, None)).match_track(
+        {"title": "Love of My Life (Live)", "artist": "Scorpions", "album": "N/A"}
+    )
+
+    assert queries[:3] == [
+        ("Love of My Life (Live) Scorpions", 25),
+        ("Scorpions love of my life live", 25),
+        ("Love of My Life Scorpions", 25),
+    ]
+    if include_live:
+        assert result.status == "high"
+        assert result.best.target_id == "3sKBmOlFXwNlKIeheAma3r"
+    else:
+        assert result.status == "unmatched"
+        assert all(not item.acceptable for item in result.candidates)
+
+
+def _pink_floyd_recordings():
+    return [
+        {"id": "pulse", "name": "Wish You Were Here - Live", "artist": "Pink Floyd",
+         "album": "Pulse (Live)", "duration_ms": 395920, "isrc": "GBN9X1800023"},
+        {"id": "thunder", "name": "Wish You Were Here - Live", "artist": "Pink Floyd",
+         "album": "Delicate Sound of Thunder (Live)", "duration_ms": 289093, "isrc": "GBN9X1600010"},
+    ]
+
+
+@pytest.mark.parametrize(("album", "duration", "expected"), [
+    (None, None, None),
+    ("Delicate Sound of Thunder (Live)", None, "thunder"),
+    (None, 289093, "thunder"),
+])
+def test_spotify_needs_evidence_to_choose_between_live_performances(album, duration, expected):
+    matcher = ImportMatcher(FakeTarget(candidates=_pink_floyd_recordings()))
+    result = matcher.match_track({
+        "title": "Wish You Were Here (Live)", "artist": "Pink Floyd",
+        "album": album, "duration_ms": duration,
+    })
+    if expected:
+        assert result.status == "high"
+        assert result.best.target_id == expected
+    else:
+        assert result.status == "ambiguous" and result.best is None
+        assert result.confidence == pytest.approx(0.90)
+
+
+def test_spotify_checks_for_competing_live_recordings_on_later_pages(monkeypatch):
+    monkeypatch.setattr("songmirror.engine.targets.spotify_target.spotify_write_backend", lambda: "oauth")
+    spotify = Mock()
+    first, second = (
+        {**item, "artists": [{"name": item["artist"]}], "external_ids": {"isrc": item["isrc"]}}
+        for item in _pink_floyd_recordings()
+    )
+    spotify.search.side_effect = lambda *, q, offset=0, **_: {
+        "tracks": {"items": [second if offset else first], "next": None if offset else "next"}
+    } if q == "Wish You Were Here (Live) Pink Floyd" else {"tracks": {"items": []}}
+
+    result = ImportMatcher(SpotifyTarget(spotify, None)).match_track({
+        "title": "Wish You Were Here (Live)", "artist": "Pink Floyd",
+    })
+    assert result.status == "ambiguous"
+    assert {item.target_id for item in result.candidates} == {"pulse", "thunder"}
+
+
+def test_spotify_groups_verified_editions_and_excludes_known_unavailable_tracks():
+    base = {"name": "Love of My Life - Live", "artist": "Scorpions", "isrc": "DEA810901194"}
+    compilation = {**base, "id": "compilation", "duration_ms": 145586}
+    acoustica = {**base, "id": "acoustica", "duration_ms": 146293, "is_playable": True}
+    source = {"title": "Love of My Life (Live)", "artist": "Scorpions"}
+    assert ImportMatcher(FakeTarget(candidates=[compilation, acoustica])).match_track(source).status == "high"
+    compilation["is_playable"] = False
+    target = FakeTarget(candidates=[compilation, acoustica], isrc={base["isrc"]: [compilation, acoustica]})
+    for track in (source, {**source, "source_isrc": base["isrc"]}):
+        assert ImportMatcher(target).match_track(track).best.target_id == "acoustica"
+    acoustica["is_playable"] = False
+    result = ImportMatcher(target).match_track(source)
+    assert result.best is None
+    assert {candidate.reason for candidate in result.candidates} == {"spotify_unavailable"}
+
+
+def test_spotify_uses_musicbrainz_hint_only_with_independently_verified_isrc(monkeypatch):
+    isrc = "DEA810901194"
+    recording = {
+        "title": "Love of My Life", "disambiguation": "live, Lisbon, 2001",
+        "artist-credit": [{"name": "Scorpions"}], "isrcs": [isrc],
+        "releases": [{"title": "Acoustica"}], "length": 146293,
+    }
+    lookup = MusicBrainzImportLookup()
+    search = Mock(return_value=[recording, {**recording, "disambiguation": "", "isrcs": []}])
+    monkeypatch.setattr(lookup, "_search", search)
+    candidate = {"id": "acoustica", "name": "Love of My Life - Live", "artist": "Scorpions",
+                 "album": "Acoustica", "duration_ms": 146293}
+    target = FakeTarget()
+    target.search_import_recording = Mock(return_value=[{**candidate, "isrc": "USAAA2000001"}])
+    matcher = ImportMatcher(target, recording_lookup=lookup)
+    source = {"title": "Love of My Life (Live)", "artist": "Scorpions"}
+    assert matcher.match_track(source).status == "unmatched"
+    target.search_import_recording.return_value = [{**candidate, "isrc": isrc, "is_playable": True}]
+    result = matcher.match_track(source)
+    assert result.best.target_id == "acoustica" and result.best.reason == "musicbrainz_isrc"
+    assert target.search_import_recording.call_args.args[1:] == (isrc, "Acoustica")
+    search.assert_called_once_with('recording:"Love of My Life" AND artist:"Scorpions"')
 
 
 def test_same_provider_id_is_exact_match():

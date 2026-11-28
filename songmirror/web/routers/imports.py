@@ -50,7 +50,7 @@ async def search_track(
     query: str,
     limit: int = 10,
 ):
-    """Search for tracks on a provider for manual assignment during review."""
+    """Search for tracks or look up a Spotify reference for manual assignment."""
     service = _imports(request)
     try:
         results = await service.search_track(account, query, limit=limit)

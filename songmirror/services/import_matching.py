@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from ..engine.matching import (
+    creative_version_markers,
     normalize_isrc,
     normalize_text,
     recording_metadata_compatible,
@@ -25,6 +26,9 @@ from .playlist_links import track_url
 
 HIGH_SCORE = REVIEW_THRESHOLD
 AMBIGUOUS_SCORE = 0.5
+MAX_REVIEW_CANDIDATES = 10
+RECORDING_TIE_MARGIN = 0.03
+SPOTIFY_UNAVAILABLE = "spotify_unavailable"
 
 
 @dataclass
@@ -41,6 +45,8 @@ class MatchCandidate:
     score: float = 0.0
     reason: str = ""
     acceptable: bool = False
+    isrc: str = ""
+    is_playable: Optional[bool] = None
 
 
 @dataclass
@@ -71,15 +77,17 @@ def _as_source_track(track: dict) -> dict:
     """Normalize an import-row or engine-shaped track for scoring/search."""
     title = _title_of(track)
     artists = _artists_of(track)
+    isrc = str(track.get("source_isrc") or track.get("isrc") or "").strip()
+    album = track.get("album")
     return {
         "id": track.get("source_track_id") or track.get("id"),
         "name": title,
         "title": title,
         "artist": track.get("artist") or ", ".join(artists),
         "artists": artists,
-        "album": track.get("album"),
+        "album": None if normalize_text(album) == "n a" else album,
         "duration_ms": track.get("duration_ms"),
-        "isrc": normalize_isrc(track.get("source_isrc") or track.get("isrc")),
+        "isrc": "" if isrc.casefold() == "n/a" else normalize_isrc(isrc),
         "source_track_id": track.get("source_track_id") or track.get("id"),
         "image": track.get("image"),
         "external_url": track.get("external_url"),
@@ -154,6 +162,33 @@ def _compat_view(data) -> dict:
     }
 
 
+def _same_known_recording(first: MatchCandidate, second: MatchCandidate) -> bool:
+    if first.target_id == second.target_id:
+        return True
+    return bool(
+        first.isrc and first.isrc == second.isrc
+        and recording_metadata_compatible(_compat_view(first), _compat_view(second))
+    )
+
+
+def _album_matches(track: dict, candidate: MatchCandidate) -> bool:
+    album = normalize_text(track.get("album"))
+    return bool(album and album == normalize_text(candidate.album))
+
+
+def _spotify_choice(track: dict, candidates: list[MatchCandidate]) -> Optional[MatchCandidate]:
+    """Break close ties with source album evidence or verified recording identity."""
+    strong = [candidate for candidate in candidates if candidate.acceptable and candidate.score >= HIGH_SCORE]
+    if not strong:
+        return None
+    first = strong[0]
+    close = [candidate for candidate in strong if first.score - candidate.score <= RECORDING_TIE_MARGIN]
+    album_hits = [candidate for candidate in close if _album_matches(track, candidate)]
+    eligible = album_hits or close
+    best = eligible[0]
+    return best if all(_same_known_recording(best, other) for other in eligible[1:]) else None
+
+
 class ImportMatcher:
     """Match imported tracks against one destination MirrorTarget."""
 
@@ -163,11 +198,13 @@ class ImportMatcher:
         resolve_cache: Optional[dict] = None,
         *,
         source_provider: Optional[str] = None,
+        recording_lookup: Optional[Callable] = None,
     ):
         self.target = target
         self.cache = resolve_cache if resolve_cache is not None else {"isrc": {}, "search": {}, "manual": set()}
         self.source_provider = (source_provider or "").casefold() or None
         self.destination_provider = target_provider(target)
+        self.recording_lookup = recording_lookup
 
     def match_track(self, track: dict) -> MatchResult:
         """Match a single imported track against the target catalog.
@@ -240,7 +277,9 @@ class ImportMatcher:
             target_id = str(cached_id)
             validated = self._validate_target_id(target_id)
             if validated is not None:
-                if recording_metadata_compatible(source, _compat_view(validated)):
+                if validated.get("is_playable") is not False and recording_metadata_compatible(
+                    source, _compat_view(validated)
+                ):
                     candidate = self._to_candidate(
                         validated,
                         score=0.95,
@@ -271,8 +310,13 @@ class ImportMatcher:
                     acceptable=False,
                 )
 
-        candidates = self._search_catalog(source)
-        scored = self._score_candidates(source, candidates) if candidates else []
+        scored = self._discover_candidates(source)
+        if self.recording_lookup and not source.get("isrc") and not any(
+            item.acceptable and item.score >= HIGH_SCORE for item in scored
+        ):
+            inferred = self._discover_by_recording(source)
+            inferred_ids = {item.target_id for item in inferred}
+            scored = inferred + [item for item in scored if item.target_id not in inferred_ids]
 
         # Keep identity-shortcut conflicts / hints visible for review when search
         # finds nothing better.
@@ -289,9 +333,17 @@ class ImportMatcher:
             return MatchResult(status="unmatched", confidence=0.0)
 
         best = scored[0]
-        if best.acceptable and best.score >= HIGH_SCORE:
-            status = "high"
+        selected = None
+        if self.destination_provider == "spotify":
+            selected = _spotify_choice(source, scored)
+            scored = scored[:MAX_REVIEW_CANDIDATES]
+        elif best.acceptable and best.score >= HIGH_SCORE:
             selected = best
+        if selected is not None:
+            status = "high"
+            if selected is not best:
+                scored = [selected, *(candidate for candidate in scored if candidate is not selected)]
+                scored = scored[:MAX_REVIEW_CANDIDATES]
         elif (
             best.score >= AMBIGUOUS_SCORE
             or isrc_conflict is not None
@@ -308,7 +360,7 @@ class ImportMatcher:
             status=status,
             best=selected,
             candidates=scored,
-            confidence=best.score,
+            confidence=(selected or best).score,
         )
 
     def match_tracks(
@@ -395,6 +447,22 @@ class ImportMatcher:
             return None
 
         scored = self._score_candidates(source, usable)
+        if self.destination_provider == "spotify":
+            playable = [candidate for candidate in scored if candidate.is_playable is not False]
+            if not playable:
+                return scored[0]
+            compatible = [
+                candidate for candidate in playable
+                if recording_metadata_compatible(source, _compat_view(candidate))
+            ]
+            best = next(
+                (candidate for candidate in compatible if _album_matches(source, candidate)),
+                (compatible or playable)[0],
+            )
+            best.reason = "isrc_match" if compatible else "isrc_conflict"
+            best.score = max(best.score, 0.99)
+            best.acceptable = bool(compatible)
+            return best
         if scored:
             best = scored[0]
             if recording_metadata_compatible(source, _compat_view(best)):
@@ -414,6 +482,51 @@ class ImportMatcher:
         if recording_metadata_compatible(source, _compat_view(raw)):
             return self._to_candidate(raw, score=0.99, reason="isrc_match", acceptable=True)
         return self._to_candidate(raw, score=0.99, reason="isrc_conflict", acceptable=False)
+
+    def _discover_candidates(self, track: dict) -> list[MatchCandidate]:
+        pages = getattr(self.target, "iter_import_candidates", None)
+        if not callable(pages):
+            return self._score_candidates(track, self._search_catalog(track))
+
+        seen = set()
+        scored = []
+        sparse_version = (
+            creative_version_markers(track.get("name"))
+            and not track.get("duration_ms") and not track.get("isrc")
+        )
+        for page in pages(track):
+            new_items = [item for item in page if _candidate_id(item) not in seen]
+            seen.update(_candidate_id(item) for item in new_items)
+            batch = self._score_candidates(track, new_items)
+            scored.extend(batch)
+            scored.sort(key=lambda item: (item.acceptable, item.score), reverse=True)
+            selected = _spotify_choice(track, scored)
+            if selected and (
+                _album_matches(track, selected)
+                or (not sparse_version and not normalize_text(track.get("album")))
+            ):
+                break
+        return scored
+
+    def _discover_by_recording(self, track: dict) -> list[MatchCandidate]:
+        search = getattr(self.target, "search_import_recording", None)
+        if not callable(search):
+            return []
+        try:
+            hint = self.recording_lookup(track)
+            if not hint:
+                return []
+            isrc, album = hint
+            rows = search(track, isrc, album)
+        except (RuntimeError, OSError):
+            return []
+        candidates = self._score_candidates(track, rows)
+        verified = [candidate for candidate in candidates if candidate.isrc == isrc]
+        for candidate in verified:
+            if candidate.acceptable:
+                candidate.score = max(candidate.score, 0.95)
+                candidate.reason = "musicbrainz_isrc"
+        return verified
 
     def _search_catalog(self, track: dict) -> list[dict]:
         """Search the target catalog for matching tracks."""
@@ -468,8 +581,11 @@ class ImportMatcher:
                 candidate.duration_ms,
             )
             candidate.score = float(score)
-            candidate.acceptable = bool(acceptable)
-            candidate.reason = self._explain_score(track, candidate, score, acceptable)
+            candidate.acceptable = bool(acceptable) and candidate.is_playable is not False
+            candidate.reason = (
+                SPOTIFY_UNAVAILABLE if candidate.is_playable is False
+                else self._explain_score(track, candidate, score, acceptable)
+            )
             scored.append(candidate)
         scored.sort(key=lambda item: (item.acceptable, item.score), reverse=True)
         return scored
@@ -539,6 +655,8 @@ class ImportMatcher:
             score=float(score),
             reason=reason,
             acceptable=acceptable,
+            isrc=normalize_isrc(data.get("isrc")),
+            is_playable=data.get("is_playable") if self.destination_provider == "spotify" else None,
         )
 
     def _cache_key(self, track: dict) -> str:

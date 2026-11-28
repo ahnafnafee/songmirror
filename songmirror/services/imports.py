@@ -28,6 +28,7 @@ from ..engine.targets import (
 )
 from ..engine.targets.base import TargetAuthError, TargetTransientError, _normalize
 from .import_matching import ImportMatcher
+from .import_musicbrainz import MusicBrainzImportLookup
 from .import_models import (
     MAX_TRACKS_PER_IMPORT,
     BulkDecisionRequest,
@@ -820,7 +821,7 @@ class ImportService:
             raise ImportServiceError("destination account is not connected")
         if not writable_target(dest):
             raise ImportServiceError(f"{dest.name} cannot be a playlist destination")
-        search = getattr(dest, "search_candidates", None)
+        search = getattr(dest, "search_import_catalog", None) or getattr(dest, "search_candidates", None)
         if not callable(search):
             raise ImportServiceError("destination provider does not support catalog search")
 
@@ -863,6 +864,7 @@ class ImportService:
                     "duration_ms": item.get("duration_ms"),
                     "image": item.get("image"),
                     "external_url": item.get("external_url"),
+                    **({"is_playable": item["is_playable"]} if isinstance(item.get("is_playable"), bool) else {}),
                 }
             )
             if len(results) >= limit:
@@ -1146,10 +1148,14 @@ class ImportService:
             lambda conn: self.archive.get_import_tracks(conn, job_id, offset=0, limit=1_000_000)
         )
         self._with_conn(lambda conn: self.archive.clear_import_candidates(conn, job_id))
+        recording_lookup = None
+        if target_provider(dest) == "spotify" and os.getenv("SONGMIRROR_IMPORT_MUSICBRAINZ") == "1":
+            recording_lookup = MusicBrainzImportLookup()
         matcher = ImportMatcher(
             dest,
             cache,
             source_provider=job.get("source_provider"),
+            recording_lookup=recording_lookup,
         )
         total = len(tracks)
 

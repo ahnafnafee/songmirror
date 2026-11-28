@@ -20,9 +20,9 @@ import { useProviderPlaylists } from '@/hooks/useProviderPlaylists'
 import { useSettings } from '@/hooks/useSettings'
 import { capabilitiesOf } from '@/lib/accountCapabilities'
 import { cn } from '@/lib/cn'
-import { formatNumber } from '@/lib/format'
+import { formatDuration, formatNumber } from '@/lib/format'
 import { playlistExternalUrl } from '@/lib/playlistLinks'
-import type { ImportCandidate, ImportJob, ImportJobResponse, ImportTrack, TrackDecision } from '@/types'
+import type { ImportCandidate, ImportJob, ImportJobResponse, ImportSearchResult, ImportTrack, TrackDecision } from '@/types'
 
 type SourceMethod = 'text' | 'file' | 'url'
 type DestinationMode = 'create' | 'append'
@@ -72,8 +72,7 @@ function isAmbiguousMatch(track: ImportTrack): boolean {
   return (
     track.decision === 'auto' &&
     !track.resolved_target_id &&
-    (track.score || 0) >= AMBIGUOUS_SCORE &&
-    (track.score || 0) < AUTO_MATCH_THRESHOLD
+    (track.score || 0) >= AMBIGUOUS_SCORE
   )
 }
 
@@ -171,18 +170,9 @@ export default function CreatePlaylist() {
   const [error, setError] = useState('')
   const [searchModalTrack, setSearchModalTrack] = useState<ImportTrack | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<
-    Array<{
-      id: string
-      name: string
-      artist: string
-      album?: string
-      duration_ms?: number
-      image?: string
-      external_url?: string
-    }>
-  >([])
+  const [searchResults, setSearchResults] = useState<ImportSearchResult[]>([])
   const [searching, setSearching] = useState(false)
+  const searchRequest = useRef<AbortController | null>(null)
   const [searchError, setSearchError] = useState('')
   const [hasSearched, setHasSearched] = useState(false)
   const [assigning, setAssigning] = useState(false)
@@ -472,6 +462,7 @@ export default function CreatePlaylist() {
 
   function closeSearchModal() {
     if (assigning) return
+    searchRequest.current?.abort()
     setSearchModalTrack(null)
     setSearchQuery('')
     setSearchResults([])
@@ -481,22 +472,28 @@ export default function CreatePlaylist() {
   }
 
   async function handleSearch() {
-    if (!searchQuery.trim() || !destinationAccount) return
+    const query = searchQuery.trim()
+    if (!query || !job || searching || assigning) return
+    const controller = new AbortController()
+    searchRequest.current = controller
     setSearching(true)
     setSearchError('')
+    setSearchResults([])
+    setHasSearched(false)
     try {
-      const results = await importApi.searchTrack(destinationAccount, searchQuery.trim())
+      const results = await importApi.searchTrack(job.destination_account, query, controller.signal)
+      if (controller.signal.aborted) return
       setSearchResults(results)
       setHasSearched(true)
-      if (results.length === 0) {
-        setSearchError(t('No matching tracks found'))
-      }
     } catch (err) {
+      if (controller.signal.aborted) return
       setSearchError(errorMessage(err) || t('Search failed'))
-      setSearchResults([])
       setHasSearched(true)
     } finally {
-      setSearching(false)
+      if (searchRequest.current === controller) {
+        searchRequest.current = null
+        setSearching(false)
+      }
     }
   }
 
@@ -504,6 +501,7 @@ export default function CreatePlaylist() {
     if (!job) return
     setAssigning(true)
     setError('')
+    setSearchError('')
     try {
       await importApi.updateTrackDecision(job.id, track.position, {
         decision: 'selected',
@@ -546,7 +544,8 @@ export default function CreatePlaylist() {
       setSearchResults([])
       setHasSearched(false)
     } catch (err) {
-      setError(errorMessage(err))
+      if (searchModalTrack) setSearchError(errorMessage(err))
+      else setError(errorMessage(err))
     } finally {
       setAssigning(false)
     }
@@ -1072,7 +1071,12 @@ export default function CreatePlaylist() {
                                             {candidate.title || t('(no title)')}
                                           </div>
                                           <div className="truncate text-xs text-text-3">
-                                            {candidate.artist || t('(no artist)')}
+                                            {[
+                                              candidate.artist || t('(no artist)'),
+                                              candidate.album,
+                                              candidate.duration_ms ? formatDuration(candidate.duration_ms / 1000) : null,
+                                              candidate.reason === 'spotify_unavailable' ? t('Unavailable') : null,
+                                            ].filter(Boolean).join(' · ')}
                                           </div>
                                         </div>
                                       </div>
@@ -1313,8 +1317,17 @@ export default function CreatePlaylist() {
           <TextField
             label={t('Search')}
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            disabled={searching || assigning}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              setSearchResults([])
+              setSearchError('')
+              setHasSearched(false)
+            }}
             placeholder={t('Search by artist and title...')}
+            help={destinationAccountRecord?.provider === 'spotify'
+              ? t('You can also paste a Spotify track link or ID.')
+              : undefined}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
@@ -1329,7 +1342,7 @@ export default function CreatePlaylist() {
           </div>
 
           {searchError && (
-            <div className="rounded-lg bg-danger-soft p-3 text-sm text-danger">{searchError}</div>
+            <div role="alert" className="rounded-lg bg-danger-soft p-3 text-sm text-danger">{searchError}</div>
           )}
 
           {searchResults.length > 0 ? (
@@ -1353,7 +1366,14 @@ export default function CreatePlaylist() {
                     )}
                     <div className="min-w-0">
                       <div className="truncate font-medium text-text">{result.name}</div>
-                      <div className="truncate text-sm text-text-3">{result.artist}</div>
+                      <div className="truncate text-sm text-text-3">
+                        {[
+                          result.artist,
+                          result.album,
+                          result.duration_ms ? formatDuration(result.duration_ms / 1000) : null,
+                          result.is_playable === false ? t('Unavailable') : null,
+                        ].filter(Boolean).join(' · ')}
+                      </div>
                     </div>
                   </div>
                   <span className="shrink-0 text-sm font-semibold text-accent">{t('Select')}</span>

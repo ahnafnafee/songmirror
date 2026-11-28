@@ -223,6 +223,16 @@ def creative_version_markers(name):
     return markers
 
 
+def search_title_without_version(title):
+    """Drop trailing recording qualifiers when constructing alternate queries."""
+    while suffix := re.search(r"\s*(\([^()]*\)|\[[^\[\]]*\]|\s+[-–—]\s+[^-–—]+)$", title):
+        base = title[:suffix.start()].strip()
+        if not base or not creative_version_markers(suffix.group(1)):
+            break
+        title = base
+    return title
+
+
 def romanized(text):
     """ASCII romanization for cross-script matching (Камин->kamin, ত্রি->tri).
     Cyrillic / Bengali / Greek / Arabic romanize reliably; CJK yields a Chinese

@@ -49,6 +49,15 @@ class TestCSVParser:
         assert result.tracks[0].artist == "Daft Punk"
         assert result.tracks[0].title == "One More Time"
 
+    def test_shazam_csv_keeps_the_version_and_ignores_missing_metadata(self):
+        parsed = parse_csv(
+            "Artist,Title,Album,Date,ISRC,Duration\n"
+            '"Scorpions","Love of My Life (Live)","N/A","2025-12-08T10:09:43.962Z","N/A","N/A"'
+        ).tracks[0]
+
+        assert (parsed.artist, parsed.title) == ("Scorpions", "Love of My Life (Live)")
+        assert parsed.album is parsed.isrc is parsed.duration_ms is None
+
     def test_utf8_bom(self):
         csv_content = b"\xef\xbb\xbfTitle,Artist\nSong,Artist"
         result = parse_file(csv_content, "playlist.csv")

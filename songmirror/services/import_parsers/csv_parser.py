@@ -127,6 +127,11 @@ def _clean(value: object) -> Optional[str]:
     return text or None
 
 
+def _optional_metadata(value: object) -> Optional[str]:
+    text = _clean(value)
+    return None if text and text.casefold() == "n/a" else text
+
+
 def _sniff_dialect(sample: str) -> csv.Dialect:
     try:
         return csv.Sniffer().sniff(sample, delimiters=",;\t|")
@@ -176,13 +181,9 @@ def parse_csv(content: str) -> ParseResult:
                 }
                 title = _clean(values.get(mapping["title"])) if "title" in mapping else None
                 artist = _clean(values.get(mapping["artist"])) if "artist" in mapping else None
-                album = _clean(values.get(mapping["album"])) if "album" in mapping else None
-                isrc = _clean(values.get(mapping["isrc"])) if "isrc" in mapping else None
-                source_track_id = (
-                    _clean(values.get(mapping["source_track_id"]))
-                    if "source_track_id" in mapping
-                    else None
-                )
+                album = _optional_metadata(values.get(mapping.get("album")))
+                isrc = _optional_metadata(values.get(mapping.get("isrc")))
+                source_track_id = _optional_metadata(values.get(mapping.get("source_track_id")))
                 raw_text = _clean(values.get(mapping["raw"])) if "raw" in mapping else None
                 duration_ms = None
                 if "duration_ms" in mapping:
@@ -252,7 +253,7 @@ def parse_csv(content: str) -> ParseResult:
             continue
         artist = cells[0]
         title = cells[1]
-        album = cells[2] if len(cells) > 2 else None
+        album = _optional_metadata(cells[2]) if len(cells) > 2 else None
         duration_ms = _parse_duration_ms(cells[3]) if len(cells) > 3 else None
         track_warnings: list[str] = []
         if not title:

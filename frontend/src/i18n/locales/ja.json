@@ -1138,6 +1138,7 @@
   "Which services to keep in sync.": "同期を維持するサービス。",
   "Which way changes flow between your services.": "サービス間の変更の流れはどちらですか。",
   "Why held": "開催理由",
+  "You can also paste a Spotify track link or ID.": "Spotifyの曲のリンクやIDを貼り付けることもできます。",
   "You can choose a folder now. Save the new location after this backup finishes.": "フォルダーを選択できるようになりました。このバックアップが完了したら、新しい場所を保存します。",
   "You can leave this page. It keeps running in the background.": "このページから離れても構いません。バックグラウンドで実行され続けます。",
   "You can reconnect at any time. Existing playlists on this service won't be deleted.": "いつでも再接続できます。このサービス上の既存のプレイリストは削除されません。",
