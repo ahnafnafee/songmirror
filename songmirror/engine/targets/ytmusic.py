@@ -655,15 +655,17 @@ class YTMusicTarget(MirrorTarget):
 
     # -- MirrorTarget ----------------------------------------------------------
     def list_playlists(self):
-        out = {}
+        return self._first_playlists_by_name(self.browse_playlists())
+
+    def browse_playlists(self):
+        out = []
         for pl in self._paged("playlists", {"part": "snippet,contentDetails,status", "mine": "true", "maxResults": 50}):
             title = (pl.get("snippet", {}).get("title") or "").strip()
-            key = title.casefold()
-            if key and key not in out:
-                out[key] = {"playlistId": pl["id"], "title": title,
+            if title:
+                out.append({"playlistId": pl["id"], "title": title,
                             "count": pl.get("contentDetails", {}).get("itemCount"),
                             "privacy": pl.get("status", {}).get("privacyStatus"),
-                            "thumbnails": pl.get("snippet", {}).get("thumbnails")}  # cover art for browse
+                            "thumbnails": pl.get("snippet", {}).get("thumbnails")})  # cover art for browse
         return out
 
     def is_editable(self, playlist):

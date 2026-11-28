@@ -964,7 +964,13 @@ def test_authoritative_group_routes_with_writable_spotify(monkeypatch):
     assert summary["per_target"][0]["added"] == 2
 
 
-def test_run_target_honors_explicit_pairing_and_collects_diagnostics(monkeypatch, tmp_path):
+@pytest.mark.parametrize(("direction", "source", "enabled"), [
+    ("oneway", "spotify", True), ("oneway", "apple", True),
+    ("nway", None, True), ("oneway", "spotify", False),
+])
+def test_run_target_honors_explicit_pairing_and_collects_diagnostics(
+    monkeypatch, tmp_path, direction, source, enabled,
+):
     from songmirror.engine import archive
     from songmirror.services.playlists import PlaylistLink
 
@@ -1013,18 +1019,28 @@ def test_run_target_honors_explicit_pairing_and_collects_diagnostics(monkeypatch
     monkeypatch.setattr(runner, "mirror_pair", fake_mirror_pair)
 
     selected = [{"id": "sp1", "name": "Workout", "snapshot_id": "snap1"}]
-    link = PlaylistLink(name="Pair", members={"spotify": "sp1", "apple": "t99"}, id="LINK1")
+    link = PlaylistLink(
+        name="Pair", members={"spotify": "sp1", "apple": "t99"}, id="LINK1",
+        direction=direction, source=source, enabled=enabled,
+    )
     agg = runner.run_target(FakeTarget(str(tmp_path / "c.json")), selected, lambda pl: [],
                             songs, _opts(execute=True), links=[link], source=_FakeSource())
 
-    assert captured["tgt_id"] == "t99"          # paired target used, not same-name match
-    assert agg["added"] == 1
-    assert agg["held"] == 1
-    assert agg["deferred"] == 2
-    assert agg["uncertain_matches"] == 1
-    assert agg["change_diagnostics"] == [diagnostic]
-    assert archive.get_state(songs, "LINK1", "apple") is not None  # state keyed by the link id
-    songs.close()
+    try:
+        if direction == "oneway" and source == "spotify" and enabled:
+            assert captured["tgt_id"] == "t99"
+            assert agg["added"] == 1
+            assert agg["held"] == 1
+            assert agg["deferred"] == 2
+            assert agg["uncertain_matches"] == 1
+            assert agg["change_diagnostics"] == [diagnostic]
+            assert archive.get_state(songs, "LINK1", "apple") is not None
+        else:
+            assert captured == {}
+            assert agg["added"] == 0
+            assert archive.get_state(songs, "LINK1", "apple") is None
+    finally:
+        songs.close()
 
 
 def test_run_target_stops_between_playlists_on_control(tmp_path):
@@ -1874,6 +1890,205 @@ class _RecreatedPeer(_Peer):
         self._isrcs.remove(track["isrc"])
 
 
+@pytest.mark.parametrize("tidal_playlist_id", ["tidal-paired", None], ids=["existing", "create-by-name"])
+def test_nway_syncs_changes_in_both_directions_for_an_explicit_pairing(monkeypatch, tmp_path, tidal_playlist_id):
+    from songmirror.services.account_profiles import AccountProfileStore
+    from songmirror.services.playlists import LinkStore, PlaylistLink
+    from songmirror.services.settings import SettingsStore
+
+    class PairedPeer(_RecreatedPeer):
+        playlist_id = staticmethod(lambda playlist: playlist["id"])
+        playlist_name = staticmethod(lambda playlist: playlist["name"])
+        playlist_description = staticmethod(lambda playlist: "")
+
+        def __init__(self, source, provider, name):
+            super().__init__(source, ["A", "B"])
+            self.provider = provider
+            self.name = provider.title()
+            self.playlist = {"id": f"{provider}-paired", "name": name}
+            self.available = True
+            self.extra_playlists = []
+
+        def list_playlists(self):
+            playlists = {"road trip": {"id": "same-name-decoy", "name": "Road Trip"}}
+            if self.available:
+                playlists[self.playlist["name"].casefold()] = self.playlist
+            return playlists
+
+        def browse_playlists(self):
+            return [*self.list_playlists().values(), *self.extra_playlists]
+
+        def playlist_tracks(self, playlist):
+            assert playlist == self.playlist
+            return super().playlist_tracks(playlist)
+
+        def create(self, playlist):
+            assert self.provider == "tidal" and tidal_playlist_id is None and not self.available
+            assert playlist["name"] == self.playlist["name"] == "Driving"
+            self.available = True
+            return self.playlist
+
+    profiles = AccountProfileStore(SettingsStore(dir=tmp_path))
+    spotify = PairedPeer(profiles.default_id("spotify"), "spotify", "Road Trip")
+    tidal = PairedPeer(profiles.default_id("tidal"), "tidal", "Driving Music" if tidal_playlist_id else "Driving")
+    if tidal_playlist_id is None:
+        tidal.available = False
+        tidal._isrcs.clear()
+    store = LinkStore(dir=tmp_path)
+    link = store.upsert(PlaylistLink(
+        name="Driving", direction="nway", source=None,
+        members={"spotify": "spotify-paired", "tidal": tidal_playlist_id},
+    ))
+    monkeypatch.setattr(runner, "load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "build_one", lambda *args, **kwargs: spotify)
+    monkeypatch.setattr(runner, "build_peers", lambda *args, **kwargs: [spotify, tidal])
+    opts = _opts(
+        sync_mode="nway", sync_source="spotify", providers="spotify,tidal",
+        playlists="Road Trip", song_cache_file=str(tmp_path / "songs.db"),
+    )
+    opts.account_profiles = profiles
+
+    assert runner.run_pass(opts)["per_target"][0]["added"] == 0
+    assert tidal.available is bool(tidal_playlist_id)
+    opts.execute = True
+    if tidal_playlist_id is None:
+        tidal.extra_playlists = [{"id": f"decoy-{i}", "name": "Driving"} for i in range(2)]
+        entry = runner.run_pass(opts)["per_target"][0]
+        assert entry["failed"] == 1 and "multiple Tidal playlists" in entry["failures"][0]["error"]
+        assert not tidal.available
+        tidal.extra_playlists.clear()
+    assert runner.run_pass(opts)["per_target"][0]["added"] == (0 if tidal_playlist_id else 2)
+    if tidal_playlist_id is None:
+        assert tidal.added == ["A", "B"]
+        tidal.added.clear()
+        assert LinkStore(dir=tmp_path, profiles=profiles).list()[0].members[tidal.source] == "tidal-paired"
+        tidal.playlist["name"] = "Renamed after creation"
+    tidal._isrcs.append("C")
+    assert runner.run_pass(opts)["per_target"][0]["added"] == 1
+    assert spotify.added == ["C"]
+    spotify._isrcs.append("D")
+    assert runner.run_pass(opts)["per_target"][0]["added"] == 1
+    assert tidal.added == ["D"]
+    assert runner.run_pass(opts)["per_target"][0]["added"] == 0
+
+    tidal._isrcs.remove("C")
+    assert runner.run_pass(opts)["per_target"][0]["removed"] == 0
+    assert "C" in spotify._isrcs
+    assert runner.run_pass(opts)["per_target"][0]["removed"] == 1
+    assert "C" not in spotify._isrcs
+
+    if tidal_playlist_id:
+        tidal.available = False
+        entry = runner.run_pass(opts)["per_target"][0]
+        assert entry["failed"] == 1
+        assert entry["failures"] == [{"playlist": "Driving", "error": "paired Tidal playlist was not found"}]
+        assert spotify.added == ["C"]
+        assert tidal.added == ["D"]
+
+    songs = archive.connect(opts.song_cache_file)
+    try:
+        link_key = f"pairing:{link.id}:{spotify.source},{tidal.source}"
+        for source in (spotify.source, tidal.source):
+            assert archive.get_playlist_state(songs, link_key, source) == {"i:A", "i:B", "i:D"}
+            assert not archive.has_playlist_state(songs, "road trip", source)
+    finally:
+        songs.close()
+
+
+@pytest.mark.parametrize(
+    ("left_provider", "right_provider", "with_spotify", "filter_name"),
+    [
+        ("tidal", "apple", True, "Paired mix"),
+        ("qobuz", "ytmusic", True, "Right library"),
+        ("deezer", "amazon", False, "Left library"),
+    ],
+)
+def test_nway_pairs_exact_ids_even_when_order_account_has_no_selected_playlist(
+    monkeypatch, tmp_path, left_provider, right_provider, with_spotify, filter_name,
+):
+    from songmirror.services.playlists import LinkStore, PlaylistLink
+
+    class Peer(_RecreatedPeer):
+        def __init__(self, source, title, isrcs):
+            super().__init__(source, isrcs)
+            self.playlist = {"id": f"{source}-paired", "name": title}
+            self.decoy = {"id": f"{source}-decoy", "name": title}
+
+        def browse_playlists(self):
+            return [self.decoy, self.playlist]
+
+        def list_playlists(self):
+            return {self.decoy["name"].casefold(): self.decoy}
+
+        def playlist_id(self, playlist):
+            return playlist["id"]
+
+        def playlist_name(self, playlist):
+            return playlist["name"]
+
+        def playlist_description(self, playlist):
+            return ""
+
+        def playlist_tracks(self, playlist):
+            assert playlist is self.playlist
+            return super().playlist_tracks(playlist)
+
+        def create(self, playlist):
+            pytest.fail("a saved playlist ID must not cause implicit creation")
+
+    left = Peer(left_provider, "Left library", ["A", "B"])
+    right = Peer(right_provider, "Right library", ["A", "C"])
+    peers = [left, right]
+    if with_spotify:
+        peers.insert(0, Peer("spotify", "Unselected library", ["X"]))
+    store = LinkStore(dir=tmp_path)
+    link = store.upsert(PlaylistLink(
+        name="Paired mix", direction="nway", source=None,
+        members={peer.source: peer.playlist["id"] for peer in (left, right)},
+    ))
+    monkeypatch.setattr(runner, "_playlist_link_store", lambda opts: store)
+    monkeypatch.setattr(runner, "load_dotenv", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner.spotify, "client", lambda **kwargs: object())
+    monkeypatch.setattr(runner, "build_one", lambda provider, *args, **kwargs:
+                        next(peer for peer in peers if peer.source == provider))
+    monkeypatch.setattr(runner, "build_peers", lambda *args, **kwargs: peers.copy())
+    opts = _opts(
+        sync_mode="nway", sync_source=left_provider, execute=True,
+        providers=",".join(peer.source for peer in peers), playlists=filter_name,
+        song_cache_file=str(tmp_path / "songs.db"),
+    )
+    entry = runner.run_pass(opts)["per_target"][0]
+
+    assert entry["failed"] == 0
+    assert left.added == ["C"] and right.added == ["B"]
+    if with_spotify:
+        assert peers[0].added == []
+
+    link.enabled = False
+    store.upsert(link)
+    left._isrcs.append("D")
+    entry = runner.run_pass(opts)["per_target"][0]
+    assert entry["added"] == entry["failed"] == 0
+    assert right.added == ["B"]
+
+    link.enabled = True
+    store.upsert(link)
+    store.upsert(PlaylistLink(
+        name="Conflicting pair", direction="nway", source=None, members=link.members.copy(),
+    ))
+    entry = runner.run_pass(opts)["per_target"][0]
+    assert entry["added"] == 0 and entry["failed"] >= 1
+    assert "multiple enabled bidirectional pairings" in entry["failures"][0]["error"]
+    assert right.added == ["B"]
+
+
+def test_nway_uses_a_playlist_capable_order_account_for_mixed_jobs():
+    opts = _opts(sync_mode="nway", sync_source="lastfm", providers="lastfm,tidal", liked_tracks=True)
+    assert runner.nway_order_candidates(opts) == ("tidal",)
+    opts.sync_playlists = False
+    assert runner.nway_order_candidates(opts) == ("lastfm", "tidal")
+
+
 def test_authoritative_group_forwards_only_its_authority_sources(monkeypatch):
     peers = [_Peer("spotify"), _Peer("apple"), _Peer("ytmusic")]
     seen = []
@@ -1899,7 +2114,8 @@ def test_authoritative_group_forwards_only_its_authority_sources(monkeypatch):
     assert entry["name"] == "Authoritative group"
 
 
-def test_nway_liked_tracks_pair_by_logical_key_and_destination_routes(monkeypatch):
+@pytest.mark.parametrize("favorites_source", ["spotify", "tidal"])
+def test_nway_liked_tracks_pair_by_logical_key_and_destination_routes(monkeypatch, favorites_source):
     class Peer(_Peer):
         def __init__(self, source, playlists=None):
             super().__init__(source)
@@ -1919,7 +2135,7 @@ def test_nway_liked_tracks_pair_by_logical_key_and_destination_routes(monkeypatc
             return True
 
     peers = [
-        Peer("spotify"),
+        Peer("spotify", {"tidal favorites": {"id": "spotify-favorites", "name": "TIDAL Favorites"}}),
         Peer("tidal"),
         Peer("apple", {
             "spotify liked songs": {"id": "apple-liked-playlist", "name": "Spotify Liked Songs"},
@@ -1944,14 +2160,18 @@ def test_nway_liked_tracks_pair_by_logical_key_and_destination_routes(monkeypatc
 
     monkeypatch.setattr(runner, "reconcile", capture)
 
+    other_source = "tidal" if favorites_source == "spotify" else "spotify"
+    other_route = {"kind": "native"} if favorites_source == "spotify" else {
+        "kind": "playlist", "name": "TIDAL Favorites",
+    }
     runner._run_nway(
         _opts(
             sync_mode="nway",
-            sync_source="spotify",
+            sync_source=favorites_source,
             providers="spotify,tidal,apple",
             liked_tracks=True,
             liked_routes={
-                "tidal": {"kind": "native"},
+                other_source: other_route,
                 "apple": {"kind": "playlist", "name": "Spotify Liked Songs"},
             },
         ),
@@ -1961,9 +2181,9 @@ def test_nway_liked_tracks_pair_by_logical_key_and_destination_routes(monkeypatc
     )
 
     assert calls == [{
-        "active": ["spotify", "tidal", "apple"],
-        "name": "Spotify favorites",
-        "kinds": {"spotify": "liked_tracks", "tidal": "liked_tracks", "apple": "playlist"},
+        "active": [favorites_source, other_source, "apple"],
+        "name": f"{favorites_source.title()} favorites",
+        "kinds": {favorites_source: "liked_tracks", other_source: "liked_tracks" if other_route["kind"] == "native" else "playlist", "apple": "playlist"},
         "link_key": "collection:liked-tracks",
     }]
 

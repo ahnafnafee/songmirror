@@ -89,6 +89,14 @@ class MirrorTarget:
         """{casefolded name: playlist} of editable-or-not library playlists."""
         raise NotImplementedError
 
+    def _first_playlists_by_name(self, playlists):
+        result = {}
+        for playlist in playlists:
+            key = (self.playlist_name(playlist) or "").strip().casefold()
+            if key:
+                result.setdefault(key, playlist)
+        return result
+
     def is_editable(self, playlist):
         return True
 

@@ -4,7 +4,10 @@ import pytest
 from types import SimpleNamespace
 
 from songmirror.engine.targets.apple import AppleMusicTarget
+from songmirror.engine.targets.amazon_music import AmazonMusicTarget
 from songmirror.engine.targets.base import MirrorTarget, TargetTransientError
+from songmirror.engine.targets.qobuz import QobuzTarget
+from songmirror.engine.targets.tidal import TidalTarget
 from songmirror.engine.targets.ytmusic import YTMusicTarget
 
 
@@ -18,6 +21,39 @@ def test_playlist_name_per_provider_shape():
 def test_playlist_id_per_provider_shape():
     assert MirrorTarget.playlist_id(None, {"id": "s1"}) == "s1"          # spotify/apple
     assert YTMusicTarget.playlist_id(None, {"playlistId": "y1"}) == "y1"  # youtube
+
+
+@pytest.mark.parametrize("target_class", [TidalTarget, AppleMusicTarget, QobuzTarget, AmazonMusicTarget, YTMusicTarget])
+def test_owned_library_keeps_same_name_playlist_ids_for_explicit_pairings(target_class):
+    target = target_class.__new__(target_class)
+    ids = ("first", "second")
+    if target_class is TidalTarget:
+        target.country = "US"
+        target._pages = lambda *args: iter([{"data": [
+            {"id": ident, "attributes": {"name": "Mix"}} for ident in ids
+        ]}])
+    elif target_class is AppleMusicTarget:
+        target._request = lambda *args, **kwargs: SimpleNamespace(json=lambda: {"data": [
+            {"id": ident, "attributes": {"name": "Mix"}} for ident in ids
+        ]})
+    elif target_class is QobuzTarget:
+        target._user_id = None
+        target._request = lambda *args, **kwargs: {"playlists": {"items": [
+            {"id": ident, "name": "Mix"} for ident in ids
+        ], "total": 2}}
+    elif target_class is AmazonMusicTarget:
+        target._web = True
+        target._graphql = lambda *args, **kwargs: {"user": {"playlists": {"edges": [
+            {"node": {"id": ident, "title": "Mix"}} for ident in ids
+        ]}}}
+    else:
+        target._paged = lambda *args: iter([
+            {"id": ident, "snippet": {"title": "Mix"}} for ident in ids
+        ])
+
+    assert [target.playlist_id(playlist) for playlist in target.browse_playlists()] == list(ids)
+    assert target.playlist_id(target.list_playlists()["mix"]) == "first"
+    assert target.playlist_id(target.find_playlist("second")) == "second"
 
 
 def test_resource_boundary_dispatches_native_liked_tracks_without_changing_playlists():

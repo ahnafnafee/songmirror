@@ -192,7 +192,10 @@ class AppleMusicTarget(MirrorTarget):
 
     # -- MirrorTarget ----------------------------------------------------------
     def list_playlists(self):
-        out, offset = {}, 0
+        return self._first_playlists_by_name(self.browse_playlists())
+
+    def browse_playlists(self):
+        out, offset = [], 0
         while True:
             r = self._request(
                 "GET",
@@ -202,9 +205,8 @@ class AppleMusicTarget(MirrorTarget):
             data = r.json()
             rows = data.get("data") or []
             for pl in rows:
-                key = (pl.get("attributes", {}).get("name") or "").strip().casefold()
-                if key and key not in out:
-                    out[key] = pl
+                if (self.playlist_name(pl) or "").strip():
+                    out.append(pl)
             if not data.get("next"):
                 return out
             if not rows:

@@ -363,8 +363,11 @@ class AmazonMusicTarget(MirrorTarget):
         return node or {}
 
     def list_playlists(self):
+        return self._first_playlists_by_name(self.browse_playlists())
+
+    def browse_playlists(self):
         if getattr(self, "_web", None) is not None:
-            out, cursor = {}, None
+            out, cursor = [], None
             while True:
                 data = self._graphql(
                     "SongMirrorAmazonPlaylists",
@@ -374,15 +377,14 @@ class AmazonMusicTarget(MirrorTarget):
                 connection = (((data.get("user") or {}).get("playlists")) or {})
                 for edge in connection.get("edges") or []:
                     playlist = edge.get("node") or {}
-                    key = (playlist.get("title") or "").strip().casefold()
-                    if key and key not in out:
-                        out[key] = playlist
+                    if (playlist.get("title") or "").strip():
+                        out.append(playlist)
                 page = connection.get("pageInfo") or {}
                 cursor = _next_cursor(page, cursor, "playlist listing")
                 if cursor is None:
                     return out
 
-        out, cursor = {}, None
+        out, cursor = [], None
         while True:
             params = {"limit": 100, "sortBy": "NAME"}
             if cursor:
@@ -391,9 +393,8 @@ class AmazonMusicTarget(MirrorTarget):
             connection = self._connection(body, "data", "user", "playlists")
             for edge in connection.get("edges") or []:
                 playlist = edge.get("node") or {}
-                key = (playlist.get("title") or "").strip().casefold()
-                if key and key not in out:
-                    out[key] = playlist
+                if (playlist.get("title") or "").strip():
+                    out.append(playlist)
             page = connection.get("pageInfo") or {}
             cursor = _next_cursor(page, cursor, "playlist listing")
             if cursor is None:

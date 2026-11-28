@@ -305,6 +305,8 @@ Removal writes remain opt-in and capped. Enable **Mirror removals** for the job 
 
 By default one provider is the source of truth and edits flow one way. In **N-way mode** every selected provider is a peer: add or remove a track on any one and the change propagates to the others.
 
+For differently named playlists, save a **Bidirectional (N-way)** pairing under **Playlists → Pairings** and include both accounts in a bidirectional job. When you filter the job by playlist name, enter the pairing name or any of its playlists' names. SongMirror remembers the playlist IDs after creation, so renaming a playlist keeps it paired. A one-way pairing runs only in a one-way job with the same source.
+
 Bidirectional sync is impossible statelessly, so each logical playlist's canonical membership is snapshotted after every clean pass. Each pass diffs every provider against that snapshot, unions the changes, and reconciles everyone to the result:
 
 - **Echo-free** — a propagated add becomes part of the snapshot, so it's never bounced back.

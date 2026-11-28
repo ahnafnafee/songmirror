@@ -611,6 +611,8 @@ def test_links_crud(tmp_path):
     app = create_app(settings=SettingsStore(dir=tmp_path), links=LinkStore(dir=tmp_path))
     with TestClient(app) as client:
         assert client.get("/api/links").json() == []
+        assert client.put("/api/links", json={"name": "Bad", "members": ["spotify"]}).status_code == 422
+        assert client.put("/api/links", json={"name": "Bad", "direction": "sideways"}).status_code == 422
         lid = client.put("/api/links", json={"name": "Pair", "members": {"spotify": "s1"}}).json()["id"]
         assert lid
         assert len(client.get("/api/links").json()) == 1
